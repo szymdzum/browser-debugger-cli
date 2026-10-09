@@ -6,6 +6,11 @@
  */
 
 import { timeoutError } from '@/commands/shared/CommandRunner.js';
+import {
+  type InterruptSignal,
+  interruptExitCode,
+  interruptSignal,
+} from '@/commands/shared/interrupt.js';
 import { landingPage } from '@/commands/shared/landingPage.js';
 import type { SessionStartOptions } from '@/commands/shared/optionTypes.js';
 import { DaemonError, SessionDirError } from '@/daemon/errors.js';
@@ -19,7 +24,10 @@ import {
   invalidResponseError,
   genericError,
 } from '@/errors/messages.js';
-import { startSession as sendStartSessionRequest } from '@/ipc/client.js';
+import {
+  startSession as sendStartSessionRequest,
+  stopSession as sendStopSessionRequest,
+} from '@/ipc/client.js';
 import {
   IPCErrorCode,
   type StartSessionResponse,
@@ -43,6 +51,7 @@ import { getExitCodeForIPCError } from '@/utils/errorMapping.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
+import { isProcessAlive } from '@/utils/process.js';
 
 const log = createLogger('bdg');
 
@@ -50,7 +59,12 @@ const log = createLogger('bdg');
  * Outcome of a start attempt, printed by {@link reportStartOutcome}.
  */
 export type StartOutcome =
-  | { ok: true; data: StartSessionResponseData }
+  | {
+      ok: true;
+      data: StartSessionResponseData;
+      /** The daemon this attempt spawned (internal: stopped if the start is interrupted) */
+      spawned?: SpawnedDaemon;
+    }
   | {
       ok: false;
       /** Message for `--json` (no "Error:" prefix) */
@@ -82,6 +96,8 @@ export interface StartDeps {
   launch: () => Promise<SpawnedDaemon | undefined>;
   /** Sends `start_session_request` */
   send: typeof sendStartSessionRequest;
+  /** Sends `stop_session_request` (stops a session whose start was interrupted) */
+  stop: () => Promise<unknown>;
   /** How long a failed start waits for the daemons it spawned to exit */
   exitWaitMs: number;
 }
@@ -89,11 +105,9 @@ export interface StartDeps {
 const DEFAULT_START_DEPS: StartDeps = {
   launch: launchDaemon,
   send: sendStartSessionRequest,
+  stop: sendStopSessionRequest,
   exitWaitMs: SPAWNED_DAEMON_EXIT_WAIT_MS,
 };
-
-/** Signals that cancel a start */
-type InterruptSignal = 'SIGINT' | 'SIGTERM';
 
 /**
  * Start a session via the daemon and report the result.
@@ -101,10 +115,18 @@ type InterruptSignal = 'SIGINT' | 'SIGTERM';
  * Spawns the daemon if needed, sends `start_session_request`, then prints the
  * result as a JSON envelope (`--json`) or human-readable text, and exits.
  *
- * Ctrl-C (or SIGTERM) cancels the start: the connection is closed, so the
- * daemon abandons the session, and the command exits once the daemon it
- * spawned has torn it down and exited (bounded, like a failed start), so a
- * command run right after sees no session. A second signal exits at once.
+ * Ctrl-C (or SIGTERM) cancels the start at any point until the outcome is
+ * printed: the connection is closed, so the daemon abandons the session (a
+ * daemon spawned but not yet asked is told to shut down, a session that has
+ * just started is stopped), and the command exits with 130 (143) once the
+ * daemon it spawned has exited (bounded, like a failed start), so a command
+ * run right after sees no session. A second signal exits at once.
+ *
+ * Race-free: {@link attemptStart} checks the interrupt last, synchronously,
+ * and only microtasks run between that check and the exit in
+ * {@link reportStartOutcome}; a signal handler runs as a macrotask, so a
+ * signal either lands before the check (the start is cancelled) or after the
+ * outcome has been printed.
  *
  * @param url - Target URL to navigate to
  * @param options - Session configuration options
@@ -133,13 +155,17 @@ export async function startSessionViaDaemon(
  * failure the daemon reported (or a dropped connection), it waits for every
  * daemon the attempts spawned to exit ({@link afterSpawnedDaemonExit}).
  *
+ * An interrupt cancels the start whenever it arrives: a start that succeeded
+ * meanwhile is stopped ({@link cancelStartedSession}), and a failure keeps its
+ * message but exits 130 (143), also when the signal came during the wait.
+ *
  * @param url - Target URL
  * @param options - Session options
  * @param telemetry - Telemetry types
  * @param deps - How to reach the daemon (tests replace it)
  * @param interrupt - Aborted (reason: the signal) on Ctrl-C or SIGTERM: the
  *   start is cancelled and the daemon it spawned waited for like after a failure
- * @returns Start outcome, ready to report
+ * @returns Start outcome, ready to report (the interrupt is checked last)
  */
 export async function attemptStart(
   url: string,
@@ -160,7 +186,79 @@ export async function attemptStart(
     await delay(SHUTDOWN_POLL_MS, interrupt);
     outcome = await attempt();
   }
-  return afterSpawnedDaemonExit(outcome, spawned, deps.exitWaitMs);
+  return settleOutcome(outcome, spawned, deps, interrupt);
+}
+
+/**
+ * Settle the last attempt's outcome: a success is returned as is, or stopped
+ * when interrupted; a failure waits for the daemons the attempts spawned and
+ * takes the signal's exit code when interrupted.
+ *
+ * Race-free: for a success the interrupt is checked last, with no await
+ * between the check and the return (see {@link startSessionViaDaemon}).
+ *
+ * @param outcome - The last attempt's outcome
+ * @param spawned - Exiting daemons the attempts spawned
+ * @param deps - How to reach the daemon
+ * @param interrupt - Aborted on Ctrl-C or SIGTERM
+ * @returns Start outcome, ready to report
+ */
+async function settleOutcome(
+  outcome: StartOutcome,
+  spawned: SpawnedDaemon[],
+  deps: StartDeps,
+  interrupt: AbortSignal | undefined
+): Promise<StartOutcome> {
+  if (outcome.ok) {
+    const { spawned: daemon, ...started } = outcome;
+    return interrupt?.aborted
+      ? cancelStartedSession(started.data, daemon, deps, interrupt)
+      : started;
+  }
+  const failure = await afterSpawnedDaemonExit(outcome, spawned, deps.exitWaitMs);
+  return interrupt?.aborted ? withInterruptExitCode(failure, interrupt) : failure;
+}
+
+/**
+ * Cancel a start that succeeded after Ctrl-C (the response came before the
+ * interrupt closed the connection): the session is stopped, since nobody
+ * learns that it exists, and its daemon waited for like after a failure.
+ *
+ * @param data - The started session
+ * @param spawned - The daemon this attempt spawned, if any
+ * @param deps - How to reach the daemon
+ * @param interrupt - The aborted interrupt
+ * @returns The cancelled outcome (130, or 143 for SIGTERM)
+ */
+function cancelStartedSession(
+  data: StartSessionResponseData,
+  spawned: SpawnedDaemon | undefined,
+  deps: StartDeps,
+  interrupt: AbortSignal
+): Promise<StartOutcome> {
+  log.debug('Interrupted as the session started; stopping it');
+  deps.stop().catch((error: unknown) => {
+    log.debug(`Stopping the interrupted session failed: ${getErrorMessage(error)}`);
+  });
+  const daemon = spawned ?? {
+    pid: data.daemonPid,
+    hasExited: () => !isProcessAlive(data.daemonPid),
+  };
+  return afterSpawnedDaemonExit(cancelledOutcome(interrupt), [daemon], deps.exitWaitMs);
+}
+
+/**
+ * A failed start that was also interrupted: its message is kept (it says what
+ * went wrong), its exit code is the signal's.
+ *
+ * @param outcome - Failed start outcome
+ * @param interrupt - The aborted interrupt
+ * @returns The outcome exiting with 130 (143 for SIGTERM)
+ */
+function withInterruptExitCode(outcome: StartOutcome, interrupt: AbortSignal): StartOutcome {
+  return outcome.ok
+    ? outcome
+    : { ...outcome, exitCode: interruptExitCode(interruptSignal(interrupt)) };
 }
 
 /**
@@ -177,7 +275,7 @@ export async function attemptStart(
  */
 export async function afterSpawnedDaemonExit(
   outcome: StartOutcome,
-  spawned: SpawnedDaemon[],
+  spawned: Pick<SpawnedDaemon, 'pid' | 'hasExited'>[],
   waitMs: number
 ): Promise<StartOutcome> {
   if (outcome.ok) return outcome;
@@ -214,8 +312,7 @@ export async function afterSpawnedDaemonExit(
  */
 function interruptedOutcome(signal: InterruptSignal): Extract<StartOutcome, { ok: false }> {
   const message = `Start cancelled (${signal === 'SIGINT' ? 'interrupted' : 'terminated'})`;
-  const exitCode = signal === 'SIGINT' ? EXIT_CODES.INTERRUPTED : EXIT_CODES.TERMINATED;
-  return { ok: false, error: message, human: message, exitCode };
+  return { ok: false, error: message, human: message, exitCode: interruptExitCode(signal) };
 }
 
 /**
@@ -225,7 +322,7 @@ function interruptedOutcome(signal: InterruptSignal): Extract<StartOutcome, { ok
  * @returns Failed start outcome (exit 130, or 143 for SIGTERM)
  */
 function cancelledOutcome(interrupt: AbortSignal): Extract<StartOutcome, { ok: false }> {
-  return interruptedOutcome(interrupt.reason === 'SIGTERM' ? 'SIGTERM' : 'SIGINT');
+  return interruptedOutcome(interruptSignal(interrupt));
 }
 
 /** How long a new start waits for the previous session to finish shutting down */
@@ -258,8 +355,9 @@ function isShuttingDown(outcome: StartOutcome): boolean {
  * @param telemetry - Telemetry types
  * @param deps - How to reach the daemon
  * @param interrupt - Cancels the start when aborted
- * @returns Start outcome; a cancelled one before the request is sent is not
- *   waited for (the daemon hosts nothing and exits when idle)
+ * @returns Start outcome, with the daemon it spawned for a started session or
+ *   an exiting daemon; interrupted before the request was sent, a daemon it
+ *   spawned is told to shut down (it hosts nothing) and waited for
  */
 async function requestSession(
   url: string,
@@ -287,9 +385,27 @@ async function requestSession(
     return { ok: false, error: message, human: genericError(message), exitCode };
   }
 
-  if (interrupt?.aborted) return cancelledOutcome(interrupt);
+  if (interrupt?.aborted) return cancelBeforeRequest(spawned, interrupt);
   const outcome = await sendStart(url, options, telemetry, deps.send, interrupt);
-  return !outcome.ok && outcome.daemonExiting && spawned ? { ...outcome, spawned } : outcome;
+  return spawned && (outcome.ok || outcome.daemonExiting) ? { ...outcome, spawned } : outcome;
+}
+
+/**
+ * Cancel a start interrupted while its daemon was being spawned: the daemon
+ * would otherwise sit idle (and answer) until its idle timeout, so it is told
+ * to shut down and waited for like after a failure.
+ *
+ * @param spawned - The daemon this attempt spawned (undefined: one was already running)
+ * @param interrupt - The aborted interrupt
+ * @returns The cancelled outcome
+ */
+function cancelBeforeRequest(
+  spawned: SpawnedDaemon | undefined,
+  interrupt: AbortSignal
+): StartOutcome {
+  if (!spawned) return cancelledOutcome(interrupt);
+  spawned.stop();
+  return { ...cancelledOutcome(interrupt), daemonExiting: true, spawned };
 }
 
 /**

@@ -39,7 +39,7 @@ const NO_WAIT_BOUND_MS = 3_000;
  */
 function daemon(exitAfterMs: number, pid = 4242): SpawnedDaemon {
   const exitsAt = Date.now() + exitAfterMs;
-  return { pid, hasExited: () => Date.now() >= exitsAt };
+  return { pid, hasExited: () => Date.now() >= exitsAt, stop: () => undefined };
 }
 
 /**
@@ -55,7 +55,12 @@ function deps(
   send: StartDeps['send'],
   exitWaitMs = LONG_WAIT_MS
 ): StartDeps {
-  return { launch: () => Promise.resolve(spawned), send, exitWaitMs };
+  return {
+    launch: () => Promise.resolve(spawned),
+    send,
+    stop: () => Promise.resolve(),
+    exitWaitMs,
+  };
 }
 
 const OK_RESPONSE: StartSessionResponse = {
@@ -299,5 +304,197 @@ void describe('waitUntil', () => {
 
   void it('returns false once the time runs out', async () => {
     assert.equal(await waitUntil(() => false, 30, 5), false);
+  });
+});
+
+/**
+ * A spawned daemon that exits once it is told to shut down (or stop is sent).
+ *
+ * @param pid - Its PID
+ * @returns Fake daemon, and how often it was told to shut down
+ */
+function stoppableDaemon(pid = 4242): SpawnedDaemon & { stops: number } {
+  const fake = {
+    pid,
+    stops: 0,
+    hasExited: (): boolean => fake.stops > 0,
+    stop: (): void => {
+      fake.stops++;
+    },
+  };
+  return fake;
+}
+
+void describe('attemptStart interrupted at the edges (#522)', () => {
+  void it('Ctrl-C during the spawn tells the daemon it spawned to shut down and waits for it', async () => {
+    const interrupt = new AbortController();
+    const spawned = stoppableDaemon();
+    let sends = 0;
+    const outcome = await attemptStart(
+      'http://a.test/',
+      OPTIONS,
+      [],
+      {
+        launch: () => {
+          interrupt.abort('SIGINT');
+          return Promise.resolve(spawned);
+        },
+        send: () => {
+          sends++;
+          return Promise.resolve(OK_RESPONSE);
+        },
+        stop: () => Promise.resolve(),
+        exitWaitMs: LONG_WAIT_MS,
+      },
+      interrupt.signal
+    );
+    assert.equal(sends, 0, 'no start request after the interrupt');
+    assert.equal(spawned.stops, 1, 'the idle daemon was told to shut down');
+    if (outcome.ok) return assert.fail('expected a failure');
+    assert.equal(outcome.exitCode, 130);
+    assert.equal(outcome.details?.['daemonStillRunning'], undefined);
+  });
+
+  void it('Ctrl-C during the spawn reports a daemon that outlives the wait', async () => {
+    const interrupt = new AbortController();
+    const spawned = daemon(Infinity, 77);
+    const outcome = await attemptStart(
+      'http://a.test/',
+      OPTIONS,
+      [],
+      {
+        launch: () => {
+          interrupt.abort('SIGTERM');
+          return Promise.resolve(spawned);
+        },
+        send: () => Promise.resolve(OK_RESPONSE),
+        stop: () => Promise.resolve(),
+        exitWaitMs: 50,
+      },
+      interrupt.signal
+    );
+    if (outcome.ok) return assert.fail('expected a failure');
+    assert.equal(outcome.exitCode, 143);
+    assert.equal(outcome.details?.['daemonPid'], 77);
+  });
+
+  void it('Ctrl-C during a failed spawn exits 130 with the failure', async () => {
+    const interrupt = new AbortController();
+    const outcome = await attemptStart(
+      'http://a.test/',
+      OPTIONS,
+      [],
+      {
+        launch: () => {
+          interrupt.abort('SIGINT');
+          return Promise.reject(new Error('Daemon exited during startup'));
+        },
+        send: () => Promise.resolve(OK_RESPONSE),
+        stop: () => Promise.resolve(),
+        exitWaitMs: LONG_WAIT_MS,
+      },
+      interrupt.signal
+    );
+    if (outcome.ok) return assert.fail('expected a failure');
+    assert.equal(outcome.exitCode, 130);
+    assert.match(outcome.error, /Daemon exited during startup/);
+  });
+
+  void it('a first Ctrl-C during the post-failure wait keeps waiting, then exits 130 with the failure', async () => {
+    const interrupt = new AbortController();
+    const spawned = daemon(Infinity);
+    const exited = { at: 0 };
+    const pending = attemptStart(
+      'http://a.test/',
+      OPTIONS,
+      [],
+      deps(spawned, () => {
+        setTimeout(() => {
+          interrupt.abort('SIGINT');
+          setTimeout(() => {
+            exited.at = Date.now();
+            spawned.hasExited = (): boolean => true;
+          }, 100);
+        }, 20);
+        return Promise.resolve(REFUSED_RESPONSE);
+      }),
+      interrupt.signal
+    );
+
+    const outcome = await pending;
+    assert.ok(exited.at > 0, 'returned only after the daemon exited');
+    if (outcome.ok) return assert.fail('expected a failure');
+    assert.equal(outcome.exitCode, 130);
+    assert.equal(outcome.error, REFUSED_RESPONSE.message);
+  });
+
+  void it('SIGTERM during the post-failure wait exits 143', async () => {
+    const interrupt = new AbortController();
+    const outcome = await attemptStart(
+      'http://a.test/',
+      OPTIONS,
+      [],
+      deps(
+        daemon(Infinity),
+        () => {
+          setTimeout(() => interrupt.abort('SIGTERM'), 10);
+          return Promise.resolve(REFUSED_RESPONSE);
+        },
+        100
+      ),
+      interrupt.signal
+    );
+    if (outcome.ok) return assert.fail('expected a failure');
+    assert.equal(outcome.exitCode, 143);
+    assert.equal(outcome.details?.['daemonStillRunning'], true);
+  });
+
+  void it('a start response racing Ctrl-C: the started session is stopped and the start exits 130', async () => {
+    const interrupt = new AbortController();
+    const spawned = stoppableDaemon();
+    let stopRequests = 0;
+    const outcome = await attemptStart(
+      'http://a.test/',
+      OPTIONS,
+      [],
+      {
+        launch: () => Promise.resolve(spawned),
+        send: () =>
+          new Promise((resolve) => {
+            setTimeout(() => {
+              resolve(OK_RESPONSE);
+              interrupt.abort('SIGINT');
+            }, 10);
+          }),
+        stop: () => {
+          stopRequests++;
+          spawned.stop();
+          return Promise.resolve();
+        },
+        exitWaitMs: LONG_WAIT_MS,
+      },
+      interrupt.signal
+    );
+    assert.equal(stopRequests, 1, 'the started session was stopped');
+    assert.equal(spawned.hasExited(), true, 'returned only after the daemon exited');
+    if (outcome.ok) return assert.fail('expected the start to be cancelled');
+    assert.equal(outcome.exitCode, 130);
+    assert.match(outcome.human, /Start cancelled \(interrupted\)/);
+  });
+
+  void it('a start that succeeded without an interrupt is not stopped', async () => {
+    let stopRequests = 0;
+    const outcome = await attemptStart('http://a.test/', OPTIONS, [], {
+      launch: () => Promise.resolve(stoppableDaemon()),
+      send: () => Promise.resolve(OK_RESPONSE),
+      stop: () => {
+        stopRequests++;
+        return Promise.resolve();
+      },
+      exitWaitMs: LONG_WAIT_MS,
+    });
+    assert.equal(outcome.ok, true);
+    assert.equal(stopRequests, 0);
+    assert.equal('spawned' in outcome, false);
   });
 });

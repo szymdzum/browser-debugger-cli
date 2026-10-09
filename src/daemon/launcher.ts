@@ -46,6 +46,11 @@ export interface SpawnedDaemon {
   pid: number | undefined;
   /** Whether it has exited (from the child process's exit event) */
   hasExited: () => boolean;
+  /**
+   * Tell it to shut down (SIGTERM, unless it has exited): it ends what it
+   * hosts and exits. For a start interrupted before its request was sent.
+   */
+  stop: () => void;
 }
 
 /**
@@ -89,7 +94,13 @@ export async function launchDaemon(): Promise<SpawnedDaemon | undefined> {
   daemon.unref();
 
   await waitForDaemonReady(() => exited);
-  return { pid: daemon.pid, hasExited: () => exited };
+  return {
+    pid: daemon.pid,
+    hasExited: () => exited,
+    stop: () => {
+      if (!exited) daemon.kill('SIGTERM');
+    },
+  };
 }
 
 /** How long a daemon that lost its socket gets to end its session before it is killed */

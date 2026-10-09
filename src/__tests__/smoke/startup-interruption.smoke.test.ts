@@ -24,7 +24,7 @@ import {
   type FixtureServer,
 } from '@/__testutils__/fixtureServer.js';
 import { writeSilentChrome } from '@/__testutils__/silentChrome.js';
-import { getSessionFilePath } from '@/session/paths.js';
+import { getSessionDir, getSessionFilePath } from '@/session/paths.js';
 import { readPidFromFile } from '@/session/pid.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -74,6 +74,20 @@ async function waitForPid(file: 'CHROME_PID' | 'DAEMON_PID'): Promise<number> {
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   throw new Error(`${file} never appeared`);
+}
+
+/**
+ * Wait until the daemon log has a line.
+ *
+ * @param text - Text the line contains
+ */
+async function waitForDaemonLog(text: string): Promise<void> {
+  const logPath = path.join(getSessionDir(), 'daemon.log');
+  const deadline = Date.now() + 20000;
+  while (!(fs.existsSync(logPath) && fs.readFileSync(logPath, 'utf8').includes(text))) {
+    if (Date.now() > deadline) throw new Error(`daemon never logged "${text}"`);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
 }
 
 void describe('Startup interruption', () => {
@@ -228,5 +242,55 @@ void describe('Startup interruption', () => {
       true,
       'daemon must exit after its teardown'
     );
+  });
+
+  /**
+   * Ctrl-C while the daemon is being spawned (#522 item 1): the CLI opens the
+   * daemon log right before it spawns the daemon, and polls the daemon's
+   * socket until it answers, which takes the daemon's whole startup (well over
+   * 100 ms); the test interrupts as soon as the log appears, so the signal
+   * lands while the spawn cannot be aborted. The daemon then hosts nothing:
+   * the start must tell it to shut down and wait for it, not leave it idle
+   * and answering. The branch itself is unit tested (`attemptStart` in
+   * `spawnedDaemonExit.unit.test.ts`); here the outcome holds whichever side
+   * of the spawn the signal lands on.
+   */
+  void it('Ctrl-C while the daemon is being spawned leaves no session answering', async () => {
+    const logPath = path.join(getSessionDir(), 'daemon.log');
+    fs.rmSync(logPath, { force: true });
+    const ctrlC = new AbortController();
+    const start = runCommand(fixture.url, ['--port', String(await getFreePort()), '--headless'], {
+      timeout: 60000,
+      interrupt: ctrlC.signal,
+    });
+    while (!fs.existsSync(logPath)) await new Promise((resolve) => setTimeout(resolve, 2));
+    ctrlC.abort();
+
+    assert.equal((await start).exitCode, 130);
+    assert.equal(await isDaemonRunning(), false, 'no session may answer once the start exited');
+  });
+
+  /**
+   * A client killed without a clean disconnect (#522 item 3): the daemon sees
+   * the connection close and tears the session down (that it reports the
+   * session ending meanwhile, not starting, is unit tested in
+   * `SessionController.unit.test.ts`).
+   */
+  void it('a start whose command is killed tears down Chrome and the daemon', async () => {
+    const kill = new AbortController();
+    const port = await getFreePort();
+    const start = runCommand(`${fixture.url}slow`, ['--port', String(port), '--headless'], {
+      timeout: 60000,
+      interrupt: kill.signal,
+      interruptWith: 'SIGKILL',
+    });
+    const daemonPid = await waitForPid('DAEMON_PID');
+    const chromePid = await waitForPid('CHROME_PID');
+    kill.abort();
+    await start;
+    await waitForDaemonLog('Client disconnected during start');
+
+    assert.equal(await waitForProcessExit(chromePid, DAEMON_EXIT_TIMEOUT_MS), true, 'Chrome');
+    assert.equal(await waitForProcessExit(daemonPid, DAEMON_EXIT_TIMEOUT_MS), true, 'daemon');
   });
 });

@@ -195,12 +195,13 @@ export class SessionController {
 
   /**
    * Error fields for a request that needs the session when there is none:
-   * still starting (85), or none at all.
+   * still starting (85), or none at all (also while an abandoned start is
+   * torn down).
    *
    * @returns Error message, plus exit code and suggestion while starting
    */
   private noSessionError(): { error: string; exitCode?: number; suggestion?: string } {
-    if (!this.launching) return { error: noActiveSessionMessage() };
+    if (!this.launching || this.closing) return { error: noActiveSessionMessage() };
     return {
       error: STARTING_ERROR,
       exitCode: EXIT_CODES.RESOURCE_BUSY,
@@ -237,7 +238,7 @@ export class SessionController {
     };
     const base = { type: 'status_response' as const, sessionId: request.sessionId };
     if (!this.session || this.session.stopRequested()) {
-      if (this.launching) {
+      if (this.launching && !this.closing) {
         data.starting = { url: this.launching.url, since: this.launching.since };
       }
       if (this.session || this.closing) data.ending = true;
@@ -372,9 +373,12 @@ export class SessionController {
   /**
    * Start a session, or report the one already running.
    *
-   * A start whose client disconnects (Ctrl-C) is abandoned: the session is
-   * stopped, whether it is still launching or has just started, since nobody
-   * learns that it exists.
+   * A start whose client disconnects (Ctrl-C, or a client killed without a
+   * clean disconnect) is abandoned: the session is stopped, whether it is
+   * still launching or has just started, since nobody learns that it exists.
+   * From then on the daemon reports itself shutting down (a new start gets
+   * the retryable `SESSION_SHUTTING_DOWN`, status shows the session ending),
+   * not starting, while Chrome is torn down.
    *
    * @param request - Start session request
    * @param abandoned - Aborted when the requesting client disconnects
@@ -403,6 +407,7 @@ export class SessionController {
     this.launching = launching;
     const stopAbandoned = (): void => {
       log.info('Client disconnected during start; stopping the session');
+      this.closing = true;
       void launching.session?.stop('normal');
     };
     abandoned?.addEventListener('abort', stopAbandoned, { once: true });

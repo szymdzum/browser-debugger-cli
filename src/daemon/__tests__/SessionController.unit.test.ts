@@ -92,6 +92,30 @@ void describe('SessionController.startSession', () => {
     assert.equal(ended.mock.callCount(), 1);
   });
 
+  void it('tells other clients an abandoned start is shutting down while it tears down', async () => {
+    const { release } = fakeSession();
+    const controller = new SessionController(Date.now(), '/tmp/test.sock', () => undefined);
+    const disconnected = new AbortController();
+    const first = controller.startSession(request, disconnected.signal);
+
+    disconnected.abort();
+    const second = await controller.startSession({ ...request, sessionId: 'request-2' });
+    const status = await controller.status({ type: 'status_request', sessionId: 's' });
+
+    assert.equal(second.errorCode, IPCErrorCode.SESSION_SHUTTING_DOWN);
+    assert.equal(status.data?.starting, undefined, 'no longer reported as starting');
+    assert.equal(status.data?.ending, true);
+    const command = (await controller.command({
+      type: 'dom_eval_request',
+      sessionId: 's',
+      script: '1',
+    } as never)) as { error?: string; exitCode?: number };
+    assert.equal(command.exitCode, undefined, 'not "still starting" (85)');
+    assert.doesNotMatch(command.error ?? '', /still starting/);
+    release();
+    await first;
+  });
+
   void it('reports a start cancelled by a stop as cancelled, not as a failure', async () => {
     const { release } = fakeSession('fail');
     const controller = new SessionController(Date.now(), '/tmp/test.sock', () => undefined);
