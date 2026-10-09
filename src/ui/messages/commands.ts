@@ -142,6 +142,17 @@ export function requiredFieldsEmptyMessage(labels: string[]): string {
 }
 
 /**
+ * Note on a same-origin iframe holding form fields while `bdg dom form`
+ * lists other forms of the page (it lists the main document's only).
+ *
+ * @param url - The iframe's URL
+ * @returns e.g. "an iframe holds form fields dom form does not list: https://…/login; …"
+ */
+export function formsInFrameMessage(url: string): string {
+  return `an iframe holds form fields dom form does not list: ${url}; reach them with bdg dom query "input, select, textarea", then bdg dom fill <index> <value>`;
+}
+
+/**
  * Note on a component whose closed shadow root holds form fields: page
  * scripts cannot reach a closed root, so `bdg dom form` cannot list them.
  *

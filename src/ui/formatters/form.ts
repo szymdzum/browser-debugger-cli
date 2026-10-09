@@ -17,6 +17,7 @@ import {
   REQUIRED_FIELD_EMPTY_REASON,
   closedShadowRootMessage,
   formReadinessMessage,
+  formsInFrameMessage,
   requiredFieldsEmptyMessage,
 } from '@/ui/messages/commands.js';
 
@@ -368,6 +369,10 @@ export function formatFormDiscovery(result: FormDiscoveryResult): string {
 
   if (result.otherForms) formatOtherForms(result.otherForms, fmt);
 
+  for (const url of result.formsInFrames ?? []) {
+    fmt.text(`Note: ${formsInFrameMessage(url)}`);
+    fmt.blank();
+  }
   for (const host of result.closedShadowHosts ?? []) {
     fmt.text(`Note: ${closedShadowRootMessage(host)}`);
     fmt.blank();

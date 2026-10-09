@@ -410,6 +410,10 @@ async function handleFormCommand(options: FormCommandOptions): Promise<void> {
             ...(form.shadowHost && { shadowHost: form.shadowHost }),
           })),
         }),
+        ...(rawData.frameForms &&
+          rawData.frameForms.length > 0 && {
+            formsInFrames: rawData.frameForms.map((frame) => frame.url),
+          }),
         ...(rawData.closedShadowHosts && { closedShadowHosts: rawData.closedShadowHosts }),
         brief: options.brief,
       };

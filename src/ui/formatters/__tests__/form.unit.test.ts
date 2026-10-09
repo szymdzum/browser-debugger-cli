@@ -102,4 +102,14 @@ void describe('formatFormDiscovery shadow roots', () => {
     assert.match(output, /<x-vault> has a closed shadow root with form fields/);
     assert.match(output, /<pay-card#card> has a closed shadow root with form fields/);
   });
+
+  void it('names same-origin iframes holding form fields next to the forms listed', () => {
+    const output = formatFormDiscovery(
+      result([form()], { formsInFrames: ['http://127.0.0.1:8080/login'] })
+    );
+    assert.match(
+      output,
+      /^Note: an iframe holds form fields dom form does not list: http:\/\/127\.0\.0\.1:8080\/login; reach them with bdg dom query/m
+    );
+  });
 });

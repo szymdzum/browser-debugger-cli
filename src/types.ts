@@ -788,6 +788,8 @@ export interface FormDiscoveryResult {
     inDialog: boolean;
     shadowHost?: string | undefined;
   }>;
+  /** URLs of same-origin iframes holding form fields, which are not listed */
+  formsInFrames?: string[] | undefined;
   /** Custom elements whose closed shadow roots hold form fields (not inspectable, so not listed) */
   closedShadowHosts?: string[] | undefined;
   brief?: boolean | undefined;

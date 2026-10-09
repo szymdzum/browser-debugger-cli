@@ -505,7 +505,7 @@ export interface LayoutResult {
  */
 export interface RawFormData {
   forms: RawForm[];
-  /** Same-origin iframes holding form fields, when the main document has none */
+  /** Same-origin iframes holding form fields (not listed in `forms`) */
   frameForms?: Array<{ url: string }>;
   /** The page's `document.readyState` when the forms were read */
   readyState?: string;

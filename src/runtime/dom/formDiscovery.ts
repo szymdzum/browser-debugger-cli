@@ -700,15 +700,14 @@ export const FORM_DISCOVERY_SCRIPT = `
     }
   }
 
-  // Forms the main document does not contain may be in its same-origin iframes
-  if (result.forms.length === 0) {
-    result.frameForms = [];
-    for (const frame of document.querySelectorAll('iframe, frame')) {
-      let frameDocument = null;
-      try { frameDocument = frame.contentDocument; } catch (e) { frameDocument = null; }
-      if (frameDocument && frameDocument.querySelector('form, input:not([type=hidden]), select, textarea')) {
-        result.frameForms.push({ url: frame.src || 'about:blank' });
-      }
+  // Form fields in same-origin iframes, which are not listed (named even
+  // when the main document has forms of its own)
+  result.frameForms = [];
+  for (const frame of document.querySelectorAll('iframe, frame')) {
+    let frameDocument = null;
+    try { frameDocument = frame.contentDocument; } catch (e) { frameDocument = null; }
+    if (frameDocument && frameDocument.querySelector('form, input:not([type=hidden]), select, textarea')) {
+      result.frameForms.push({ url: frame.src || 'about:blank' });
     }
   }
 
