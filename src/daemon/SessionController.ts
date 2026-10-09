@@ -317,11 +317,17 @@ export class SessionController {
             timestamp: new Date(data.startTime).toISOString(),
             duration: data.duration,
             target: data.target,
-            data: { network: data.network, console: data.console },
+            data: {
+              network: data.network,
+              console: data.console,
+              ...(data.issues && { issues: data.issues }),
+            },
             totals: {
               network: data.totalNetwork,
               console: data.totalConsole,
               ...(data.droppedConsole && { consoleDropped: data.droppedConsole }),
+              ...(data.issues && { issues: data.issues.length }),
+              ...(data.droppedIssues && { issuesDropped: data.droppedIssues }),
               ...(data.droppedNetwork && { networkDropped: data.droppedNetwork }),
               ...(data.evictedNetworkBodies && { networkBodiesEvicted: data.evictedNetworkBodies }),
             },

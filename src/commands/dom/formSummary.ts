@@ -3,7 +3,9 @@
  * which required ones are still empty, and which button submits it.
  */
 
+import type { FormIssue } from '@/ipc/protocol/domTypes.js';
 import type {
+  DiscoveredForm,
   FormBlocker,
   FormButton,
   FormField,
@@ -201,4 +203,34 @@ export function orderForms(forms: RawForm[]): RawForm[] {
     fields: form.fields.map((field) => ({ ...field, index: next++, formIndex })),
     buttons: form.buttons.map((button) => ({ ...button, index: next++ })),
   }));
+}
+
+/**
+ * The field errors of the forms not shown (without `--all` only the first
+ * form is), so they are not lost: one entry per error and form, naming the
+ * fields (label and index) and the form.
+ *
+ * @param forms - All discovered forms
+ * @param shown - The forms shown
+ * @returns Errors of fields of the other forms
+ */
+export function issuesOfUnshownForms(
+  forms: DiscoveredForm[],
+  shown: DiscoveredForm[]
+): FormIssue[] {
+  return forms
+    .filter((form) => !shown.includes(form))
+    .flatMap((form) => {
+      const byText = new Map<string, string[]>();
+      for (const field of form.fields) {
+        for (const text of field.issues ?? []) {
+          byText.set(text, [...(byText.get(text) ?? []), `${field.label} [${field.index}]`]);
+        }
+      }
+      return [...byText].map(([text, elements]) => ({
+        text,
+        elements,
+        form: { index: form.index, hidden: form.hidden },
+      }));
+    });
 }

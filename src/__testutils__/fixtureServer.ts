@@ -34,7 +34,7 @@
  * `knownLimitFixtures.ts`; the `dom inspect` pages from `inspectFixtures.ts`;
  * the shadow root form pages from `shadowFormFixtures.ts`; the pages whose
  * actions throw from `actionErrorFixtures.ts`; the dialog pages from
- * `dialogFixtures.ts`.
+ * `dialogFixtures.ts`; the Chrome Issues pages from `issueFixtures.ts`.
  */
 
 import * as fs from 'fs';
@@ -48,6 +48,7 @@ import { WebSocketServer } from 'ws';
 import { ACTION_ERROR_ROUTES } from '@/__testutils__/actionErrorFixtures.js';
 import { DIALOG_ROUTES } from '@/__testutils__/dialogFixtures.js';
 import { INSPECT_ROUTES } from '@/__testutils__/inspectFixtures.js';
+import { ISSUE_MISSING_STYLESHEET, ISSUE_ROUTES } from '@/__testutils__/issueFixtures.js';
 import { KNOWN_LIMIT_ROUTES } from '@/__testutils__/knownLimitFixtures.js';
 import { SHADOW_FORM_ROUTES } from '@/__testutils__/shadowFormFixtures.js';
 
@@ -683,7 +684,8 @@ export async function startFixtureServer(): Promise<FixtureServer> {
       INSPECT_ROUTES[req.url ?? ''] ??
       SHADOW_FORM_ROUTES[req.url ?? ''] ??
       ACTION_ERROR_ROUTES[req.url ?? ''] ??
-      DIALOG_ROUTES[req.url ?? ''];
+      DIALOG_ROUTES[req.url ?? ''] ??
+      ISSUE_ROUTES[req.url ?? ''];
     if (knownLimitPage !== undefined) {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(knownLimitPage);
@@ -721,7 +723,7 @@ export async function startFixtureServer(): Promise<FixtureServer> {
       res.end(req.url === '/frames' ? FRAMES_HTML : FRAME_CHILD_HTML);
       return;
     }
-    if (req.url === '/not-found.png') {
+    if (req.url === '/not-found.png' || req.url === ISSUE_MISSING_STYLESHEET) {
       res.writeHead(404, { 'Content-Type': 'text/plain' });
       res.end('missing');
       return;

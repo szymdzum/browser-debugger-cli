@@ -17,7 +17,9 @@ import type { HintDetails } from '@/errors/notices.js';
 import type {
   CommandName,
   CommandSchemas,
+  PeekSection,
   SessionActivity,
+  SessionPeekData,
   SessionStatusData,
 } from '@/ipc/index.js';
 import type { DownloadInfo } from '@/ipc/protocol/domTypes.js';
@@ -34,6 +36,7 @@ import {
   withActionStability,
 } from '@/runtime/dom/formFillHelpers/index.js';
 import { exceptionSummary } from '@/runtime/dom/formFillHelpers/shared.js';
+import { connectedNodes, formErrors, withFormIssues } from '@/runtime/dom/formIssues.js';
 import { submitForm } from '@/runtime/dom/formSubmitHelpers.js';
 import type { RawFormData } from '@/runtime/dom/formTypes.js';
 import { evaluateInFrame, listFrames } from '@/runtime/dom/frames.js';
@@ -520,6 +523,22 @@ async function sendCdpCall(
   return result;
 }
 
+/**
+ * The Chrome Issues of the page currently loaded, for a peek.
+ *
+ * @param store - Telemetry of the session
+ * @param only - The kind of items asked for, if one
+ * @returns `issues` and `droppedIssues` (none for network items only)
+ */
+function pageIssues(
+  store: TelemetryStore,
+  only: PeekSection | undefined
+): Pick<SessionPeekData, 'issues' | 'droppedIssues'> {
+  if (only === 'network') return {};
+  const { issues, dropped } = store.pageIssues;
+  return { issues: [...issues], ...(dropped > 0 && { droppedIssues: dropped }) };
+}
+
 /** The session's page emulation, which `page emulate` reads and changes */
 export interface EmulationState {
   get: () => SessionEmulation;
@@ -589,6 +608,7 @@ export function createCommandRegistry(
         totalNetwork,
         totalConsole,
         ...(dropped > 0 && { droppedConsole: dropped }),
+        ...pageIssues(store, params.only),
         ...(requestsDropped > 0 && { droppedNetwork: requestsDropped }),
         ...(bodiesEvicted > 0 && { evictedNetworkBodies: bodiesEvicted }),
         ...sessionDownloads(store),
@@ -910,7 +930,10 @@ export function createCommandRegistry(
           loading ? EXIT_CODES.RESOURCE_NOT_FOUND : EXIT_CODES.SOFTWARE_ERROR
         );
       }
-      return readFormDiscovery(cdp, response.result.objectId);
+      const forms = await readFormDiscovery(cdp, response.result.objectId);
+      const errors = formErrors(store.pageIssues.issues);
+      const nodes = errors.flatMap((issue) => issue.nodes?.map((node) => node.backendNodeId) ?? []);
+      return withFormIssues(forms, errors, await connectedNodes(cdp, nodes));
     },
   } as CommandRegistry;
 }

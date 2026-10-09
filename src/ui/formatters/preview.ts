@@ -16,6 +16,7 @@ import {
 import { OutputFormatter, truncateUrl, truncateText } from '@/ui/formatting.js';
 import { downloadsSummary, moreCharsNote, withPageCrashedNote } from '@/ui/messages/commands.js';
 import { consoleDroppedNote } from '@/ui/messages/consoleMessages.js';
+import { peekIssuesLine } from '@/ui/messages/issueMessages.js';
 import { networkEvictedNote } from '@/ui/messages/networkMessages.js';
 import {
   PREVIEW_EMPTY_STATES,
@@ -275,6 +276,9 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
     }
   }
 
+  const issues = issuesLine(output, options);
+  if (issues) fmt.text(issues).blank();
+
   if (output.downloads?.length)
     fmt.text(`Downloads: ${downloadsSummary(output.downloads)}`).blank();
 
@@ -283,6 +287,19 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
   }
 
   return fmt.build();
+}
+
+/**
+ * The count of the page's Chrome Issues, unless only network requests are
+ * shown.
+ *
+ * @param output - Preview output with its totals
+ * @param options - Preview options
+ * @returns Line, or undefined when the page has none
+ */
+function issuesLine(output: BdgOutput, options: PreviewOptions): string | undefined {
+  const count = (output.totals?.issues ?? 0) + (output.totals?.issuesDropped ?? 0);
+  return count > 0 && !options.network ? peekIssuesLine(count) : undefined;
 }
 
 /**
@@ -399,6 +416,9 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
       fmt.blank();
     }
   }
+
+  const issues = issuesLine(output, options);
+  if (issues) fmt.text(issues).blank();
 
   if (output.downloads?.length) {
     fmt.keyValue('Downloads', downloadsSummary(output.downloads), 18).blank();

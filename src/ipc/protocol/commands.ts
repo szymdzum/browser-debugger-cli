@@ -27,7 +27,13 @@ import type {
 } from '@/ipc/protocol/domTypes.js';
 import type { InspectResult } from '@/ipc/protocol/inspectTypes.js';
 import type { PageState, SessionActivity } from '@/ipc/session/types.js';
-import type { ColorScheme, NetworkRequest, ScreenshotResult, ViewportSize } from '@/types.js';
+import type {
+  ColorScheme,
+  NetworkRequest,
+  PageIssue,
+  ScreenshotResult,
+  ViewportSize,
+} from '@/types.js';
 
 /**
  * Session peek command request schema.
@@ -92,6 +98,10 @@ export interface SessionPeekData {
   totalConsole: number;
   /** Console messages dropped at the limit (the oldest; indices start after them) */
   droppedConsole?: number;
+  /** Chrome Issues of the page currently loaded (left out with `only: 'network'`) */
+  issues?: PageIssue[];
+  /** Chrome Issues of the page not kept past the per-page limit */
+  droppedIssues?: number;
   /** Finished network requests dropped at the request cap (the oldest) */
   droppedNetwork?: number;
   /** Response bodies evicted at the total body budget (the oldest) */

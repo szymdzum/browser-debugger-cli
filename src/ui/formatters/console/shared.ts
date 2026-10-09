@@ -3,7 +3,7 @@
  */
 
 import { MAX_CONSOLE_JSON_TEXT_LENGTH } from '@/constants.js';
-import type { ConsoleLevel, ConsoleMessage, StackFrame } from '@/types.js';
+import type { ConsoleLevel, ConsoleMessage, PageIssue, StackFrame } from '@/types.js';
 import { capLength } from '@/utils/strings.js';
 
 export type { ConsoleLevel } from '@/types.js';
@@ -65,6 +65,10 @@ export interface ConsoleFormatOptions {
   pageCrashedAt?: number | undefined;
   /** Print message texts whole (`--full`) */
   full?: boolean | undefined;
+  /** Chrome Issues of the page currently loaded (the Issues block; not shown with `--level`) */
+  issues?: readonly PageIssue[] | undefined;
+  /** Chrome Issues of the page not kept past the per-page limit */
+  issuesDropped?: number | undefined;
 }
 
 /** Distinct errors and warnings the summary lists without `--last` */
@@ -131,6 +135,10 @@ export interface ConsoleJsonOutput {
   dropped?: number;
   /** When the page crashed (epoch ms), while it is not loaded again */
   pageCrashedAt?: number;
+  /** Chrome Issues of the page currently loaded (quirks mode, form errors, ...), in the order they arrived */
+  issues?: PageIssue[];
+  /** Chrome Issues of the page not kept past the per-page limit (100) */
+  issuesDropped?: number;
   messages?: ConsoleMessage[];
 }
 

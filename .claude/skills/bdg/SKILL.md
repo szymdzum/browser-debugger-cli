@@ -136,6 +136,7 @@ bdg network list --filter "status-code:>=400 domain:api.*"   # DevTools DSL: sta
 bdg details network <id>                      # Headers, timing, body of one request
 bdg network getCookies
 bdg console --level error                     # Errors on the current page
+bdg console                                   # Summary + Issues block: quirks mode, broken labels/duplicate ids, failed @import, eval blocked by CSP
 bdg console --follow                          # Streams (blocks; agents re-run bdg console instead)
 bdg network har /tmp/session.har              # Export HAR 1.2 (credentials redacted; --include-sensitive keeps them)
 ```

@@ -2,6 +2,7 @@ import { MAX_CONSOLE_MESSAGES } from '@/constants.js';
 import type { DialogInfo } from '@/ipc/protocol/domTypes.js';
 import { DialogAnswers } from '@/telemetry/dialogs.js';
 import type { TrackedDownload } from '@/telemetry/downloads.js';
+import { PageIssueLog } from '@/telemetry/issues.js';
 import type { NavigationEvent } from '@/telemetry/navigation.js';
 import type { PendingRequest } from '@/telemetry/network.js';
 import type { NetworkEvictions } from '@/telemetry/networkRetention.js';
@@ -30,6 +31,8 @@ export class TelemetryStore {
    * `consoleMessages[i]` in the session is `consoleDropped + i`
    */
   consoleDropped = 0;
+  /** Chrome Issues of the page currently loaded */
+  readonly pageIssues = new PageIssueLog();
   /** Console events received so far (daemon side, in arrival order) */
   private consoleReceived = 0;
   /** Which received event each console message came from (1-based) */
