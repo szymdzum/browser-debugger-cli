@@ -493,12 +493,24 @@ export const EFFECTS_READ_SCRIPT = `((stop, shown) => {
  * could not run either (a long task, or a renderer that runs the page's
  * tasks late). The page cannot see it, except in the main-world fallback
  * for frame-scoped connections (no bdg world), where `__bdgStalls` is a
- * global of the page. It stops itself after {@link MAX_WATCH_MS}.
+ * global of the page. It also counts the page's long tasks (over 50 ms of
+ * script, style or layout), read by {@link LONG_TASKS_READ_SCRIPT}. It
+ * stops itself after {@link MAX_WATCH_MS}.
  */
 export const STALL_WATCH_START_SCRIPT = `(() => {
   if (globalThis.__bdgStalls) globalThis.__bdgStalls.stop();
   const native = String(setTimeout).includes('[native code]');
-  const watch = { stalls: [], due: 0, ticked: native, stopped: false, timer: 0 };
+  const watch = { stalls: [], due: 0, ticked: native, stopped: false, timer: 0, longTasks: 0 };
+  const observer = typeof PerformanceObserver === 'function' &&
+    (PerformanceObserver.supportedEntryTypes || []).includes('longtask')
+    ? new PerformanceObserver((list) => { watch.longTasks += list.getEntries().length; })
+    : null;
+  if (observer) observer.observe({ type: 'longtask' });
+  watch.longTasksSeen = () => {
+    if (!observer) return null;
+    watch.longTasks += observer.takeRecords().length;
+    return watch.longTasks;
+  };
   const schedule = () => {
     watch.due = performance.now() + ${STALL_BEAT_MS};
     watch.timer = setTimeout(beat, ${STALL_BEAT_MS});
@@ -516,6 +528,7 @@ export const STALL_WATCH_START_SCRIPT = `(() => {
     watch.stopped = true;
     clearTimeout(watch.timer);
     clearTimeout(expiry);
+    if (observer) observer.disconnect();
   };
   const expiry = setTimeout(watch.stop, ${MAX_WATCH_MS});
   schedule();
@@ -537,6 +550,16 @@ export const STALL_READ_SCRIPT = `(() => {
   const now = performance.now();
   const ongoing = watch.ticked && !watch.stopped && now - watch.due > ${STALL_MIN_MS};
   return ongoing ? watch.stalls.concat([[watch.due, now]]) : watch.stalls;
+})()`;
+
+/**
+ * Reads how many long tasks the page ran since {@link STALL_WATCH_START_SCRIPT}
+ * started, also those not yet delivered to its observer. Null without a
+ * watch or without long-task support.
+ */
+export const LONG_TASKS_READ_SCRIPT = `(() => {
+  const watch = globalThis.__bdgStalls;
+  return watch && watch.longTasksSeen ? watch.longTasksSeen() : null;
 })()`;
 
 /** Stops the watch {@link STALL_WATCH_START_SCRIPT} left */

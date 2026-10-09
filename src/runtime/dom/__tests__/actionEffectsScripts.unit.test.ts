@@ -2,7 +2,8 @@
  * Page-side parts of the action-effects scripts, run in an isolated VM
  * context on element-like objects: focus/hover churn, structural changes,
  * why "no effect" can't be claimed, which parts of a message are its close
- * controls, waiting for timers already due, the stall watch.
+ * controls, waiting for timers already due, the stall watch and the long
+ * tasks it counts.
  */
 
 import assert from 'node:assert/strict';
@@ -12,6 +13,7 @@ import * as vm from 'node:vm';
 import {
   CHURN_ONLY_JS,
   DUE_TIMERS_JS,
+  LONG_TASKS_READ_SCRIPT,
   MESSAGE_CHROME_JS,
   STALL_READ_SCRIPT,
   STALL_WATCH_START_SCRIPT,
@@ -272,5 +274,62 @@ void describe('stall watch', () => {
     vm.runInContext(STALL_WATCH_STOP_SCRIPT, context);
     assert.equal(timers.size, 0);
     assert.equal(readStalls(context), null);
+  });
+});
+
+/**
+ * A long-task observer of a page: entries are delivered or left pending
+ * by hand.
+ */
+class FakeLongTaskObserver {
+  static readonly supportedEntryTypes = ['longtask', 'mark'];
+  static last: FakeLongTaskObserver | undefined;
+  observed = false;
+  pending: unknown[] = [];
+
+  constructor(private readonly callback: (list: { getEntries: () => unknown[] }) => void) {
+    FakeLongTaskObserver.last = this;
+  }
+
+  observe(options: { type: string }): void {
+    this.observed = options.type === 'longtask';
+  }
+
+  disconnect(): void {
+    this.observed = false;
+  }
+
+  takeRecords(): unknown[] {
+    return this.pending.splice(0);
+  }
+
+  /** Deliver the entries to the callback, as the page does a task later */
+  deliver(count: number): void {
+    this.callback({ getEntries: () => Array.from({ length: count }, () => ({})) });
+  }
+}
+
+void describe('long tasks of the stall watch', () => {
+  void it('counts long tasks delivered and still pending', () => {
+    const { context } = stallPage();
+    context['PerformanceObserver'] = FakeLongTaskObserver;
+    vm.runInContext(STALL_WATCH_START_SCRIPT, context);
+    const observer = FakeLongTaskObserver.last;
+    assert.equal(observer?.observed, true);
+    assert.equal(vm.runInContext(LONG_TASKS_READ_SCRIPT, context), 0);
+    observer?.deliver(2);
+    observer?.pending.push({});
+    assert.equal(vm.runInContext(LONG_TASKS_READ_SCRIPT, context), 3);
+    assert.equal(vm.runInContext(LONG_TASKS_READ_SCRIPT, context), 3);
+    vm.runInContext(STALL_WATCH_STOP_SCRIPT, context);
+    assert.equal(observer?.observed, false, 'stopping disconnects the observer');
+    assert.equal(vm.runInContext(LONG_TASKS_READ_SCRIPT, context), null);
+  });
+
+  void it('knows no count without long-task support or without a watch', () => {
+    const { context } = stallPage();
+    assert.equal(vm.runInContext(LONG_TASKS_READ_SCRIPT, context), null);
+    vm.runInContext(STALL_WATCH_START_SCRIPT, context);
+    assert.equal(vm.runInContext(LONG_TASKS_READ_SCRIPT, context), null);
   });
 });
