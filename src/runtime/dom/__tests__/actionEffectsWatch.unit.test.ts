@@ -104,6 +104,11 @@ class FakeCdp {
     });
   }
 
+  /** Long-task reads sent so far */
+  get longTaskReads(): number {
+    return this.expressions.filter((e) => e.includes('watch.longTasksSeen()')).length;
+  }
+
   /** Whether the stop script was sent */
   get stopSent(): boolean {
     return this.expressions.some((e) => e.startsWith('if (window.__bdgEffects)'));
@@ -351,6 +356,26 @@ void describe('watchActionEffects', () => {
       assert.equal(cdp.readsSent.length, 1, String(longTasks));
       watch.dispose();
     }
+  });
+
+  void it('asks for long tasks at most once per action (#533)', async () => {
+    const cdp = new FakeCdp(
+      Promise.resolve(START),
+      [new Late(QUIET), new Late(QUIET)],
+      true,
+      true,
+      [],
+      [0, 0]
+    );
+    const watch = watchActionEffects(cdp.connection);
+    const effects = await watch.collect({
+      dialogs: 0,
+      consoleMessages: () => 0,
+      detectNoEffect: true,
+    });
+    assert.equal(cdp.longTaskReads, 1, 'the second late read is not given more time');
+    assert.equal(effects.work?.unresponsive, true);
+    watch.dispose();
   });
 
   void it('waits for a late snapshot when the page ran no long task (#533)', async () => {

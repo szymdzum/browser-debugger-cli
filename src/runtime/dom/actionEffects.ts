@@ -10,8 +10,8 @@
  * count as quiet time when deciding whether the DOM kept changing.
  * Worst case, when the page does not answer (a navigation is pending, or a
  * long script runs), the snapshot is given up after {@link START_TIMEOUT_MS}
- * and each read after {@link READ_TIMEOUT_MS}, plus as long again to ask
- * whether the page ran a long task ({@link pageAnswer}).
+ * and each read after {@link READ_TIMEOUT_MS}, plus as long again, once per
+ * action, to ask whether the page ran a long task ({@link pageAnswer}).
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
@@ -479,7 +479,8 @@ export interface ActionEffectsWatch {
 
 /**
  * One action's watch: the listener, the snapshot before, whether a read
- * stopped it and whether one got no answer in time
+ * stopped it, whether one got no answer in time and whether the page was
+ * asked about long tasks ({@link answeredLate}, once per action)
  */
 interface Watch {
   cdp: CDPConnection;
@@ -487,6 +488,7 @@ interface Watch {
   start: Promise<StartSnapshot | undefined>;
   stopConfirmed: boolean;
   unresponsive: boolean;
+  askedLate: boolean;
 }
 
 /**
@@ -507,6 +509,7 @@ export function watchActionEffects(cdp: CDPConnection): ActionEffectsWatch {
     start: evaluate<StartSnapshot>(cdp, EFFECTS_START_SCRIPT),
     stopConfirmed: false,
     unresponsive: false,
+    askedLate: false,
   };
   void evaluateInWorld(watch.cdp, STALL_WATCH_START_SCRIPT, false);
   return {
@@ -589,14 +592,17 @@ async function pageAnswer<T>(watch: Watch, answer: Promise<T>, ms: number): Prom
  * the watch began ({@link LONG_TASKS_READ_SCRIPT}). The renderer ran the
  * page's tasks late (a starved machine), and CDP runs a page's scripts in
  * the order sent, so the script that got no answer has run by now; a page
- * that ran a long task, or still does not answer, is busy. Not asked while
- * a main-frame load is pending.
+ * that ran a long task, or still does not answer, is busy. Asked at most
+ * once per action, so a busy or starved page costs at most
+ * {@link READ_TIMEOUT_MS} more; not asked while a main-frame load is
+ * pending.
  *
  * @param watch - The action's watch
  * @returns True when the page is not busy, only slow
  */
 async function answeredLate(watch: Watch): Promise<boolean> {
-  if (watch.listener.navigationPending()) return false;
+  if (watch.askedLate || watch.listener.navigationPending()) return false;
+  watch.askedLate = true;
   const longTasks = await raceTimeout(
     evaluateInWorld<number | null>(watch.cdp, LONG_TASKS_READ_SCRIPT, false),
     READ_TIMEOUT_MS
