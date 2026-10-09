@@ -60,6 +60,14 @@ const BUSY_WINDOW_MS = 500;
 const BUSY_RECENT_MS = 150;
 
 /**
+ * Quiet time since a single burst under which the DOM still looks busy (ms):
+ * the page stalled for most of the time since, so its next change could not
+ * come. Higher, a short task after a single render (garbage collection, a
+ * layout) would cost every such click a second look.
+ */
+const LONE_BURST_QUIET_MS = 75;
+
+/**
  * Second look at a DOM that looked busy; it is still changing when it
  * changed again and was never quiet longer than {@link BUSY_RECENT_MS}
  * until then (ms)
@@ -269,15 +277,18 @@ export function shownElements(shown: ShownElement[], messages: NewMessage[]): Sh
 }
 
 /**
- * Bursts of a read within {@link BUSY_WINDOW_MS}, when there are at least
- * {@link BUSY_BURSTS} of them (the DOM may look busy), else none.
+ * Bursts of a read within {@link BUSY_WINDOW_MS} that may make the DOM look
+ * busy, else none: at least {@link BUSY_BURSTS} of them, or a single one
+ * older than {@link BUSY_RECENT_MS} (quiet since, unless the page stalled
+ * and its next change could not come).
  *
  * @param settle - Signals of the read
  * @returns Ages of those bursts (ms), or an empty list
  */
 function recentBursts(settle: SettleSignals | undefined): number[] {
   const recent = (settle?.burstAges ?? []).filter((age) => age <= BUSY_WINDOW_MS);
-  return recent.length >= BUSY_BURSTS ? recent : [];
+  if (recent.length >= BUSY_BURSTS) return recent;
+  return recent.length === 1 && (recent[0] ?? 0) > BUSY_RECENT_MS ? recent : [];
 }
 
 /**
@@ -302,8 +313,11 @@ export function quietMs(fromAge: number, toAge: number, stalls: StallAges[] = []
  * Whether a read's DOM looks busy, worth a second look: at least
  * {@link BUSY_BURSTS} bursts of structural changes within
  * {@link BUSY_WINDOW_MS}, and quiet for at most {@link BUSY_RECENT_MS} since
- * the last ({@link quietMs}: stalls do not count). Text-only changes (clocks)
- * and style changes (animations) are not bursts.
+ * the last ({@link quietMs}: stalls do not count). A single burst older than
+ * that counts when the page stalled for most of the time since, quiet for
+ * at most {@link LONE_BURST_QUIET_MS}: on a renderer running the page's
+ * timers late, a page's second step may not have come by the first read.
+ * Text-only changes (clocks) and style changes (animations) are not bursts.
  *
  * @param settle - Signals of the read
  * @returns True when the DOM may still be changing
@@ -311,7 +325,8 @@ export function quietMs(fromAge: number, toAge: number, stalls: StallAges[] = []
 export function domLooksBusy(settle: SettleSignals | undefined): boolean {
   const recent = recentBursts(settle);
   if (recent.length === 0) return false;
-  return quietMs(Math.min(...recent), 0, settle?.stalls) <= BUSY_RECENT_MS;
+  const limit = recent.length === 1 ? LONE_BURST_QUIET_MS : BUSY_RECENT_MS;
+  return quietMs(Math.min(...recent), 0, settle?.stalls) <= limit;
 }
 
 /**

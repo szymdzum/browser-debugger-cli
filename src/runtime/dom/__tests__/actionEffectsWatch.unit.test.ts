@@ -472,9 +472,31 @@ void describe('watchActionEffects', () => {
     );
   });
 
+  void it('looks again after one burst when the page stalled since the click', async () => {
+    const read = (at: number, burstAges: number[]): unknown => ({
+      ...QUIET,
+      changes: burstAges.length,
+      settle: { at, burstAges, loading: null },
+    });
+    const first = read(1000, [160]);
+    const recheck = read(1254, [414, 30]);
+    const stalls = [[[850, 1000]], [[850, 1230]]];
+    const cdp = new FakeCdp(Promise.resolve(START), [first, recheck], true, true, stalls);
+    const watch = watchActionEffects(cdp.connection);
+    const effects = await watch.collect({
+      dialogs: 0,
+      consoleMessages: () => 0,
+      detectNoEffect: false,
+      detectUnsettled: true,
+    });
+    assert.equal(effects.work?.domChanging, true);
+    assert.equal(cdp.readsSent.length, 2);
+    watch.dispose();
+  });
+
   void it('reads no stalls after a read with too few bursts to look busy', async () => {
     const cdp = new FakeCdp(Promise.resolve(START), [
-      { ...QUIET, changes: 1, settle: { at: 1000, burstAges: [30], loading: null } },
+      { ...QUIET, changes: 1, settle: { at: 1000, burstAges: [120], loading: null } },
     ]);
     const watch = watchActionEffects(cdp.connection);
     await watch.collect({

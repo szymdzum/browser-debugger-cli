@@ -497,7 +497,8 @@ export const EFFECTS_READ_SCRIPT = `((stop, shown) => {
  */
 export const STALL_WATCH_START_SCRIPT = `(() => {
   if (globalThis.__bdgStalls) globalThis.__bdgStalls.stop();
-  const watch = { stalls: [], due: 0, ticked: false, stopped: false, timer: 0 };
+  const native = String(setTimeout).includes('[native code]');
+  const watch = { stalls: [], due: 0, ticked: native, stopped: false, timer: 0 };
   const schedule = () => {
     watch.due = performance.now() + ${STALL_BEAT_MS};
     watch.timer = setTimeout(beat, ${STALL_BEAT_MS});
@@ -525,10 +526,10 @@ export const STALL_WATCH_START_SCRIPT = `(() => {
 /**
  * Reads the stalls {@link STALL_WATCH_START_SCRIPT} noted, as page times
  * `[due, ran]`, plus the stall still going on (its timer over
- * {@link STALL_MIN_MS} overdue now) as `[due, now]`; that one only once the
- * timer has run at least once (in the main world, where bdg's scripts run
- * without bdg's world, a page may have replaced `setTimeout` with one that
- * never runs). Null without a watch.
+ * {@link STALL_MIN_MS} overdue now) as `[due, now]`; that one only with the
+ * browser's own `setTimeout` or once the timer has run at least once (in the
+ * main world, where bdg's scripts run without bdg's world, a page may have
+ * replaced `setTimeout` with one that never runs). Null without a watch.
  */
 export const STALL_READ_SCRIPT = `(() => {
   const watch = globalThis.__bdgStalls;

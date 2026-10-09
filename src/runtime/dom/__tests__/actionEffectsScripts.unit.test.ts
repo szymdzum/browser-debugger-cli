@@ -254,6 +254,17 @@ void describe('stall watch', () => {
     assert.deepEqual(readStalls(context), []);
   });
 
+  void it("counts a stall before its timer ever ran when setTimeout is the browser's own", () => {
+    const { context, clock } = stallPage();
+    vm.runInContext(
+      'setTimeout.toString = () => "function setTimeout() { [native code] }"',
+      context
+    );
+    vm.runInContext(STALL_WATCH_START_SCRIPT, context);
+    clock.now = 1200;
+    assert.deepEqual(readStalls(context), [[1020, 1200]]);
+  });
+
   void it('stops its timers, and is gone once stopped', () => {
     const { context, timers, runNext } = stallPage();
     vm.runInContext(STALL_WATCH_START_SCRIPT, context);

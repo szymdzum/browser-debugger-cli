@@ -541,6 +541,27 @@ void describe('domLooksBusy and domKeptChanging', () => {
       'quiet for 170 ms after the stall'
     );
   });
+
+  void it('looks again after one burst when the page stalled since (its next step could not come)', () => {
+    assert.equal(domLooksBusy(settle({ burstAges: [160] })), false, 'one render');
+    assert.equal(domLooksBusy(settle({ burstAges: [160], stalls: [[140, 0]] })), true);
+    assert.equal(
+      domLooksBusy(settle({ burstAges: [160], stalls: [[140, 120]] })),
+      false,
+      'quiet for 140 ms after a short task'
+    );
+    assert.equal(
+      domLooksBusy(settle({ burstAges: [160], stalls: [[140, 60]] })),
+      false,
+      'quiet for 80 ms: stalled for under half the time'
+    );
+    assert.equal(
+      domLooksBusy(settle({ burstAges: [100], stalls: [[90, 0]] })),
+      false,
+      'a render under 150 ms old is one render'
+    );
+    assert.equal(domLooksBusy(settle({ burstAges: [600], stalls: [[590, 0]] })), false);
+  });
 });
 
 void describe('pendingChanges', () => {
