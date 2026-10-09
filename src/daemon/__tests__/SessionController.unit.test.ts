@@ -105,6 +105,13 @@ void describe('SessionController.startSession', () => {
     assert.equal(second.errorCode, IPCErrorCode.SESSION_SHUTTING_DOWN);
     assert.equal(status.data?.starting, undefined, 'no longer reported as starting');
     assert.equal(status.data?.ending, true);
+    const command = (await controller.command({
+      type: 'dom_eval_request',
+      sessionId: 's',
+      script: '1',
+    } as never)) as { error?: string; exitCode?: number };
+    assert.equal(command.exitCode, undefined, 'not "still starting" (85)');
+    assert.doesNotMatch(command.error ?? '', /still starting/);
     release();
     await first;
   });

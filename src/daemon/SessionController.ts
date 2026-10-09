@@ -195,12 +195,13 @@ export class SessionController {
 
   /**
    * Error fields for a request that needs the session when there is none:
-   * still starting (85), or none at all.
+   * still starting (85), or none at all (also while an abandoned start is
+   * torn down).
    *
    * @returns Error message, plus exit code and suggestion while starting
    */
   private noSessionError(): { error: string; exitCode?: number; suggestion?: string } {
-    if (!this.launching) return { error: noActiveSessionMessage() };
+    if (!this.launching || this.closing) return { error: noActiveSessionMessage() };
     return {
       error: STARTING_ERROR,
       exitCode: EXIT_CODES.RESOURCE_BUSY,

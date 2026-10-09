@@ -186,6 +186,29 @@ export async function attemptStart(
     await delay(SHUTDOWN_POLL_MS, interrupt);
     outcome = await attempt();
   }
+  return settleOutcome(outcome, spawned, deps, interrupt);
+}
+
+/**
+ * Settle the last attempt's outcome: a success is returned as is, or stopped
+ * when interrupted; a failure waits for the daemons the attempts spawned and
+ * takes the signal's exit code when interrupted.
+ *
+ * Race-free: for a success the interrupt is checked last, with no await
+ * between the check and the return (see {@link startSessionViaDaemon}).
+ *
+ * @param outcome - The last attempt's outcome
+ * @param spawned - Exiting daemons the attempts spawned
+ * @param deps - How to reach the daemon
+ * @param interrupt - Aborted on Ctrl-C or SIGTERM
+ * @returns Start outcome, ready to report
+ */
+async function settleOutcome(
+  outcome: StartOutcome,
+  spawned: SpawnedDaemon[],
+  deps: StartDeps,
+  interrupt: AbortSignal | undefined
+): Promise<StartOutcome> {
   if (outcome.ok) {
     const { spawned: daemon, ...started } = outcome;
     return interrupt?.aborted

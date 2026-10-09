@@ -24,7 +24,6 @@ import {
   type FixtureServer,
 } from '@/__testutils__/fixtureServer.js';
 import { writeSilentChrome } from '@/__testutils__/silentChrome.js';
-import { getStatus } from '@/ipc/client.js';
 import { getSessionDir, getSessionFilePath } from '@/session/paths.js';
 import { readPidFromFile } from '@/session/pid.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -273,11 +272,11 @@ void describe('Startup interruption', () => {
 
   /**
    * A client killed without a clean disconnect (#522 item 3): the daemon sees
-   * the connection close and stops the session, which takes Chrome's
-   * teardown. From the moment it noticed, it must not report the session as
-   * starting (a new start gets the retryable "shutting down" error).
+   * the connection close and tears the session down (that it reports the
+   * session ending meanwhile, not starting, is unit tested in
+   * `SessionController.unit.test.ts`).
    */
-  void it('a start whose command is killed is reported ending, not starting', async () => {
+  void it('a start whose command is killed tears down Chrome and the daemon', async () => {
     const kill = new AbortController();
     const port = await getFreePort();
     const start = runCommand(`${fixture.url}slow`, ['--port', String(port), '--headless'], {
@@ -291,8 +290,6 @@ void describe('Startup interruption', () => {
     await start;
     await waitForDaemonLog('Client disconnected during start');
 
-    const status = await getStatus(getSessionFilePath('DAEMON_SOCKET')).catch(() => undefined);
-    assert.equal(status?.data?.starting, undefined, 'an abandoned start is not starting');
     assert.equal(await waitForProcessExit(chromePid, DAEMON_EXIT_TIMEOUT_MS), true, 'Chrome');
     assert.equal(await waitForProcessExit(daemonPid, DAEMON_EXIT_TIMEOUT_MS), true, 'daemon');
   });
