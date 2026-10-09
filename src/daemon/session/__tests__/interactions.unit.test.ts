@@ -159,14 +159,18 @@ void describe('createInteractionRunner', () => {
 
   void it('adds the console errors logged during the interaction', async () => {
     const store = new TelemetryStore();
-    store.consoleMessages.push({ type: 'error', text: 'on load', timestamp: Date.now() - 1000 });
+    const onLoad = { type: 'error' as const, text: 'on load', timestamp: Date.now() };
+    store.receiveConsoleMessage()(onLoad);
+    store.consoleMessages.push(onLoad);
     const interact = createInteractionRunner(store);
     const throwing = (): Promise<{ success: boolean }> => {
-      store.consoleMessages.push({
-        type: 'error',
+      const thrown = {
+        type: 'error' as const,
         text: 'Uncaught Error: handler exploded',
-        timestamp: Date.now() + 1,
-      });
+        timestamp: Date.now(),
+      };
+      store.receiveConsoleMessage()(thrown);
+      store.consoleMessages.push(thrown);
       return Promise.resolve({ success: true });
     };
 

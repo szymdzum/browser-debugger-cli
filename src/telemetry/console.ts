@@ -106,6 +106,9 @@ function createMessage(
 /** Adds a message to the session's list; false when it was dropped */
 type InsertMessage = (message: ConsoleMessage) => boolean;
 
+/** Called as an event arrives; returns what to call with its message once added */
+export type OnConsoleReceived = () => (message: ConsoleMessage) => void;
+
 /**
  * Insert a message in timestamp order (async expansion can deliver a message
  * late). At {@link MAX_CONSOLE_MESSAGES} the oldest message is dropped to
@@ -425,6 +428,8 @@ async function startOptionalSources(
  * @param includeAll - If true, disable default pattern filtering
  * @param getCurrentNavigationId - Function to get current navigation ID
  * @param onDropped - Called for each message dropped at the limit (the oldest go first)
+ * @param onReceived - Called as each console event arrives (before its objects are
+ *   expanded); what it returns is called with the event's message once added
  * @returns Cleanup function to remove event handlers
  */
 export async function startConsoleCollection(
@@ -432,18 +437,26 @@ export async function startConsoleCollection(
   messages: ConsoleMessage[],
   includeAll: boolean = false,
   getCurrentNavigationId?: () => number,
-  onDropped: () => void = () => undefined
+  onDropped: () => void = () => undefined,
+  onReceived?: OnConsoleReceived
 ): Promise<CleanupFunction> {
   const registry = new CDPHandlerRegistry();
   const typed = new TypedCDPConnection(cdp);
-  const insert: InsertMessage = (message) => insertMessageByTimestamp(messages, message, onDropped);
+  const received = (): InsertMessage => {
+    const record = onReceived?.();
+    return (message) => {
+      const added = insertMessageByTimestamp(messages, message, onDropped);
+      if (added) record?.(message);
+      return added;
+    };
+  };
 
   registry.registerTyped(typed, 'Runtime.consoleAPICalled', (params, sessionId) => {
     const context: MessageContext = {
       navigationId: getCurrentNavigationId?.(),
       stackTrace: convertStackTrace(params.stackTrace),
     };
-    handleConsoleAPICall(senderFor(cdp, sessionId), insert, params, context, includeAll);
+    handleConsoleAPICall(senderFor(cdp, sessionId), received(), params, context, includeAll);
   });
 
   const rejections = new RevocableRejections();
@@ -452,7 +465,7 @@ export async function startConsoleCollection(
       navigationId: getCurrentNavigationId?.(),
       stackTrace: convertStackTrace(params.exceptionDetails.stackTrace),
     };
-    const message = handleExceptionThrown(insert, params, context, includeAll);
+    const message = handleExceptionThrown(received(), params, context, includeAll);
     if (message) rejections.track(params.exceptionDetails, message, sessionId);
   });
 
@@ -469,7 +482,7 @@ export async function startConsoleCollection(
   });
 
   registry.registerTyped(typed, 'Log.entryAdded', ({ entry }) => {
-    handleLogEntry(insert, entry, getCurrentNavigationId?.(), includeAll);
+    handleLogEntry(received(), entry, getCurrentNavigationId?.(), includeAll);
   });
 
   try {

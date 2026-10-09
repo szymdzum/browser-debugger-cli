@@ -40,18 +40,34 @@ function message(
   };
 }
 
+/**
+ * Add messages to the session as the console collector does: stamped as
+ * received now, kept in timestamp order.
+ *
+ * @param store - Session store
+ * @param messages - Messages
+ */
+function receive(store: TelemetryStore, ...messages: ConsoleMessage[]): void {
+  for (const added of messages) {
+    store.receiveConsoleMessage()(added);
+    store.consoleMessages.push(added);
+  }
+  store.consoleMessages.sort((a, b) => a.timestamp - b.timestamp);
+}
+
 void describe('watchActionErrors', () => {
   void it('reports nothing when no error was logged', () => {
     const store = new TelemetryStore();
     const collect = watchActionErrors(store);
-    store.consoleMessages.push(message('log', 'hello'));
+    receive(store, message('log', 'hello'));
     assert.deepEqual(collect(), {});
   });
 
   void it('reports errors, uncaught exceptions and failed asserts, with their source', () => {
     const store = new TelemetryStore();
     const collect = watchActionErrors(store);
-    store.consoleMessages.push(
+    receive(
+      store,
       message('error', 'boom', { url: 'http://app.test/', line: 2, column: 10 }),
       message('error', 'Uncaught Error: handler exploded', {
         url: 'http://app.test/app.js',
@@ -75,24 +91,36 @@ void describe('watchActionErrors', () => {
 
   void it('leaves out errors logged before the action began', () => {
     const store = new TelemetryStore();
-    store.consoleMessages.push(message('error', 'on load', { ago: 1000 }));
+    receive(store, message('error', 'on load', { ago: 1000 }));
     const collect = watchActionErrors(store);
-    store.consoleMessages.push(message('error', 'on click'));
+    receive(store, message('error', 'on click'));
     assert.deepEqual(collect().errors, [{ text: 'on click', count: 1 }]);
   });
 
-  void it('leaves out an error from before the action that arrived late', () => {
+  void it('leaves out an error received before the action but added late', () => {
     const store = new TelemetryStore();
+    const addExpanded = store.receiveConsoleMessage();
     const collect = watchActionErrors(store);
-    store.consoleMessages.push(message('error', 'expanded late', { ago: 1000 }));
-    store.consoleMessages.sort((a, b) => a.timestamp - b.timestamp);
+    const expanded = message('error', 'expanded late');
+    addExpanded(expanded);
+    store.consoleMessages.push(expanded);
     assert.deepEqual(collect(), {});
+  });
+
+  void it("attributes by arrival, whatever Chrome's clock says", () => {
+    const store = new TelemetryStore();
+    const hourMs = 3_600_000;
+    receive(store, message('error', 'before, Chrome clock ahead', { ago: -hourMs }));
+    const collect = watchActionErrors(store);
+    receive(store, message('error', 'during, Chrome clock behind', { ago: hourMs }));
+    assert.deepEqual(collect().errors, [{ text: 'during, Chrome clock behind', count: 1 }]);
   });
 
   void it('leaves out warnings and other levels', () => {
     const store = new TelemetryStore();
     const collect = watchActionErrors(store);
-    store.consoleMessages.push(
+    receive(
+      store,
       message('warning', 'deprecated'),
       message('info', 'saved'),
       message('debug', 'trace')
@@ -104,7 +132,8 @@ void describe('watchActionErrors', () => {
     const store = new TelemetryStore();
     const collect = watchActionErrors(store);
     const at = { url: 'http://app.test/', line: 2, column: 10 };
-    store.consoleMessages.push(
+    receive(
+      store,
       message('error', 'boom', at),
       message('error', 'boom', at),
       message('error', 'boom', { ...at, line: 7 })
@@ -119,7 +148,7 @@ void describe('watchActionErrors', () => {
     const store = new TelemetryStore();
     const collect = watchActionErrors(store);
     for (const text of ['one', 'two', 'three', 'four', 'five', 'five']) {
-      store.consoleMessages.push(message('error', text));
+      receive(store, message('error', text));
     }
     const { errors, moreErrors } = collect();
     assert.deepEqual(
@@ -132,7 +161,8 @@ void describe('watchActionErrors', () => {
   void it('puts a multi-line text on one line and cuts a long one', () => {
     const store = new TelemetryStore();
     const collect = watchActionErrors(store);
-    store.consoleMessages.push(
+    receive(
+      store,
       message('error', 'Uncaught Error: first\n  second'),
       message('error', 'x'.repeat(300))
     );
@@ -145,7 +175,8 @@ void describe('watchActionErrors', () => {
   void it('names the URL alone for a message without a position (a failed load)', () => {
     const store = new TelemetryStore();
     const collect = watchActionErrors(store);
-    store.consoleMessages.push(
+    receive(
+      store,
       message('error', 'Failed to load resource: 404', {
         url: 'http://app.test/api/items',
         line: -1,

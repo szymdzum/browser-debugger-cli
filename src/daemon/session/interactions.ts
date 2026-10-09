@@ -34,8 +34,8 @@ export interface InteractionOptions {
    */
   reportRequests?: boolean;
   /**
-   * Report navigation and new messages (default true; off for page
-   * navigation, which reports its own page)
+   * Report navigation, new messages and the console errors it caused
+   * (default true; off for page navigation, which reports its own page)
    */
   reportEffects?: boolean;
   /**

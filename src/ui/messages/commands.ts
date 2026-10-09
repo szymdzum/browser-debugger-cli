@@ -23,6 +23,7 @@ import type { InspectVisibility } from '@/ipc/protocol/inspectTypes.js';
 import type { DelegationNote } from '@/runtime/dom/listenerSummary.js';
 import type { WaitCondition, WaitSnapshot } from '@/runtime/dom/waitCondition.js';
 import type { DocumentRequestState, ViewportPosition } from '@/types.js';
+import { shortUrlName } from '@/ui/formatters/console/shared.js';
 import {
   buildAgentDiscoveryHelp,
   buildCommonTaskExamples,
@@ -317,17 +318,16 @@ export function moreMessagesText(count: number): string {
 
 /**
  * A console error an action caused, for its `Errors:` rows: repeats counted
- * like `bdg console` counts them, the source shortened to its file name.
+ * and the source shortened like `bdg console` does ({@link shortUrlName}).
  *
  * @param error - Reported error
  * @returns e.g. `[2x] Uncaught Error: handler exploded (app.js:3:142)`
  */
 export function actionErrorText(error: ActionError): string {
   const repeats = error.count > 1 ? `[${error.count}x] ` : '';
-  const source = error.source ?? '';
-  const file = source.slice(source.lastIndexOf('/') + 1);
-  const shown = file === '' ? source : file;
-  return `${repeats}${error.text}${shown ? ` (${shown})` : ''}`;
+  if (error.source === undefined) return `${repeats}${error.text}`;
+  const [, url = error.source, position = ''] = /^(.*?)((?::\d+){2})?$/.exec(error.source) ?? [];
+  return `${repeats}${error.text} (${shortUrlName(url)}${position})`;
 }
 
 /**

@@ -444,9 +444,10 @@ interface ActionNotices extends ActionEffects {
  * "⚠ Element Clicked (page still changing)" with what it was still working
  * on, or "⚠ Element Clicked (no visible effect: …)"), the details, what
  * changed on the page (`Page:` navigation, `New text:` messages, `Shown:`
- * elements), the console errors it caused (`Errors:`), then the network requests it triggered, the downloads it
- * started and the dialogs it caused. No request list is shown when there
- * were none (JSON has an empty `triggeredRequests` then).
+ * elements), the console errors it caused (`Errors:`), then the network
+ * requests it triggered, the downloads it started and the dialogs it
+ * caused. No request list is shown when there were none (JSON has an empty
+ * `triggeredRequests` then).
  *
  * @param done - What was done, e.g. "Element Clicked"
  * @param details - Label/value rows

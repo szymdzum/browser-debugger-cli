@@ -25,13 +25,15 @@ export type ActionErrorsCollector = () => CollectedErrors;
 /**
  * Start attributing console errors to an interaction.
  *
- * Errors are attributed by time, like triggered requests: every message of
- * the error level (`console.error`, failed `console.assert`, uncaught
- * exceptions, unhandled rejections, browser errors such as failed loads) the
- * page logged from this call on belongs to the interaction, also one logged
- * by a page timer meanwhile or by the page an action navigated to. A message
- * of an earlier time that arrives late (its objects expanded after the
- * action began) is left out. Messages are grouped like `bdg console` groups
+ * Errors are attributed by when bdg received them, like triggered requests:
+ * every message of the error level (`console.error`, failed
+ * `console.assert`, uncaught exceptions, unhandled rejections, browser errors
+ * such as failed loads) from the page, its iframes and workers that arrived
+ * after this call belongs to the interaction, also one logged by a page
+ * timer meanwhile or by the page an action navigated to. Arrival order is
+ * bdg's own, not Chrome's timestamps, so a Chrome whose clock differs (a
+ * remote one) changes nothing; a message received earlier but added late
+ * (its objects expanded after the action began) is left out. Messages are grouped like `bdg console` groups
  * them (same text and source location), in order of first appearance.
  * Nothing is reported when console telemetry is off.
  *
@@ -40,9 +42,12 @@ export type ActionErrorsCollector = () => CollectedErrors;
  *   how many more there were); empty when no error was logged
  */
 export function watchActionErrors(store: TelemetryStore): ActionErrorsCollector {
-  const startedAt = Date.now();
+  const mark = store.consoleMessagesReceived();
   return () => {
-    const groups = analyzeMessages(errorsSince(store.consoleMessages, startedAt)).grouped.errors;
+    const logged = store.consoleMessages.filter(
+      (message) => LEVEL_MAP[message.type] === 'error' && store.receivedAfter(message, mark)
+    );
+    const groups = analyzeMessages(logged).grouped.errors;
     if (groups.length === 0) return {};
     const errors = groups
       .slice(0, MAX_ACTION_ERRORS)
@@ -50,20 +55,6 @@ export function watchActionErrors(store: TelemetryStore): ActionErrorsCollector 
     const more = groups.length - errors.length;
     return { errors, ...(more > 0 && { moreErrors: more }) };
   };
-}
-
-/**
- * Error-level messages logged at or after a time. Messages are kept in
- * timestamp order, so only the newest are looked at.
- *
- * @param messages - Session's console messages, oldest first
- * @param since - Time (epoch ms)
- * @returns Errors, oldest first
- */
-function errorsSince(messages: ConsoleMessage[], since: number): ConsoleMessage[] {
-  let first = messages.length;
-  while (first > 0 && (messages[first - 1]?.timestamp ?? 0) >= since) first--;
-  return messages.slice(first).filter((message) => LEVEL_MAP[message.type] === 'error');
 }
 
 /**

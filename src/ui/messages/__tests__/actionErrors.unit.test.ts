@@ -23,10 +23,28 @@ void describe('actionErrorText', () => {
     assert.equal(actionErrorText({ text: 'boom', count: 2 }), '[2x] boom');
   });
 
-  void it('keeps a URL ending in a slash whole', () => {
+  void it('names the host for a page URL ending in a slash', () => {
     assert.equal(
-      actionErrorText({ text: 'boom', source: 'http://app.test/', count: 1 }),
-      'boom (http://app.test/)'
+      actionErrorText({ text: 'boom', source: 'https://app.test/:3:142', count: 1 }),
+      'boom (app.test:3:142)'
+    );
+  });
+
+  void it('leaves out a query that contains slashes', () => {
+    assert.equal(
+      actionErrorText({ text: 'boom', source: 'https://app.test/a?next=/x/y:3:1', count: 1 }),
+      'boom (a:3:1)'
+    );
+  });
+
+  void it('names the file of a failed load without a position', () => {
+    assert.equal(
+      actionErrorText({
+        text: 'Failed to load resource',
+        source: 'https://app.test/api/items',
+        count: 1,
+      }),
+      'Failed to load resource (items)'
     );
   });
 });
