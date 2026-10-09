@@ -387,6 +387,21 @@ void describe('CdpEventListener', () => {
     assert.equal(source.subscribed, 2);
   });
 
+  void it('keeps listening on the tab the session moves to, keeping the buffer', async () => {
+    const opener = new FakeSource();
+    const popup = new FakeSource();
+    const listener = new CdpEventListener();
+    listener.listen(opener, ['A.b']);
+    opener.emit('A.b', { n: 1 });
+
+    listener.follow(popup);
+    opener.emit('A.b', { n: 2 });
+    popup.emit('A.b', { n: 3 });
+
+    assert.equal(opener.subscribed, 0);
+    assert.deepEqual(ns((await listener.read({ action: 'read' })).events), [1, 3]);
+  });
+
   void it('reads only the named events, leaving the others buffered', async () => {
     const source = new FakeSource();
     const listener = new CdpEventListener();

@@ -38,7 +38,8 @@ export type BrowserConnector = (
  * Chrome (`--chrome-ws-url`) is followed on the page's connection only: a
  * browser-level one would count the user's other tabs' downloads as the
  * session's, and a Chrome that allows one connection (toggle mode) would
- * ask again for each.
+ * ask again for each. Following the page's connection, tracking moves with
+ * the session to each tab `bdg page switch` makes the session's.
  *
  * @param context - Plugin context
  * @param connectBrowser - Opens the browser-level connection
@@ -48,12 +49,22 @@ export async function startSessionDownloads(
   context: TelemetryPluginContext,
   connectBrowser: BrowserConnector = openBrowserConnection
 ): Promise<CleanupFunction> {
-  const { cdp, config, store, logger } = context;
+  const { config, store, logger } = context;
   const tracker = new DownloadTracker(store, downloadDestination(config, logger));
+  let page = context.cdp;
+  let onPage = false;
   const browser = config.chromeWsUrl
     ? null
-    : await connectBrowser(config, logger, () => void followOnPage(tracker, cdp, logger));
-  await tracker.attach(browser ?? cdp);
+    : await connectBrowser(config, logger, () => {
+        onPage = true;
+        void followOnPage(tracker, page, logger);
+      });
+  if (!browser) onPage = true;
+  context.onPageSwitch?.((next) => {
+    page = next;
+    if (onPage) void tracker.attach(next);
+  });
+  await tracker.attach(browser ?? page);
   return () => {
     tracker.stop();
     browser?.close();
@@ -64,7 +75,7 @@ export async function startSessionDownloads(
  * Follow downloads on the page's connection after the browser-level one was lost.
  *
  * @param tracker - Session download tracker
- * @param cdp - Page connection
+ * @param cdp - Connection of the session's tab
  * @param logger - Logger
  */
 async function followOnPage(

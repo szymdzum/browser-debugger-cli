@@ -430,6 +430,9 @@ async function startOptionalSources(
  * @param onDropped - Called for each message dropped at the limit (the oldest go first)
  * @param onReceived - Called as each console event arrives (before its objects are
  *   expanded); what it returns is called with the event's message once added
+ * @param options - `skipReplay`: leave out the messages Chrome sends again while
+ *   the page's console and log are enabled (logged before collection started:
+ *   a tab the session switched to)
  * @returns Cleanup function to remove event handlers
  */
 export async function startConsoleCollection(
@@ -438,11 +441,14 @@ export async function startConsoleCollection(
   includeAll: boolean = false,
   getCurrentNavigationId?: () => number,
   onDropped: () => void = () => undefined,
-  onReceived?: OnConsoleReceived
+  onReceived?: OnConsoleReceived,
+  options: { skipReplay?: boolean } = {}
 ): Promise<CleanupFunction> {
   const registry = new CDPHandlerRegistry();
   const typed = new TypedCDPConnection(cdp);
+  let replaying = options.skipReplay === true;
   const received = (): InsertMessage => {
+    if (replaying) return () => false;
     const record = onReceived?.();
     return (message) => {
       const added = insertMessageByTimestamp(messages, message, onDropped);
@@ -492,6 +498,7 @@ export async function startConsoleCollection(
     throw error;
   }
   const detachChildren = await startOptionalSources(cdp, typed);
+  replaying = false;
 
   return async () => {
     registry.cleanup();

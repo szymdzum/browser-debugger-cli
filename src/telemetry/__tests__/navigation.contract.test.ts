@@ -101,6 +101,27 @@ describe('startNavigationTracking contract', () => {
     assert.equal(typeof nav.timestamp, 'number');
   });
 
+  it('continues the count on another tab, starting with its page', async () => {
+    const navigations: NavigationEvent[] = [];
+    await startNavigationTracking(new MockCDPConnection() as unknown as CDPConnection, navigations);
+    const popup = new MockCDPConnection() as unknown as CDPConnection;
+
+    const { getCurrentNavigationId } = await startNavigationTracking(
+      popup,
+      navigations,
+      'http://localhost:3000/popup'
+    );
+
+    assert.equal(getCurrentNavigationId(), 1);
+    assert.deepEqual(
+      navigations.map((nav) => [nav.navigationId, nav.url]),
+      [
+        [0, ''],
+        [1, 'http://localhost:3000/popup'],
+      ]
+    );
+  });
+
   it('should track main frame navigations and increment navigationId', async () => {
     const mockCdp = new MockCDPConnection() as unknown as CDPConnection;
     const navigations: NavigationEvent[] = [];

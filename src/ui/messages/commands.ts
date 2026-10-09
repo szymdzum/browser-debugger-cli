@@ -21,6 +21,7 @@ import type {
   ShownElement,
 } from '@/ipc/protocol/domTypes.js';
 import type { InspectVisibility } from '@/ipc/protocol/inspectTypes.js';
+import type { OpenedTab, TabInfo, TabRef } from '@/ipc/protocol/tabTypes.js';
 import type { DelegationNote } from '@/runtime/dom/listenerSummary.js';
 import type { WaitCondition, WaitSnapshot } from '@/runtime/dom/waitCondition.js';
 import type { DocumentRequestState, ViewportPosition } from '@/types.js';
@@ -1158,6 +1159,80 @@ export const PAGE_INFO_DESCRIPTION = 'Show the URL and title of the session page
 /** Description of `bdg page emulate` */
 export const PAGE_EMULATE_DESCRIPTION =
   'Change the viewport or color scheme mid-session (like --viewport and --color-scheme at start), or --reset both';
+
+/** Description of `bdg page tabs` */
+export const PAGE_TABS_DESCRIPTION =
+  'List the tabs and windows (index, title, URL, which one opened it); * marks the session tab';
+
+/** Description of `bdg page switch` */
+export const PAGE_SWITCH_DESCRIPTION =
+  'Make another tab the session tab: DOM, actions, eval, screenshots, network and console follow it';
+
+/** Description of `bdg page close` */
+export const PAGE_CLOSE_DESCRIPTION =
+  'Close a tab (the session tab by default; the session then moves to its opener)';
+
+/**
+ * A tab or window an action opened, e.g.
+ * `Opened: popup http://localhost/authorize (bdg page switch 1)`.
+ *
+ * @param tab - The opened tab
+ * @returns Line
+ */
+export function openedTabText(tab: OpenedTab): string {
+  const next =
+    tab.index === undefined ? 'closed again' : sessionCommand(`bdg page switch ${tab.index}`);
+  return `Opened: ${tab.kind} ${tab.url} (${next})`;
+}
+
+/**
+ * The session's tab closed and the session moved to another, e.g.
+ * `Tab closed: http://localhost/authorize; now on tab 0: http://localhost/`.
+ *
+ * @param closed - The tab that closed
+ * @param current - The tab the session moved to
+ * @returns Line
+ */
+export function tabClosedText(closed: TabRef, current: TabRef): string {
+  const where = current.index === undefined ? '' : ` ${current.index}`;
+  return `Tab closed: ${closed.url}; now on tab${where}: ${current.url}`;
+}
+
+/**
+ * A tab as `bdg page tabs` lists it, e.g. `* [0] Shop  http://localhost/`.
+ *
+ * @param tab - Tab
+ * @returns Line
+ */
+export function tabListText(tab: TabInfo): string {
+  const marker = tab.current ? '*' : ' ';
+  const title = tab.title && tab.title !== tab.url ? `${tab.title}  ` : '';
+  const opener = tab.openedBy === undefined ? '' : ` (opened by ${tab.openedBy})`;
+  return `${marker} [${tab.index}] ${title}${tab.url || 'about:blank'}${opener}`;
+}
+
+/**
+ * How to move between tabs, under `bdg page tabs`.
+ *
+ * @returns Line
+ */
+export function tabSwitchHint(): string {
+  return `Switch with: ${sessionCommand('bdg page switch <index|url-part>')}`;
+}
+
+/**
+ * Note after `bdg page switch` on what follows the tab and how to go back.
+ *
+ * @param previous - The tab the session was on
+ * @returns Line
+ */
+export function tabSwitchedNote(previous: TabRef | undefined): string {
+  const back =
+    previous?.index === undefined
+      ? ''
+      : `; back with: ${sessionCommand(`bdg page switch ${previous.index}`)}`;
+  return `Network and console now record this tab${back}`;
+}
 
 /** Help text of the `bdg page` history commands */
 export const PAGE_ACTION_DESCRIPTIONS = {

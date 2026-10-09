@@ -10,6 +10,7 @@ import {
   externalChromePort,
   findPageTarget,
   setupChromeConnection,
+  tabWebSocketUrl,
 } from '@/daemon/session/chromeConnection.js';
 import type { SessionConfig } from '@/daemon/session/types.js';
 import { CommandError } from '@/errors/index.js';
@@ -170,5 +171,18 @@ void describe('launched Chrome', () => {
 
     assert.equal(store.targetInfo?.id, 'p-1');
     assert.ok(requests.includes('PUT http://127.0.0.1:9444/json/new?about:blank'));
+  });
+});
+
+void describe('tabWebSocketUrl', () => {
+  void it('reaches another tab the way the session page is reached', () => {
+    assert.equal(
+      tabWebSocketUrl('ws://127.0.0.1:9222/devtools/page/AAA', 'BBB'),
+      'ws://127.0.0.1:9222/devtools/page/BBB'
+    );
+    assert.equal(
+      tabWebSocketUrl('wss://chrome.example.test/devtools/page/AAA?token=x', 'BBB'),
+      'wss://chrome.example.test/devtools/page/BBB?token=x'
+    );
   });
 });

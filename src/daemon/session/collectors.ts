@@ -1,5 +1,5 @@
 import type { TelemetryStore } from './TelemetryStore.js';
-import type { TelemetryPlugin } from './plugins.js';
+import type { TelemetryPlugin, TelemetryPluginContext } from './plugins.js';
 import type { SessionConfig } from './types.js';
 
 import type { CDPConnection } from '@/connection/cdp.js';
@@ -23,7 +23,8 @@ const DEFAULT_TELEMETRY: TelemetryType[] = ['network', 'console', 'dom'];
  * @param config - Session configuration
  * @param store - Telemetry store
  * @param logger - Logger
- * @param plugins - Plugins to start (default: the registered ones)
+ * @param options - `plugins` to start (default: the registered ones), and
+ *   the plugin context's `onPageSwitch` and `switchedTab`
  * @returns Cleanup functions of the started collectors
  * @throws The error of the collector that failed to start
  */
@@ -32,8 +33,12 @@ export async function startTelemetryCollectors(
   config: SessionConfig,
   store: TelemetryStore,
   logger: Logger,
-  plugins?: TelemetryPlugin[]
+  options: { plugins?: TelemetryPlugin[] } & Pick<
+    TelemetryPluginContext,
+    'onPageSwitch' | 'switchedTab'
+  > = {}
 ): Promise<CleanupFunction[]> {
+  const { plugins, ...extra } = options;
   const cleanupFunctions: CleanupFunction[] = [];
   store.activeTelemetry = config.telemetry ?? DEFAULT_TELEMETRY;
   const effectivePlugins = plugins ?? getRegisteredTelemetryPlugins();
@@ -44,7 +49,7 @@ export async function startTelemetryCollectors(
     }
     logger.debug(sessionActivatingCollector(plugin.name));
     try {
-      cleanupFunctions.push(await plugin.start({ cdp, config, store, logger }));
+      cleanupFunctions.push(await plugin.start({ cdp, config, store, logger, ...extra }));
     } catch (error) {
       await runCleanups(cleanupFunctions, logger);
       throw error;
@@ -61,7 +66,7 @@ export async function startTelemetryCollectors(
  * @param cleanups - Cleanup functions
  * @param logger - Logger
  */
-async function runCleanups(cleanups: CleanupFunction[], logger: Logger): Promise<void> {
+export async function runCleanups(cleanups: CleanupFunction[], logger: Logger): Promise<void> {
   for (const cleanup of cleanups) {
     try {
       await cleanup();

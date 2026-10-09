@@ -495,6 +495,39 @@ export async function pageEmulate(
   return sendCommand('page_emulate', params);
 }
 
+/**
+ * List the page targets (tabs and windows) of the session's Chrome.
+ *
+ * @returns Tabs in index order
+ */
+export async function pageTabs(): Promise<ClientResponse<'page_tabs'>> {
+  return sendCommand('page_tabs', {});
+}
+
+/**
+ * Make another tab the session's.
+ *
+ * @param params - Index, target id or part of the URL
+ * @returns The tab switched to
+ */
+export async function pageSwitch(
+  params: NoType<(typeof COMMANDS)['page_switch']['requestSchema']>
+): Promise<ClientResponse<'page_switch'>> {
+  return sendCommand('page_switch', params);
+}
+
+/**
+ * Close a tab (the session's own when none is given).
+ *
+ * @param params - Index, target id or part of the URL
+ * @returns The closed tab and the session's tab now
+ */
+export async function pageClose(
+  params: NoType<(typeof COMMANDS)['page_close']['requestSchema']>
+): Promise<ClientResponse<'page_close'>> {
+  return sendCommand('page_close', params);
+}
+
 /** Run form discovery and return the raw structured form data. */
 export async function domFormDiscover(): Promise<ClientResponse<'dom_form_discover'>> {
   return sendCommand('dom_form_discover', {});

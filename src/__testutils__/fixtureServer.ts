@@ -34,7 +34,8 @@
  * `knownLimitFixtures.ts`; the `dom inspect` pages from `inspectFixtures.ts`;
  * the shadow root form pages from `shadowFormFixtures.ts`; the pages whose
  * actions throw from `actionErrorFixtures.ts`; the dialog pages from
- * `dialogFixtures.ts`; the Chrome Issues pages from `issueFixtures.ts`.
+ * `dialogFixtures.ts`; the Chrome Issues pages from `issueFixtures.ts`; the
+ * pages that open tabs and windows from `tabFixtures.ts`.
  */
 
 import * as fs from 'fs';
@@ -51,6 +52,7 @@ import { INSPECT_ROUTES } from '@/__testutils__/inspectFixtures.js';
 import { ISSUE_MISSING_STYLESHEET, ISSUE_ROUTES } from '@/__testutils__/issueFixtures.js';
 import { KNOWN_LIMIT_ROUTES } from '@/__testutils__/knownLimitFixtures.js';
 import { SHADOW_FORM_ROUTES } from '@/__testutils__/shadowFormFixtures.js';
+import { TAB_ROUTES } from '@/__testutils__/tabFixtures.js';
 
 const FIXTURES_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -685,7 +687,8 @@ export async function startFixtureServer(): Promise<FixtureServer> {
       SHADOW_FORM_ROUTES[req.url ?? ''] ??
       ACTION_ERROR_ROUTES[req.url ?? ''] ??
       DIALOG_ROUTES[req.url ?? ''] ??
-      ISSUE_ROUTES[req.url ?? ''];
+      ISSUE_ROUTES[req.url ?? ''] ??
+      TAB_ROUTES[req.url ?? ''];
     if (knownLimitPage !== undefined) {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(knownLimitPage);

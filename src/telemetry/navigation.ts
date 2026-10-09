@@ -33,21 +33,27 @@ export interface NavigationTracker {
  * `navigationId` counts main-frame navigations only, so all console messages
  * and requests of one page load share an id.
  *
+ * Started again on another tab (`bdg page switch`), the count goes on: the
+ * tab's page is the next navigation, so ids stay unique within the session.
+ *
  * @param cdp - CDP connection instance
  * @param navigations - Array to populate with navigation events
+ * @param tabUrl - URL of the tab's page, when tracking moves to another tab
  * @returns Cleanup function and counter getters
  */
 export async function startNavigationTracking(
   cdp: CDPConnection,
-  navigations: NavigationEvent[]
+  navigations: NavigationEvent[],
+  tabUrl = ''
 ): Promise<NavigationTracker> {
   const registry = new CDPHandlerRegistry();
   const typed = new TypedCDPConnection(cdp);
-  let navigationCounter = 0;
+  const last = navigations.at(-1);
+  let navigationCounter = last === undefined ? 0 : last.navigationId + 1;
 
   await cdp.send('Page.enable');
 
-  navigations.push({ url: '', timestamp: Date.now(), navigationId: navigationCounter });
+  navigations.push({ url: tabUrl, timestamp: Date.now(), navigationId: navigationCounter });
 
   registry.registerTyped(typed, 'Page.frameNavigated', (params) => {
     if (params.frame.parentId !== undefined) return;

@@ -26,12 +26,3 @@ export function sessionActivatingCollector(collectorName: string): string {
 export function sessionCollectorsActivated(telemetry: string[]): string {
   return `All telemetry modules activated: ${telemetry.join(', ')}`;
 }
-
-/**
- * Generate exiting due to Chrome connection loss message.
- *
- * @returns Formatted debug message
- */
-export function sessionEndingConnectionLoss(): string {
-  return 'Ending session due to Chrome connection loss';
-}

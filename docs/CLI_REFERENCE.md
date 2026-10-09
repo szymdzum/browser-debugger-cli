@@ -55,6 +55,23 @@ The first line of `bdg status` is `Session active: <url> — <title>`; the secti
 
 When the page's renderer crashes (out of memory, a Chrome bug, a killed renderer process), the session stays up but the page cannot answer. `bdg status`, `bdg peek`, `bdg console` and `bdg network list` then start with `⚠ The page crashed at 18:42:10 (renderer gone); bdg page reload brings it back` (JSON `pageState.crashedAt`, `pageCrashedAt` in `peek`, `console` and `network list --json`); `console --follow` and `network list --follow` print it once when the page crashes (JSON: a line with `pageCrashedAt`). Commands that need the page fail at once with exit 107 (`PAGE_CRASHED`) and the same way back, as do commands that were waiting on the page when it crashed. `status`, `peek`, `console`, `network`, `details`, `page reload`/`navigate`/`back`/`forward` and `bdg cdp` methods the browser answers (`Page.reload`, `Page.navigate`, `Target.*`, `Browser.*`, `Network.*` except response bodies, `Storage.*`) keep working. Reloading or navigating brings the page back.
 
+### Tabs and popups
+
+An action that opens a tab or window says so: `Opened: popup http://localhost:3000/authorize (bdg page switch 1)` (JSON `opened: [{ url, targetId, kind, index }]`). `kind` is `popup` for a page that can reach its opener through `window.opener` (`window.open()` without `noopener`: OAuth, SSO and payment windows that report back and close themselves) and `tab` for one that cannot (`target=_blank` links, `noopener`). The URL is the page's when the action returned (`about:blank` for a window still loading its first page); `index` is absent for one that already closed again.
+
+```bash
+bdg page tabs                   # Tabs (2): * [0] Shop  http://localhost:3000/
+                                #             [1] Sign in  http://localhost:3000/authorize (opened by 0)
+bdg page switch 1               # By 0-based index, target id or a part of the URL (bdg page switch authorize)
+bdg page close [target]         # Close a tab; without one the session tab (the session moves to its opener first)
+```
+
+`bdg page switch` makes another tab the session tab: `page info`, `dom` commands and actions, `dom eval`, screenshots, `bdg cdp` (and `--listen` buffers) act on it, and network, console and dialog telemetry record it from then on (the tab's earlier requests and console messages are not collected; nor are the old tab's in-flight requests). Chrome Issues (`bdg console`'s Issues block) are the new tab's page's, as after a navigation. Viewport and color scheme emulation is applied to it, and the tab is brought to the front. Indices are the ones `page tabs` shows, in the order bdg first saw each tab (the session's first); they shift when a tab before it closes. A URL part matching several tabs exits 81 with them listed, an index out of range exits 81, and a part no tab URL contains exits 83 with the open tabs and the closest URL part (`Did you mean: bdg page switch popup?`).
+
+When the session tab closes (a popup calling `window.close()`, or a tab closed by hand), the session moves to the tab that opened it, else to the tab it was on before, and the next action result says so: `Tab closed: http://localhost:3000/authorize; now on tab 0: http://localhost:3000/` (JSON `tabClosed` and `switchedTo`); an action whose own tab closed while it ran succeeds with that report. A tab with neither (the session's first tab) ends the session as before. `bdg page close` of the session tab moves to its opener, the tab used before it or another tab first, and refuses (exit 81) the only tab: use `bdg stop`.
+
+With `--chrome-ws-url`, `page tabs` lists every tab of that Chrome, and switching connects to the other tab's page WebSocket on the same host and port, so it works only where the endpoint serves page WebSockets (`/devtools/page/<id>`; Chrome's "allow remote debugging" toggle mode, which serves only the browser WebSocket, cannot switch). A tab another bdg session drives is refused (exit 90).
+
 ### Stop the session
 ```bash
 bdg stop                        # Stop session (closes Chrome launched by bdg)
@@ -893,6 +910,11 @@ bdg page back                                     # History back / forward
 bdg page reload
 bdg page emulate --viewport 900x700               # Change the viewport mid-session (responsive checks)
 bdg page emulate --color-scheme light             # ...or prefers-color-scheme; --reset clears both
+
+# Tabs and windows the page opens (popups, target=_blank links)
+bdg page tabs                                     # List them: * marks the session tab, (opened by N)
+bdg page switch 1                                 # Act on tab 1 (0-based), or: bdg page switch authorize
+bdg page close 2                                  # Close a tab (default: the session tab)
 
 # Press keys (for Enter-to-submit, keyboard navigation)
 bdg dom pressKey ".new-todo" Enter                # TodoMVC pattern: submit with Enter

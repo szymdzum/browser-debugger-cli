@@ -346,14 +346,36 @@ export class CdpEventListener {
    */
   listen(source: EventSource, events: string[]): CdpListenState {
     for (const name of events) {
-      if (this.subscriptions.has(name)) continue;
-      const off = onPageEvent(source, name, (event) => {
-        this.buffer.push(event);
-        this.waiters.forEach((waiter) => waiter.abort());
-      });
-      this.subscriptions.set(name, off);
+      if (!this.subscriptions.has(name)) this.subscriptions.set(name, this.subscribe(source, name));
     }
     return this.state();
+  }
+
+  /**
+   * Listen to the same events on another connection (the tab that
+   * `bdg page switch` made the session's), keeping what is buffered.
+   *
+   * @param source - The new tab's connection
+   */
+  follow(source: EventSource): void {
+    for (const [name, off] of this.subscriptions) {
+      off();
+      this.subscriptions.set(name, this.subscribe(source, name));
+    }
+  }
+
+  /**
+   * Buffer an event of a connection.
+   *
+   * @param source - CDP connection
+   * @param name - Event name
+   * @returns Stops buffering it
+   */
+  private subscribe(source: EventSource, name: string): () => void {
+    return onPageEvent(source, name, (event) => {
+      this.buffer.push(event);
+      this.waiters.forEach((waiter) => waiter.abort());
+    });
   }
 
   /**

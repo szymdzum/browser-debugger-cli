@@ -2628,3 +2628,118 @@ export function unknownAuditCheckMessage(
 ): string {
   return `Unknown check "${value}"${similar.length > 0 ? `; did you mean ${similar[0]}?` : ''} (checks: ${checks.join(', ')})`;
 }
+
+/** A tab as error messages list it */
+interface ListedTab {
+  index: number;
+  url: string;
+}
+
+/**
+ * The tabs listed one per line, e.g. `  [1] http://localhost/popup`.
+ *
+ * @param tabs - Tabs
+ * @returns Lines
+ */
+function tabLines(tabs: readonly ListedTab[]): string[] {
+  return tabs.map((tab) => `  [${tab.index}] ${tab.url}`);
+}
+
+/**
+ * `bdg page switch|close <index>` with an index past the last tab.
+ *
+ * @param index - Index given
+ * @param tabs - Open tabs
+ * @returns Message and suggestion
+ */
+export function tabIndexOutOfRangeError(
+  index: number,
+  tabs: readonly ListedTab[]
+): ErrorWithSuggestion {
+  return {
+    message: `Tab index ${index} out of range (${tabs.length} tab${tabs.length === 1 ? '' : 's'}: 0-${tabs.length - 1})`,
+    suggestion: joinLines(
+      'Open tabs:',
+      ...tabLines(tabs),
+      `List them with: ${sessionCommand('bdg page tabs')}`
+    ),
+  };
+}
+
+/**
+ * `bdg page switch|close <url-part>` that no tab URL contains.
+ *
+ * @param part - Text given
+ * @param tabs - Open tabs
+ * @param similar - Closest URL parts, best first
+ * @returns Message and suggestion
+ */
+export function tabNotFoundError(
+  part: string,
+  tabs: readonly ListedTab[],
+  similar: readonly string[]
+): ErrorWithSuggestion {
+  return {
+    message: `No tab URL contains "${part}"`,
+    suggestion: joinLines(
+      similar[0] !== undefined &&
+        `Did you mean: ${sessionCommand(`bdg page switch ${similar[0]}`)}?`,
+      'Open tabs:',
+      ...tabLines(tabs),
+      `Switch by index: ${sessionCommand('bdg page switch <index>')}`
+    ),
+  };
+}
+
+/**
+ * `bdg page switch|close <url-part>` that several tab URLs contain.
+ *
+ * @param part - Text given
+ * @param matches - Tabs whose URL contains it
+ * @returns Message and suggestion
+ */
+export function tabAmbiguousError(
+  part: string,
+  matches: readonly ListedTab[]
+): ErrorWithSuggestion {
+  return {
+    message: `"${part}" matches ${matches.length} tabs`,
+    suggestion: joinLines(
+      ...tabLines(matches),
+      `Pick one by index, e.g. ${sessionCommand(`bdg page switch ${matches[0]?.index ?? 0}`)}`
+    ),
+  };
+}
+
+/**
+ * `bdg page close` of the session's tab when there is no other tab to move to.
+ *
+ * @returns Message and suggestion
+ */
+export function lastTabCloseError(): ErrorWithSuggestion {
+  return {
+    message: 'This is the only tab: closing it would end the session',
+    suggestion: `End the session with: ${sessionCommand('bdg stop')}`,
+  };
+}
+
+/**
+ * A tab bdg could not connect to.
+ *
+ * @param url - The tab's URL
+ * @param reason - Why the connection failed
+ * @param attached - Whether the session is attached to a running Chrome (--chrome-ws-url)
+ * @returns Message and suggestion
+ */
+export function tabConnectFailedError(
+  url: string,
+  reason: string,
+  attached: boolean
+): ErrorWithSuggestion {
+  return {
+    message: `Could not switch to ${url}: ${reason}`,
+    suggestion: attached
+      ? 'The attached Chrome must serve page WebSockets (/devtools/page/<id>) for its other tabs; the session stays on its tab'
+      : `The session stays on its tab; list tabs with: ${sessionCommand('bdg page tabs')}`,
+  };
+}

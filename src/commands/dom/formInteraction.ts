@@ -54,6 +54,8 @@ import {
   actionStatusLine,
   dialogConsoleText,
   downloadText,
+  openedTabText,
+  tabClosedText,
   moreErrorsText,
   moreMessagesText,
   newMessageText,
@@ -497,7 +499,8 @@ interface ActionNotices extends ActionEffects {
  * on, or "⚠ Element Clicked (no visible effect: …)"), the details, what
  * changed on the page (`Page:` navigation, `New text:` messages, `Shown:`
  * elements), the console errors it caused (`Errors:`), then the network
- * requests it triggered, the downloads it started and the dialogs it
+ * requests it triggered, the downloads it started, the tabs it opened
+ * (`Opened:`), the session's tab closing (`Tab closed:`) and the dialogs it
  * caused. No request list is shown when there were none (JSON has an empty
  * `triggeredRequests` then).
  *
@@ -559,6 +562,11 @@ function formatActionOutput(
   }
   if (result.downloads?.length) fmt.blank();
   for (const download of result.downloads ?? []) fmt.text(downloadText(download));
+  if (result.opened?.length || result.tabClosed) fmt.blank();
+  for (const tab of result.opened ?? []) fmt.text(openedTabText(tab));
+  if (result.tabClosed && result.switchedTo) {
+    fmt.text(tabClosedText(result.tabClosed, result.switchedTo));
+  }
   for (const dialog of result.dialogs ?? []) {
     fmt.blank();
     fmt.text(`Dialog: ${dialogConsoleText(dialog, { labelled: true })}`);

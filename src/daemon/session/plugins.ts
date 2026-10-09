@@ -100,14 +100,25 @@ export interface TelemetryPlugin {
   name: string;
   runAlways?: boolean;
   telemetry?: TelemetryType;
+  /**
+   * `session`: started once for the whole session (it follows tab switches
+   * itself, through `onPageSwitch`); others follow the session's tab, started
+   * again on each tab `bdg page switch` moves to
+   */
+  scope?: 'session';
   start: (ctx: TelemetryPluginContext) => Promise<CleanupFunction>;
 }
 
 export interface TelemetryPluginContext {
+  /** The session's page connection */
   cdp: CDPConnection;
   config: SessionConfig;
   store: TelemetryStore;
   logger: Logger;
+  /** Registers a callback for the page connection of each tab the session moves to */
+  onPageSwitch?: ((listener: (cdp: CDPConnection) => void) => void) | undefined;
+  /** Started on a tab `bdg page switch` moved to (not the session's first) */
+  switchedTab?: boolean | undefined;
 }
 
 export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
@@ -125,6 +136,7 @@ export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
     {
       name: 'downloads',
       runAlways: true,
+      scope: 'session',
       start: startSessionDownloads,
     },
     {
@@ -149,10 +161,11 @@ export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
     {
       name: 'navigation',
       runAlways: true,
-      async start({ cdp, store, logger }) {
+      async start({ cdp, store, logger, switchedTab }) {
         const { cleanup, getCurrentNavigationId } = await startNavigationTracking(
           cdp,
-          store.navigationEvents
+          store.navigationEvents,
+          switchedTab ? store.targetInfo?.url : undefined
         );
         store.setNavigationResolver(getCurrentNavigationId);
         const stopTracking = trackCurrentPage(cdp, store, logger);
@@ -189,7 +202,7 @@ export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
     {
       name: 'console',
       telemetry: 'console',
-      async start({ cdp, config, store }) {
+      async start({ cdp, config, store, switchedTab }) {
         return startConsoleCollection(
           cdp,
           store.consoleMessages,
@@ -198,14 +211,16 @@ export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
           () => {
             store.consoleDropped++;
           },
-          () => store.receiveConsoleMessage()
+          () => store.receiveConsoleMessage(),
+          { skipReplay: switchedTab === true }
         );
       },
     },
     {
       name: 'issues',
       telemetry: 'console',
-      start({ cdp, store }) {
+      start({ cdp, store, switchedTab }) {
+        if (switchedTab) store.pageIssues.clear();
         return startIssueCollection(cdp, store.pageIssues);
       },
     },
@@ -233,4 +248,15 @@ const pluginRegistry: TelemetryPlugin[] = createDefaultTelemetryPlugins();
 
 export function getRegisteredTelemetryPlugins(): TelemetryPlugin[] {
   return [...pluginRegistry];
+}
+
+/**
+ * The registered plugins started once for the session, or the ones started
+ * on each of its tabs.
+ *
+ * @param scope - `session` or `page`
+ * @returns Plugins, in registration order
+ */
+export function telemetryPluginsOf(scope: 'session' | 'page'): TelemetryPlugin[] {
+  return pluginRegistry.filter((plugin) => (plugin.scope === 'session') === (scope === 'session'));
 }

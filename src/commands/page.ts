@@ -1,6 +1,6 @@
 /**
  * `bdg page navigate|reload|back|forward` — move the session's page;
- * `bdg page info` — where it is.
+ * `bdg page info` — where it is; `bdg page tabs|switch|close` — its tabs.
  */
 
 import { Option, type Command } from 'commander';
@@ -11,7 +11,14 @@ import type { BaseOptions } from '@/commands/shared/optionTypes.js';
 import { parseColorScheme, requestedViewport } from '@/commands/start.js';
 import { CommandError } from '@/errors/index.js';
 import { javascriptNavigationError } from '@/errors/messages.js';
-import { getStatus, pageEmulate, pageNavigate } from '@/ipc/client.js';
+import {
+  getStatus,
+  pageClose,
+  pageEmulate,
+  pageNavigate,
+  pageSwitch,
+  pageTabs,
+} from '@/ipc/client.js';
 import type { PageState } from '@/ipc/index.js';
 import type {
   PageAction,
@@ -19,15 +26,22 @@ import type {
   PageEmulationResult,
   PageNavigationResult,
 } from '@/ipc/protocol/commands.js';
+import type { PageCloseData, PageSwitchData, PageTabsData } from '@/ipc/protocol/tabTypes.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import {
   PAGE_ACTION_DESCRIPTIONS,
   PAGE_ACTION_DONE,
+  PAGE_CLOSE_DESCRIPTION,
   PAGE_EMULATE_DESCRIPTION,
   PAGE_INFO_DESCRIPTION,
+  PAGE_SWITCH_DESCRIPTION,
+  PAGE_TABS_DESCRIPTION,
   pageEmulateNothingError,
   pageEmulationLines,
   pageLoadingWarning,
+  tabListText,
+  tabSwitchHint,
+  tabSwitchedNote,
 } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { validateUrl } from '@/utils/url.js';
@@ -224,6 +238,101 @@ async function emulate(options: PageEmulateOptions): Promise<void> {
   );
 }
 
+/** A daemon answer as the tab commands read it */
+interface TabResponse<T> {
+  status: string;
+  data?: T | undefined;
+  error?: string | undefined;
+  exitCode?: number | undefined;
+  suggestion?: string | undefined;
+}
+
+/**
+ * Run a tab command through the daemon.
+ *
+ * @param request - Sends the request
+ * @param options - Command options
+ * @param format - Human-readable output
+ * @param failure - Error when the daemon gives none
+ */
+async function runTabCommand<T>(
+  request: () => Promise<TabResponse<T>>,
+  options: BaseOptions,
+  format: (data: T) => string,
+  failure: string
+): Promise<void> {
+  await runCommand(
+    async () => {
+      const response = await request();
+      if (response.status === 'error' || !response.data) {
+        return {
+          success: false,
+          error: response.error ?? failure,
+          exitCode: response.exitCode ?? EXIT_CODES.SOFTWARE_ERROR,
+          ...(response.suggestion && { errorContext: { suggestion: response.suggestion } }),
+        };
+      }
+      return { success: true, data: response.data };
+    },
+    options,
+    format
+  );
+}
+
+/**
+ * `bdg page tabs` output.
+ *
+ * @param data - Tabs
+ * @returns Text
+ */
+function formatTabs(data: PageTabsData): string {
+  return new OutputFormatter()
+    .text(`Tabs (${data.tabs.length}):`)
+    .text(data.tabs.map(tabListText).join('\n'))
+    .blank()
+    .text(tabSwitchHint())
+    .build();
+}
+
+/**
+ * `bdg page switch` output.
+ *
+ * @param data - The tab switched to
+ * @returns Text
+ */
+function formatSwitch(data: PageSwitchData): string {
+  const fmt = new OutputFormatter()
+    .text(
+      data.previous ? `✓ Switched to tab ${data.tab.index}` : `✓ Already on tab ${data.tab.index}`
+    )
+    .keyValueList(
+      [
+        ['URL', data.tab.url],
+        ['Title', data.tab.title],
+      ],
+      8
+    );
+  if (data.previous) fmt.text(tabSwitchedNote(data.previous));
+  return fmt.build();
+}
+
+/**
+ * `bdg page close` output.
+ *
+ * @param data - What was closed and the session's tab now
+ * @returns Text
+ */
+function formatClose(data: PageCloseData): string {
+  return new OutputFormatter()
+    .text(`✓ Closed tab: ${data.closed.url}`)
+    .keyValue(
+      data.switched ? 'Now on' : 'Session tab',
+      `[${data.current.index}] ${data.current.url}`,
+      14
+    )
+    .build();
+}
+
 /**
  * Register the `page` command group.
  *
@@ -233,7 +342,7 @@ export function registerPageCommands(program: Command): void {
   const page = program
     .command('page')
     .description(
-      'The session page: info (URL and title), navigate <url>, reload, back, forward, emulate (viewport, color scheme)'
+      'The session page: info (URL and title), navigate <url>, reload, back, forward, emulate (viewport, color scheme), tabs, switch, close'
     );
 
   page
@@ -280,6 +389,42 @@ export function registerPageCommands(program: Command): void {
     .addOption(jsonOption())
     .action(async (options: PageEmulateOptions) => {
       await emulate(options);
+    });
+
+  page
+    .command('tabs')
+    .description(PAGE_TABS_DESCRIPTION)
+    .addOption(jsonOption())
+    .action(async (options: BaseOptions) => {
+      await runTabCommand(() => pageTabs(), options, formatTabs, 'Failed to list the tabs');
+    });
+
+  page
+    .command('switch')
+    .description(PAGE_SWITCH_DESCRIPTION)
+    .argument('<target>', '0-based index from bdg page tabs, a target id, or part of the URL')
+    .addOption(jsonOption())
+    .action(async (target: string, options: BaseOptions) => {
+      await runTabCommand(
+        () => pageSwitch({ target }),
+        options,
+        formatSwitch,
+        'Failed to switch tabs'
+      );
+    });
+
+  page
+    .command('close')
+    .description(PAGE_CLOSE_DESCRIPTION)
+    .argument('[target]', '0-based index from bdg page tabs, a target id, or part of the URL')
+    .addOption(jsonOption())
+    .action(async (target: string | undefined, options: BaseOptions) => {
+      await runTabCommand(
+        () => pageClose(target === undefined ? {} : { target }),
+        options,
+        formatClose,
+        'Failed to close the tab'
+      );
     });
 
   for (const action of ['reload', 'back', 'forward'] as const) {
