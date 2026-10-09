@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import { runCommand, type CommandResult } from '@/commands/shared/CommandRunner.js';
 import { CommandError } from '@/errors/index.js';
 import { noteTabMove, takeTabMove } from '@/ipc/utils/tabMove.js';
+import type { BdgResponse } from '@/types.js';
 
 /** Thrown by the stubbed process.exit to stop the runner */
 class Exit extends Error {
@@ -70,10 +71,17 @@ void describe('runCommand: a move no command reported yet', () => {
   void it('puts it at the top of a success envelope', async () => {
     noteTabMove({ tabMoved: moved });
     await run(() => ({ success: true, data: { a: 1 } }), true);
-    const envelope = JSON.parse(stdout[0] ?? '') as Record<string, unknown>;
-    assert.deepEqual(envelope['tabClosed'], moved.tabClosed);
-    assert.deepEqual(envelope['switchedTo'], moved.switchedTo);
-    assert.deepEqual(envelope['data'], { a: 1 });
+    const envelope = JSON.parse(stdout[0] ?? '') as BdgResponse<{ a: number }>;
+    assert.deepEqual(Object.keys(envelope).sort(), [
+      'data',
+      'success',
+      'switchedTo',
+      'tabClosed',
+      'version',
+    ]);
+    assert.deepEqual(envelope.tabClosed, moved.tabClosed);
+    assert.deepEqual(envelope.switchedTo, moved.switchedTo);
+    assert.deepEqual(envelope.data, { a: 1 });
   });
 
   void it('puts it in an error envelope, also of a thrown error', async () => {

@@ -2737,34 +2737,51 @@ export function actionAfterTabMoveError(closed: TabRef, current: TabRef): ErrorW
   };
 }
 
+/** What an interrupted `bdg page switch` did, as far as the command knows */
+type InterruptedSwitchOutcome =
+  | { tab: { index: number; url: string }; switched: boolean }
+  | { error: string }
+  | { unknown: string }
+  | undefined;
+
 /**
  * `bdg page switch` interrupted by Ctrl-C or SIGTERM: the command waited for
  * the daemon's answer, so it says whether the session moved.
  *
  * @param signal - The signal
  * @param outcome - The daemon's answer: the tab switched to (`switched`
- *   false when the session already was on it), the switch's error, or
+ *   false when the session already was on it), the switch's error, why no
+ *   answer came (`unknown`: the switch may still have completed), or
  *   nothing when the request was never sent
  * @returns Message and suggestion
  */
 export function pageSwitchInterruptedError(
   signal: 'SIGINT' | 'SIGTERM',
-  outcome:
-    { tab: { index: number; url: string }; switched: boolean } | { error: string } | undefined
+  outcome: InterruptedSwitchOutcome
 ): ErrorWithSuggestion {
   const how = signal === 'SIGINT' ? 'Interrupted (Ctrl-C)' : 'Terminated (SIGTERM)';
-  const message =
-    outcome === undefined
-      ? `${how} before the switch was sent; the session did not switch`
-      : 'error' in outcome
-        ? `${how}; the session did not switch (${outcome.error})`
-        : outcome.switched
-          ? `${how}, but the switch completed: now on tab ${outcome.tab.index}: ${outcome.tab.url}`
-          : `${how}; the session was already on tab ${outcome.tab.index}: ${outcome.tab.url}`;
   return {
-    message,
+    message: `${how}${interruptedSwitchText(outcome)}`,
     suggestion: `The session tab is marked * in: ${sessionCommand('bdg page tabs')}`,
   };
+}
+
+/**
+ * What an interrupted switch did, after "Interrupted (Ctrl-C)".
+ *
+ * @param outcome - See {@link pageSwitchInterruptedError}
+ * @returns Text
+ */
+function interruptedSwitchText(outcome: InterruptedSwitchOutcome): string {
+  if (outcome === undefined) return ' before the switch was sent; the session did not switch';
+  if ('error' in outcome) return `; the session did not switch (${outcome.error})`;
+  if ('unknown' in outcome) {
+    return `; no answer came, so it is not known whether the session switched (${outcome.unknown})`;
+  }
+  const where = `tab ${outcome.tab.index}: ${outcome.tab.url}`;
+  return outcome.switched
+    ? `, but the switch completed: now on ${where}`
+    : `; the session was already on ${where}`;
 }
 
 /**

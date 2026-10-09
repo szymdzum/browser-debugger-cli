@@ -38,6 +38,18 @@ function program(): Command {
 
 void describe('generateCompactHelp', () => {
   const help = generateCompactHelp(program());
+
+  void it('documents the --json envelope fields, the tab move ones included', () => {
+    const fields = help.envelope.map((field) => field.name);
+    for (const name of ['version', 'success', 'data', 'error', 'exitCode', 'suggestion']) {
+      assert.ok(fields.includes(name), name);
+    }
+    for (const name of ['tabClosed', 'switchedTo']) {
+      const field = help.envelope.find((candidate) => candidate.name === name);
+      assert.ok(field?.optional, name);
+      assert.match(field.description, /tab/i);
+    }
+  });
   const dom = help.command.subcommands?.find((c) => c.name === 'dom');
   const query = dom?.subcommands?.find((c) => c.name === 'query');
 

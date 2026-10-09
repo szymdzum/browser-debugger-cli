@@ -48,6 +48,7 @@ import {
   tabSwitchHint,
   tabSwitchedNote,
 } from '@/ui/messages/commands.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { validateUrl } from '@/utils/url.js';
 
@@ -300,8 +301,14 @@ export async function switchTab(
   interrupt: AbortSignal,
   send: (params: { target: string }) => Promise<TabResponse<PageSwitchData>> = pageSwitch
 ): Promise<TabResponse<PageSwitchData>> {
-  if (interrupt.aborted) throw switchInterrupted(interrupt, undefined);
-  const response = await send({ target });
+  if (interrupt.aborted) throw switchInterrupted(interrupt, 'not sent');
+  let response: TabResponse<PageSwitchData>;
+  try {
+    response = await send({ target });
+  } catch (error) {
+    if (interrupt.aborted) throw switchInterrupted(interrupt, { lost: getErrorMessage(error) });
+    throw error;
+  }
   if (interrupt.aborted) throw switchInterrupted(interrupt, response);
   return response;
 }
@@ -310,23 +317,33 @@ export async function switchTab(
  * The error of an interrupted `bdg page switch`.
  *
  * @param interrupt - The aborted interrupt
- * @param response - The daemon's answer, if the request was sent
+ * @param response - The daemon's answer; `not sent`, or why no answer came (`lost`)
  * @returns Command error (130 for Ctrl-C, 143 for SIGTERM)
  */
 function switchInterrupted(
   interrupt: AbortSignal,
-  response: TabResponse<PageSwitchData> | undefined
+  response: TabResponse<PageSwitchData> | 'not sent' | { lost: string }
 ): CommandError {
   const signal = interruptSignal(interrupt);
-  const data = response?.status === 'ok' ? response.data : undefined;
-  const outcome =
-    response === undefined
-      ? undefined
-      : data
-        ? { tab: data.tab, switched: data.previous !== undefined }
-        : { error: response.error ?? 'no answer' };
+  const outcome = interruptedSwitchOutcome(response);
   const err = pageSwitchInterruptedError(signal, outcome);
   return new CommandError(err.message, { suggestion: err.suggestion }, interruptExitCode(signal));
+}
+
+/**
+ * What an interrupted switch did, as its error tells it.
+ *
+ * @param response - The daemon's answer; `not sent`, or why no answer came (`lost`)
+ * @returns The outcome for {@link pageSwitchInterruptedError}
+ */
+function interruptedSwitchOutcome(
+  response: TabResponse<PageSwitchData> | 'not sent' | { lost: string }
+): Parameters<typeof pageSwitchInterruptedError>[1] {
+  if (response === 'not sent') return undefined;
+  if ('lost' in response) return { unknown: response.lost };
+  const data = response.status === 'ok' ? response.data : undefined;
+  if (data) return { tab: data.tab, switched: data.previous !== undefined };
+  return { error: response.error ?? 'no answer' };
 }
 
 /**

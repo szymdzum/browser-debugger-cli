@@ -73,6 +73,26 @@ void describe('page switch interrupted', () => {
     assert.match(error.message, /did not switch \(Could not switch\)/);
   });
 
+  void it('says the outcome is unknown when the answer never came after the interrupt', async () => {
+    const interrupt = new AbortController();
+    const error = await thrown(
+      switchTab('1', interrupt.signal, () => {
+        interrupt.abort('SIGINT');
+        return Promise.reject(new Error('IPC timeout'));
+      })
+    );
+    assert.equal(error.exitCode, EXIT_CODES.INTERRUPTED);
+    assert.match(error.message, /not known whether the session switched \(IPC timeout\)/);
+    assert.match(error.metadata.suggestion ?? '', /bdg page tabs/);
+  });
+
+  void it('leaves a failure without an interrupt as it was', async () => {
+    await assert.rejects(
+      switchTab('1', new AbortController().signal, () => Promise.reject(new Error('IPC timeout'))),
+      /^Error: IPC timeout$/
+    );
+  });
+
   void it('sends nothing once interrupted before the request', async () => {
     const interrupt = new AbortController();
     interrupt.abort('SIGINT');

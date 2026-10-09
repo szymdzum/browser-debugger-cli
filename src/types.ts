@@ -1,6 +1,6 @@
 import type { Protocol } from '@/connection/typed-cdp.js';
 import type { DownloadInfo, FormIssue } from '@/ipc/protocol/domTypes.js';
-import type { TabSwitchInfo } from '@/ipc/protocol/tabTypes.js';
+import type { TabRef, TabSwitchInfo } from '@/ipc/protocol/tabTypes.js';
 
 /**
  * Standard response envelope for all bdg command JSON output.
@@ -51,6 +51,16 @@ export interface BdgResponse<T = unknown> {
 
   /** How the command ran despite something unusual (e.g. a CDP method bdg's protocol lacks) */
   warning?: string;
+
+  /**
+   * The session's tab that closed on its own (e.g. a popup's timer calling
+   * `window.close()`) since the last command, when no command reported it
+   * yet; given once, on success and error (with {@link switchedTo})
+   */
+  tabClosed?: TabRef;
+
+  /** The tab the session moved to when {@link tabClosed} closed (its opener, else the tab used before it) */
+  switchedTo?: TabRef;
 }
 
 /**
