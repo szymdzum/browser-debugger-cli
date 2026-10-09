@@ -7,6 +7,7 @@ import { hideHeadlessUserAgent } from '@/runtime/page/userAgent.js';
 import { startConsoleCollection } from '@/telemetry/console.js';
 import { startDialogHandling } from '@/telemetry/dialogs.js';
 import { prepareDOMCollection } from '@/telemetry/dom.js';
+import { startIssueCollection } from '@/telemetry/issues.js';
 import { startNavigationTracking } from '@/telemetry/navigation.js';
 import { startNetworkCollection, startWebSocketCollection } from '@/telemetry/network.js';
 import { pageCrashedCommandError, startCrashTracking } from '@/telemetry/pageCrash.js';
@@ -199,6 +200,13 @@ export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
           },
           () => store.receiveConsoleMessage()
         );
+      },
+    },
+    {
+      name: 'issues',
+      telemetry: 'console',
+      start({ cdp, store }) {
+        return startIssueCollection(cdp, store.pageIssues);
       },
     },
     {

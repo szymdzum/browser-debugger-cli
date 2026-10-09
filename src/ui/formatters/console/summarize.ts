@@ -9,6 +9,7 @@ import { capForDisplay } from '@/ui/formatters/longValues.js';
 import { OutputFormatter, pluralize } from '@/ui/formatting.js';
 import { consoleDroppedNote, consoleMoreGroupsNote } from '@/ui/messages/consoleMessages.js';
 
+import { renderIssuesSection } from './issues.js';
 import {
   analyzeMessages,
   formatCountPrefix,
@@ -110,16 +111,19 @@ function renderOtherSummary(fmt: OutputFormatter, summary: ConsoleSummary): void
 
 /**
  * Format console output as smart summary (default mode): the newest distinct
- * errors and warnings, counts of the rest, and a note when the session
- * dropped its oldest messages.
+ * errors and warnings, the page's Chrome Issues, counts of the rest, and a
+ * note when the session dropped its oldest messages.
  *
  * @param messages - Messages to summarise
- * @param options - Distinct messages listed, messages dropped and `--full`
+ * @param options - Distinct messages listed, messages dropped, issues and `--full`
  * @returns Summary
  */
 export function formatConsoleSummary(
   messages: ConsoleMessage[],
-  options: Pick<ConsoleFormatOptions, 'groupLimit' | 'dropped' | 'full'> = {}
+  options: Pick<
+    ConsoleFormatOptions,
+    'groupLimit' | 'dropped' | 'full' | 'issues' | 'issuesDropped'
+  > = {}
 ): string {
   const fmt = new OutputFormatter();
   const { grouped, summary } = analyzeMessages(messages);
@@ -137,6 +141,8 @@ export function formatConsoleSummary(
     fmt.text('No errors or warnings found');
     fmt.blank();
   }
+
+  renderIssuesSection(fmt, options.issues, options.issuesDropped, full);
 
   renderOtherSummary(fmt, summary);
 

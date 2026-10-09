@@ -12,7 +12,7 @@ import {
   IPCTimeoutError,
 } from '@/ipc/transport/IPCError.js';
 import { isConnectionError } from '@/ipc/utils/errors.js';
-import type { BdgOutput, ConsoleMessage, NetworkRequest } from '@/types.js';
+import type { BdgOutput, ConsoleMessage, NetworkRequest, PageIssue } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import type { NetworkEvictionCounts } from '@/ui/messages/networkMessages.js';
 import { noActiveSessionMessage } from '@/ui/messages/sessionCommand.js';
@@ -164,8 +164,8 @@ export async function fetchNetworkRequests(withHeaders = false): Promise<
  *
  * @returns Messages (with their session-wide index), the navigation id of
  *   the page currently loaded, how many of the oldest messages the session
- *   dropped at its limit and when the page crashed (while it is not loaded
- *   again)
+ *   dropped at its limit, when the page crashed (while it is not loaded
+ *   again), and the page's Chrome Issues with how many were not kept
  */
 export async function fetchConsoleMessages(): Promise<
   FetchResult<{
@@ -173,6 +173,8 @@ export async function fetchConsoleMessages(): Promise<
     currentNavigationId: number | undefined;
     dropped: number;
     pageCrashedAt: number | undefined;
+    issues: PageIssue[];
+    issuesDropped: number;
   }>
 > {
   const result = await fetchPreviewData({ lastN: 0, only: 'console' });
@@ -184,6 +186,8 @@ export async function fetchConsoleMessages(): Promise<
       currentNavigationId: result.data.output.currentNavigationId,
       dropped: result.data.output.totals?.consoleDropped ?? 0,
       pageCrashedAt: result.data.output.pageCrashedAt,
+      issues: result.data.output.data.issues ?? [],
+      issuesDropped: result.data.output.totals?.issuesDropped ?? 0,
     },
   };
 }

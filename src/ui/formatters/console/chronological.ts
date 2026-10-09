@@ -9,13 +9,15 @@ import { capForDisplay } from '@/ui/formatters/longValues.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import { consoleDroppedNote, consoleIndexGapNote } from '@/ui/messages/consoleMessages.js';
 
+import { renderIssuesSection } from './issues.js';
 import { formatSourceLocation, formatTimestamp, type ConsoleFormatOptions } from './shared.js';
 
 /**
  * Format console output as chronological list (--list mode).
  *
  * Shows all messages in order with timestamps and levels. Includes
- * navigation markers when page reloads are detected.
+ * navigation markers when page reloads are detected, and the page's Chrome
+ * Issues after the list (not with `--level`).
  */
 export function formatConsoleChronological(
   messages: ConsoleMessage[],
@@ -37,7 +39,7 @@ export function formatConsoleChronological(
 
   if (displayMessages.length === 0) {
     fmt.text('No console messages');
-    return fmt.build();
+    return withIssues(fmt, options);
   }
 
   const baseIndex = messages.length - displayMessages.length;
@@ -74,6 +76,22 @@ export function formatConsoleChronological(
   if (skipped && skipped.otherPages + skipped.otherLevels > 0) {
     fmt.blank();
     fmt.text(consoleIndexGapNote(skipped));
+  }
+  return withIssues(fmt, options);
+}
+
+/**
+ * Finish a list with the page's Issues block, unless `--level` asked for
+ * messages of one level only.
+ *
+ * @param fmt - Output so far
+ * @param options - Issues, `--level` and `--full`
+ * @returns Text
+ */
+function withIssues(fmt: OutputFormatter, options: ConsoleFormatOptions): string {
+  if (!options.level && options.issues?.length) {
+    fmt.blank();
+    renderIssuesSection(fmt, options.issues, options.issuesDropped, options.full);
   }
   return fmt.build();
 }

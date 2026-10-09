@@ -20,6 +20,7 @@ import {
   formsInFrameMessage,
   requiredFieldsEmptyMessage,
 } from '@/ui/messages/commands.js';
+import { PAGE_FORM_ISSUES_HEADING, fieldIssueLine } from '@/ui/messages/issueMessages.js';
 
 const COLUMN_WIDTHS = {
   index: 4,
@@ -275,6 +276,7 @@ function formatSingleForm(form: DiscoveredForm, fmt: OutputFormatter, brief = fa
 
   for (const field of form.fields) {
     fmt.text(formatFieldRow(field));
+    formatFieldIssues(field, fmt);
   }
 
   if (form.buttons.length > 0) {
@@ -298,6 +300,35 @@ function formatSingleForm(form: DiscoveredForm, fmt: OutputFormatter, brief = fa
 }
 
 /**
+ * The form markup errors Chrome reports for a field, under its row.
+ *
+ * @param field - Form field
+ * @param fmt - Output formatter
+ */
+function formatFieldIssues(field: FormField, fmt: OutputFormatter): void {
+  for (const issue of field.issues ?? []) fmt.text(fieldIssueLine(issue));
+}
+
+/**
+ * Form markup errors Chrome reports for elements that are no listed field.
+ *
+ * @param issues - Errors
+ * @param fmt - Output formatter
+ */
+function formatPageFormIssues(
+  issues: NonNullable<FormDiscoveryResult['formIssues']>,
+  fmt: OutputFormatter
+): void {
+  if (issues.length === 0) return;
+  fmt.text(PAGE_FORM_ISSUES_HEADING);
+  for (const issue of issues) {
+    const where = issue.elements?.length ? ` → ${issue.elements.join(', ')}` : '';
+    fmt.text(`  • ${issue.text}${where}`);
+  }
+  fmt.blank();
+}
+
+/**
  * Format brief field listing.
  *
  * @param form - Discovered form
@@ -314,6 +345,7 @@ function formatBriefFields(form: DiscoveredForm, fmt: OutputFormatter): void {
     const req = (field.required ? '*' : '').padEnd(3);
     const hidden = field.hidden ? ' (hidden)' : '';
     fmt.text(`${idx} ${type} ${label} ${req} ${formatFieldValue(field)}${hidden}`);
+    formatFieldIssues(field, fmt);
   }
 
   if (form.buttons.length > 0) {
@@ -368,6 +400,7 @@ export function formatFormDiscovery(result: FormDiscoveryResult): string {
   }
 
   if (result.otherForms) formatOtherForms(result.otherForms, fmt);
+  if (result.formIssues) formatPageFormIssues(result.formIssues, fmt);
 
   for (const url of result.formsInFrames ?? []) {
     fmt.text(`Note: ${formsInFrameMessage(url)}`);

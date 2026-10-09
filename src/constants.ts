@@ -106,6 +106,28 @@ export const MAX_NETWORK_REQUESTS = 10000;
  */
 export const MAX_CONSOLE_MESSAGES = 10000;
 
+/**
+ * Chrome Issues kept per page load: the first ones; later ones are counted
+ * as dropped
+ */
+export const MAX_PAGE_ISSUES = 100;
+
+/**
+ * Elements kept per Chrome Issue (e.g. every field with a duplicate id); the
+ * issue counts them all
+ */
+export const MAX_ISSUE_NODES = 20;
+
+/**
+ * Characters of a Chrome Issue's reason, element and URL
+ */
+export const MAX_ISSUE_TEXT_LENGTH = 300;
+
+/**
+ * Chrome Issues the `bdg console` Issues block lists (JSON lists all kept)
+ */
+export const ISSUES_SHOWN = 8;
+
 // ============================================================================
 // OBJECT EXPANSION CONFIGURATION
 // ============================================================================

@@ -542,6 +542,16 @@ export interface RawFormData {
   readyState?: string;
   /** Custom elements (e.g. `x-vault#pay`) whose closed shadow roots hold form fields, which cannot be listed */
   closedShadowHosts?: string[];
+  /** Form markup errors Chrome reports for elements that are no listed field (e.g. a label whose `for` matches no id) */
+  formIssues?: FormIssue[];
+}
+
+/** A form markup error Chrome reports (an Issues panel entry) */
+export interface FormIssue {
+  /** One-line reason */
+  text: string;
+  /** Elements at fault, e.g. `label[for="missing"]` */
+  elements?: string[];
 }
 
 export interface RawForm {
@@ -593,6 +603,8 @@ export interface RawField {
   options?: FieldOption[];
   /** Backend node id of the field, when the daemon could resolve it */
   backendNodeId?: number;
+  /** Form markup errors Chrome reports for the field (e.g. a duplicate id) */
+  issues?: string[];
 }
 
 export interface RawButton {

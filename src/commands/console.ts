@@ -18,7 +18,7 @@ import { handleValidationError } from '@/commands/shared/handleValidationError.j
 import type { ConsoleCommandOptions } from '@/commands/shared/optionTypes.js';
 import { consoleLevelOption, positiveIntRule } from '@/commands/shared/validation.js';
 import { MAX_CONSOLE_JSON_TEXT_LENGTH, MAX_CONSOLE_TEXT_LENGTH } from '@/constants.js';
-import type { ConsoleMessage } from '@/types.js';
+import type { ConsoleMessage, PageIssue } from '@/types.js';
 import { buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import {
   buildConsoleJsonOutput,
@@ -157,6 +157,7 @@ export function skippedMessages(all: ConsoleMessage[], listed: ConsoleMessage[])
  * @param skipped - Messages the filters left out between the listed ones
  * @param dropped - Oldest messages the session dropped at its limit
  * @param pageCrashedAt - When the page crashed, while it is not loaded again
+ * @param issues - Chrome Issues of the page and how many were not kept
  * @returns Formatting options
  */
 function buildFormatOptions(
@@ -164,12 +165,14 @@ function buildFormatOptions(
   lastN: number,
   skipped?: ConsoleSkipped,
   dropped?: number,
-  pageCrashedAt?: number
+  pageCrashedAt?: number,
+  issues?: PageIssues
 ): ConsoleFormatOptions {
   return {
     ...(options.last !== undefined && { groupLimit: lastN }),
     ...(dropped && { dropped }),
     ...(pageCrashedAt !== undefined && { pageCrashedAt }),
+    ...(issues && { issues: issues.issues, issuesDropped: issues.issuesDropped }),
     list: listsMessages(options),
     follow: options.follow,
     last: lastN,
@@ -259,7 +262,14 @@ export function messageKeys(messages: ConsoleMessage[]): string[] {
   });
 }
 
-interface ConsoleResult {
+/** Chrome Issues of the page currently loaded */
+interface PageIssues {
+  issues: PageIssue[];
+  /** Issues of the page not kept past the per-page limit */
+  issuesDropped: number;
+}
+
+interface ConsoleResult extends PageIssues {
   messages: ConsoleMessage[];
   filtered: ConsoleMessage[];
   /** Dropped messages that could have been in the view (see {@link droppedInView}) */
@@ -318,30 +328,45 @@ export function registerConsoleCommand(program: Command): void {
           if (!result.success) {
             return createErrorResult(result.error, result.exitCode, result.suggestion);
           }
-          const { messages, currentNavigationId, dropped, pageCrashedAt } = result.data;
+          const { messages, currentNavigationId, dropped, pageCrashedAt, issues, issuesDropped } =
+            result.data;
           const filtered = applyFilters(messages, options, currentNavigationId);
           if (options.json) {
             return {
               success: true,
               data: buildConsoleJsonOutput(
                 filtered,
-                buildFormatOptions(options, lastN, undefined, dropped, pageCrashedAt)
+                buildFormatOptions(options, lastN, undefined, dropped, pageCrashedAt, {
+                  issues,
+                  issuesDropped,
+                })
               ),
             };
           }
           const droppedShown = droppedInView(messages, dropped, options, currentNavigationId);
           return {
             success: true,
-            data: { messages, filtered, dropped: droppedShown, pageCrashedAt },
+            data: {
+              messages,
+              filtered,
+              dropped: droppedShown,
+              pageCrashedAt,
+              issues,
+              issuesDropped,
+            },
           };
         },
         options,
         (data) => {
-          const { messages, filtered, dropped, pageCrashedAt } = data as ConsoleResult;
+          const { messages, filtered, dropped, pageCrashedAt, issues, issuesDropped } =
+            data as ConsoleResult;
           const skipped = skippedMessages(messages, lastMessages(filtered, lastN));
           return formatConsole(
             filtered,
-            buildFormatOptions(options, lastN, skipped, dropped, pageCrashedAt)
+            buildFormatOptions(options, lastN, skipped, dropped, pageCrashedAt, {
+              issues,
+              issuesDropped,
+            })
           );
         }
       );

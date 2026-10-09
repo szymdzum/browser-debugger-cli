@@ -673,6 +673,8 @@ Forms shown in an open dialog (`dialog[open]`, `aria-modal`, a dialog role, or a
 
 Forms and form-less fields in open shadow roots (nested ones included) are listed too, marked `(in shadow root of <x-login>)` (JSON: `shadowHost` on forms and in `otherForms`); their labels are read in the field's own root, and their indices work with `dom fill`, `dom click` and `dom submit`. A field in a component's shadow root (an `sl-input` in a light DOM form) belongs to the form around the component. Fields in closed shadow roots cannot be listed: a defined custom element whose closed shadow root holds a field is named instead (`Note: <x-vault> has a closed shadow root with form fields; …`, JSON `closedShadowHosts`; the first 50 custom elements without an open shadow root are checked). Fields of same-origin iframes are not listed: when the main document has no form or field (open shadow roots included), `dom form` exits 89 naming the iframe; otherwise a note names it next to the forms listed (`Note: an iframe holds form fields dom form does not list: <url>; …`, JSON `formsInFrames`).
 
+Form markup errors Chrome reports (see Chrome Issues under `bdg console`) are shown under the field at fault (`      ⚠ Duplicate id on form fields: labels and autofill reach only the first`, JSON `issues` on the field). Errors of elements that are no listed field, such as a label whose `for` matches no id, are listed after the forms (`Form markup issues (Chrome):`, JSON `formIssues` with `text` and `elements`).
+
 **Human Output:**
 ```sql
 FORMS DISCOVERED: 1
@@ -1306,6 +1308,25 @@ bdg console --list --full
 - **Objects automatically expanded** with nested structure visible
 
 Use `--history` to see messages from all page loads during the session.
+
+**Chrome Issues:**
+
+Some causes of a page that looks or behaves wrong never reach the console; Chrome reports them in DevTools' Issues panel instead. `bdg console` lists the ones that matter in an `Issues` block after the errors and warnings, one line each: the reason, then the elements at fault or the file:line.
+
+```text
+Issues (2)
+──────────────────────────────
+• Page is in quirks mode (no <!doctype html>): layout differs from standards mode → https://example.com/
+• Duplicate id on form fields: labels and autofill reach only the first → input#email, input#email
+```
+
+- Kept: quirks mode (no doctype), form markup errors (a label whose `for` matches no id or names a field's `name`, duplicate field ids, fields without a label, without id and name, `aria-labelledby` to a missing id, a label with nothing to label), stylesheets that failed to load (`@import`, `<link>`) and `@import` rules after other rules, `eval()`/`new Function()` and Trusted Types blocked by CSP, interactive content where HTML does not allow it (inside `<summary>`, `<option>`, `<legend>`, `<select>`), and cookies `document.cookie` could not set (with Chrome's exclusion reasons)
+- Dropped as noise: performance hints (`document.cookie` reads), lazy-loaded images, third-party cookie phaseout warnings, cookie problems of requests, federated sign-in, deprecations, autocomplete advice, and CORS, mixed content and CSP URL violations (Chrome logs those to the console already). On bbc.com/news none of the roughly 800 issues Chrome reported in a test run were kept
+- Issues belong to the page currently loaded: a navigation clears them. Chrome reports each element of a kind, form errors twice; each kind is one issue with its elements (`input#email, input#email`; three named, then `+N more`)
+- The block lists 8 issues with a note for the rest (`(+4 more; bdg console --json lists them)`). The session keeps the first 100 issues of a page and 20 elements of each; reasons and URLs are cut at 300 characters
+- Cross-origin iframes (mostly ads and trackers) add none; issues of the page and its same-origin iframes are listed
+- Not shown with `--level` or `--follow`. `--json` has `issues` (`code`, `type`, `text`, `nodes` with `backendNodeId` and `description`, `count`, `source` with 1-based `line`/`column`) and `issuesDropped`
+- `bdg peek` counts them (`ISSUES: 2 (bdg console lists them)`, JSON `totals.issues`); `bdg dom form` shows form errors under the field at fault
 
 **Object Expansion:**
 

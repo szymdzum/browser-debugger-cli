@@ -221,7 +221,8 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   },
   'console:--level': {
     default: 'Shows all log levels (error, warning, log, info, debug)',
-    whenEnabled: 'Filters to specific level: error, warning, log, info, or debug',
+    whenEnabled:
+      'Filters to specific level: error, warning, log, info, or debug; the Issues block (Chrome Issues of the page) is left out',
   },
 
   'fill:--no-wait': {

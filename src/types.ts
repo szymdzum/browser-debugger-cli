@@ -1,5 +1,5 @@
 import type { Protocol } from '@/connection/typed-cdp.js';
-import type { DownloadInfo } from '@/ipc/protocol/domTypes.js';
+import type { DownloadInfo, FormIssue } from '@/ipc/protocol/domTypes.js';
 
 /**
  * Standard response envelope for all bdg command JSON output.
@@ -234,6 +234,33 @@ export interface ConsoleMessage {
 }
 
 /**
+ * A Chrome Issue (DevTools Issues panel) of the page currently loaded: one of
+ * the kinds that make a page look or behave wrong without a console message.
+ */
+export interface PageIssue {
+  /** Chrome's issue code, e.g. `QuirksModeIssue`, `GenericIssue` */
+  code: string;
+  /** Kind within the code, e.g. `FormDuplicateIdForInputError`, `kEvalViolation` */
+  type?: string;
+  /** One-line reason */
+  text: string;
+  /** Elements at fault (the first ones; `count` has how many there are) */
+  nodes?: IssueNode[];
+  /** Number of elements at fault (Chrome reports each; bdg lists the kind once) */
+  count?: number;
+  /** The document, or the stylesheet or script position (1-based line and column) */
+  source?: { url: string; line?: number; column?: number };
+}
+
+/** An element a Chrome Issue is about */
+export interface IssueNode {
+  /** Backend node id (e.g. for `DOM.resolveNode`) */
+  backendNodeId: number;
+  /** e.g. `label[for="missing"]`, `input#email` (set shortly after the issue arrives) */
+  description?: string;
+}
+
+/**
  * Console message level categories for user-facing filtering.
  * Used by --level option in console command.
  */
@@ -252,6 +279,8 @@ export interface BdgOutput {
     network?: NetworkRequest[];
     console?: ConsoleMessage[];
     websockets?: WebSocketConnection[];
+    /** Chrome Issues of the page currently loaded */
+    issues?: PageIssue[];
   };
   /** Navigation id of the page currently loaded (live previews) */
   currentNavigationId?: number;
@@ -269,6 +298,10 @@ export interface BdgOutput {
     networkDropped?: number;
     /** Response bodies evicted at the total body budget, oldest first */
     networkBodiesEvicted?: number;
+    /** Chrome Issues of the page currently loaded */
+    issues?: number;
+    /** Chrome Issues of the page not kept past the per-page limit */
+    issuesDropped?: number;
   };
   error?: string;
   partial?: boolean; // Flag to indicate this is partial/incomplete data (live preview)
@@ -691,6 +724,8 @@ export interface FormField {
   maskedValue?: string | undefined;
   validation: FieldValidation;
   options?: FieldOption[] | undefined;
+  /** Form markup errors Chrome reports for the field (e.g. a duplicate id) */
+  issues?: string[] | undefined;
   command: string;
   selectorCommand: string;
 }
@@ -792,6 +827,8 @@ export interface FormDiscoveryResult {
   formsInFrames?: string[] | undefined;
   /** Custom elements whose closed shadow roots hold form fields (not inspectable, so not listed) */
   closedShadowHosts?: string[] | undefined;
+  /** Form markup errors Chrome reports for elements that are no listed field (e.g. a label whose `for` matches no id) */
+  formIssues?: FormIssue[] | undefined;
   brief?: boolean | undefined;
 }
 

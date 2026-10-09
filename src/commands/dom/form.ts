@@ -232,6 +232,7 @@ function transformField(raw: RawField): FormField {
     maskedValue: buildMaskedValue(raw),
     validation: buildValidation(raw),
     options: raw.options,
+    ...(raw.issues && { issues: raw.issues }),
     command: editable(raw) ? buildFieldCommand(raw.index, raw.type) : '',
     selectorCommand: editable(raw) ? buildSelectorCommand(raw.selector, raw.type) : '',
   };
@@ -415,6 +416,7 @@ async function handleFormCommand(options: FormCommandOptions): Promise<void> {
             formsInFrames: rawData.frameForms.map((frame) => frame.url),
           }),
         ...(rawData.closedShadowHosts && { closedShadowHosts: rawData.closedShadowHosts }),
+        ...(rawData.formIssues && { formIssues: rawData.formIssues }),
         brief: options.brief,
       };
 
