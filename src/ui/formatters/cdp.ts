@@ -5,6 +5,7 @@
 
 import type { ParameterSchema, ReturnSchema } from '@/cdp/schema.js';
 import { joinLines, pluralize } from '@/ui/formatting.js';
+import { cdpRedirectTitle, cdpUnresolvedRedirectLine } from '@/ui/messages/commands.js';
 
 /** Protocol description and flags shared by domains and methods */
 interface ProtocolEntry {
@@ -98,7 +99,7 @@ export interface CdpMethodDescription extends ProtocolEntry {
   note?: string | undefined;
   parameters: CdpParameter[];
   returns: (CdpField & { optional: boolean })[];
-  redirect?: { method: string; parameters: CdpParameter[] } | undefined;
+  redirect?: { method: string; resolved: boolean; parameters: CdpParameter[] } | undefined;
   example?: { command: string; params?: Record<string, unknown> | undefined } | undefined;
 }
 
@@ -291,14 +292,16 @@ function typeHint(parameters: CdpParameter[]): string | undefined {
 }
 
 /**
- * Lines naming the method a redirected one runs, with its parameters.
+ * Lines naming the method a redirected one runs, with its parameters, or
+ * saying the protocol lacks it.
  *
  * @param redirect - Redirect target, if any
  * @returns Title and parameter lines, or nothing without a redirect
  */
 function redirectSection(redirect: CdpMethodDescription['redirect']): string[] {
   if (!redirect) return [];
-  const title = `Implemented by ${redirect.method} (redirect)`;
+  if (!redirect.resolved) return [cdpUnresolvedRedirectLine(redirect.method)];
+  const title = cdpRedirectTitle(redirect.method);
   return redirect.parameters.length === 0
     ? [title]
     : fieldSection(`${title}, with these parameters`, parameterFields(redirect.parameters));

@@ -5,8 +5,15 @@
  * know it, unless it is a close typo of a method or domain the schema knows.
  */
 
-import { findDomain, findType, loadProtocol, normalizeMethod } from '@/cdp/protocol.js';
+import {
+  findCommand,
+  findDomain,
+  findType,
+  loadProtocol,
+  normalizeMethod,
+} from '@/cdp/protocol.js';
 import { levenshteinDistance } from '@/utils/levenshtein.js';
+import { findSimilar } from '@/utils/suggestions.js';
 
 /** What a `Domain.method` name resolves to */
 export type MethodTarget =
@@ -120,4 +127,79 @@ export function resolveMethodTarget(input: string): MethodTarget {
   return suggestions.length > 0
     ? { kind: 'typo', method, suggestions }
     : { kind: 'unlisted', method };
+}
+
+/**
+ * Why Chrome may have answered that it has no method bdg sent (-32601), as
+ * far as the bundled protocol tells.
+ */
+export type MissingMethodCause =
+  /** A bundled method: this Chrome is older than the bundled protocol (or the method is not for pages) */
+  | { kind: 'older' }
+  /** A bundled method redirected to a method the protocol lacks, with methods close to that one */
+  | { kind: 'deadRedirect'; target: string; similar: string[] }
+  /** A domain the bundled protocol lacks too, with bundled domains close to it */
+  | { kind: 'unknownDomain'; domain: string; similar: string[] }
+  /** A method of a bundled domain the bundled protocol lacks; `oneCase` when typed in one case */
+  | { kind: 'unlisted'; oneCase: boolean };
+
+/**
+ * Names close to a name, for a "Did you mean" after Chrome refused it: up
+ * to half its length off (at most 3), so `Foo` is not taken for `Log`.
+ *
+ * @param name - Name as sent
+ * @param candidates - Known names
+ * @returns Close names, closest first
+ */
+function similarNames(name: string, candidates: readonly string[]): string[] {
+  return findSimilar(name, candidates, {
+    maxDistance: Math.min(3, Math.max(1, Math.floor(name.length / 2))),
+  });
+}
+
+/**
+ * Whether a method name is all lower or all upper case, which a CDP method
+ * of more than one word never is (they are lowerCamelCase).
+ *
+ * @param methodName - Method part as sent
+ * @returns True for e.g. `getrelatedwebsitesets`
+ */
+function isOneCase(methodName: string): boolean {
+  return methodName === methodName.toLowerCase() || methodName === methodName.toUpperCase();
+}
+
+/**
+ * Why Chrome has no method bdg sent (it answered -32601): a bundled method
+ * this Chrome is older than, one redirected to a method the protocol lacks,
+ * a domain neither knows, or a method the bundled protocol lacks.
+ *
+ * @param method - Method as sent (`Domain.method`, a bundled domain recased)
+ * @returns The cause
+ *
+ * @example
+ * ```typescript
+ * missingMethodCause('Page.deleteCookie'); // deadRedirect to Network.deleteCookie
+ * missingMethodCause('Foo.bar');           // unknownDomain Foo
+ * ```
+ */
+export function missingMethodCause(method: string): MissingMethodCause {
+  const [domainName = '', methodName = ''] = method.split('.');
+  const domain = findDomain(domainName);
+  if (!domain) {
+    const domains = loadProtocol().domains.map((d) => d.domain);
+    return {
+      kind: 'unknownDomain',
+      domain: domainName,
+      similar: similarNames(domainName, domains),
+    };
+  }
+  const command = findCommand(domain.domain, methodName);
+  if (!command) return { kind: 'unlisted', oneCase: isOneCase(methodName) };
+  if (!command.redirect || findCommand(command.redirect, command.name)) return { kind: 'older' };
+  const targetMethods = findDomain(command.redirect)?.commands?.map((c) => c.name) ?? [];
+  return {
+    kind: 'deadRedirect',
+    target: `${command.redirect}.${command.name}`,
+    similar: similarNames(command.name, targetMethods).map((name) => `${command.redirect}.${name}`),
+  };
 }

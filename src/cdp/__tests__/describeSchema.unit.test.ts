@@ -17,6 +17,22 @@ void describe('getMethodSchema', () => {
     assert.match(schema?.example?.command ?? '', /"highlightConfig":\{\}/);
   });
 
+  void it('marks a redirect to a method the protocol lacks as unresolved', () => {
+    assert.equal(getMethodSchema('DOM', 'highlightNode')?.redirect?.resolved, true);
+    const dead = getMethodSchema('Page', 'deleteCookie')?.redirect;
+    assert.equal(dead?.method, 'Network.deleteCookie');
+    assert.equal(dead?.resolved, false);
+  });
+
+  void it('uses realistic example values for numbers', () => {
+    const example = getMethodSchema('Emulation', 'setDeviceMetricsOverride')?.example?.params;
+    assert.deepEqual(example, { width: 1280, height: 800, deviceScaleFactor: 1, mobile: true });
+    const scroll = getMethodSchema('Input', 'synthesizeScrollGesture')?.example?.params;
+    assert.deepEqual(scroll, { x: 100, y: 100 });
+    const navigate = getMethodSchema('Page', 'navigate')?.example?.params;
+    assert.deepEqual(navigate, { url: 'https://example.com' });
+  });
+
   void it('expands a $ref enum inline and names the type', () => {
     const sameSite = getMethodSchema('Network', 'setCookie')?.parameters.find(
       (p) => p.name === 'sameSite'

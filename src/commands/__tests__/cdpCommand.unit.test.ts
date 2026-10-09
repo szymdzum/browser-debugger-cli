@@ -8,12 +8,15 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { Command } from 'commander';
+
 import {
   cdpCallResult,
   handleDescribeMethod,
   isBareDomain,
   methodToSend,
   pageExceptionResult,
+  registerCdpCommand,
 } from '@/commands/cdp.js';
 import { CommandError } from '@/errors/index.js';
 import type { CdpMethodDescription, CdpTypeDescription } from '@/ui/formatters/cdp.js';
@@ -169,6 +172,17 @@ void describe('handleDescribeMethod', () => {
     assert.ok(data.redirect?.parameters.some((p) => p.name === 'highlightConfig'));
   });
 
+  void it('marks the redirect of Page.deleteCookie to a missing method as unresolved', () => {
+    const result = handleDescribeMethod('Page.deleteCookie');
+    assert.equal(result.success, true);
+    const data = result.data as CdpMethodDescription;
+    assert.deepEqual(data.redirect, {
+      method: 'Network.deleteCookie',
+      resolved: false,
+      parameters: [],
+    });
+  });
+
   void it('expands the CookieSameSite enum of Network.setCookie', () => {
     const data = handleDescribeMethod('Network.setCookie').data as CdpMethodDescription;
     const sameSite = data.parameters.find((p) => p.name === 'sameSite');
@@ -190,5 +204,16 @@ void describe('handleDescribeMethod', () => {
     assert.equal(result.success, false);
     assert.match(result.error ?? '', /not in the bundled protocol/);
     assert.match(String(result.errorContext?.['suggestion']), /sends it to Chrome as is/);
+  });
+});
+
+void describe('bdg cdp --help', () => {
+  void it('says only bundled methods are matched case-insensitively', () => {
+    const program = new Command();
+    registerCdpCommand(program);
+    const description = program.commands[0]?.description() ?? '';
+    assert.doesNotMatch(description, /Execution: case-insensitive \(/);
+    assert.match(description, /bundled methods are case-insensitive/);
+    assert.match(description, /Other methods are sent as typed \(case-sensitive\)/);
   });
 });

@@ -11,6 +11,8 @@
 import * as assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { rmSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -202,6 +204,13 @@ void describe('JSON contract', () => {
     assert.ok(JSON.stringify(redirect.parameters).includes('"highlightConfig"'));
     const human = await runCommand('cdp', ['DOM.highlightNode', '--describe']);
     assert.match(human.stdout, /Implemented by Overlay\.highlightNode \(redirect\)/);
+    assert.equal((redirected.data?.['redirect'] as { resolved: boolean }).resolved, true);
+    const dead = await expectEnvelope(['cdp', 'Page.deleteCookie', '--describe', '--json'], 0);
+    assert.deepEqual(dead.data?.['redirect'], {
+      method: 'Network.deleteCookie',
+      resolved: false,
+      parameters: [],
+    });
     const setCookie = await runCommand('cdp', ['Network.setCookie', '--describe']);
     assert.match(setCookie.stdout, /sameSite\?: CookieSameSite \(Strict\|Lax\|None\)/);
     const type = await expectEnvelope(['cdp', 'Network.CookieSameSite', '--describe', '--json'], 0);
@@ -303,8 +312,29 @@ void describe('JSON contract', () => {
     );
     assert.match(String(noNode.suggestion), /DOM\.getDocument/);
     const madeUp = await expectEnvelope(['cdp', 'Nonexistent.method', '--json'], 83);
-    assert.match(String(madeUp.error), /^This Chrome doesn't implement Nonexistent\.method/);
+    assert.match(String(madeUp.error), /^Unknown CDP domain Nonexistent:/);
+    assert.match(String(madeUp.suggestion), /bdg cdp --list/);
     assert.doesNotMatch(String(madeUp.suggestion), /--describe/);
+    const deadRedirect = await expectEnvelope(
+      [
+        'cdp',
+        'Page.deleteCookie',
+        '--params',
+        '{"cookieName":"a","url":"https://a.test"}',
+        '--json',
+      ],
+      83
+    );
+    assert.match(String(deadRedirect.error), /redirects it to Network\.deleteCookie/);
+    assert.doesNotMatch(String(deadRedirect.suggestion), /older/);
+    assert.match(String(deadRedirect.suggestion), /Network\.deleteCookies/);
+    const shotPath = path.join(os.tmpdir(), `bdg-contract-${process.pid}.png`);
+    const element = await expectEnvelope(
+      ['dom', 'screenshot', shotPath, '--selector', 'button', '--json'],
+      0
+    );
+    rmSync(shotPath, { force: true });
+    assert.equal(element.data?.['captureMode'], 'element');
     assert.match(String(madeUp.warning), /^Nonexistent\.method is not in the bundled protocol/);
     const forced = await expectEnvelope(
       ['cdp', 'Network.getCookes', '--send-anyway', '--json'],

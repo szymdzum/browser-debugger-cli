@@ -102,6 +102,35 @@ export function cdpUnlistedMethodWarning(method: string, protocolVersion: string
 }
 
 /**
+ * `bdg cdp --describe` line for a redirect to a method the protocol lacks
+ * (e.g. Page.deleteCookie names Network.deleteCookie).
+ *
+ * @param method - Redirect target
+ * @returns Line text
+ */
+export function cdpUnresolvedRedirectLine(method: string): string {
+  return `Redirect target ${method} is not in the protocol (unresolved redirect)`;
+}
+
+/**
+ * `bdg cdp --describe` title of a redirect to a method the protocol has.
+ *
+ * @param method - Redirect target
+ * @returns Title text
+ */
+export function cdpRedirectTitle(method: string): string {
+  return `Implemented by ${method} (redirect)`;
+}
+
+/**
+ * Lines of `bdg cdp --help` saying how names are matched (each short
+ * enough not to be wrapped).
+ */
+export const CDP_EXECUTION_HELP =
+  '  Execution: bundled methods are case-insensitive (network.getcookies works)\n' +
+  '  Other methods are sent as typed (case-sensitive)';
+
+/**
  * Part of the `bdg dom form` summary naming the required fields left empty.
  *
  * @param labels - Labels of the empty required fields

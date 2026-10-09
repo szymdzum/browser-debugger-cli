@@ -32,9 +32,14 @@ export interface MethodSchema {
   parameters: ParameterSchema[];
   /** Return value schema */
   returns: ReturnSchema[];
-  /** The method implementing this one (the schema's `redirect`) and its parameters */
+  /**
+   * The method implementing this one (the schema's `redirect`) and its
+   * parameters; `resolved` is false when the protocol lacks that method
+   * (e.g. Page.deleteCookie names Network.deleteCookie)
+   */
   redirect?: {
     method: string;
+    resolved: boolean;
     parameters: ParameterSchema[];
   };
   /** Usage example (JSON) */
@@ -191,7 +196,8 @@ function buildMethodSchema(domainName: string, command: Command): MethodSchema {
 
 /**
  * The method a redirected command runs (e.g. DOM.highlightNode runs
- * Overlay.highlightNode), with the parameters Chrome checks.
+ * Overlay.highlightNode), with the parameters Chrome checks, and whether the
+ * protocol has that method.
  *
  * @param command - Command from protocol
  * @returns Redirect target, or undefined when the command has none
@@ -201,6 +207,7 @@ function buildRedirect(command: Command): MethodSchema['redirect'] {
   const target = findCommand(command.redirect, command.name);
   return {
     method: `${command.redirect}.${command.name}`,
+    resolved: target !== undefined,
     parameters: target?.parameters?.map((p) => paramToSchema(command.redirect ?? '', p)) ?? [],
   };
 }
@@ -332,7 +339,25 @@ function resolveType(typeRef: { type?: string; $ref?: string }): string {
 }
 
 /**
- * Get example value for a parameter type.
+ * Example values for parameters whose name says what a realistic value is,
+ * where the type's placeholder would do something else (`width: 0` disables
+ * `Emulation.setDeviceMetricsOverride`, `url: "example"` is no URL).
+ */
+const EXAMPLE_VALUES: Record<string, number | string> = {
+  width: 1280,
+  height: 800,
+  x: 100,
+  y: 100,
+  deviceScaleFactor: 1,
+  scale: 1,
+  timeout: 5000,
+  responseCode: 200,
+  url: 'https://example.com',
+};
+
+/**
+ * Get example value for a parameter: a realistic value for its name, else
+ * one for its type (1 for numbers, so it never means "off").
  *
  * @param param - Parameter schema
  * @returns Example value
@@ -341,12 +366,16 @@ function getExampleValue(param: ParameterSchema): unknown {
   if (param.enum && param.enum.length > 0) {
     return param.enum[0];
   }
-  switch (param.refType ?? param.type) {
+  const type = param.refType ?? param.type;
+  const named = Object.hasOwn(EXAMPLE_VALUES, param.name) ? EXAMPLE_VALUES[param.name] : undefined;
+  const namedType = typeof named === 'number' ? ['integer', 'number'] : ['string'];
+  if (named !== undefined && namedType.includes(type)) return named;
+  switch (type) {
     case 'string':
       return 'example';
     case 'integer':
     case 'number':
-      return 0;
+      return 1;
     case 'boolean':
       return true;
     case 'array':

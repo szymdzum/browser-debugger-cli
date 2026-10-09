@@ -1,6 +1,6 @@
 import type { TelemetryStore } from './TelemetryStore.js';
 
-import { normalizeMethod } from '@/cdp/protocol.js';
+import { missingMethodCause } from '@/cdp/methodTarget.js';
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPConnectionError, CDPProtocolError } from '@/connection/errors.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
@@ -450,11 +450,7 @@ const CDP_METHOD_NOT_FOUND = -32601;
 export function callerError(method: string, error: unknown): CommandError | undefined {
   if (!(error instanceof CDPProtocolError)) return undefined;
   if (error.code === CDP_METHOD_NOT_FOUND) {
-    const missing = cdpMethodNotImplementedError(
-      method,
-      error.message,
-      normalizeMethod(method) !== undefined
-    );
+    const missing = cdpMethodNotImplementedError(method, error.message, missingMethodCause(method));
     return new CommandError(
       missing.message,
       { suggestion: missing.suggestion },
