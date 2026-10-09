@@ -342,9 +342,10 @@ export class SessionController {
    * Execute a session command (dom_*, cdp_call, session_details, ...).
    *
    * @param request - Command request
+   * @param abandoned - Aborted when the requesting client disconnects
    * @returns Command response, forwarding exit code and suggestion on failure
    */
-  async command(request: ClientRequestUnion): Promise<unknown> {
+  async command(request: ClientRequestUnion, abandoned?: AbortSignal): Promise<unknown> {
     const name = request.type.slice(0, -'_request'.length) as CommandName;
     const base = { type: `${name}_response`, sessionId: request.sessionId };
     if (!this.session) {
@@ -354,10 +355,11 @@ export class SessionController {
     try {
       const execute = this.session.execute.bind(this.session) as (
         n: CommandName,
-        p: unknown
+        p: unknown,
+        a?: AbortSignal
       ) => Promise<unknown>;
       const data = await withTimeout(
-        execute(name, params),
+        execute(name, params, abandoned),
         commandTimeoutMs(name, params),
         'Command'
       );

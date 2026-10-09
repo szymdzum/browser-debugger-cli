@@ -61,9 +61,11 @@ const MAX_PEEK_ITEMS = 10000;
 /** Default number of items to return when not specified */
 const DEFAULT_PEEK_ITEMS = 10;
 
+/** A command's handler; `abandoned` aborts when its client disconnects */
 type Handler<K extends CommandName> = (
   cdp: CDPConnection,
-  params: CommandSchemas[K]['requestSchema']
+  params: CommandSchemas[K]['requestSchema'],
+  abandoned?: AbortSignal
 ) => Promise<CommandSchemas[K]['responseSchema']>;
 
 export type CommandRegistry = {
@@ -823,8 +825,8 @@ export function createCommandRegistry(
         )
       ),
 
-    dom_screenshot: async (cdp, params) =>
-      takeScreenshot(cdp, params, () => emulation.get().viewport),
+    dom_screenshot: async (cdp, params, abandoned) =>
+      takeScreenshot(cdp, params, () => emulation.get().viewport, { abandoned }),
 
     dom_wait: async (cdp, params) => waitForCondition(cdp, params),
 

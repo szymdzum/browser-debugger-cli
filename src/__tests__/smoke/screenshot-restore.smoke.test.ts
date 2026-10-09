@@ -6,7 +6,9 @@
  * pixel ratio of 1 on a high-DPI page) and puts it back afterwards. Ctrl-C on
  * the screenshot command must not leave it changed: the page is measured
  * before, the command interrupted while the emulation is changed, and the page
- * must measure the same afterwards.
+ * must measure the same right after the command exited, with no waiting
+ * (#519): the daemon runs page commands only once the capture's restore is
+ * done.
  */
 
 import * as assert from 'node:assert/strict';
@@ -25,6 +27,9 @@ import { makeTempDir, removeTempDirs } from '@/__testutils__/tempDirs.js';
 /** What the page's layout depends on: window size, visible width, pixel ratio */
 const PAGE_METRICS_JS =
   '[innerWidth, innerHeight, document.documentElement.clientWidth, devicePixelRatio]';
+
+/** What a phone emulation sets beyond the viewport: pixel ratio and touch */
+const PHONE_JS = '[devicePixelRatio, navigator.maxTouchPoints]';
 
 /**
  * How long the page stays busy once the capture changed its emulation. The
@@ -88,24 +93,6 @@ async function evaluate(expression: string): Promise<unknown> {
   return (JSON.parse(output) as { data: { result: unknown } }).data.result;
 }
 
-/**
- * Wait until the page measures as expected, or the time runs out. The
- * restore can land just after the interrupted command exits (#519); it takes
- * well under a second, the wait allows 15 s.
- *
- * @param expected - Metrics before the capture
- * @returns The last metrics read
- */
-async function metricsBack(expected: unknown): Promise<unknown> {
-  const deadline = Date.now() + 15000;
-  let metrics = await evaluate(PAGE_METRICS_JS);
-  while (JSON.stringify(metrics) !== JSON.stringify(expected) && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 250));
-    metrics = await evaluate(PAGE_METRICS_JS);
-  }
-  return metrics;
-}
-
 after(removeTempDirs);
 
 void describe('Screenshot emulation', () => {
@@ -125,12 +112,16 @@ void describe('Screenshot emulation', () => {
 
   /**
    * Take a screenshot, interrupt it (Ctrl-C) once it changed the page's
-   * emulation, and check the page measures as before.
+   * emulation, and check the page measures as before right after the
+   * command exited (130): no polling, the first read must see it.
    *
    * @param args - Screenshot arguments after the file
+   * @param probe - Expression whose value must also be as before
+   * @returns The interrupted command's stdout
    */
-  async function interruptCapture(args: string[]): Promise<void> {
+  async function interruptCapture(args: string[], probe = PAGE_METRICS_JS): Promise<string> {
     const metrics = await evaluate(PAGE_METRICS_JS);
+    const probed = await evaluate(probe);
     await evaluate(TRAP_JS);
     fixture.beacons.length = 0;
     const file = path.join(makeTempDir('bdg-shot-'), 'shot.png');
@@ -145,8 +136,11 @@ void describe('Screenshot emulation', () => {
     }
     assert.ok(fixture.beacons.includes('changed'), 'the capture never changed the emulation');
     ctrlC.abort();
-    assert.equal((await shot).exitCode, 130);
-    assert.deepEqual(await metricsBack(metrics), metrics);
+    const result = await shot;
+    assert.equal(result.exitCode, 130, `${result.stdout}${result.stderr}`);
+    assert.deepEqual(await evaluate(probe), probed, 'read right after the interrupted capture');
+    assert.deepEqual(await evaluate(PAGE_METRICS_JS), metrics);
+    return result.stdout;
   }
 
   void it('Ctrl-C during an element capture beyond the viewport leaves the viewport as it was', async () => {
@@ -164,7 +158,20 @@ void describe('Screenshot emulation', () => {
     await bdg(['page', 'emulate', '--mobile']);
     try {
       assert.equal(await evaluate('devicePixelRatio'), 3);
-      await interruptCapture(['--no-full-page']);
+      await interruptCapture(['--no-full-page'], PHONE_JS);
+    } finally {
+      await bdg(['page', 'emulate', '--reset']);
+    }
+  });
+
+  void it('Ctrl-C during a full-page capture of a phone page: the next command sees its pixel ratio and touch; --json prints the error envelope', async () => {
+    await bdg(['page', 'emulate', '--mobile']);
+    try {
+      assert.deepEqual(await evaluate(PHONE_JS), [3, 5]);
+      const stdout = await interruptCapture(['--no-resize', '--json'], PHONE_JS);
+      const envelope = JSON.parse(stdout) as { success: boolean; exitCode: number };
+      assert.equal(envelope.success, false);
+      assert.equal(envelope.exitCode, 130);
     } finally {
       await bdg(['page', 'emulate', '--reset']);
     }

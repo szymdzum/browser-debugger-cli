@@ -4,9 +4,15 @@
  * it returns.
  */
 
+import {
+  interruptExitCode,
+  interruptSignal,
+  unlessInterrupted,
+  type InterruptSignal,
+} from '@/commands/shared/interrupt.js';
 import { writeOutputFile } from '@/commands/shared/outputFile.js';
 import { CommandError } from '@/errors/index.js';
-import { operationFailedError } from '@/errors/messages.js';
+import { operationFailedError, screenshotInterruptedError } from '@/errors/messages.js';
 import { domScreenshot } from '@/ipc/client.js';
 import type { DomScreenshotCommand } from '@/ipc/protocol/commands.js';
 import type { ScreenshotResult } from '@/types.js';
@@ -14,20 +20,55 @@ import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
+ * The error of a screenshot interrupted by Ctrl-C or SIGTERM.
+ *
+ * @param signal - The signal
+ * @returns Command error (exit 130, or 143 for SIGTERM)
+ */
+export function screenshotInterrupted(signal: InterruptSignal): CommandError {
+  const err = screenshotInterruptedError(signal);
+  return new CommandError(err.message, { suggestion: err.suggestion }, interruptExitCode(signal));
+}
+
+/**
+ * Ask the daemon for the capture. An interrupt ends the wait at once and
+ * closes the connection: the daemon skips the capture if it has not started,
+ * and puts the emulation back before it runs any later page command, so this
+ * need not wait.
+ *
+ * @param request - What to capture and how
+ * @param interrupt - Aborted on Ctrl-C or SIGTERM
+ * @returns The daemon's response
+ * @throws CommandError (130/143) once interrupted
+ */
+async function requestCapture(
+  request: DomScreenshotCommand,
+  interrupt: AbortSignal | undefined
+): Promise<Awaited<ReturnType<typeof domScreenshot>>> {
+  if (!interrupt) return domScreenshot(request);
+  const capture = domScreenshot(request, interrupt);
+  const response = await unlessInterrupted(capture, interrupt, screenshotInterrupted);
+  if (interrupt.aborted) throw screenshotInterrupted(interruptSignal(interrupt));
+  return response;
+}
+
+/**
  * Capture the page (or the element `backendNodeId` names) and write the
  * image.
  *
  * @param outputPath - File to write
  * @param request - What to capture and how
+ * @param interrupt - Aborted on Ctrl-C or SIGTERM: the capture is cancelled
  * @returns What was captured, with the file's absolute path
  * @throws CommandError with the daemon's error (Chrome's, when the capture
- *   failed) and exit code
+ *   failed) and exit code, or 130/143 when interrupted
  */
 export async function captureScreenshot(
   outputPath: string,
-  request: DomScreenshotCommand
+  request: DomScreenshotCommand,
+  interrupt?: AbortSignal
 ): Promise<ScreenshotResult> {
-  const response = await domScreenshot(request);
+  const response = await requestCapture(request, interrupt);
   if (response.status === 'error' || !response.data) {
     const fallback = operationFailedError(
       'take the screenshot',

@@ -38,6 +38,14 @@ const log = createLogger('dom');
 /** What a screenshot reports, but the file it was written to */
 type Screenshot = DomScreenshotData['screenshot'];
 
+/** How a screenshot is run */
+export interface ScreenshotOptions {
+  /** Aborted when the requesting client disconnects: the capture is skipped, the restore runs */
+  abandoned?: AbortSignal | undefined;
+  /** When a busy page is checked */
+  recovery?: BusyRecoveryOptions;
+}
+
 /** JPEG quality when none is given */
 const DEFAULT_JPEG_QUALITY = 90;
 
@@ -49,21 +57,24 @@ const DEFAULT_JPEG_QUALITY = 90;
  * A page whose scripts keep it busy gets them terminated
  * ({@link withBusyPageRecovery}, exit 102); the capture then ends, and the
  * error is reported once its emulation is back, so the next command does not
- * race the restore.
+ * race the restore. A capture whose client left (Ctrl-C) is not taken once
+ * that is known: only the restore runs.
  *
  * @param cdp - Session connection
  * @param params - What to capture and how
  * @param sessionViewport - Reads the session's emulated viewport, if any
- * @param recovery - When a busy page is checked (tests shorten it)
+ * @param options - When the client left, and when a busy page is checked (tests shorten it)
  * @returns The image (base64) and what was captured
  */
 export async function takeScreenshot(
   cdp: CDPConnection,
   params: DomScreenshotCommand,
   sessionViewport: () => ViewportSize | undefined,
-  recovery: BusyRecoveryOptions = {}
+  options: ScreenshotOptions = {}
 ): Promise<DomScreenshotData> {
-  const shot = captureAndRestore(cdp, params, new CaptureEmulation(cdp, sessionViewport));
+  const { abandoned, recovery = {} } = options;
+  const emulation = new CaptureEmulation(cdp, sessionViewport);
+  const shot = captureAndRestore(cdp, params, emulation, abandoned);
   try {
     return await withBusyPageRecovery(cdp, shot, recovery);
   } catch (error) {
@@ -81,19 +92,27 @@ export async function takeScreenshot(
  * @param cdp - Session connection
  * @param params - What to capture and how
  * @param emulation - Emulation changes of this capture
+ * @param abandoned - Aborted when the client left
  * @returns The image (base64) and what was captured
  */
 async function captureAndRestore(
   cdp: CDPConnection,
   params: DomScreenshotCommand,
-  emulation: CaptureEmulation
+  emulation: CaptureEmulation,
+  abandoned: AbortSignal | undefined
 ): Promise<DomScreenshotData> {
   let shot: DomScreenshotData;
   try {
     shot =
       params.backendNodeId === undefined
-        ? await capturePage(cdp, params, emulation)
-        : await captureElement(cdp, { backendNodeId: params.backendNodeId }, params, emulation);
+        ? await capturePage(cdp, params, emulation, abandoned)
+        : await captureElement(
+            cdp,
+            { backendNodeId: params.backendNodeId },
+            params,
+            emulation,
+            abandoned
+          );
   } catch (error) {
     await emulation
       .restore()
@@ -138,16 +157,21 @@ function layoutMetrics(cdp: CDPConnection): Promise<Protocol.Page.GetLayoutMetri
 }
 
 /**
- * Capture an image.
+ * Capture an image, unless the client left: a capture of a tall page takes
+ * seconds, and nobody would get it.
  *
  * @param cdp - Session connection
  * @param params - Format, quality, clip
+ * @param abandoned - Aborted when the client left
  * @returns The image (base64) and its size in bytes
+ * @throws The abort reason when the client left
  */
 async function captureImage(
   cdp: CDPConnection,
-  params: Protocol.Page.CaptureScreenshotRequest
+  params: Protocol.Page.CaptureScreenshotRequest,
+  abandoned: AbortSignal | undefined
 ): Promise<{ image: string; size: number }> {
+  abandoned?.throwIfAborted();
   const { data } = await new TypedCDPConnection(cdp).send('Page.captureScreenshot', params);
   return { image: data, size: Buffer.byteLength(data, 'base64') };
 }
@@ -210,12 +234,14 @@ async function visibleAreaOrigin(cdp: CDPConnection): Promise<ScrollPosition> {
  * @param cdp - Session connection
  * @param params - Capture options
  * @param emulation - Emulation changes of this capture
+ * @param abandoned - Aborted when the client left
  * @returns Image and what was captured
  */
 async function capturePage(
   cdp: CDPConnection,
   params: DomScreenshotCommand,
-  emulation: CaptureEmulation
+  emulation: CaptureEmulation,
+  abandoned: AbortSignal | undefined
 ): Promise<DomScreenshotData> {
   if (params.scroll) emulation.scrolledAwayFrom(await scrollToElement(cdp, params.scroll));
   const devicePixelRatio = await pixelRatio(cdp);
@@ -226,12 +252,16 @@ async function capturePage(
   if (devicePixelRatio !== 1 && params.scroll) await scrollIntoViewAgain(cdp, params.scroll);
   const origin = plan.fullPage ? { x: 0, y: 0 } : await visibleAreaOrigin(cdp);
   const quality = jpegQuality(params);
-  const { image, size } = await captureImage(cdp, {
-    format: params.format,
-    ...(quality !== undefined && { quality }),
-    captureBeyondViewport: plan.fullPage,
-    clip: { ...origin, width: plan.width, height: plan.height, scale: plan.scale },
-  });
+  const { image, size } = await captureImage(
+    cdp,
+    {
+      format: params.format,
+      ...(quality !== undefined && { quality }),
+      captureBeyondViewport: plan.fullPage,
+      clip: { ...origin, width: plan.width, height: plan.height, scale: plan.scale },
+    },
+    abandoned
+  );
   const screenshot = pageScreenshot(params, plan, size, viewport, contentSize);
   return { image, screenshot };
 }
@@ -403,13 +433,15 @@ async function measureArea(
  * @param ref - The element
  * @param params - Capture options
  * @param emulation - Emulation changes of this capture
+ * @param abandoned - Aborted when the client left
  * @returns Image and what was captured
  */
 async function captureElement(
   cdp: CDPConnection,
   ref: ElementRef,
   params: DomScreenshotCommand,
-  emulation: CaptureEmulation
+  emulation: CaptureEmulation,
+  abandoned: AbortSignal | undefined
 ): Promise<DomScreenshotData> {
   const devicePixelRatio = await pixelRatio(cdp);
   const { visualViewport } = await layoutMetrics(cdp);
@@ -428,12 +460,16 @@ async function captureElement(
   const resized = shouldResize(clip.width, clip.height, params.noResize ?? false);
   const scale = resized ? calculateResizeScale(clip.width, clip.height) : 1;
   const quality = jpegQuality(params);
-  const { image, size } = await captureImage(cdp, {
-    format: params.format,
-    ...(quality !== undefined && { quality }),
-    clip: { ...clip, scale },
-    captureBeyondViewport: !measured.inView,
-  });
+  const { image, size } = await captureImage(
+    cdp,
+    {
+      format: params.format,
+      ...(quality !== undefined && { quality }),
+      clip: { ...clip, scale },
+      captureBeyondViewport: !measured.inView,
+    },
+    abandoned
+  );
   const element = {
     bounds: roundBounds(onPage(measured.box)),
     ...(measured.bounds !== measured.box && { captured: roundBounds(clip) }),

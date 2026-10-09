@@ -220,7 +220,7 @@ export class IPCServer {
     disconnected: AbortSignal
   ): Promise<unknown> {
     if (isCommandRequest(message.type)) {
-      return this.controller.command(message as ClientRequestUnion);
+      return this.controller.command(message as ClientRequestUnion, disconnected);
     }
     switch (message.type) {
       case 'handshake_request':

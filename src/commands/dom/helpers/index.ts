@@ -18,6 +18,6 @@ export {
   pageDocumentId,
 } from '@/commands/dom/helpers/query.js';
 
-export { captureScreenshot } from '@/commands/dom/helpers/screenshot.js';
+export { captureScreenshot, screenshotInterrupted } from '@/commands/dom/helpers/screenshot.js';
 
 export type { DomGetOptions, DomContext } from '@/types.js';
