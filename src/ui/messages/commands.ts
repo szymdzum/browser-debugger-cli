@@ -382,6 +382,13 @@ export function valueMismatchWarning(mismatch: FillValueMismatch): string {
 }
 
 /**
+ * Warning shown when a page cancelled the `beforeinput` event `dom fill`
+ * fired (a rich editor rejecting the text); the value is set anyway.
+ */
+export const FILL_BEFOREINPUT_CANCELLED_WARNING =
+  'The page cancelled beforeinput (it may reject typed text); the value was set anyway, so check the page took it';
+
+/**
  * Warning shown when a mouse press was dispatched but the target never
  * received it (e.g. a browser dialog or bubble captured the input).
  */

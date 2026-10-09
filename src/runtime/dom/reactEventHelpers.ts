@@ -21,6 +21,7 @@ import {
   ELEMENT_IDENTITY_JS,
 } from '@/runtime/dom/elementInfo.js';
 import { FIND_ELEMENTS_JS, LABEL_CONTROL_JS } from '@/runtime/dom/targetNode.js';
+import { FILL_BEFOREINPUT_CANCELLED_WARNING } from '@/ui/messages/commands.js';
 
 /**
  * Page-side copy of a list (`select.options`, a NodeList) as an array,
@@ -150,12 +151,56 @@ export const FIRE_EVENT_JS = `(target, type) => {
 }`;
 
 /**
+ * Page-side: fire `beforeinput` (cancelable) or `input` on a text field as
+ * Chrome does when a user selects all and types the text: an `InputEvent`
+ * with `inputType` `insertText` and the text as `data`, or
+ * `deleteContentBackward` without data for an empty text (select all, then
+ * Backspace). A multi-line text is one `insertText` with all of it as
+ * `data` (no `insertLineBreak` per line, unlike typing it). Bubbling and
+ * composed, from the field's own realm (its iframe's `InputEvent`); when
+ * that cannot be built (a page whose `InputEvent` constructor throws, a
+ * document without a window) a plain event gets `inputType` and `data` as
+ * own properties, so listeners reading them still work. Evaluates to false
+ * when a listener cancelled it.
+ */
+export const FIRE_INPUT_EVENT_JS = `(target, type, text) => {
+  const cancelable = type === 'beforeinput';
+  const init = {
+    inputType: text === '' ? 'deleteContentBackward' : 'insertText',
+    data: text === '' ? null : text,
+    bubbles: true,
+    cancelable: cancelable,
+    composed: true
+  };
+  let event;
+  try {
+    event = new target.ownerDocument.defaultView.InputEvent(type, init);
+  } catch (error) {
+    event = target.ownerDocument.createEvent('Event');
+    event.initEvent(type, true, cancelable);
+    Object.defineProperty(event, 'inputType', { value: init.inputType });
+    Object.defineProperty(event, 'data', { value: init.data });
+  }
+  return target.dispatchEvent(event);
+}`;
+
+/**
  * JavaScript function to fill an input element in a React-compatible way.
  *
  * This approach:
  * 1. Uses native property setters to bypass React's value tracking
- * 2. Dispatches input/change events that React listens for
+ * 2. Dispatches input/change events that React listens for: for text
+ *    fields (text-like inputs, textarea, contenteditable) the `beforeinput`
+ *    and `input` `InputEvent`s Chrome fires for typing
+ *    ({@link FIRE_INPUT_EVENT_JS}), for other fields a plain `input` event
  * 3. Properly handles focus/blur for form validation
+ *
+ * A page that cancels `beforeinput` (a rich editor rejecting the text) still
+ * gets the value and the `input` event, so scripted flows keep working, and
+ * the result warns that it was cancelled. A value the browser rejects (text
+ * in a number field) is found by setting it and putting the old one back
+ * before any event, so the page sees none; filling `""` into an empty text
+ * field or editor fires none either.
  *
  * A `<label>` is filled through its control ({@link LABEL_CONTROL_JS}),
  * reported as e.g. `input (via label)`.
@@ -171,6 +216,8 @@ export const REACT_FILL_SCRIPT = `
 (function(selector, parts, value, options) {
   const allMatches = (${FIND_ELEMENTS_JS})(selector, parts);
   const fire = ${FIRE_EVENT_JS};
+  const fireInput = ${FIRE_INPUT_EVENT_JS};
+  const textTypes = ['text', 'email', 'search', 'url', 'tel', 'password', 'number'];
   const listOf = ${LIST_JS};
   const warnings = [];
   let expected = value;
@@ -360,8 +407,11 @@ export const REACT_FILL_SCRIPT = `
       error: 'File input'
     };
   } else if (el.isContentEditable) {
-    el.textContent = value;
-    fire(el, 'input');
+    if (value !== '' || el.textContent !== '') {
+      if (!fireInput(el, 'beforeinput', value)) warnings.push(${JSON.stringify(FILL_BEFOREINPUT_CANCELLED_WARNING)});
+      el.textContent = value;
+      fireInput(el, 'input', value);
+    }
   } else {
     const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
       el.ownerDocument.defaultView.HTMLInputElement.prototype,
@@ -388,11 +438,12 @@ export const REACT_FILL_SCRIPT = `
     }
     
     const setValue = (text) => (setter ? setter.call(el, text) : (el.value = text));
+    const typed = tagName === 'textarea' || textTypes.includes(inputType);
     const previous = el.value;
     setValue(value);
     const rejection = rejectedValue(el, inputType, value);
+    setValue(previous);
     if (rejection) {
-      setValue(previous);
       if (options.blur !== false) el.blur();
       return {
         success: false,
@@ -403,8 +454,15 @@ export const REACT_FILL_SCRIPT = `
       };
     }
 
-    fire(el, 'input');
-    fire(el, 'change');
+    if (value !== '' || previous !== '') {
+      if (typed && !fireInput(el, 'beforeinput', value)) {
+        warnings.push(${JSON.stringify(FILL_BEFOREINPUT_CANCELLED_WARNING)});
+      }
+      setValue(value);
+      if (typed) fireInput(el, 'input', value);
+      else fire(el, 'input');
+      fire(el, 'change');
+    }
     if (el.validity && (el.validity.rangeOverflow || el.validity.rangeUnderflow)) {
       warnings.push('The value is outside the allowed range (' + (el.min || 'no minimum') + ' to ' + (el.max || 'no maximum') + '); the form will not submit until it is fixed');
     }
