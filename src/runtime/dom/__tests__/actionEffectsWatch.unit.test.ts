@@ -2,7 +2,8 @@
  * Watching an action's effects over CDP: main-frame navigation events,
  * pending navigations, the snapshot timing out, the second look before
  * "no effect", shown elements, the page's work (an unanswered read, a DOM
- * still changing on a second look), and cleanup.
+ * still changing on a second look, stalls that are not quiet time), and
+ * cleanup.
  */
 
 import assert from 'node:assert/strict';
@@ -27,12 +28,14 @@ class FakeCdp {
    * @param reads - Replies of the reads after it, in order
    * @param timersRun - Whether the page's timers run (false: throttled or stopped timers)
    * @param answers - Whether the page answers after the action (false: a long script)
+   * @param stalls - Replies of the stall reads, in order (page times `[due, ran]`)
    */
   constructor(
     private readonly start: Promise<unknown>,
     private readonly reads: unknown[] = [],
     private readonly timersRun = true,
-    private readonly answers = true
+    private readonly answers = true,
+    private readonly stalls: unknown[] = []
   ) {}
 
   on(event: string, handler: Handler): () => void {
@@ -66,6 +69,7 @@ class FakeCdp {
       return this.timersRun ? Promise.resolve(wrap(undefined)) : new Promise(() => undefined);
     }
     if (expression.includes('new MutationObserver')) return this.start.then(wrap);
+    if (expression.includes('const ongoing')) return Promise.resolve(wrap(this.stalls.shift()));
     if (expression.includes('const scrolled')) {
       const read = this.reads.shift();
       return read === NO_ANSWER ? new Promise(() => undefined) : Promise.resolve(wrap(read));
@@ -78,6 +82,15 @@ class FakeCdp {
     return this.expressions
       .filter((e) => e.includes('const scrolled'))
       .map((e) => /\(true, (true|false)\)$/.test(e));
+  }
+
+  /** Stall scripts sent so far: `start`, `read` and `stop`, in order */
+  get stallScripts(): string[] {
+    return this.expressions.flatMap((e) => {
+      if (e.includes('const schedule')) return ['start'];
+      if (e.includes('const ongoing')) return ['read'];
+      return e.startsWith('if (globalThis.__bdgStalls)') ? ['stop'] : [];
+    });
   }
 
   /** Whether the stop script was sent */
@@ -380,5 +393,57 @@ void describe('watchActionEffects', () => {
       assert.equal(cdp.readsSent.length, 2, label);
       watch.dispose();
     }
+  });
+
+  void it('does not count a stall between the steps as quiet time (#531)', async () => {
+    const read = (at: number, burstAges: number[]): unknown => ({
+      ...QUIET,
+      changes: burstAges.length,
+      settle: { at, burstAges, loading: null },
+    });
+    const first = read(1000, [155, 105, 55, 5]);
+    const recheck = read(1254, [410, 355, 304, 250, 7]);
+    const longTask: Array<[number, number]> = [[1064, 1244]];
+    for (const [stalls, expected, label] of [
+      [longTask, true, 'a 180 ms stall between the steps'],
+      [[], false, 'no stall: quiet for 243 ms'],
+      [
+        [
+          [1064, 1300],
+          [1260, 1290],
+        ],
+        true,
+        'cut off at the read; a later stall dropped',
+      ],
+    ] as const) {
+      const cdp = new FakeCdp(Promise.resolve(START), [first, recheck], true, true, [[], stalls]);
+      const watch = watchActionEffects(cdp.connection);
+      const effects = await watch.collect({
+        dialogs: 0,
+        consoleMessages: () => 0,
+        detectNoEffect: false,
+        detectUnsettled: true,
+      });
+      assert.equal(effects.work?.domChanging, expected, label);
+      watch.dispose();
+      await tick();
+      assert.deepEqual(cdp.stallScripts, ['start', 'read', 'read', 'stop'], label);
+    }
+  });
+
+  void it('reads no stalls after a read with too few bursts to look busy', async () => {
+    const cdp = new FakeCdp(Promise.resolve(START), [
+      { ...QUIET, changes: 1, settle: { at: 1000, burstAges: [30], loading: null } },
+    ]);
+    const watch = watchActionEffects(cdp.connection);
+    await watch.collect({
+      dialogs: 0,
+      consoleMessages: () => 0,
+      detectNoEffect: false,
+      detectUnsettled: true,
+    });
+    watch.dispose();
+    await tick();
+    assert.deepEqual(cdp.stallScripts, ['start', 'stop']);
   });
 });

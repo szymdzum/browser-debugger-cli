@@ -2,7 +2,7 @@
  * Page-side parts of the action-effects scripts, run in an isolated VM
  * context on element-like objects: focus/hover churn, structural changes,
  * why "no effect" can't be claimed, which parts of a message are its close
- * controls, waiting for timers already due.
+ * controls, waiting for timers already due, the stall watch.
  */
 
 import assert from 'node:assert/strict';
@@ -13,6 +13,9 @@ import {
   CHURN_ONLY_JS,
   DUE_TIMERS_JS,
   MESSAGE_CHROME_JS,
+  STALL_READ_SCRIPT,
+  STALL_WATCH_START_SCRIPT,
+  STALL_WATCH_STOP_SCRIPT,
   STRUCTURAL_CHANGE_JS,
   UNCERTAIN_JS,
 } from '@/runtime/dom/actionEffectsScripts.js';
@@ -184,5 +187,79 @@ void describe('DUE_TIMERS_JS', () => {
     await dueTimers();
     clearTimeout(later);
     assert.deepEqual(ran, []);
+  });
+});
+
+/**
+ * A context with a page clock that only moves when told, and timers run by
+ * hand.
+ *
+ * @returns The context, the clock and the timer to run next
+ */
+function stallPage(): {
+  context: vm.Context;
+  clock: { now: number };
+  timers: Map<number, { at: number; run: () => void }>;
+  runNext: (lateMs: number) => void;
+} {
+  const clock = { now: 1000 };
+  const timers = new Map<number, { at: number; run: () => void }>();
+  let next = 1;
+  const context = vm.createContext({
+    performance: { now: () => clock.now },
+    setTimeout: (run: () => void, ms: number) => {
+      timers.set(next, { at: clock.now + ms, run });
+      return next++;
+    },
+    clearTimeout: (id: number) => timers.delete(id),
+  });
+  const runNext = (lateMs: number): void => {
+    const [id, timer] = [...timers].sort((a, b) => a[1].at - b[1].at)[0] ?? [];
+    if (id === undefined || !timer) return;
+    timers.delete(id);
+    clock.now = timer.at + lateMs;
+    timer.run();
+  };
+  return { context, clock, timers, runNext };
+}
+
+/**
+ * The stalls the page's stall watch has noted, as values of this realm.
+ *
+ * @param context - The page
+ * @returns Stalls, or null without a watch
+ */
+function readStalls(context: vm.Context): unknown {
+  return JSON.parse(JSON.stringify(vm.runInContext(STALL_READ_SCRIPT, context))) as unknown;
+}
+
+void describe('stall watch', () => {
+  void it('notes when its timer ran late, and a stall still going on at a read', () => {
+    const { context, clock, runNext } = stallPage();
+    vm.runInContext(STALL_WATCH_START_SCRIPT, context);
+    runNext(2);
+    runNext(150);
+    assert.deepEqual(readStalls(context), [[1042, 1192]]);
+    clock.now = 1300;
+    assert.deepEqual(readStalls(context), [
+      [1042, 1192],
+      [1212, 1300],
+    ]);
+  });
+
+  void it('counts no stall before its timer ever ran (a page whose setTimeout never runs)', () => {
+    const { context, clock } = stallPage();
+    vm.runInContext(STALL_WATCH_START_SCRIPT, context);
+    clock.now = 1500;
+    assert.deepEqual(readStalls(context), []);
+  });
+
+  void it('stops its timers, and is gone once stopped', () => {
+    const { context, timers, runNext } = stallPage();
+    vm.runInContext(STALL_WATCH_START_SCRIPT, context);
+    runNext(0);
+    vm.runInContext(STALL_WATCH_STOP_SCRIPT, context);
+    assert.equal(timers.size, 0);
+    assert.equal(readStalls(context), null);
   });
 });

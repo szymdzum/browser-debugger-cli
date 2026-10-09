@@ -360,22 +360,31 @@ const DYNAMIC_LOADING_HTML = `<!doctype html><title>dynamic loading</title>
  * adding an item on Enter (while a ticker elsewhere adds a line on every
  * key), buttons whose result comes later (after a spinner, in 50 ms steps,
  * in 50 ms steps on a page busy from 60 to 260 ms as on a slow machine,
- * after a 1.5 s long task), one rendering twice and then stopping, one
+ * in 50 ms steps around a 200 ms long task that starts 200 ms after the
+ * click, after a 1.5 s long task), one rendering twice and then stopping, one
  * showing a toast that hides itself, a button covered by a transparent
  * overlay, and a hover target whose mouseenter removes 200 of the 1600
  * text elements beside it.
  *
  * Timing, against `dom click`: its first read comes 150 ms or more after
  * the click (the network-idle wait); a DOM that looks busy then gets a
- * second look about 250 ms later, and is still changing only if no change
- * came over 150 ms after the one before, through to that look.
- * - Steps and busy steps have no safe margin on the macOS CI runner (#528,
- *   #531). There, the page's own tasks run up to about 150 ms late after a
+ * second look about 250 ms later, and is still changing only if the page
+ * was never quiet for over 150 ms after a change, through to that look.
+ * Stalls, during which the page's tasks could not run (a long task, or
+ * timers the renderer runs late), are not quiet time (#531).
+ * - Steps and busy steps hold on the macOS CI runner through that rule
+ *   (#528). There, the page's own tasks run up to about 150 ms late after a
  *   click while bdg's reads run on time: 50 ms timer steps came up to 180
  *   to 200 ms apart (also with no DOM change or a hidden one, so not
  *   rendering), posted messages ran 100 to 150 ms after the click, and the
- *   60 ms busy timer can fire after the first read, leaving a quiet gap of
- *   over 200 ms. Linux and local runs keep 50 ms steps within a few ms.
+ *   60 ms busy timer can fire after the first read. bdg's stall watch sees
+ *   the same lateness in its own timers. Linux and local runs keep 50 ms
+ *   steps within a few ms.
+ * - Late busy steps start their long task after the first read (200 ms
+ *   after the click; later on the macOS runner), so the steps around it come
+ *   200 to 250 ms apart: settled without the stall rule. The long task is
+ *   200 ms, under a read's 250 ms limit, so a read that waits for it is
+ *   answered and the page is not `busy`.
  * - Block starts its 1.5 s long task in a posted message right after the
  *   click, not a timer; even 150 ms late, the first read (150 ms or more
  *   after the click) waits over its 250 ms limit and is never answered.
@@ -389,7 +398,7 @@ const EFFECTS_HTML = `<!doctype html><title>effects</title>
 <span id="help" style="padding: 4px">?</span><div id="tip" role="tooltip" hidden>Saves a draft every minute</div>
 <div class="cards"><div class="card"><span class="caption">first card</span></div><div class="card"><span class="caption">second card</span></div></div>
 <section id="todo-app"><header><input id="todo"></header><ul id="todos"></ul></section>
-<button id="spin">Spin</button><button id="twice">Twice</button><button id="steps">Steps</button><button id="busy-steps">Busy steps</button><button id="block">Block</button><button id="toast">Toast</button>
+<button id="spin">Spin</button><button id="twice">Twice</button><button id="steps">Steps</button><button id="busy-steps">Busy steps</button><button id="late-busy-steps">Late busy steps</button><button id="block">Block</button><button id="toast">Toast</button>
 <div id="results"></div>
 <div style="position: relative; display: inline-block"><button id="covered">Covered</button><div id="cover" style="position: absolute; inset: 0"></div></div>
 <aside id="ticker"></aside>
@@ -431,6 +440,13 @@ const EFFECTS_HTML = `<!doctype html><title>effects</title>
       const end = Date.now() + 200;
       while (Date.now() < end);
     }, 60);
+  };
+  document.getElementById('late-busy-steps').onclick = () => {
+    document.getElementById('steps').onclick();
+    setTimeout(() => {
+      const end = Date.now() + 200;
+      while (Date.now() < end);
+    }, 200);
   };
   document.getElementById('block').onclick = () => {
     const channel = new MessageChannel();

@@ -9,10 +9,10 @@
  * `--strict` refusals.
  *
  * Timing: what `/effects` buttons leave unfinished (`settled`, `pending.*`)
- * has the margins its fixture describes. The steps and busy-steps
- * `domChanging` checks have none on the macOS CI runner, where the page's
- * own tasks run up to about 150 ms late after a click (#528, #531); they
- * stay as they are until the product or the fixture can hold them.
+ * has the margins its fixture describes. The steps, busy-steps and
+ * late-busy-steps `domChanging` checks hold on the macOS CI runner, where
+ * the page's own tasks run up to about 150 ms late after a click (#528),
+ * because time the page could not run is not quiet time (#531).
  * Elsewhere:
  * - "no visible effect" (`effect: 'none'`) is claimed only for handlers that
  *   change nothing at all; the effects other clicks, hovers and key presses
@@ -1209,6 +1209,11 @@ void describe('DOM interactions', () => {
       (await click('#busy-steps')).pending?.['domChanging'],
       true,
       'a step that fell due while the page was busy is seen'
+    );
+    assert.equal(
+      (await click('#late-busy-steps')).pending?.['domChanging'],
+      true,
+      'a long task between the steps, after the first read, is not a quiet gap (#531)'
     );
     assert.equal((await click('#twice')).settled, undefined, 'two renders that stop are settled');
     assert.equal((await click('#block')).pending?.['busy'], true);
