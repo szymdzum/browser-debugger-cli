@@ -2743,3 +2743,33 @@ export function tabConnectFailedError(
       : `The session stays on its tab; list tabs with: ${sessionCommand('bdg page tabs')}`,
   };
 }
+
+/**
+ * A switch that failed, after which the session could not go back to its tab.
+ *
+ * @param cause - Why the switch failed
+ * @param resumeError - Why the old tab could not be followed again
+ * @returns Message and suggestion
+ */
+export function sessionEndedAfterFailedSwitchError(
+  cause: string,
+  resumeError: string
+): ErrorWithSuggestion {
+  return {
+    message: `The tab switch failed (${cause}) and the session could not go back to its tab (${resumeError}); the session ended`,
+    suggestion: startSessionSuggestion(),
+  };
+}
+
+/**
+ * The tab commands when Chrome refused target discovery.
+ *
+ * @param reason - Chrome's answer
+ * @returns Message and suggestion
+ */
+export function tabsUnavailableError(reason: string): ErrorWithSuggestion {
+  return {
+    message: `Tabs are not tracked in this session: ${reason}`,
+    suggestion: `List the targets with: ${sessionCommand('bdg cdp Target.getTargets')}`,
+  };
+}

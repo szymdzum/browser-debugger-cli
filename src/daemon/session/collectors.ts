@@ -35,7 +35,7 @@ export async function startTelemetryCollectors(
   logger: Logger,
   options: { plugins?: TelemetryPlugin[] } & Pick<
     TelemetryPluginContext,
-    'onPageSwitch' | 'switchedTab'
+    'onPageSwitch' | 'pageStart'
   > = {}
 ): Promise<CleanupFunction[]> {
   const { plugins, ...extra } = options;

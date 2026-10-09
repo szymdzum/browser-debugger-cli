@@ -27,6 +27,8 @@ export interface SessionActivity {
   downloads?: DownloadInfo[];
   /** Why downloads do not go to the session directory (refused, or not redirected), while they do not */
   downloadsWarning?: string;
+  /** Why tabs and popups are not tracked (Chrome refused target discovery), while they are not */
+  tabsWarning?: string;
 }
 
 /**

@@ -32,7 +32,8 @@ export class TelemetryStore {
    */
   consoleDropped = 0;
   /** Chrome Issues of the page currently loaded */
-  readonly pageIssues = new PageIssueLog();
+  /** Chrome Issues of the session tab's page (a new log for each tab the session moves to) */
+  pageIssues = new PageIssueLog();
   /** Console events received so far (daemon side, in arrival order) */
   private consoleReceived = 0;
   /** Which received event each console message came from (1-based) */

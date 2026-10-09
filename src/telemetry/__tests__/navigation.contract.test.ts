@@ -106,11 +106,9 @@ describe('startNavigationTracking contract', () => {
     await startNavigationTracking(new MockCDPConnection() as unknown as CDPConnection, navigations);
     const popup = new MockCDPConnection() as unknown as CDPConnection;
 
-    const { getCurrentNavigationId } = await startNavigationTracking(
-      popup,
-      navigations,
-      'http://localhost:3000/popup'
-    );
+    const { getCurrentNavigationId } = await startNavigationTracking(popup, navigations, {
+      tabUrl: 'http://localhost:3000/popup',
+    });
 
     assert.equal(getCurrentNavigationId(), 1);
     assert.deepEqual(
@@ -120,6 +118,20 @@ describe('startNavigationTracking contract', () => {
         [1, 'http://localhost:3000/popup'],
       ]
     );
+  });
+
+  it('goes on with the same navigation when resumed on a tab', async () => {
+    const navigations: NavigationEvent[] = [];
+    await startNavigationTracking(new MockCDPConnection() as unknown as CDPConnection, navigations);
+
+    const { getCurrentNavigationId } = await startNavigationTracking(
+      new MockCDPConnection() as unknown as CDPConnection,
+      navigations,
+      { resume: true }
+    );
+
+    assert.equal(getCurrentNavigationId(), 0);
+    assert.equal(navigations.length, 1);
   });
 
   it('should track main frame navigations and increment navigationId', async () => {

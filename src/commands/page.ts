@@ -334,6 +334,52 @@ function formatClose(data: PageCloseData): string {
 }
 
 /**
+ * Register `bdg page tabs`, `switch` and `close`.
+ *
+ * @param page - The `page` command group
+ */
+function registerTabCommands(page: Command): void {
+  page
+    .command('tabs')
+    .description(PAGE_TABS_DESCRIPTION)
+    .addOption(jsonOption())
+    .action(async (options: BaseOptions) => {
+      await runTabCommand(() => pageTabs(), options, formatTabs, 'Failed to list the tabs');
+    });
+
+  page
+    .command('switch')
+    .description(PAGE_SWITCH_DESCRIPTION)
+    .argument(
+      '<target>',
+      '0-based index from bdg page tabs, a target id, or part of the URL (url:<part> for one of only digits)'
+    )
+    .addOption(jsonOption())
+    .action(async (target: string, options: BaseOptions) => {
+      await runTabCommand(
+        () => pageSwitch({ target }),
+        options,
+        formatSwitch,
+        'Failed to switch tabs'
+      );
+    });
+
+  page
+    .command('close')
+    .description(PAGE_CLOSE_DESCRIPTION)
+    .argument('[target]', '0-based index from bdg page tabs, a target id, or part of the URL')
+    .addOption(jsonOption())
+    .action(async (target: string | undefined, options: BaseOptions) => {
+      await runTabCommand(
+        () => pageClose(target === undefined ? {} : { target }),
+        options,
+        formatClose,
+        'Failed to close the tab'
+      );
+    });
+}
+
+/**
  * Register the `page` command group.
  *
  * @param program - Root command
@@ -391,41 +437,7 @@ export function registerPageCommands(program: Command): void {
       await emulate(options);
     });
 
-  page
-    .command('tabs')
-    .description(PAGE_TABS_DESCRIPTION)
-    .addOption(jsonOption())
-    .action(async (options: BaseOptions) => {
-      await runTabCommand(() => pageTabs(), options, formatTabs, 'Failed to list the tabs');
-    });
-
-  page
-    .command('switch')
-    .description(PAGE_SWITCH_DESCRIPTION)
-    .argument('<target>', '0-based index from bdg page tabs, a target id, or part of the URL')
-    .addOption(jsonOption())
-    .action(async (target: string, options: BaseOptions) => {
-      await runTabCommand(
-        () => pageSwitch({ target }),
-        options,
-        formatSwitch,
-        'Failed to switch tabs'
-      );
-    });
-
-  page
-    .command('close')
-    .description(PAGE_CLOSE_DESCRIPTION)
-    .argument('[target]', '0-based index from bdg page tabs, a target id, or part of the URL')
-    .addOption(jsonOption())
-    .action(async (target: string | undefined, options: BaseOptions) => {
-      await runTabCommand(
-        () => pageClose(target === undefined ? {} : { target }),
-        options,
-        formatClose,
-        'Failed to close the tab'
-      );
-    });
+  registerTabCommands(page);
 
   for (const action of ['reload', 'back', 'forward'] as const) {
     withCommon(page.command(action).description(PAGE_ACTION_DESCRIPTIONS[action])).action(

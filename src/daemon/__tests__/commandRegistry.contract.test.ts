@@ -11,7 +11,7 @@ import { describe, it, beforeEach } from 'node:test';
 import type { CDPConnection } from '@/connection/cdp.js';
 import { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
 import { createCommandRegistry } from '@/daemon/session/commandRegistry.js';
-import type { CommandRegistry } from '@/daemon/session/commandRegistry.js';
+import type { CommandRegistry, TabControl } from '@/daemon/session/commandRegistry.js';
 import type { ConsoleMessage, NetworkRequest } from '@/types.js';
 import { VERSION } from '@/utils/version.js';
 
@@ -418,6 +418,28 @@ void describe('CommandRegistry', () => {
   });
 
   void describe('session_status', () => {
+    void it('warns when tabs are not tracked', async () => {
+      const tabs = {
+        unavailable: () => 'Target.setDiscoverTargets not allowed',
+        onPageSwitch: () => undefined,
+      } as Partial<TabControl> as TabControl;
+      const withTabs = createCommandRegistry(
+        store,
+        { get: () => ({}), set: () => undefined },
+        tabs
+      );
+      const statusCdp = {
+        send: () => Promise.resolve({ result: { value: {} } }),
+      } as unknown as CDPConnection;
+
+      const result = await withTabs.session_status(statusCdp, {});
+
+      assert.equal(
+        result.activity.tabsWarning,
+        'Tabs are not tracked: Target.setDiscoverTargets not allowed'
+      );
+    });
+
     void it('returns comprehensive status data', async () => {
       store.sessionStartTime = Date.now() - 10000;
       store.setTargetInfo({

@@ -53,6 +53,7 @@ import { takeScreenshot } from '@/runtime/page/screenshot.js';
 import { toDownloadInfo } from '@/telemetry/downloads.js';
 import { skippedBodyReason } from '@/telemetry/networkRetention.js';
 import type { NetworkRequest, WebSocketConnection } from '@/types.js';
+import { tabsNotTrackedWarning } from '@/ui/messages/commands.js';
 import { consoleMessageDroppedError } from '@/ui/messages/consoleMessages.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -546,6 +547,17 @@ export interface EmulationState {
   set: (emulation: SessionEmulation) => void;
 }
 
+/**
+ * Status warning while tabs are not tracked, left out while they are.
+ *
+ * @param tabs - The session's tabs
+ * @returns `tabsWarning`
+ */
+function tabsWarning(tabs: TabControl | undefined): Pick<SessionActivity, 'tabsWarning'> {
+  const reason = tabs?.unavailable();
+  return reason === undefined ? {} : { tabsWarning: tabsNotTrackedWarning(reason) };
+}
+
 /** The session's tabs, which `page tabs|switch|close` list and change */
 export interface TabControl extends TabReports {
   list: () => Promise<PageTabsData>;
@@ -553,6 +565,8 @@ export interface TabControl extends TabReports {
   close: (target: string | undefined) => Promise<PageCloseData>;
   /** Registers a callback for the page connection of each tab the session moves to */
   onPageSwitch: (listener: (cdp: CDPConnection) => void) => void;
+  /** Why tabs are not tracked (Chrome refused target discovery); undefined while they are */
+  unavailable: () => string | undefined;
 }
 
 /**
@@ -683,6 +697,7 @@ export function createCommandRegistry(
           ...(store.downloadsWarning !== undefined && {
             downloadsWarning: store.downloadsWarning,
           }),
+          ...tabsWarning(tabs),
         },
         navigationId: store.getCurrentNavigationId?.() ?? 0,
       };

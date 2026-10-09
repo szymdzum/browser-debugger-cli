@@ -40,12 +40,15 @@ function fakeSource(targets: TargetInfoEvent[]): {
   source: Parameters<TabTracker['attach']>[0];
   sent: string[];
   emit: Emit;
+  failing: Set<string>;
 } {
   const handlers = new Map<string, (params: unknown, sessionId?: string) => void>();
   const sent: string[] = [];
+  const failing = new Set<string>();
   const source = {
     send: (method: string) => {
       sent.push(method);
+      if (failing.has(method)) return Promise.reject(new Error(`${method} unavailable`));
       return Promise.resolve(method === 'Target.getTargets' ? { targetInfos: targets } : {});
     },
     on: (event: string, handler: (params: unknown, sessionId?: string) => void) => {
@@ -56,6 +59,7 @@ function fakeSource(targets: TargetInfoEvent[]): {
   return {
     source,
     sent,
+    failing,
     emit: (event, params, sessionId) => handlers.get(event)?.(params, sessionId),
   };
 }
@@ -86,7 +90,8 @@ void describe('TabTracker', () => {
       page('A', 'http://a/'),
     ]);
 
-    await tracker.attach(source, 'B');
+    tracker.setCurrent('B');
+    await tracker.attach(source);
 
     assert.deepEqual(
       tracker.list().map((tab) => [tab.index, tab.targetId, tab.current]),
@@ -102,7 +107,8 @@ void describe('TabTracker', () => {
   void it('reports tabs created after attaching as opened, popups apart from tabs', async () => {
     const tracker = new TabTracker();
     const { source, emit } = fakeSource([page('A', 'http://a/')]);
-    await tracker.attach(source, 'A');
+    tracker.setCurrent('A');
+    await tracker.attach(source);
     const mark = tracker.openedCount();
 
     emit('Target.targetCreated', {
@@ -125,7 +131,8 @@ void describe('TabTracker', () => {
   void it('keeps reporting an opened tab that closed, without an index', async () => {
     const tracker = new TabTracker();
     const { source, emit } = fakeSource([page('A', 'http://a/')]);
-    await tracker.attach(source, 'A');
+    tracker.setCurrent('A');
+    await tracker.attach(source);
 
     emit('Target.targetCreated', { targetInfo: page('P', 'http://a/popup', { openerId: 'A' }) });
     emit('Target.targetDestroyed', { targetId: 'P' });
@@ -139,7 +146,8 @@ void describe('TabTracker', () => {
   void it('keeps the session tab listed when Chrome reports it destroyed', async () => {
     const tracker = new TabTracker();
     const { source, emit } = fakeSource([page('A', 'http://a/')]);
-    await tracker.attach(source, 'A');
+    tracker.setCurrent('A');
+    await tracker.attach(source);
 
     emit('Target.targetDestroyed', { targetId: 'A' });
 
@@ -152,7 +160,8 @@ void describe('TabTracker', () => {
       page('POPUP1', 'http://a/oauth/authorize?client=1'),
       page('A', 'http://a/'),
     ]);
-    await tracker.attach(source, 'A');
+    tracker.setCurrent('A');
+    await tracker.attach(source);
 
     assert.equal(tracker.resolve('1').targetId, 'POPUP1');
     assert.equal(tracker.resolve('popup1').targetId, 'POPUP1');
@@ -162,7 +171,8 @@ void describe('TabTracker', () => {
   void it('refuses an index out of range (81) and an ambiguous URL part (81)', async () => {
     const tracker = new TabTracker();
     const { source } = fakeSource([page('B', 'http://a/two'), page('A', 'http://a/one')]);
-    await tracker.attach(source, 'A');
+    tracker.setCurrent('A');
+    await tracker.attach(source);
 
     const outOfRange = thrown(() => tracker.resolve('5'));
     assert.equal(outOfRange.exitCode, EXIT_CODES.INVALID_ARGUMENTS);
@@ -177,7 +187,8 @@ void describe('TabTracker', () => {
   void it('names the closest URL part for one no tab contains (83)', async () => {
     const tracker = new TabTracker();
     const { source } = fakeSource([page('P', 'http://a/popup.html'), page('A', 'http://a/')]);
-    await tracker.attach(source, 'A');
+    tracker.setCurrent('A');
+    await tracker.attach(source);
 
     const error = thrown(() => tracker.resolve('popop'));
 
@@ -190,7 +201,8 @@ void describe('TabTracker', () => {
   void it('falls back to the opener, then the tab used before, then (when asked) any tab', async () => {
     const tracker = new TabTracker();
     const { source, emit } = fakeSource([page('A', 'http://a/'), page('Z', 'http://z/')]);
-    await tracker.attach(source, 'A');
+    tracker.setCurrent('A');
+    await tracker.attach(source);
     emit('Target.targetCreated', { targetInfo: page('P', 'http://a/popup', { openerId: 'A' }) });
     emit('Target.targetCreated', { targetInfo: page('Q', 'http://q/') });
 
@@ -207,7 +219,8 @@ void describe('TabTracker', () => {
   void it('reports a switch after its tab closed once', async () => {
     const tracker = new TabTracker();
     const { source, emit } = fakeSource([page('A', 'http://a/')]);
-    await tracker.attach(source, 'A');
+    tracker.setCurrent('A');
+    await tracker.attach(source);
     emit('Target.targetCreated', { targetInfo: page('P', 'http://a/popup', { openerId: 'A' }) });
     tracker.setCurrent('P');
 
@@ -225,11 +238,13 @@ void describe('TabTracker', () => {
   void it('drops tabs that closed while it was attached elsewhere', async () => {
     const tracker = new TabTracker();
     const first = fakeSource([page('B', 'http://b/'), page('A', 'http://a/')]);
-    await tracker.attach(first.source, 'A');
+    tracker.setCurrent('A');
+    await tracker.attach(first.source);
 
     const second = fakeSource([page('C', 'http://c/'), page('B', 'http://b/')]);
     tracker.setCurrent('B');
-    await tracker.attach(second.source, 'B');
+    tracker.setCurrent('B');
+    await tracker.attach(second.source);
 
     assert.deepEqual(
       tracker.list().map((tab) => tab.targetId),
@@ -245,7 +260,8 @@ void describe('TabTracker', () => {
   void it('does not list again a tab it saw close while Chrome still lists it', async () => {
     const tracker = new TabTracker();
     const { source } = fakeSource([page('T', 'http://a/tab'), page('A', 'http://a/')]);
-    await tracker.attach(source, 'A');
+    tracker.setCurrent('A');
+    await tracker.attach(source);
 
     tracker.remove('T');
     await tracker.refresh(source);
@@ -259,11 +275,63 @@ void describe('TabTracker', () => {
   void it('does not count a tab created after it closed as opened again', async () => {
     const tracker = new TabTracker();
     const { source, emit } = fakeSource([page('A', 'http://a/')]);
-    await tracker.attach(source, 'A');
+    tracker.setCurrent('A');
+    await tracker.attach(source);
     tracker.remove('T');
 
     emit('Target.targetCreated', { targetInfo: page('T', 'http://a/tab') });
 
     assert.equal(tracker.list().length, 1);
+  });
+
+  void it('stops listening when discovery fails, and leaves the session tab as it was', async () => {
+    const tracker = new TabTracker();
+    const { source, emit, failing } = fakeSource([page('A', 'http://a/')]);
+    failing.add('Target.setDiscoverTargets');
+    tracker.setCurrent('A');
+
+    await assert.rejects(tracker.attach(source), /unavailable/);
+    emit('Target.targetCreated', { targetInfo: page('P', 'http://a/popup') });
+
+    assert.equal(tracker.openedCount(), 0, 'no listener left behind');
+  });
+
+  void it('attaching to a tab does not make it the session tab', async () => {
+    const tracker = new TabTracker();
+    const { source } = fakeSource([page('B', 'http://b/'), page('A', 'http://a/')]);
+    tracker.setCurrent('A');
+
+    await tracker.attach(source);
+
+    assert.equal(tracker.current()?.targetId, 'A');
+  });
+
+  void it('never falls back to the session tab Chrome reported closed, and drops it once left', async () => {
+    const tracker = new TabTracker();
+    const { source, emit } = fakeSource([page('A', 'http://a/')]);
+    tracker.setCurrent('A');
+    await tracker.attach(source);
+    emit('Target.targetCreated', { targetInfo: page('P', 'http://a/popup', { openerId: 'A' }) });
+    tracker.setCurrent('P');
+
+    emit('Target.targetDestroyed', { targetId: 'P' });
+    assert.equal(tracker.current()?.targetId, 'P', 'still the session tab until it moves');
+    assert.equal(tracker.fallbackFor('A', true), undefined);
+    tracker.setCurrent('A');
+
+    assert.deepEqual(
+      tracker.list().map((tab) => tab.targetId),
+      ['A']
+    );
+  });
+
+  void it('matches a URL part that is all digits with url:', async () => {
+    const tracker = new TabTracker();
+    const { source } = fakeSource([page('B', 'http://a:8080/'), page('A', 'http://a/')]);
+    tracker.setCurrent('A');
+    await tracker.attach(source);
+
+    assert.equal(tracker.resolve('url:8080').targetId, 'B');
+    assert.equal(thrown(() => tracker.resolve('8080')).exitCode, EXIT_CODES.INVALID_ARGUMENTS);
   });
 });

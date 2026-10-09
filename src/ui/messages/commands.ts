@@ -1173,6 +1173,16 @@ export const PAGE_CLOSE_DESCRIPTION =
   'Close a tab (the session tab by default; the session then moves to its opener)';
 
 /**
+ * `bdg status` warning while tabs are not tracked.
+ *
+ * @param reason - Chrome's answer to target discovery
+ * @returns Warning
+ */
+export function tabsNotTrackedWarning(reason: string): string {
+  return `Tabs are not tracked: ${reason}`;
+}
+
+/**
  * A tab or window an action opened, e.g.
  * `Opened: popup http://localhost/authorize (bdg page switch 1)`.
  *

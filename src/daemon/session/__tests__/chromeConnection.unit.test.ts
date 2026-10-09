@@ -184,5 +184,9 @@ void describe('tabWebSocketUrl', () => {
       tabWebSocketUrl('wss://chrome.example.test/devtools/page/AAA?token=x', 'BBB'),
       'wss://chrome.example.test/devtools/page/BBB?token=x'
     );
+    assert.equal(
+      tabWebSocketUrl('wss://host.test/prefix/devtools/page/AAA', 'B/B'),
+      'wss://host.test/prefix/devtools/page/B%2FB'
+    );
   });
 });

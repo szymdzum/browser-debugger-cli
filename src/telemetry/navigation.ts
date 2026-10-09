@@ -35,25 +35,33 @@ export interface NavigationTracker {
  *
  * Started again on another tab (`bdg page switch`), the count goes on: the
  * tab's page is the next navigation, so ids stay unique within the session.
+ * Resumed on the same tab (after a failed switch), its navigation goes on.
  *
  * @param cdp - CDP connection instance
  * @param navigations - Array to populate with navigation events
- * @param tabUrl - URL of the tab's page, when tracking moves to another tab
+ * @param tab - `tabUrl`: the page of a tab tracking moved to; `resume`: same tab, same navigation
  * @returns Cleanup function and counter getters
  */
 export async function startNavigationTracking(
   cdp: CDPConnection,
   navigations: NavigationEvent[],
-  tabUrl = ''
+  tab: { tabUrl?: string; resume?: boolean } = {}
 ): Promise<NavigationTracker> {
   const registry = new CDPHandlerRegistry();
   const typed = new TypedCDPConnection(cdp);
   const last = navigations.at(-1);
-  let navigationCounter = last === undefined ? 0 : last.navigationId + 1;
+  const resumed = tab.resume === true && last !== undefined;
+  let navigationCounter = last === undefined ? 0 : last.navigationId + (resumed ? 0 : 1);
 
   await cdp.send('Page.enable');
 
-  navigations.push({ url: tabUrl, timestamp: Date.now(), navigationId: navigationCounter });
+  if (!resumed) {
+    navigations.push({
+      url: tab.tabUrl ?? '',
+      timestamp: Date.now(),
+      navigationId: navigationCounter,
+    });
+  }
 
   registry.registerTyped(typed, 'Page.frameNavigated', (params) => {
     if (params.frame.parentId !== undefined) return;

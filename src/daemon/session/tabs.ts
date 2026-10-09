@@ -47,6 +47,9 @@ interface Tab {
   kind: OpenedTabKind;
 }
 
+/** Prefix of a `page switch` target matched against tab URLs only */
+const URL_PREFIX = 'url:';
+
 /** What the tracker needs of a connection */
 type TargetSource = Pick<CDPConnection, 'send' | 'on'>;
 
@@ -125,18 +128,39 @@ export class TabTracker {
   /** How many of {@link switches} actions have reported */
   private switchesReported = 0;
   private currentId = '';
+  /** Why tabs cannot be tracked (Chrome refused target discovery); undefined while they are */
+  unavailable: string | undefined;
 
   /**
    * Follow the tabs through a page connection: read the open ones, then
-   * listen for tabs opening, changing and closing.
+   * listen for tabs opening, changing and closing. The session tab stays
+   * as it is ({@link setCurrent} makes the connection's tab the session's).
    *
-   * @param cdp - The session's page connection
-   * @param currentId - Target id of the page it is connected to
+   * @param cdp - A page connection
    * @returns Stops listening
+   * @throws When Chrome refuses target discovery (nothing is left listening)
    */
-  async attach(cdp: TargetSource, currentId: string): Promise<() => void> {
-    this.setCurrent(currentId);
-    const offs = [
+  async attach(cdp: TargetSource): Promise<() => void> {
+    const offs = this.listen(cdp);
+    const stop = (): void => offs.forEach((off) => off());
+    try {
+      await this.refresh(cdp);
+      await cdp.send('Target.setDiscoverTargets', { discover: true });
+    } catch (error) {
+      stop();
+      throw error;
+    }
+    return stop;
+  }
+
+  /**
+   * Listen for tabs opening, changing and closing on a connection.
+   *
+   * @param cdp - A page connection
+   * @returns Listener cleanups
+   */
+  private listen(cdp: TargetSource): Array<() => void> {
+    return [
       cdp.on<{ targetInfo: TargetInfoEvent }>('Target.targetCreated', ({ targetInfo }, session) => {
         if (session === undefined) this.created(targetInfo);
       }),
@@ -147,12 +171,20 @@ export class TabTracker {
         }
       ),
       cdp.on<{ targetId: string }>('Target.targetDestroyed', ({ targetId }, session) => {
-        if (session === undefined && targetId !== this.currentId) this.remove(targetId);
+        if (session === undefined) this.markClosed(targetId);
       }),
     ];
-    await this.refresh(cdp);
-    await cdp.send('Target.setDiscoverTargets', { discover: true });
-    return () => offs.forEach((off) => off());
+  }
+
+  /**
+   * A tab closed: dropped, except the session tab, which stays listed (never
+   * as a fallback) until the session moves on.
+   *
+   * @param targetId - Target id
+   */
+  markClosed(targetId: string): void {
+    if (targetId === this.currentId) this.gone.add(targetId);
+    else this.remove(targetId);
   }
 
   /**
@@ -175,8 +207,11 @@ export class TabTracker {
    */
   setCurrent(targetId: string): void {
     if (targetId === this.currentId) return;
-    if (this.currentId) this.history.push(this.currentId);
+    const previous = this.currentId;
     this.currentId = targetId;
+    if (!previous) return;
+    if (this.gone.has(previous)) this.remove(previous);
+    else this.history.push(previous);
   }
 
   /**
@@ -217,7 +252,8 @@ export class TabTracker {
 
   /**
    * Find the tab `bdg page switch|close <target>` means: a 0-based index, a
-   * target id, or text one tab URL contains (case-insensitive).
+   * target id, or text one tab URL contains (case-insensitive); all digits
+   * are an index, `url:<text>` matches the URL only (e.g. `url:8080`).
    *
    * @param target - What was given
    * @returns The tab
@@ -225,13 +261,25 @@ export class TabTracker {
    */
   resolve(target: string): TabInfo {
     const tabs = this.list();
+    if (target.startsWith(URL_PREFIX)) return this.byUrl(target.slice(URL_PREFIX.length), tabs);
     if (/^\d+$/.test(target)) {
       const tab = tabs[Number(target)];
       if (tab) return tab;
       fail(tabIndexOutOfRangeError(Number(target), tabs), EXIT_CODES.INVALID_ARGUMENTS);
     }
     const byId = tabs.find((tab) => tab.targetId.toLowerCase() === target.toLowerCase());
-    if (byId) return byId;
+    return byId ?? this.byUrl(target, tabs);
+  }
+
+  /**
+   * The one tab whose URL contains a text (case-insensitive).
+   *
+   * @param target - Text
+   * @param tabs - Open tabs
+   * @returns The tab
+   * @throws CommandError 81 when several URLs contain it, 83 when none does
+   */
+  private byUrl(target: string, tabs: TabInfo[]): TabInfo {
     const needle = target.toLowerCase();
     const matches = tabs.filter((tab) => tab.url.toLowerCase().includes(needle));
     const [only] = matches;
@@ -251,7 +299,9 @@ export class TabTracker {
    * @returns The tab, or undefined when there is none
    */
   fallbackFor(targetId: string, anyOther = false): TabInfo | undefined {
-    const tabs = this.list().filter((tab) => tab.targetId !== targetId);
+    const tabs = this.list().filter(
+      (tab) => tab.targetId !== targetId && !this.gone.has(tab.targetId)
+    );
     const byId = (id: string | undefined): TabInfo | undefined =>
       tabs.find((tab) => tab.targetId === id);
     const openerId = (

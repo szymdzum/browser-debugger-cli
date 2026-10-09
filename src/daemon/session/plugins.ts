@@ -1,4 +1,5 @@
 import type { TelemetryStore } from './TelemetryStore.js';
+import type { PageStart } from './pageSwitcher.js';
 import type { SessionConfig } from './types.js';
 
 import type { CDPConnection } from '@/connection/cdp.js';
@@ -7,7 +8,7 @@ import { hideHeadlessUserAgent } from '@/runtime/page/userAgent.js';
 import { startConsoleCollection } from '@/telemetry/console.js';
 import { startDialogHandling } from '@/telemetry/dialogs.js';
 import { prepareDOMCollection } from '@/telemetry/dom.js';
-import { startIssueCollection } from '@/telemetry/issues.js';
+import { PageIssueLog, startIssueCollection } from '@/telemetry/issues.js';
 import { startNavigationTracking } from '@/telemetry/navigation.js';
 import { startNetworkCollection, startWebSocketCollection } from '@/telemetry/network.js';
 import { pageCrashedCommandError, startCrashTracking } from '@/telemetry/pageCrash.js';
@@ -117,8 +118,8 @@ export interface TelemetryPluginContext {
   logger: Logger;
   /** Registers a callback for the page connection of each tab the session moves to */
   onPageSwitch?: ((listener: (cdp: CDPConnection) => void) => void) | undefined;
-  /** Started on a tab `bdg page switch` moved to (not the session's first) */
-  switchedTab?: boolean | undefined;
+  /** How the page collectors start: on the first tab, a tab switched to, or resumed on the same tab */
+  pageStart?: PageStart | undefined;
 }
 
 export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
@@ -161,11 +162,14 @@ export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
     {
       name: 'navigation',
       runAlways: true,
-      async start({ cdp, store, logger, switchedTab }) {
+      async start({ cdp, store, logger, pageStart }) {
         const { cleanup, getCurrentNavigationId } = await startNavigationTracking(
           cdp,
           store.navigationEvents,
-          switchedTab ? store.targetInfo?.url : undefined
+          {
+            ...(pageStart?.kind === 'switched' && { tabUrl: pageStart.url }),
+            resume: pageStart?.kind === 'resumed',
+          }
         );
         store.setNavigationResolver(getCurrentNavigationId);
         const stopTracking = trackCurrentPage(cdp, store, logger);
@@ -202,7 +206,7 @@ export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
     {
       name: 'console',
       telemetry: 'console',
-      async start({ cdp, config, store, switchedTab }) {
+      async start({ cdp, config, store, pageStart }) {
         return startConsoleCollection(
           cdp,
           store.consoleMessages,
@@ -212,15 +216,15 @@ export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
             store.consoleDropped++;
           },
           () => store.receiveConsoleMessage(),
-          { skipReplay: switchedTab === true }
+          { skipReplay: pageStart !== undefined && pageStart.kind !== 'first' }
         );
       },
     },
     {
       name: 'issues',
       telemetry: 'console',
-      start({ cdp, store, switchedTab }) {
-        if (switchedTab) store.pageIssues.clear();
+      start({ cdp, store, pageStart }) {
+        if (pageStart?.kind === 'switched') store.pageIssues = new PageIssueLog();
         return startIssueCollection(cdp, store.pageIssues);
       },
     },

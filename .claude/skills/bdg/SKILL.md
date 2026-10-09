@@ -53,7 +53,7 @@ An action that opens a tab or window says `Opened: popup <url> (bdg page switch 
 
 ```bash
 bdg page tabs                                # * marks the session tab, (opened by N)
-bdg page switch 1                            # By 0-based index or part of the URL
+bdg page switch 1                            # By 0-based index or part of the URL (url:8080 for digits)
 bdg page close 1                             # Default: the session tab (moves to its opener)
 ```
 

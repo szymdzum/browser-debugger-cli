@@ -116,6 +116,27 @@ function tabReport(
 }
 
 /**
+ * After an interaction failed: when its tab's connection was lost because
+ * the tab closed and the session moved to another, the tab report saying so.
+ *
+ * @param cdp - The interaction's connection
+ * @param tabs - Tab reports
+ * @param firstOpened - Mark taken as the interaction began
+ * @returns The report with `tabClosed`, or undefined when the failure stands
+ */
+async function closedTabReport(
+  cdp: CDPConnection,
+  tabs: TabReports | undefined,
+  firstOpened: number
+): Promise<ReturnType<typeof tabReport> | undefined> {
+  const lost = tabs?.pageLost(cdp);
+  if (!lost) return undefined;
+  await lost;
+  const report = tabReport(tabs, firstOpened);
+  return report.tabClosed ? report : undefined;
+}
+
+/**
  * Console messages the session has logged, dropped ones included.
  *
  * @param store - Session store
@@ -212,16 +233,13 @@ export function createInteractionRunner(
           ...requests,
         };
       } catch (error) {
-        const lost = effects && tabs?.pageLost(cdp);
-        if (!lost) throw error;
-        await lost;
-        const report = tabReport(tabs, firstOpened);
-        if (!report.tabClosed) throw error;
+        const closed = effects && (await closedTabReport(cdp, tabs, firstOpened));
+        if (!closed) throw error;
         const dialogs = store.dialogs.slice(firstDialog);
         return {
           ...(result ?? ({ success: true } as unknown as T)),
           ...(dialogs.length > 0 && { dialogs }),
-          ...report,
+          ...closed,
         };
       } finally {
         store.dialogAnswers.setActionChoice(undefined);
