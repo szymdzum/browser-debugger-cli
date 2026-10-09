@@ -195,6 +195,18 @@ void describe('dom form issues', () => {
     );
   });
 
+  void it('names the form of an error in a form not shown', () => {
+    const output = formatFormDiscovery({
+      formCount: 2,
+      selectedForm: 0,
+      forms: [form],
+      formIssues: [
+        { text: 'Duplicate id', elements: ['Second pet [4]'], form: { index: 1, hidden: true } },
+      ],
+    });
+    assert.match(output, /• Duplicate id → Second pet \[4\] \(in form 1, hidden; --all lists it\)/);
+  });
+
   void it('shows field errors in --brief too', () => {
     const output = formatFormDiscovery({
       formCount: 1,

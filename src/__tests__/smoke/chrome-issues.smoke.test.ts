@@ -216,5 +216,11 @@ void describe('Chrome Issues', () => {
       data: { formIssues?: Array<{ elements?: string[] }> };
     };
     assert.deepEqual(labels.data.formIssues?.[0]?.elements, ['label[for="missing"]']);
+
+    await bdg(['dom', 'eval', 'document.querySelector("label[for=missing]").remove(); 1']);
+    const rerendered = JSON.parse(await bdg(['dom', 'form', '--json'])) as {
+      data: { formIssues?: unknown[] };
+    };
+    assert.equal(rerendered.data.formIssues, undefined, 'a removed label is not listed');
   });
 });

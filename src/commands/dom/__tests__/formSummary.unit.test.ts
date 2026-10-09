@@ -6,8 +6,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { calculateSummary, orderForms, primaryButtonIndex } from '@/commands/dom/formSummary.js';
+import {
+  calculateSummary,
+  issuesOfUnshownForms,
+  orderForms,
+  primaryButtonIndex,
+} from '@/commands/dom/formSummary.js';
 import type {
+  DiscoveredForm,
   FormButton,
   FormField,
   RawButton,
@@ -330,5 +336,50 @@ void describe('orderForms', () => {
       ordered.map((form) => form.name),
       ['a', 'b', 'c']
     );
+  });
+});
+
+void describe('issuesOfUnshownForms', () => {
+  /**
+   * A discovered form.
+   *
+   * @param index - Form index
+   * @param fields - Its fields
+   * @param hidden - Whether it is hidden
+   * @returns Form
+   */
+  function discovered(index: number, fields: FormField[], hidden = false): DiscoveredForm {
+    return {
+      index,
+      name: null,
+      action: null,
+      method: 'GET',
+      relevanceScore: 0,
+      hidden,
+      inDialog: false,
+      fields,
+      buttons: [],
+      summary: calculateSummary(fields, []),
+    };
+  }
+
+  void it('names the form a field error is in when that form is not shown', () => {
+    const shown = discovered(0, [field('Email', { issues: ['Shown error'] })]);
+    const hidden = discovered(1, [field('Second pet', { issues: ['Duplicate id'] })], true);
+    const visible = discovered(2, [field('Search', { issues: ['No label'] })]);
+    const issues = issuesOfUnshownForms([shown, hidden, visible], [shown]);
+    assert.deepEqual(
+      issues.map((issue) => [issue.text, issue.form]),
+      [
+        ['Duplicate id', { index: 1, hidden: true }],
+        ['No label', { index: 2, hidden: false }],
+      ]
+    );
+    assert.match(issues[0]?.elements?.[0] ?? '', /^Second pet \[\d+\]$/);
+  });
+
+  void it('has nothing when every form is shown', () => {
+    const shown = discovered(0, [field('Email', { issues: ['Shown error'] })]);
+    assert.deepEqual(issuesOfUnshownForms([shown], [shown]), []);
   });
 });

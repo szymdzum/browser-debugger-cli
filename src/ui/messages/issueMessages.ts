@@ -147,5 +147,16 @@ export function fieldIssueLine(text: string): string {
   return `      ⚠ ${text}`;
 }
 
+/**
+ * Where a form error is when its form is not shown in `dom form`.
+ *
+ * @param index - Form index
+ * @param hidden - The form is hidden
+ * @returns e.g. `(in form 1, hidden; --all lists it)`
+ */
+export function unshownFormNote(index: number, hidden: boolean): string {
+  return `(in form ${index}${hidden ? ', hidden' : ''}; --all lists it)`;
+}
+
 /** Heading of the `dom form` list of form issues not tied to a listed field */
 export const PAGE_FORM_ISSUES_HEADING = 'Form markup issues (Chrome):';

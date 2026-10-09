@@ -119,6 +119,13 @@ export const MAX_PAGE_ISSUES = 100;
 export const MAX_ISSUE_NODES = 20;
 
 /**
+ * Chrome Issue reports remembered per page load to drop Chrome's repeats
+ * (hashed). Past this, new reports are ignored: a repeat could no longer be
+ * told apart, so it would be counted again
+ */
+export const MAX_ISSUE_SEEN_REPORTS = 10_000;
+
+/**
  * Characters of a Chrome Issue's reason, element and URL
  */
 export const MAX_ISSUE_TEXT_LENGTH = 300;

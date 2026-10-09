@@ -7,7 +7,12 @@
 
 import type { Command } from 'commander';
 
-import { calculateSummary, orderForms, primaryButtonIndex } from '@/commands/dom/formSummary.js';
+import {
+  calculateSummary,
+  issuesOfUnshownForms,
+  orderForms,
+  primaryButtonIndex,
+} from '@/commands/dom/formSummary.js';
 import { pageDocumentId, resolveBackendNodeIds } from '@/commands/dom/helpers/index.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
@@ -22,6 +27,7 @@ import type {
   FormButton,
   FieldValidation,
   RawForm,
+  RawFormData,
   RawField,
   RawButton,
   FieldState,
@@ -334,6 +340,24 @@ async function cacheFormElements(
 }
 
 /**
+ * Form errors to list after the forms: those of elements that are no listed
+ * field, and those of fields in forms not shown.
+ *
+ * @param rawData - Discovery data
+ * @param allForms - All forms
+ * @param shown - Forms shown
+ * @returns `formIssues`, or nothing when there are none
+ */
+function formIssuesOf(
+  rawData: RawFormData,
+  allForms: DiscoveredForm[],
+  shown: DiscoveredForm[]
+): Pick<FormDiscoveryResult, 'formIssues'> {
+  const issues = [...(rawData.formIssues ?? []), ...issuesOfUnshownForms(allForms, shown)];
+  return issues.length > 0 ? { formIssues: issues } : {};
+}
+
+/**
  * Handle form discovery command.
  *
  * @param options - Command options
@@ -416,7 +440,7 @@ async function handleFormCommand(options: FormCommandOptions): Promise<void> {
             formsInFrames: rawData.frameForms.map((frame) => frame.url),
           }),
         ...(rawData.closedShadowHosts && { closedShadowHosts: rawData.closedShadowHosts }),
-        ...(rawData.formIssues && { formIssues: rawData.formIssues }),
+        ...formIssuesOf(rawData, allForms, forms),
         brief: options.brief,
       };
 

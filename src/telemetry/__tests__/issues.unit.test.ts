@@ -8,7 +8,12 @@ import { describe, it } from 'node:test';
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
-import { MAX_ISSUE_NODES, MAX_ISSUE_TEXT_LENGTH, MAX_PAGE_ISSUES } from '@/constants.js';
+import {
+  MAX_ISSUE_NODES,
+  MAX_ISSUE_SEEN_REPORTS,
+  MAX_ISSUE_TEXT_LENGTH,
+  MAX_PAGE_ISSUES,
+} from '@/constants.js';
 import { PageIssueLog, startIssueCollection, toPageIssue } from '@/telemetry/issues.js';
 
 type InspectorIssue = Protocol.Audits.InspectorIssue;
@@ -323,6 +328,31 @@ void describe('PageIssueLog', () => {
     log.add(failedImport(MAX_PAGE_ISSUES + 1));
     assert.equal(log.issues.length, MAX_PAGE_ISSUES);
     assert.equal(log.dropped, 5);
+  });
+
+  void it(`never counts a repeat twice, also past ${MAX_ISSUE_SEEN_REPORTS} distinct reports`, () => {
+    const log = new PageIssueLog();
+    const past = MAX_ISSUE_SEEN_REPORTS + 50;
+    for (let n = 0; n < past; n++) log.add(failedImport(n));
+    const dropped = log.dropped;
+    assert.equal(
+      dropped,
+      MAX_ISSUE_SEEN_REPORTS - MAX_PAGE_ISSUES,
+      'reports past the limit are not counted'
+    );
+    log.add(failedImport(5));
+    log.add(failedImport(past - 1));
+    assert.equal(log.dropped, dropped, 'repeats do not inflate the dropped count');
+  });
+
+  void it('counts the elements of a form error once each however many reports came before', () => {
+    const log = new PageIssueLog();
+    log.add(labelForMissing(1));
+    for (let n = 0; n < MAX_ISSUE_SEEN_REPORTS + 10; n++) log.add(failedImport(n));
+    log.add(labelForMissing(1));
+    log.add(labelForMissing(2));
+    log.add(labelForMissing(2));
+    assert.equal(log.issues[0]?.count, 2);
   });
 
   void it('starts over for a new page', () => {

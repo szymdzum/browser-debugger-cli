@@ -550,8 +550,10 @@ export interface RawFormData {
 export interface FormIssue {
   /** One-line reason */
   text: string;
-  /** Elements at fault, e.g. `label[for="missing"]` */
+  /** Elements at fault, e.g. `label[for="missing"]`, or `Second pet [4]` for a field of a form not shown */
   elements?: string[];
+  /** The form of the fields at fault, when it is not shown (without `--all`) */
+  form?: { index: number; hidden: boolean };
 }
 
 export interface RawForm {

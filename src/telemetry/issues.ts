@@ -14,11 +14,18 @@
  * iframes (mostly ads and trackers) add none.
  */
 
+import { createHash } from 'node:crypto';
+
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPHandlerRegistry } from '@/connection/handlers.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { TypedCDPConnection } from '@/connection/typed-cdp.js';
-import { MAX_ISSUE_NODES, MAX_ISSUE_TEXT_LENGTH, MAX_PAGE_ISSUES } from '@/constants.js';
+import {
+  MAX_ISSUE_NODES,
+  MAX_ISSUE_SEEN_REPORTS,
+  MAX_ISSUE_TEXT_LENGTH,
+  MAX_PAGE_ISSUES,
+} from '@/constants.js';
 import type { CleanupFunction, IssueNode, PageIssue } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import {
@@ -44,12 +51,6 @@ const UNLOGGED_CSP_VIOLATIONS = new Set<Protocol.Audits.ContentSecurityPolicyVio
   'kTrustedTypesSinkViolation',
   'kTrustedTypesPolicyViolation',
 ]);
-
-/**
- * Reports remembered per page to tell Chrome's repeats apart (past this,
- * repeats count as more elements)
- */
-const MAX_SEEN_KEYS = 10_000;
 
 /**
  * Cap a text to {@link MAX_ISSUE_TEXT_LENGTH} characters.
@@ -206,17 +207,43 @@ export interface RecordedNode {
   attribute?: string;
 }
 
+/** What {@link PageIssueLog.add} recorded */
+type Recorded = { issue: PageIssue; recorded?: RecordedNode } | undefined;
+
+/**
+ * Key of a report Chrome sent: a hash of its details, so a long one (a
+ * malformed cookie line, a long URL) is not held whole.
+ *
+ * @param issue - Issue Chrome reported
+ * @returns Key
+ */
+function reportKey(issue: InspectorIssue): string {
+  return createHash('sha1')
+    .update(`${issue.code}|${JSON.stringify(issue.details)}`)
+    .digest('hex')
+    .slice(0, 16);
+}
+
 /**
  * Issues of the page currently loaded: allowlisted kinds only, each once
  * (Chrome sends form issues twice), one per kind for form errors and
- * element content errors (with the elements at fault), the first
+ * element content errors (with the elements at fault, each once), the first
  * {@link MAX_PAGE_ISSUES}.
  */
 export class PageIssueLog {
   private readonly kept: PageIssue[] = [];
-  /** Kept issues by grouping key */
-  private readonly groups = new Map<string, PageIssue>();
-  /** Reports seen, to drop Chrome's repeats */
+  /** Kept issues of the kinds listed once, by code and type */
+  private readonly kinds = new Map<string, PageIssue>();
+  /** Elements recorded for each kind listed once */
+  private readonly kindNodes = new Map<string, Set<number>>();
+  /** Kinds listed once that were dropped at the limit (counted once) */
+  private readonly droppedKinds = new Set<string>();
+  /**
+   * Keys of the other reports seen, to drop Chrome's repeats. Past
+   * {@link MAX_ISSUE_SEEN_REPORTS} a repeat cannot be told from a new
+   * report, so new ones are ignored: not kept, and not counted in
+   * {@link dropped}, which then is a lower bound
+   */
   private readonly seen = new Set<string>();
   private droppedCount = 0;
 
@@ -237,33 +264,77 @@ export class PageIssueLog {
    * @returns The issue it was recorded in, with the element newly recorded
    *   (to describe), or undefined when dropped or a repeat
    */
-  add(issue: InspectorIssue): { issue: PageIssue; recorded?: RecordedNode } | undefined {
+  add(issue: InspectorIssue): Recorded {
     const report = toReport(issue);
     if (!report) return undefined;
-    const exactKey = `${issue.code}|${JSON.stringify(issue.details)}`;
-    if (this.seen.has(exactKey)) return undefined;
-    if (this.seen.size < MAX_SEEN_KEYS) this.seen.add(exactKey);
+    return report.groupByKind
+      ? this.addToKind(`${issue.code}|${report.issue.type}`, report)
+      : this.addDistinct(reportKey(issue), report);
+  }
 
-    const groupKey = report.groupByKind ? `${issue.code}|${report.issue.type}` : exactKey;
-    const existing = this.groups.get(groupKey);
+  /** Forget the issues (a new page was loaded). */
+  clear(): void {
+    this.kept.length = 0;
+    this.kinds.clear();
+    this.kindNodes.clear();
+    this.droppedKinds.clear();
+    this.seen.clear();
+    this.droppedCount = 0;
+  }
+
+  /**
+   * Add a report of a kind listed per report.
+   *
+   * @param key - Report key
+   * @param report - Report
+   * @returns What was recorded
+   */
+  private addDistinct(key: string, report: IssueReport): Recorded {
+    if (this.seen.has(key) || this.seen.size >= MAX_ISSUE_SEEN_REPORTS) return undefined;
+    this.seen.add(key);
+    return this.keep(report);
+  }
+
+  /**
+   * Add a report of a kind listed once with its elements.
+   *
+   * @param kind - Code and type
+   * @param report - Report
+   * @returns What was recorded
+   */
+  private addToKind(kind: string, report: IssueReport): Recorded {
+    const nodes = this.kindNodes.get(kind) ?? new Set<number>();
+    const nodeId = report.node?.backendNodeId;
+    if (nodeId !== undefined && nodes.has(nodeId)) return undefined;
+    if (nodeId !== undefined) nodes.add(nodeId);
+    const existing = this.kinds.get(kind);
     if (existing) return addNode(existing, report);
+    if (this.droppedKinds.has(kind)) return undefined;
+    const recorded = this.keep(report);
+    if (recorded) {
+      this.kinds.set(kind, recorded.issue);
+      this.kindNodes.set(kind, nodes);
+    } else {
+      this.droppedKinds.add(kind);
+    }
+    return recorded;
+  }
+
+  /**
+   * Keep a new issue, or count it as dropped at {@link MAX_PAGE_ISSUES}.
+   *
+   * @param report - Its first report
+   * @returns What was recorded, undefined when dropped
+   */
+  private keep(report: IssueReport): Recorded {
     if (this.kept.length >= MAX_PAGE_ISSUES) {
       this.droppedCount++;
       return undefined;
     }
     const pageIssue = newPageIssue(report);
     this.kept.push(pageIssue);
-    this.groups.set(groupKey, pageIssue);
     const node = pageIssue.nodes?.[0];
     return { issue: pageIssue, ...(node && { recorded: recordedNode(node, report) }) };
-  }
-
-  /** Forget the issues (a new page was loaded). */
-  clear(): void {
-    this.kept.length = 0;
-    this.groups.clear();
-    this.seen.clear();
-    this.droppedCount = 0;
   }
 }
 
@@ -284,13 +355,10 @@ function recordedNode(node: IssueNode, report: IssueReport): RecordedNode {
  * {@link MAX_ISSUE_NODES}).
  *
  * @param issue - Kept issue of the kind
- * @param report - Report on another element
+ * @param report - Report on another element (not recorded before)
  * @returns The issue, with the element when it was kept
  */
-function addNode(
-  issue: PageIssue,
-  report: IssueReport
-): { issue: PageIssue; recorded?: RecordedNode } | undefined {
+function addNode(issue: PageIssue, report: IssueReport): Recorded {
   if (!report.node) return undefined;
   issue.count = (issue.count ?? 0) + 1;
   const nodes = (issue.nodes ??= []);

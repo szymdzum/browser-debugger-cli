@@ -36,7 +36,7 @@ import {
   withActionStability,
 } from '@/runtime/dom/formFillHelpers/index.js';
 import { exceptionSummary } from '@/runtime/dom/formFillHelpers/shared.js';
-import { withFormIssues } from '@/runtime/dom/formIssues.js';
+import { connectedNodes, formErrors, withFormIssues } from '@/runtime/dom/formIssues.js';
 import { submitForm } from '@/runtime/dom/formSubmitHelpers.js';
 import type { RawFormData } from '@/runtime/dom/formTypes.js';
 import { evaluateInFrame, listFrames } from '@/runtime/dom/frames.js';
@@ -931,7 +931,9 @@ export function createCommandRegistry(
         );
       }
       const forms = await readFormDiscovery(cdp, response.result.objectId);
-      return withFormIssues(forms, store.pageIssues.issues);
+      const errors = formErrors(store.pageIssues.issues);
+      const nodes = errors.flatMap((issue) => issue.nodes?.map((node) => node.backendNodeId) ?? []);
+      return withFormIssues(forms, errors, await connectedNodes(cdp, nodes));
     },
   } as CommandRegistry;
 }

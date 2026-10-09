@@ -20,7 +20,11 @@ import {
   formsInFrameMessage,
   requiredFieldsEmptyMessage,
 } from '@/ui/messages/commands.js';
-import { PAGE_FORM_ISSUES_HEADING, fieldIssueLine } from '@/ui/messages/issueMessages.js';
+import {
+  PAGE_FORM_ISSUES_HEADING,
+  fieldIssueLine,
+  unshownFormNote,
+} from '@/ui/messages/issueMessages.js';
 
 const COLUMN_WIDTHS = {
   index: 4,
@@ -323,7 +327,8 @@ function formatPageFormIssues(
   fmt.text(PAGE_FORM_ISSUES_HEADING);
   for (const issue of issues) {
     const where = issue.elements?.length ? ` → ${issue.elements.join(', ')}` : '';
-    fmt.text(`  • ${issue.text}${where}`);
+    const form = issue.form ? ` ${unshownFormNote(issue.form.index, issue.form.hidden)}` : '';
+    fmt.text(`  • ${issue.text}${where}${form}`);
   }
   fmt.blank();
 }
