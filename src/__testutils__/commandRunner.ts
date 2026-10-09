@@ -41,13 +41,22 @@ export async function runCommand(
     env?: Record<string, string>;
     /** Delay before reading stdout (ms); lets the pipe fill up like a slow consumer */
     readDelay?: number;
-    /** Sends SIGINT to the command when aborted, like Ctrl-C */
+    /** Sends SIGINT (or `interruptWith`) to the command when aborted, like Ctrl-C */
     interrupt?: AbortSignal;
+    /** Signal `interrupt` sends (default SIGINT; SIGKILL: a client killed without a clean disconnect) */
+    interruptWith?: NodeJS.Signals;
     /** Called with everything read from stdout so far, after each chunk */
     onStdout?: (stdout: string) => void;
   } = {}
 ): Promise<CommandResult> {
-  const { timeout = 30000, env = {}, readDelay = 0, interrupt, onStdout } = options;
+  const {
+    timeout = 30000,
+    env = {},
+    readDelay = 0,
+    interrupt,
+    interruptWith = 'SIGINT',
+    onStdout,
+  } = options;
 
   // Path to compiled CLI entry point (ESM module compatibility)
   const currentFileDir = path.dirname(fileURLToPath(import.meta.url));
@@ -75,7 +84,7 @@ export async function runCommand(
       timedOut = true;
       child.kill('SIGKILL');
     }, timeout);
-    interrupt?.addEventListener('abort', () => child.kill('SIGINT'), { once: true });
+    interrupt?.addEventListener('abort', () => child.kill(interruptWith), { once: true });
 
     child.stdout?.on('data', (chunk: Buffer) => {
       stdout += chunk.toString();
