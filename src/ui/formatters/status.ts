@@ -134,6 +134,7 @@ export function formatSessionStatus(
     downloadRows.forEach((row, index) =>
       index === 0 ? fmt.keyValue('Downloads', row, 18) : fmt.text(`${' '.repeat(18)}${row}`)
     );
+    if (activity.tabsWarning) fmt.keyValue('Tabs', `⚠ ${activity.tabsWarning}`, 18);
   }
 
   fmt.blank().text('Collectors').separator('━', 50);

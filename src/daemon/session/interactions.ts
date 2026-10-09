@@ -13,6 +13,7 @@ import type {
   DialogInfo,
   TriggeredRequest,
 } from '@/ipc/protocol/domTypes.js';
+import type { OpenedTab, TabClosedSwitch } from '@/ipc/protocol/tabTypes.js';
 import { pendingChanges, watchActionEffects } from '@/runtime/dom/actionEffects.js';
 import { UNBIND_TARGET_SCRIPT } from '@/runtime/dom/targetNode.js';
 import { toDownloadInfo } from '@/telemetry/downloads.js';
@@ -66,6 +67,21 @@ export interface InteractionOptions {
   dialogs?: DialogChoice;
 }
 
+/** What the session knows about its tabs, for interaction results */
+export interface TabReports {
+  /** A mark for {@link openedSince} */
+  openedCount: () => number;
+  /** Tabs and windows opened after a mark */
+  openedSince: (mark: number) => OpenedTab[];
+  /** The latest switch after the session's tab closed that no action reported yet */
+  takeClosedSwitch: () => TabClosedSwitch | undefined;
+  /**
+   * When a connection was lost: settles once the session moved to another
+   * tab or ended (undefined for a connection that was not lost)
+   */
+  pageLost: (cdp: CDPConnection) => Promise<void> | undefined;
+}
+
 /** Runs one interaction after the previous one finished */
 export type InteractionRunner = <T extends object>(
   cdp: CDPConnection,
@@ -81,6 +97,43 @@ export type InteractionRunner = <T extends object>(
  */
 function succeeded(result: object): boolean {
   return !('success' in result) || result.success !== false;
+}
+
+/**
+ * The tabs opened since a mark, and the switch after the session's tab closed.
+ *
+ * @param tabs - Tab reports
+ * @param firstOpened - Mark taken as the interaction began
+ * @returns `opened`, `tabClosed` and `switchedTo`, each absent when there is none
+ */
+function tabReport(
+  tabs: TabReports | undefined,
+  firstOpened: number
+): Pick<ActionEffects, 'opened' | 'tabClosed' | 'switchedTo'> {
+  if (!tabs) return {};
+  const opened = tabs.openedSince(firstOpened);
+  return { ...(opened.length > 0 && { opened }), ...tabs.takeClosedSwitch() };
+}
+
+/**
+ * After an interaction failed: when its tab's connection was lost because
+ * the tab closed and the session moved to another, the tab report saying so.
+ *
+ * @param cdp - The interaction's connection
+ * @param tabs - Tab reports
+ * @param firstOpened - Mark taken as the interaction began
+ * @returns The report with `tabClosed`, or undefined when the failure stands
+ */
+async function closedTabReport(
+  cdp: CDPConnection,
+  tabs: TabReports | undefined,
+  firstOpened: number
+): Promise<ReturnType<typeof tabReport> | undefined> {
+  const lost = tabs?.pageLost(cdp);
+  if (!lost) return undefined;
+  await lost;
+  const report = tabReport(tabs, firstOpened);
+  return report.tabClosed ? report : undefined;
 }
 
 /**
@@ -117,11 +170,22 @@ function consoleMessagesLogged(store: TelemetryStore): number {
  * it is cleared when it returns, so a dialog a timer opens later gets the
  * session default. A command that is not an interaction (`dom eval`, `cdp`)
  * running meanwhile shares its choice.
+ * Tabs and windows opened meanwhile
+ * are added as `opened`, and a switch made because the session's tab closed
+ * since the previous interaction as `tabClosed` and `switchedTo`. When the
+ * tab closes during the interaction (a popup's button calling
+ * `window.close()`), the switch is waited for and reported, and the
+ * interaction succeeds with it even when reading its effects failed on the
+ * lost connection.
  *
  * @param store - Session store recording answered dialogs and network requests
+ * @param tabs - The session's tabs (none: no tab reports)
  * @returns Interaction runner
  */
-export function createInteractionRunner(store: TelemetryStore): InteractionRunner {
+export function createInteractionRunner(
+  store: TelemetryStore,
+  tabs?: TabReports
+): InteractionRunner {
   let queue: Promise<unknown> = Promise.resolve();
   return <T extends object>(
     cdp: CDPConnection,
@@ -132,13 +196,15 @@ export function createInteractionRunner(store: TelemetryStore): InteractionRunne
       const firstDialog = store.dialogs.length;
       const firstDownload = store.downloads.length;
       const firstConsoleMessage = consoleMessagesLogged(store);
+      const firstOpened = tabs?.openedCount() ?? 0;
       const collectRequests =
         options.reportRequests === false ? undefined : watchTriggeredRequests(store);
       const effects = options.reportEffects === false ? undefined : watchActionEffects(cdp);
       const collectErrors = effects && watchActionErrors(store);
+      let result: T | undefined;
       try {
         store.dialogAnswers.setActionChoice(options.dialogs);
-        const result = await action();
+        result = await action();
         const dialogs = store.dialogs.slice(firstDialog);
         if (!succeeded(result)) return { ...result, ...(dialogs.length > 0 && { dialogs }) };
         const collected = await effects?.collect({
@@ -150,6 +216,7 @@ export function createInteractionRunner(store: TelemetryStore): InteractionRunne
         });
         const { work, ...changes } = collected ?? {};
         const requests = collectRequests?.();
+        if (effects) await tabs?.pageLost(cdp);
         const downloads = store.downloads.slice(firstDownload).map(toDownloadInfo);
         const pending =
           options.detectUnsettled && work
@@ -162,7 +229,17 @@ export function createInteractionRunner(store: TelemetryStore): InteractionRunne
           ...collectErrors?.(),
           ...(pending && { settled: false as const, pending }),
           ...(downloads.length > 0 && { downloads }),
+          ...tabReport(tabs, firstOpened),
           ...requests,
+        };
+      } catch (error) {
+        const closed = effects && (await closedTabReport(cdp, tabs, firstOpened));
+        if (!closed) throw error;
+        const dialogs = store.dialogs.slice(firstDialog);
+        return {
+          ...(result ?? ({ success: true } as unknown as T)),
+          ...(dialogs.length > 0 && { dialogs }),
+          ...closed,
         };
       } finally {
         store.dialogAnswers.setActionChoice(undefined);

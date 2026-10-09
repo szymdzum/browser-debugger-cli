@@ -26,6 +26,14 @@ import type {
   SubmitResult,
 } from '@/ipc/protocol/domTypes.js';
 import type { InspectResult } from '@/ipc/protocol/inspectTypes.js';
+import type {
+  PageCloseCommand,
+  PageCloseData,
+  PageSwitchCommand,
+  PageSwitchData,
+  PageTabsCommand,
+  PageTabsData,
+} from '@/ipc/protocol/tabTypes.js';
 import type { PageState, SessionActivity } from '@/ipc/session/types.js';
 import type {
   ColorScheme,
@@ -517,6 +525,9 @@ export type RegistryShape = {
   dom_wait: CommandDef<DomWaitCommand, DomWaitData>;
   page_navigate: CommandDef<PageNavigateCommand, PageNavigationResult>;
   page_emulate: CommandDef<PageEmulateCommand, PageEmulationResult>;
+  page_tabs: CommandDef<PageTabsCommand, PageTabsData>;
+  page_switch: CommandDef<PageSwitchCommand, PageSwitchData>;
+  page_close: CommandDef<PageCloseCommand, PageCloseData>;
 };
 
 /** What `bdg page` does */
@@ -657,6 +668,9 @@ export const COMMANDS: RegistryShape = {
   dom_scroll: defineCommand(),
   page_navigate: defineCommand(),
   page_emulate: defineCommand(),
+  page_tabs: defineCommand(),
+  page_switch: defineCommand(),
+  page_close: defineCommand(),
   dom_form_discover: defineCommand(),
   dom_listeners: defineCommand(),
   dom_layout: defineCommand(),

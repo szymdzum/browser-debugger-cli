@@ -101,6 +101,60 @@ describe('startNavigationTracking contract', () => {
     assert.equal(typeof nav.timestamp, 'number');
   });
 
+  it('continues the count on another tab, starting with its page', async () => {
+    const navigations: NavigationEvent[] = [];
+    await startNavigationTracking(new MockCDPConnection() as unknown as CDPConnection, navigations);
+    const popup = new MockCDPConnection() as unknown as CDPConnection;
+
+    const { getCurrentNavigationId } = await startNavigationTracking(popup, navigations, {
+      tabUrl: 'http://localhost:3000/popup',
+    });
+
+    assert.equal(getCurrentNavigationId(), 1);
+    assert.deepEqual(
+      navigations.map((nav) => [nav.navigationId, nav.url]),
+      [
+        [0, ''],
+        [1, 'http://localhost:3000/popup'],
+      ]
+    );
+  });
+
+  it('goes on with the same navigation when resumed on a tab', async () => {
+    const navigations: NavigationEvent[] = [];
+    await startNavigationTracking(new MockCDPConnection() as unknown as CDPConnection, navigations);
+
+    const { getCurrentNavigationId } = await startNavigationTracking(
+      new MockCDPConnection() as unknown as CDPConnection,
+      navigations,
+      { resume: true }
+    );
+
+    assert.equal(getCurrentNavigationId(), 0);
+    assert.equal(navigations.length, 1);
+  });
+
+  it('never reuses the id of a switch that was rolled back', async () => {
+    const navigations: NavigationEvent[] = [];
+    const issued = { last: -1 };
+    const start = (tab: { tabUrl?: string; resume?: boolean }): Promise<unknown> =>
+      startNavigationTracking(new MockCDPConnection() as unknown as CDPConnection, navigations, {
+        ...tab,
+        issued,
+      });
+    await start({});
+    await start({ tabUrl: 'http://localhost:3000/failed' });
+    navigations.length = 1;
+    await start({ resume: true });
+
+    await start({ tabUrl: 'http://localhost:3000/popup' });
+
+    assert.deepEqual(
+      navigations.map((nav) => nav.navigationId),
+      [0, 2]
+    );
+  });
+
   it('should track main frame navigations and increment navigationId', async () => {
     const mockCdp = new MockCDPConnection() as unknown as CDPConnection;
     const navigations: NavigationEvent[] = [];

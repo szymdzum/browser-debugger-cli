@@ -13,6 +13,7 @@ import {
   KEEPS_MATCHED_STYLES,
   withMatchedStylesReset,
 } from '@/daemon/session/matchedStylesReset.js';
+import type { PageSwitcher } from '@/daemon/session/pageSwitcher.js';
 import { matchedStyles } from '@/runtime/dom/inspectRules.js';
 import { delay } from '@/utils/async.js';
 
@@ -58,11 +59,11 @@ async function readAround(cdp: CDPConnection, step: () => Promise<unknown>): Pro
 function launchedSession(cdp: CDPConnection): Session {
   const session = Session.create('http://localhost:9', {}, () => undefined);
   const internals = session as unknown as {
-    cdp: CDPConnection;
+    pages: PageSwitcher;
     started: boolean;
     registry: Record<string, () => Promise<unknown>>;
   };
-  internals.cdp = cdp;
+  internals.pages.adopt(cdp, []);
   internals.started = true;
   internals.registry = {
     dom_click: () => Promise.resolve({}),

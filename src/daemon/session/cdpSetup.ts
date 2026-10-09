@@ -8,7 +8,6 @@ import { CDPConnection } from '@/connection/cdp.js';
 import { CDPConnectionError } from '@/connection/errors.js';
 import { waitForPageReady } from '@/connection/pageReadiness.js';
 import { DEFAULT_PAGE_READINESS_TIMEOUT_MS } from '@/constants.js';
-import { sessionEndingConnectionLoss } from '@/daemon/messages.js';
 import type { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
 import type { SessionConfig } from '@/daemon/session/types.js';
 import { CommandError } from '@/errors/index.js';
@@ -30,7 +29,7 @@ const EXTERNAL_CONNECT_ATTEMPTS = 2;
  *
  * @param telemetryStore - Store holding the resolved target
  * @param log - Logger
- * @param onDisconnect - Called if an established connection is later lost
+ * @param onDisconnect - Called with the connection if it is later lost
  * @param options - `external`: an already running Chrome, so a failed connect is
  *   not retried for long (a launched Chrome may still be starting); `signal`:
  *   stops retrying when the session is stopped while starting
@@ -40,22 +39,43 @@ const EXTERNAL_CONNECT_ATTEMPTS = 2;
 export async function connectCDP(
   telemetryStore: TelemetryStore,
   log: Logger,
-  onDisconnect: () => void,
+  onDisconnect: (cdp: CDPConnection) => void,
   options: { external?: boolean; signal?: AbortSignal } = {}
 ): Promise<CDPConnection> {
   if (!telemetryStore.targetInfo) {
     throw new CDPConnectionError('Failed to obtain target information');
   }
+  return connectPage(telemetryStore.targetInfo.webSocketDebuggerUrl, log, onDisconnect, {
+    ...options,
+    attempts: options.external ? EXTERNAL_CONNECT_ATTEMPTS : LAUNCHED_CONNECT_ATTEMPTS,
+  });
+}
 
+/**
+ * Connect to a page over CDP: the session's first tab, or one that
+ * `bdg page switch` moves to (Chrome is running then, so few attempts).
+ *
+ * @param wsUrl - The page's DevTools WebSocket URL
+ * @param log - Logger
+ * @param onDisconnect - Called with the connection if it is later lost
+ * @param options - Connection attempts (default 2); `signal` stops retrying
+ * @returns Open CDP connection
+ * @throws CDPConnectionError if connecting fails
+ */
+export async function connectPage(
+  wsUrl: string,
+  log: Logger,
+  onDisconnect: (cdp: CDPConnection) => void,
+  options: { attempts?: number; signal?: AbortSignal } = {}
+): Promise<CDPConnection> {
   const cdp = new CDPConnection(log);
-  await cdp.connect(telemetryStore.targetInfo.webSocketDebuggerUrl, {
+  await cdp.connect(wsUrl, {
     autoReconnect: false,
-    maxRetries: options.external ? EXTERNAL_CONNECT_ATTEMPTS : LAUNCHED_CONNECT_ATTEMPTS,
+    maxRetries: options.attempts ?? EXTERNAL_CONNECT_ATTEMPTS,
     signal: options.signal,
     onDisconnect: (code, reason) => {
       log.info(`Chrome connection lost (code: ${code}, reason: ${reason})`);
-      log.debug(sessionEndingConnectionLoss());
-      onDisconnect();
+      onDisconnect(cdp);
     },
   });
   log.info('CDP connection established');

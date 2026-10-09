@@ -353,4 +353,36 @@ void describe('Console sources', () => {
     assert.equal(added.length, 2);
     assert.deepEqual(received, ['2:Uncaught', `1:${added[0]?.text ?? ''}`]);
   });
+
+  void it('leaves out the messages Chrome replays on enabling when asked (a tab switched to)', async () => {
+    const tab = new MockSessionCDP();
+    const replay = (text: string): void => {
+      tab.emit('Log.entryAdded', {
+        entry: { source: 'network', level: 'error', text, timestamp: 1000 },
+      });
+    };
+    const send = tab.send.bind(tab);
+    tab.send = (method, params, sessionId) => {
+      if (method === 'Runtime.enable' || method === 'Log.enable') replay(`replayed ${method}`);
+      return send(method, params, sessionId);
+    };
+    const collected: ConsoleMessage[] = [];
+
+    const stop = await startConsoleCollection(
+      tab as unknown as CDPConnection,
+      collected,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      { skipReplay: true }
+    );
+    replay('new');
+    await stop();
+
+    assert.deepEqual(
+      collected.map((message) => message.text),
+      ['new']
+    );
+  });
 });

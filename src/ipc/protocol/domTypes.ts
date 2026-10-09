@@ -7,6 +7,7 @@
  * here lets runtime and transport evolve independently.
  */
 
+import type { OpenedTab, TabRef } from '@/ipc/protocol/tabTypes.js';
 import type { FormStep, FieldOption, ViewportPosition } from '@/types.js';
 
 /** How bdg answers JavaScript dialogs (`--dialog`) */
@@ -162,6 +163,12 @@ export interface ActionEffects {
   errors?: ActionError[];
   /** How many more distinct errors there were than `errors` lists */
   moreErrors?: number;
+  /** Tabs and windows opened during the action (absent when none were) */
+  opened?: OpenedTab[];
+  /** The session's tab closed since the previous action (absent when it did not) */
+  tabClosed?: TabRef;
+  /** The tab the session moved to when its tab closed (with `tabClosed`) */
+  switchedTo?: TabRef;
 }
 
 /** A filled field's value differing from the one given */

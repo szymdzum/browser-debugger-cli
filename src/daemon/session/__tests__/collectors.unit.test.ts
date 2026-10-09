@@ -39,7 +39,7 @@ void describe('startTelemetryCollectors', () => {
         { url: 'http://x.test', port: 9222 },
         new TelemetryStore(),
         createLogger('session'),
-        plugins
+        { plugins }
       ),
       /start failed/
     );

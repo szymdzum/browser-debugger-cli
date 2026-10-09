@@ -86,7 +86,8 @@ after(removeTempDirs);
 function start(
   page: MockCDP,
   config: Partial<SessionConfig>,
-  connector: BrowserConnector
+  connector: BrowserConnector,
+  switches?: Array<(cdp: CDPConnection) => void>
 ): Promise<CleanupFunction> {
   return startSessionDownloads(
     {
@@ -94,9 +95,24 @@ function start(
       config: { url: 'http://x.test', port: 9222, ...config },
       store: new TelemetryStore(),
       logger,
+      ...(switches && { onPageSwitch: (listener) => void switches.push(listener) }),
     },
     connector
   );
+}
+
+/**
+ * Tell the listeners the session moved to another tab, and let them act.
+ *
+ * @param switches - Registered listeners
+ * @param tab - The new tab's connection
+ */
+async function switchTab(
+  switches: Array<(cdp: CDPConnection) => void>,
+  tab: MockCDP
+): Promise<void> {
+  switches.forEach((listener) => listener(tab as unknown as CDPConnection));
+  await new Promise((resolve) => setImmediate(resolve));
 }
 
 /**
@@ -156,5 +172,42 @@ void describe('startSessionDownloads', () => {
 
     assert.equal(connected, false);
     assert.deepEqual(page.behaviors(), [{ behavior: 'default', eventsEnabled: true }]);
+  });
+
+  void it('follows the session to another tab when it uses the page connection', async () => {
+    const switches: Array<(cdp: CDPConnection) => void> = [];
+    const popup = new MockCDP();
+    await start(
+      new MockCDP(),
+      { chromeWsUrl: 'ws://127.0.0.1:9222/devtools/browser/abc' },
+      () => Promise.resolve(null),
+      switches
+    );
+
+    await switchTab(switches, popup);
+
+    assert.deepEqual(popup.behaviors(), [{ behavior: 'default', eventsEnabled: true }]);
+  });
+
+  void it('stays on the browser-level connection when the session moves to another tab', async () => {
+    const switches: Array<(cdp: CDPConnection) => void> = [];
+    const popup = new MockCDP();
+    let lose = (): void => undefined;
+    await start(
+      new MockCDP(),
+      {},
+      (_config, _logger, onLost) => {
+        lose = onLost;
+        return Promise.resolve(new MockCDP() as unknown as CDPConnection);
+      },
+      switches
+    );
+
+    await switchTab(switches, popup);
+    assert.deepEqual(popup.behaviors(), []);
+    lose();
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.deepEqual(popup.behaviors(), [sessionDirBehavior()], 'falls back on the current tab');
   });
 });

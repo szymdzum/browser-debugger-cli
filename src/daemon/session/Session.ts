@@ -10,19 +10,26 @@ import type { CDPConnection } from '@/connection/cdp.js';
 import { ChromeLaunchError } from '@/connection/errors.js';
 import { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
 import { CaptureGate, TELEMETRY_READS } from '@/daemon/session/captureGate.js';
-import { connectCDP, navigateToTarget } from '@/daemon/session/cdpSetup.js';
+import { connectCDP, connectPage, navigateToTarget } from '@/daemon/session/cdpSetup.js';
 import {
   externalChromePort,
   findPageTarget,
   setupChromeConnection,
 } from '@/daemon/session/chromeConnection.js';
-import { startTelemetryCollectors } from '@/daemon/session/collectors.js';
-import { createCommandRegistry, type CommandRegistry } from '@/daemon/session/commandRegistry.js';
+import { runCleanups, startTelemetryCollectors } from '@/daemon/session/collectors.js';
+import {
+  createCommandRegistry,
+  type CommandRegistry,
+  type TabControl,
+} from '@/daemon/session/commandRegistry.js';
 import { withMatchedStylesReset } from '@/daemon/session/matchedStylesReset.js';
+import { PageSwitcher, type PageHost, type PageStart } from '@/daemon/session/pageSwitcher.js';
+import { telemetryPluginsOf } from '@/daemon/session/plugins.js';
+import { TabTracker } from '@/daemon/session/tabs.js';
 import { teardownSession, type TeardownContext } from '@/daemon/session/teardown.js';
 import type { SessionConfig } from '@/daemon/session/types.js';
 import { CommandError } from '@/errors/index.js';
-import { unknownSessionCommandMessage } from '@/errors/messages.js';
+import { chromeInUseBySessionError, unknownSessionCommandMessage } from '@/errors/messages.js';
 import type { ChromeNoticeCode, NoticeSink } from '@/errors/notices.js';
 import type { CommandName, CommandSchemas } from '@/ipc/index.js';
 import type { PageLoadingState } from '@/ipc/protocol/commands.js';
@@ -30,6 +37,7 @@ import type { SessionOptions } from '@/ipc/session/lifecycle.js';
 import type { StatusResponseData } from '@/ipc/session/queries.js';
 import { applySessionEmulation, type SessionEmulation } from '@/runtime/page/emulation.js';
 import { readPageLoadingState } from '@/runtime/page/loadingState.js';
+import { findConflictingOwner } from '@/session/chromeOwners.js';
 import { reapOrphanedChrome, removeSessionFiles } from '@/session/cleanup/staleSession.js';
 import { writeSessionMetadata } from '@/session/metadata.js';
 import { getSessionPort } from '@/session/port.js';
@@ -52,17 +60,23 @@ export type SessionEndReason = 'normal' | 'crash' | 'timeout' | 'closed';
 /** How long Chrome gets to exit after the page connection drops, before the end is called a closed tab */
 const CRASH_SETTLE_MS = 500;
 
+/** `Inspector.detached` reason when the page's tab closed */
+const TARGET_CLOSED = 'target_closed';
+
 /** Ports tried when automatically chosen ports turn out to be taken */
 const PORT_ATTEMPTS = 3;
 
 /**
  * Commands that still work after the page's renderer crashed: they read what
- * the session collected, load the page again (`page reload`/`navigate`) or
- * send raw CDP. Every other command needs the page and fails at once.
+ * the session collected, load the page again (`page reload`/`navigate`),
+ * move to or close a tab, or send raw CDP. Every other command needs the page and fails at once.
  */
 const RUN_ON_CRASHED_PAGE: ReadonlySet<CommandName> = new Set<CommandName>([
   ...TELEMETRY_READS,
   'page_navigate',
+  'page_tabs',
+  'page_switch',
+  'page_close',
   'cdp_call',
 ]);
 
@@ -115,17 +129,26 @@ export class StartCancelledError extends Error {
  */
 export class Session {
   private readonly store = new TelemetryStore();
-  private readonly registry: CommandRegistry = createCommandRegistry(this.store, {
-    get: () =>
-      filterDefined({ viewport: this.config.viewport, colorScheme: this.config.colorScheme }),
-    set: (emulation) => this.setEmulation(emulation),
-  });
+  private readonly tabs = new TabTracker();
+  /** Called with the page connection of each tab the session moves to */
+  private readonly pageSwitchListeners: Array<(cdp: CDPConnection) => void> = [];
+  /** The session's page connection, moved between tabs */
+  private readonly pages = new PageSwitcher(this.pageHost());
+  private readonly registry: CommandRegistry = createCommandRegistry(
+    this.store,
+    {
+      get: () =>
+        filterDefined({ viewport: this.config.viewport, colorScheme: this.config.colorScheme }),
+      set: (emulation) => this.setEmulation(emulation),
+    },
+    this.tabControl()
+  );
   private readonly captures = new CaptureGate();
   private readonly notify: NoticeSink<ChromeNoticeCode> = (notice) =>
     log.info(formatChromeNotice(notice));
   private chrome: LaunchedChrome | null = null;
-  private cdp: CDPConnection | null = null;
-  private cleanupFunctions: CleanupFunction[] = [];
+  /** Cleanups of the collectors started once for the session */
+  private sessionCleanups: CleanupFunction[] = [];
   private timeoutTimer: NodeJS.Timeout | null = null;
   /** When `--timeout` stops the session (epoch ms) */
   private autoStopAt: number | undefined;
@@ -205,7 +228,8 @@ export class Session {
    * waiting for a page that cannot answer. Commands that may change the page
    * drop `dom inspect`'s kept matched rules ({@link withMatchedStylesReset}).
    * Page commands run once a screenshot running before them has put the
-   * page's emulation back ({@link CaptureGate}).
+   * page's emulation back ({@link CaptureGate}), on the tab a tab switch
+   * running before them moved to.
    *
    * @param name - Command name
    * @param params - Command parameters
@@ -217,7 +241,7 @@ export class Session {
     params: CommandSchemas[K]['requestSchema'],
     abandoned?: AbortSignal
   ): Promise<CommandSchemas[K]['responseSchema']> {
-    if (!this.cdp || !this.started || this.stopping) {
+    if (!this.pages.connection || !this.started || this.stopping) {
       return Promise.reject(new Error('No active session'));
     }
     const crashedAt = this.store.pageCrashedAt;
@@ -234,10 +258,12 @@ export class Session {
       );
     }
     const handler = this.registry[name];
-    const cdp = this.cdp;
-    return this.captures.run(name, () =>
-      withMatchedStylesReset(cdp, name, () => handler(cdp, params, abandoned))
-    );
+    return this.captures.run(name, async () => {
+      await this.pages.settled();
+      const cdp = this.pages.connection;
+      if (!cdp) throw new Error('No active session');
+      return withMatchedStylesReset(cdp, name, () => handler(cdp, params, abandoned));
+    });
   }
 
   /**
@@ -292,6 +318,13 @@ export class Session {
   private setEmulation(emulation: SessionEmulation): void {
     const { viewport: _viewport, colorScheme: _colorScheme, ...rest } = this.config;
     this.config = { ...rest, ...emulation };
+    this.writeMetadata();
+  }
+
+  /**
+   * Write the session metadata again after it changed mid-session (emulation, tab).
+   */
+  private writeMetadata(): void {
     if (!this.started) return;
     try {
       writeSessionMetadata(this.metadata());
@@ -360,24 +393,34 @@ export class Session {
       await findPageTarget(this.config, this.store, log);
       this.throwIfStopping();
     }
-    this.cdp = await connectCDP(this.store, log, () => void this.endAfterDisconnect(), {
+    const cdp = await connectCDP(this.store, log, (lost) => this.pages.onPageDisconnected(lost), {
       external: Boolean(chromeWsUrl),
       signal: this.launchAbort.signal,
     });
+    this.pages.adopt(cdp, []);
     this.throwIfStopping();
-    await applySessionEmulation(this.cdp, this.config);
+    await this.startCollectors(cdp);
+    this.documentRequestId = await navigateToTarget(cdp, this.config, this.store, this.chrome, log);
     this.throwIfStopping();
-    this.cleanupFunctions = await startTelemetryCollectors(this.cdp, this.config, this.store, log);
+    this.loading = await readPageLoadingState(cdp, this.store.pendingNetworkRequests.values());
     this.throwIfStopping();
-    this.documentRequestId = await navigateToTarget(
-      this.cdp,
-      this.config,
-      this.store,
-      this.chrome,
-      log
-    );
+  }
+
+  /**
+   * Apply the emulation and start the collectors on the session's first tab.
+   *
+   * @param cdp - Its connection
+   */
+  private async startCollectors(cdp: CDPConnection): Promise<void> {
+    await applySessionEmulation(cdp, this.config);
     this.throwIfStopping();
-    this.loading = await readPageLoadingState(this.cdp, this.store.pendingNetworkRequests.values());
+    this.sessionCleanups = await startTelemetryCollectors(cdp, this.config, this.store, log, {
+      plugins: telemetryPluginsOf('session'),
+      onPageSwitch: (listener) => void this.pageSwitchListeners.push(listener),
+    });
+    this.throwIfStopping();
+    this.tabs.setCurrent(this.store.targetInfo?.id ?? '');
+    this.pages.adopt(cdp, await this.startPage(cdp, { kind: 'first' }));
     this.throwIfStopping();
   }
 
@@ -413,6 +456,143 @@ export class Session {
   }
 
   /**
+   * The handlers' view of the session's tabs.
+   *
+   * @returns Tab control
+   */
+  private tabControl(): TabControl {
+    return {
+      list: () => this.pages.list(),
+      switchTo: (target) => this.pages.switchTo(target),
+      close: (target) => this.pages.close(target),
+      onPageSwitch: (listener) => void this.pageSwitchListeners.push(listener),
+      openedCount: () => this.tabs.openedCount(),
+      openedSince: (mark) => this.tabs.openedSince(mark),
+      takeClosedSwitch: () => this.tabs.takeClosedSwitch(),
+      pageLost: (cdp) => this.pages.pageLost(cdp),
+      unavailable: () => this.tabs.unavailable,
+    };
+  }
+
+  /**
+   * What the page switcher needs of the session.
+   *
+   * @returns Page host
+   */
+  private pageHost(): PageHost {
+    return {
+      store: this.store,
+      tabs: this.tabs,
+      isAttached: () => Boolean(this.config.chromeWsUrl),
+      connect: (wsUrl, onLost) => connectPage(wsUrl, log, onLost),
+      startPage: (cdp, start) => this.startPage(cdp, start),
+      assertTabFree: (targetId, pageWsUrl) => this.assertTabFree(targetId, pageWsUrl),
+      chromeRunning: (tabClosed) => this.chromeRunning(tabClosed),
+      endAfterLoss: () => this.endAfterDisconnect(),
+      endBroken: () => this.stop('crash'),
+      switched: (cdp) => this.switchedTo(cdp),
+      isStarted: () => this.started,
+      isStopping: () => this.stopping !== null,
+    };
+  }
+
+  /**
+   * Start what follows the session tab: the emulation (on a tab switched
+   * to), the page collectors, noticing the tab closing (Chrome says so
+   * before it drops the connection) and tab tracking. A tab switched to
+   * without tab tracking fails the switch; on the first tab (or the tab a
+   * failed switch went back to) it is noted, and the tab commands say so.
+   *
+   * @param cdp - The tab's connection
+   * @param start - How the collectors start
+   * @returns Their cleanups
+   */
+  private async startPage(cdp: CDPConnection, start: PageStart): Promise<CleanupFunction[]> {
+    if (start.kind === 'switched') await applySessionEmulation(cdp, this.config);
+    const cleanups = await startTelemetryCollectors(cdp, this.config, this.store, log, {
+      plugins: telemetryPluginsOf('page'),
+      pageStart: start,
+    });
+    cleanups.push(this.watchTabClosing(cdp));
+    try {
+      cleanups.push(await this.tabs.attach(cdp));
+      this.tabs.unavailable = undefined;
+    } catch (error) {
+      if (start.kind === 'switched') {
+        await runCleanups(cleanups, log);
+        throw error;
+      }
+      this.tabs.unavailable = getErrorMessage(error);
+      log.info(`Tabs not tracked: ${this.tabs.unavailable}`);
+    }
+    return cleanups;
+  }
+
+  /**
+   * Treat the tab closing (`Inspector.detached` with `target_closed`) like
+   * its connection being lost, without waiting for the socket to close.
+   *
+   * @param cdp - The tab's connection
+   * @returns Stops watching
+   */
+  private watchTabClosing(cdp: CDPConnection): CleanupFunction {
+    return cdp.on<{ reason: string }>('Inspector.detached', ({ reason }, sessionId) => {
+      if (sessionId === undefined && reason === TARGET_CLOSED) {
+        this.pages.onPageDisconnected(cdp, true);
+      }
+    });
+  }
+
+  /**
+   * The session moved to another tab: let collectors and handlers follow,
+   * bring it to the front and record it in the session metadata.
+   *
+   * @param cdp - The tab's connection
+   */
+  private switchedTo(cdp: CDPConnection): void {
+    this.pageSwitchListeners.forEach((listener) => listener(cdp));
+    void cdp
+      .send('Page.bringToFront')
+      .catch((error: unknown) => log.debug(`Tab not brought to front: ${getErrorMessage(error)}`));
+    this.writeMetadata();
+  }
+
+  /**
+   * Refuse a tab of an attached Chrome that another bdg session drives.
+   *
+   * @param targetId - The tab
+   * @param pageWsUrl - WebSocket URL of the session's page (for the message)
+   * @throws CommandError (90) naming the other session
+   */
+  private async assertTabFree(targetId: string, pageWsUrl: string): Promise<void> {
+    if (!this.config.chromeWsUrl) return;
+    const ids = this.tabs.list().map((tab) => tab.targetId);
+    const owner = await findConflictingOwner(ids, targetId);
+    if (owner?.targetId !== targetId) return;
+    const { protocol, host } = new URL(pageWsUrl);
+    const endpoint = `${protocol === 'wss:' ? 'https' : 'http'}://${host}`;
+    const err = chromeInUseBySessionError(endpoint, owner);
+    throw new CommandError(
+      err.message,
+      { suggestion: err.suggestion },
+      EXIT_CODES.RESOURCE_CONFLICT
+    );
+  }
+
+  /**
+   * After a lost page connection: whether Chrome still runs. A launched
+   * Chrome gets a moment to exit first unless the tab said it closed (a
+   * crashing Chrome can drop the connection just before it exits).
+   *
+   * @param tabClosed - Chrome said the tab closed
+   * @returns False when a launched Chrome exited
+   */
+  private async chromeRunning(tabClosed: boolean): Promise<boolean> {
+    if (this.chrome && !tabClosed) await delay(CRASH_SETTLE_MS);
+    return this.chrome === null || isProcessAlive(this.chrome.pid);
+  }
+
+  /**
    * End the session after its page connection was lost. A launched Chrome
    * still running a moment later means the tab was closed (e.g.
    * `Target.closeTarget`), a normal end; otherwise Chrome went away (a
@@ -441,17 +621,17 @@ export class Session {
    * later calls only release what was acquired since.
    */
   private async releaseResources(): Promise<void> {
+    const page = this.pages.release();
     const context: TeardownContext = {
       chrome: this.chrome,
-      cdp: this.cdp,
-      cleanupFunctions: this.cleanupFunctions,
+      cdp: page.cdp,
+      cleanupFunctions: [...page.cleanups, ...this.sessionCleanups],
       external: Boolean(this.config.chromeWsUrl),
       log,
       notify: this.notify,
     };
     this.chrome = null;
-    this.cdp = null;
-    this.cleanupFunctions = [];
+    this.sessionCleanups = [];
     await teardownSession(context);
   }
 }

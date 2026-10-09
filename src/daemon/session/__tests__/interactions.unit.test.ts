@@ -7,7 +7,8 @@ import { describe, it } from 'node:test';
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
-import { createInteractionRunner } from '@/daemon/session/interactions.js';
+import { createInteractionRunner, type TabReports } from '@/daemon/session/interactions.js';
+import type { OpenedTab, TabClosedSwitch } from '@/ipc/protocol/tabTypes.js';
 import { UNBIND_TARGET_SCRIPT } from '@/runtime/dom/targetNode.js';
 
 /** What the stub's page scripts evaluate to */
@@ -217,6 +218,118 @@ void describe('createInteractionRunner', () => {
       store.dialogAnswers.reply('confirm'),
       { accept: true },
       'reset after a failure'
+    );
+  });
+});
+
+void describe('createInteractionRunner tab reports', () => {
+  /** The tab a popup closed back to */
+  const opener = { index: 0, targetId: 'A', url: 'https://app.test/', title: 'App' };
+  /** A popup that closed */
+  const popup = { targetId: 'P', url: 'https://idp.test/authorize', title: 'Sign in' };
+
+  /**
+   * Tab reports backed by plain lists.
+   *
+   * @param state - What the session knows
+   * @returns Reports
+   */
+  function fakeTabs(state: {
+    opened: OpenedTab[];
+    switches: TabClosedSwitch[];
+    lost?: CDPConnection;
+  }): TabReports {
+    let reported = 0;
+    return {
+      openedCount: () => state.opened.length,
+      openedSince: (mark) => state.opened.slice(mark),
+      takeClosedSwitch: () => {
+        if (reported === state.switches.length) return undefined;
+        reported = state.switches.length;
+        return state.switches.at(-1);
+      },
+      pageLost: (cdp) => (cdp === state.lost ? Promise.resolve() : undefined),
+    };
+  }
+
+  void it('adds the tabs and windows opened during the interaction', async () => {
+    const state = { opened: [] as OpenedTab[], switches: [] as TabClosedSwitch[] };
+    state.opened.push({ url: 'https://app.test/old', targetId: 'O', kind: 'tab', index: 1 });
+    const interact = createInteractionRunner(new TelemetryStore(), fakeTabs(state));
+    const opened: OpenedTab = {
+      url: 'https://idp.test/authorize',
+      targetId: 'P',
+      kind: 'popup',
+      index: 2,
+    };
+
+    const result = await interact(fakeCdp(), () => {
+      state.opened.push(opened);
+      return Promise.resolve({ success: true });
+    });
+
+    assert.deepEqual(result.opened, [opened]);
+    assert.equal(
+      (await interact(fakeCdp(), () => Promise.resolve({ success: true }))).opened,
+      undefined
+    );
+  });
+
+  void it('reports a switch after the session tab closed once, in the next action', async () => {
+    const state = {
+      opened: [] as OpenedTab[],
+      switches: [{ tabClosed: popup, switchedTo: opener }],
+    };
+    const interact = createInteractionRunner(new TelemetryStore(), fakeTabs(state));
+
+    const first = await interact(fakeCdp(), () => Promise.resolve({ success: true }));
+    const second = await interact(fakeCdp(), () => Promise.resolve({ success: true }));
+
+    assert.deepEqual(first.tabClosed, popup);
+    assert.deepEqual(first.switchedTo, opener);
+    assert.equal(second.tabClosed, undefined);
+  });
+
+  void it('succeeds with the switch when its tab closed during the interaction', async () => {
+    const cdp = fakeCdp();
+    const state = { opened: [] as OpenedTab[], switches: [] as TabClosedSwitch[], lost: cdp };
+    const interact = createInteractionRunner(new TelemetryStore(), fakeTabs(state));
+
+    const result = await interact(cdp, (): Promise<{ success: boolean }> => {
+      state.switches.push({ tabClosed: popup, switchedTo: opener });
+      return Promise.reject(new Error('WebSocket connection closed'));
+    });
+
+    assert.equal(result.success, true);
+    assert.deepEqual(result.tabClosed, popup);
+    assert.deepEqual(result.switchedTo, opener);
+  });
+
+  void it('waits for the switch when its tab closed as the interaction returned', async () => {
+    const cdp = fakeCdp();
+    const state = { opened: [] as OpenedTab[], switches: [] as TabClosedSwitch[] };
+    const tabs = fakeTabs(state);
+    const interact = createInteractionRunner(new TelemetryStore(), {
+      ...tabs,
+      pageLost: (lost) =>
+        lost === cdp
+          ? delay(10).then(() => void state.switches.push({ tabClosed: popup, switchedTo: opener }))
+          : undefined,
+    });
+
+    const result = await interact(cdp, () => Promise.resolve({ success: true }));
+
+    assert.deepEqual(result.tabClosed, popup);
+  });
+
+  void it('still fails when the connection was lost without a switch', async () => {
+    const cdp = fakeCdp();
+    const state = { opened: [] as OpenedTab[], switches: [] as TabClosedSwitch[], lost: cdp };
+    const interact = createInteractionRunner(new TelemetryStore(), fakeTabs(state));
+
+    await assert.rejects(
+      interact(cdp, () => Promise.reject(new Error('WebSocket connection closed'))),
+      /connection closed/
     );
   });
 });

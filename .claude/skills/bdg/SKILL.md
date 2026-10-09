@@ -47,6 +47,18 @@ bdg page reload
 bdg page info                                # URL and title
 ```
 
+### Tabs and Popups
+
+An action that opens a tab or window says `Opened: popup <url> (bdg page switch 1)` (JSON `opened`). Switch to it, act there; a popup that closes itself (OAuth/SSO) returns the session to its opener and the action says `Tab closed: …; now on tab 0: …` (JSON `tabClosed`, `switchedTo`).
+
+```bash
+bdg page tabs                                # * marks the session tab, (opened by N)
+bdg page switch 1                            # By 0-based index or part of the URL (url:8080 for digits)
+bdg page close 1                             # Default: the session tab (moves to its opener)
+```
+
+Network and console follow the session tab from the switch on.
+
 ## Actions Report What Changed
 
 `dom click`, `fill`, `submit`, `pressKey`, `hover` and `scroll` wait for the requests the action starts, then say what happened. Read this before reaching for a screenshot:
@@ -58,9 +70,10 @@ New text: "Your password is invalid!" (div#flash)   # alert/status/aria-live mes
 ⚠ Element Clicked (no visible effect observed ...)  # nothing changed - wrong element or a broken handler
 Errors: Uncaught Error: handler exploded (app.js:3:142)  # console errors/exceptions the action caused
 Download: report.txt → ~/.bdg/downloads/report.txt (completed, 15 B)  # files go to <session dir>/downloads
+Opened: popup https://idp.test/authorize (bdg page switch 1)          # a tab or window it opened
 ```
 
-- In `--json`: `navigation`, `messages`, `errors` (`[{ text, source, count }]`, max 3, then `moreErrors`), `downloads`, `effect: "none"` and pending work (timers, spinners) are fields on `data`.
+- In `--json`: `navigation`, `messages`, `errors` (`[{ text, source, count }]`, max 3, then `moreErrors`), `downloads`, `opened`, `effect: "none"` and pending work (timers, spinners) are fields on `data`.
 - `errors` covers throws in handlers and their timers, unhandled rejections, `console.error` and the errors of a page the action navigated to; earlier errors and warnings are left out (`bdg console --level error` has them all).
 - Results the page shows later are not waited for: follow up with `bdg dom wait`.
 

@@ -83,6 +83,21 @@ export async function browserWebSocketUrl(
 }
 
 /**
+ * DevTools WebSocket URL of another tab, reached the way the session's page
+ * is (same scheme, host, port, path prefix and query: an attached Chrome
+ * behind a proxy too), with the page id as the last path segment.
+ *
+ * @param pageWsUrl - WebSocket URL of the session's page
+ * @param targetId - Target id of the other tab
+ * @returns `…/devtools/page/<targetId>`
+ */
+export function tabWebSocketUrl(pageWsUrl: string, targetId: string): string {
+  const url = new URL(pageWsUrl);
+  url.pathname = url.pathname.replace(/[^/]*$/, encodeURIComponent(targetId));
+  return url.toString();
+}
+
+/**
  * Debugging port of an external Chrome, taken from its WebSocket URL.
  *
  * @param wsUrl - `--chrome-ws-url` value

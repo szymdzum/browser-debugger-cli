@@ -5,7 +5,7 @@ import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPConnectionError, CDPProtocolError } from '@/connection/errors.js';
 import { PatternDetector } from '@/daemon/patternDetector.js';
 import { CdpEventListener, collectEvents } from '@/daemon/session/cdpEvents.js';
-import { createInteractionRunner } from '@/daemon/session/interactions.js';
+import { createInteractionRunner, type TabReports } from '@/daemon/session/interactions.js';
 import { withTriggeredRequestCount } from '@/daemon/session/triggeredRequests.js';
 import { CommandError } from '@/errors/index.js';
 import {
@@ -23,6 +23,7 @@ import type {
   SessionStatusData,
 } from '@/ipc/index.js';
 import type { DownloadInfo } from '@/ipc/protocol/domTypes.js';
+import type { PageCloseData, PageSwitchData, PageTabsData } from '@/ipc/protocol/tabTypes.js';
 import { searchStyleSheets } from '@/runtime/css/search.js';
 import { auditPage } from '@/runtime/dom/audit.js';
 import { evaluateScript, withBusyPageRecovery } from '@/runtime/dom/evalHelpers.js';
@@ -52,6 +53,7 @@ import { takeScreenshot } from '@/runtime/page/screenshot.js';
 import { toDownloadInfo } from '@/telemetry/downloads.js';
 import { skippedBodyReason } from '@/telemetry/networkRetention.js';
 import type { NetworkRequest, WebSocketConnection } from '@/types.js';
+import { tabsNotTrackedWarning } from '@/ui/messages/commands.js';
 import { consoleMessageDroppedError } from '@/ui/messages/consoleMessages.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -546,22 +548,54 @@ export interface EmulationState {
 }
 
 /**
+ * Status warning while tabs are not tracked, left out while they are.
+ *
+ * @param tabs - The session's tabs
+ * @returns `tabsWarning`
+ */
+function tabsWarning(tabs: TabControl | undefined): Pick<SessionActivity, 'tabsWarning'> {
+  const reason = tabs?.unavailable();
+  return reason === undefined ? {} : { tabsWarning: tabsNotTrackedWarning(reason) };
+}
+
+/** The session's tabs, which `page tabs|switch|close` list and change */
+export interface TabControl extends TabReports {
+  list: () => Promise<PageTabsData>;
+  switchTo: (target: string) => Promise<PageSwitchData>;
+  close: (target: string | undefined) => Promise<PageCloseData>;
+  /** Registers a callback for the page connection of each tab the session moves to */
+  onPageSwitch: (listener: (cdp: CDPConnection) => void) => void;
+  /** Why tabs are not tracked (Chrome refused target discovery); undefined while they are */
+  unavailable: () => string | undefined;
+}
+
+/**
  * The handlers of the session commands.
  *
  * @param store - Telemetry of the session
  * @param emulation - The session's page emulation
+ * @param tabs - The session's tabs (without: tab commands fail, actions report no tabs)
  * @returns Command registry
  */
 export function createCommandRegistry(
   store: TelemetryStore,
-  emulation: EmulationState
+  emulation: EmulationState,
+  tabs?: TabControl
 ): CommandRegistry {
   const patternDetector = new PatternDetector();
-  const interact = createInteractionRunner(store);
+  const interact = createInteractionRunner(store, tabs);
   /** Frame id behind each index of the last `dom frames` listing */
   let listedFrameIds: string[] | undefined;
   /** Events `bdg cdp --listen` buffers between commands (gone with the session) */
   const eventListener = new CdpEventListener();
+  tabs?.onPageSwitch((cdp) => {
+    listedFrameIds = undefined;
+    eventListener.follow(cdp);
+  });
+  const tabControl = (): TabControl => {
+    if (!tabs) throw new Error('This session does not track tabs');
+    return tabs;
+  };
 
   return {
     session_peek: async (_cdp, params) => {
@@ -663,6 +697,7 @@ export function createCommandRegistry(
           ...(store.downloadsWarning !== undefined && {
             downloadsWarning: store.downloadsWarning,
           }),
+          ...tabsWarning(tabs),
         },
         navigationId: store.getCurrentNavigationId?.() ?? 0,
       };
@@ -909,6 +944,12 @@ export function createCommandRegistry(
           }),
         { reportRequests: false, reportEffects: false }
       ),
+
+    page_tabs: async () => tabControl().list(),
+
+    page_switch: async (_cdp, params) => tabControl().switchTo(params.target),
+
+    page_close: async (_cdp, params) => tabControl().close(params.target),
 
     page_emulate: async (cdp, params) => {
       const emulated = await emulatePage(cdp, emulation.get(), params, emulation.set);

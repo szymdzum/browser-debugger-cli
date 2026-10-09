@@ -32,12 +32,15 @@ export class TelemetryStore {
    */
   consoleDropped = 0;
   /** Chrome Issues of the page currently loaded */
-  readonly pageIssues = new PageIssueLog();
+  /** Chrome Issues of the session tab's page (a new log for each tab the session moves to) */
+  pageIssues = new PageIssueLog();
   /** Console events received so far (daemon side, in arrival order) */
   private consoleReceived = 0;
   /** Which received event each console message came from (1-based) */
   private readonly consoleReceipts = new WeakMap<ConsoleMessage, number>();
   readonly navigationEvents: NavigationEvent[] = [];
+  /** Highest navigation id given in the session (never given again, also after a failed tab switch) */
+  readonly navigationIdsIssued = { last: -1 };
   readonly websocketConnections: WebSocketConnection[] = [];
   /** JavaScript dialogs answered during the session */
   readonly dialogs: DialogInfo[] = [];
