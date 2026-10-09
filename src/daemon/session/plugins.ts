@@ -169,6 +169,7 @@ export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
           {
             ...(pageStart?.kind === 'switched' && { tabUrl: pageStart.url }),
             resume: pageStart?.kind === 'resumed',
+            issued: store.navigationIdsIssued,
           }
         );
         store.setNavigationResolver(getCurrentNavigationId);

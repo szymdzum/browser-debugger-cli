@@ -220,4 +220,56 @@ void describe('PageSwitcher', () => {
     assert.equal(host.tabs.takeClosedSwitch()?.tabClosed.targetId, 'P');
     assert.deepEqual(host.ended, []);
   });
+
+  void it('ends a session whose closed tab cannot be left as a closed tab, not by resuming on it', async () => {
+    const host = await fakeHost((cdp, start) =>
+      start.kind === 'switched'
+        ? Promise.reject(new Error('opener gone too'))
+        : Promise.reject(new Error(`resumed on closed ${cdp.id}`))
+    );
+    const switcher = new PageSwitcher(host);
+    const popup = new FakeConnection('P');
+    switcher.adopt(popup as unknown as CDPConnection, []);
+
+    host.tabs.markClosed('P');
+    switcher.onPageDisconnected(popup as unknown as CDPConnection, true);
+    await switcher.pageLost(popup as unknown as CDPConnection);
+
+    assert.deepEqual(host.starts, [['A', 'switched']], 'no resume on the closed tab');
+    assert.deepEqual(host.ended, ['loss']);
+  });
+
+  void it('drops the requests in flight before a failed switch', async () => {
+    const host = await fakeHost((_cdp, start) =>
+      start.kind === 'switched' ? Promise.reject(new Error('failed')) : Promise.resolve([])
+    );
+    const switcher = new PageSwitcher(host);
+    switcher.adopt(new FakeConnection('P') as unknown as CDPConnection, []);
+    host.store.pendingNetworkRequests.set('r1', {
+      request: { requestId: 'r1', url: 'http://a/api', method: 'GET', timestamp: 0 },
+    } as never);
+
+    await assert.rejects(switcher.switchTo('A'));
+
+    assert.equal(host.store.pendingNetworkRequests.size, 0);
+  });
+
+  void it("starts the new tab without the old one's Fetch flag and crash, and puts them back on failure", async () => {
+    const seen: Array<[boolean, number | undefined]> = [];
+    const host = await fakeHost((_cdp, start) => {
+      if (start.kind !== 'switched') return Promise.resolve([]);
+      seen.push([host.store.fetchInterceptionEnabled, host.store.pageCrashedAt]);
+      return Promise.reject(new Error('failed'));
+    });
+    const switcher = new PageSwitcher(host);
+    switcher.adopt(new FakeConnection('P') as unknown as CDPConnection, []);
+    host.store.fetchInterceptionEnabled = true;
+    host.store.pageCrashedAt = 42;
+
+    await assert.rejects(switcher.switchTo('A'));
+
+    assert.deepEqual(seen, [[false, undefined]]);
+    assert.equal(host.store.fetchInterceptionEnabled, true);
+    assert.equal(host.store.pageCrashedAt, 42);
+  });
 });

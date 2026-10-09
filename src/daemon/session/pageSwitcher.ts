@@ -24,7 +24,6 @@ import type {
   TabInfo,
 } from '@/ipc/protocol/tabTypes.js';
 import type { PageIssueLog } from '@/telemetry/issues.js';
-import type { PendingRequest } from '@/telemetry/network.js';
 import type { CDPTarget, CleanupFunction } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -67,9 +66,11 @@ export interface PageHost {
 interface PageSnapshot {
   target: CDPTarget;
   fetchInterception: boolean;
+  crashedAt: number | undefined;
+  /** Requests in flight before the switch (no longer tracked after a failed one) */
+  inFlight: number;
   navigations: number;
   issues: PageIssueLog;
-  pending: Array<[string, PendingRequest]>;
 }
 
 /**
@@ -262,7 +263,7 @@ export class PageSwitcher {
     const next = await this.open(tab, wsUrl);
     await runCleanups(this.cleanups, log);
     this.cleanups = [];
-    this.host.store.setTargetInfo({ ...snapshot.target, ...tabTarget(tab, wsUrl) });
+    this.prepareStore(snapshot, tabTarget(tab, wsUrl));
     try {
       this.cleanups = await this.host.startPage(next, { kind: 'switched', url: tab.url });
     } catch (error) {
@@ -299,8 +300,6 @@ export class PageSwitcher {
   private commit(next: CDPConnection, tab: TabInfo): void {
     const old = this.cdp;
     this.cdp = next;
-    this.host.store.pageCrashedAt = undefined;
-    this.host.store.fetchInterceptionEnabled = false;
     this.host.tabs.setCurrent(tab.targetId);
     old?.close();
     this.host.switched(next);
@@ -309,8 +308,9 @@ export class PageSwitcher {
 
   /**
    * After a failed switch, put back the store state the snapshot took and
-   * start again on the old tab while its connection is open. When that
-   * fails too, the session ends.
+   * start again on the old tab while its connection is open and Chrome did
+   * not say the tab closed (a closed tab ends the session as closed, through
+   * {@link recover}). When starting again fails, the session ends.
    *
    * @param snapshot - State before the switch
    * @param cause - Why the switch failed
@@ -319,7 +319,7 @@ export class PageSwitcher {
   private async rollBack(snapshot: PageSnapshot, cause: unknown): Promise<void> {
     this.restore(snapshot);
     const old = this.cdp;
-    if (!old?.isConnected()) return;
+    if (!old?.isConnected() || this.host.tabs.isClosed(snapshot.target.id)) return;
     try {
       this.cleanups = await this.host.startPage(old, { kind: 'resumed' });
     } catch (error) {
@@ -343,14 +343,17 @@ export class PageSwitcher {
     return {
       target: store.targetInfo,
       fetchInterception: store.fetchInterceptionEnabled,
+      crashedAt: store.pageCrashedAt,
+      inFlight: store.pendingNetworkRequests.size,
       navigations: store.navigationEvents.length,
       issues: store.pageIssues,
-      pending: [...store.pendingNetworkRequests],
     };
   }
 
   /**
-   * Put the store state back.
+   * Put the store state back. Requests in flight are dropped, not restored:
+   * the old tab's network collector was stopped during the switch, so their
+   * completion may never arrive.
    *
    * @param snapshot - State before the switch
    */
@@ -358,12 +361,29 @@ export class PageSwitcher {
     const { store } = this.host;
     store.setTargetInfo(snapshot.target);
     store.fetchInterceptionEnabled = snapshot.fetchInterception;
+    store.pageCrashedAt = snapshot.crashedAt;
     store.navigationEvents.length = snapshot.navigations;
     store.pageIssues = snapshot.issues;
     store.pendingNetworkRequests.clear();
-    for (const [id, request] of snapshot.pending) {
-      store.pendingNetworkRequests.set(id, request);
+    if (snapshot.inFlight > 0) {
+      log.debug(
+        `${snapshot.inFlight} request(s) in flight before the failed tab switch are no longer tracked`
+      );
     }
+  }
+
+  /**
+   * Point the store at the tab being set up: its target, and none of the old
+   * tab's Fetch interception or crash.
+   *
+   * @param snapshot - State before the switch
+   * @param target - The tab's target fields
+   */
+  private prepareStore(snapshot: PageSnapshot, target: Omit<CDPTarget, 'type'>): void {
+    const { store } = this.host;
+    store.setTargetInfo({ ...snapshot.target, ...target });
+    store.fetchInterceptionEnabled = false;
+    store.pageCrashedAt = undefined;
   }
 
   /**

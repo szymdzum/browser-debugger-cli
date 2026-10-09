@@ -177,6 +177,16 @@ export class TabTracker {
   }
 
   /**
+   * Whether Chrome said a tab closed (or bdg closed it).
+   *
+   * @param targetId - Target id
+   * @returns True for a closed tab
+   */
+  isClosed(targetId: string): boolean {
+    return this.gone.has(targetId);
+  }
+
+  /**
    * A tab closed: dropped, except the session tab, which stays listed (never
    * as a fallback) until the session moves on.
    *
