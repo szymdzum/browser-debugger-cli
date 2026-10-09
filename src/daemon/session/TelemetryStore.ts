@@ -1,5 +1,6 @@
 import { MAX_CONSOLE_MESSAGES } from '@/constants.js';
 import type { DialogInfo } from '@/ipc/protocol/domTypes.js';
+import { DialogAnswers } from '@/telemetry/dialogs.js';
 import type { TrackedDownload } from '@/telemetry/downloads.js';
 import type { NavigationEvent } from '@/telemetry/navigation.js';
 import type { PendingRequest } from '@/telemetry/network.js';
@@ -35,8 +36,10 @@ export class TelemetryStore {
   private readonly consoleReceipts = new WeakMap<ConsoleMessage, number>();
   readonly navigationEvents: NavigationEvent[] = [];
   readonly websocketConnections: WebSocketConnection[] = [];
-  /** JavaScript dialogs accepted during the session */
+  /** JavaScript dialogs answered during the session */
   readonly dialogs: DialogInfo[] = [];
+  /** How dialogs are answered: the session default, or the running action's choice */
+  readonly dialogAnswers = new DialogAnswers();
   /** Downloads that began during the session, oldest first, updated as they progress */
   readonly downloads: TrackedDownload[] = [];
   /** Set while downloads do not go where bdg meant them to (refused, or not redirected) */
@@ -97,8 +100,8 @@ export class TelemetryStore {
   }
 
   /**
-   * Record an accepted dialog, and show it among the console messages when
-   * console telemetry is collected (it is otherwise invisible: bdg accepts it
+   * Record an answered dialog, and show it among the console messages when
+   * console telemetry is collected (it is otherwise invisible: bdg answers it
    * before anyone could see it), dropping the oldest message at the limit.
    *
    * @param dialog - Dialog type and text

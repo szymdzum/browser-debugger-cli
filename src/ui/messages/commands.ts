@@ -8,6 +8,7 @@
 import type { DomFrame, PageLoadingState, PendingRequestInfo } from '@/ipc/protocol/commands.js';
 import type {
   ActionError,
+  DialogInfo,
   DownloadInfo,
   ElementLayout,
   FillValueMismatch,
@@ -1075,14 +1076,22 @@ export function reactHandlersSkippedNote(count: number): string {
 }
 
 /**
- * A JavaScript dialog bdg accepted, as one line.
+ * A JavaScript dialog bdg answered, as one line.
  *
- * @param dialog - Dialog type and text
- * @returns e.g. 'alert() dialog accepted: "Saved"'
+ * @param dialog - Dialog type, text and answer
+ * @param options - Leave out the word "dialog" after the type (where the line is labelled "Dialog:")
+ * @returns e.g. 'alert() dialog accepted: "Saved"', 'confirm() dismissed: "Sure?"',
+ *   'prompt() dialog accepted: "Name?" (answered "Ada")'
  */
-export function dialogConsoleText(dialog: { type: string; message: string }): string {
+export function dialogConsoleText(
+  dialog: DialogInfo,
+  options: { labelled?: boolean } = {}
+): string {
   const kind = dialog.type === 'beforeunload' ? 'beforeunload' : `${dialog.type}()`;
-  return `${kind} dialog accepted${dialog.message ? `: "${dialog.message}"` : ''}`;
+  const noun = options.labelled ? '' : ' dialog';
+  const message = dialog.message ? `: "${dialog.message}"` : '';
+  const answered = dialog.promptText ? ` (answered "${dialog.promptText}")` : '';
+  return `${kind}${noun} ${dialog.answer}${message}${answered}`;
 }
 
 /**

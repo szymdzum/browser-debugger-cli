@@ -444,6 +444,7 @@ async function sendStart(
         chromeFlags: options.chromeFlags,
         viewport: options.viewport,
         colorScheme: options.colorScheme,
+        dialog: options.dialog,
       }),
       interrupt
     );

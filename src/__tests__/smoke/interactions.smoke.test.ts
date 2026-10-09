@@ -511,9 +511,11 @@ void describe('DOM interactions', () => {
       'document.body.insertAdjacentHTML(\'beforeend\', \'<button id="alerting" onclick="alert(&quot;Saved&quot;)">A</button><div style="position:relative"><button id="hidden-behind">B</button><div id="shield" style="position:absolute;inset:0"></div></div>\'); 1'
     );
     const clicked = JSON.parse(await bdg(['dom', 'click', '#alerting', '--json'])) as {
-      data: { dialogs?: Array<{ type: string; message: string }> };
+      data: { dialogs?: Array<{ type: string; message: string; answer: string }> };
     };
-    assert.deepEqual(clicked.data.dialogs, [{ type: 'alert', message: 'Saved' }]);
+    assert.deepEqual(clicked.data.dialogs, [
+      { type: 'alert', message: 'Saved', answer: 'accepted' },
+    ]);
     assert.match(
       await bdg(['dom', 'click', '#hidden-behind']),
       /covered by another element \(div#shield\)/

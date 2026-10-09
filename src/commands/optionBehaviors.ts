@@ -41,6 +41,31 @@ const SHOWN_BEHAVIOR =
 const NO_WAIT_TRIGGERED_REQUESTS =
   'Returns immediately without waiting for network; triggeredRequests lists only requests bdg saw start before returning (often none yet; check bdg network list later)';
 
+/** How an action's `--dialog` answers the dialogs it opens */
+const ACTION_DIALOG_BEHAVIOR: OptionBehavior = {
+  default:
+    'Dialogs the action opens get the session default: accepted (OK; prompts get "") unless bdg <url> --dialog dismiss; beforeunload is always accepted',
+  whenEnabled:
+    'accept (OK) or dismiss (Cancel: confirm() returns false, prompt() null) for alert, confirm, prompt and beforeunload dialogs opened while the action runs, its network wait included; dismissing beforeunload cancels the navigation (the page stays). Other values exit 81 with a suggestion; --dialog dismiss with --prompt-text exits 81',
+  automaticBehavior:
+    'Results list them as Dialog: confirm() dismissed: "Sure?" (JSON dialogs [{ type, message, answer: accepted|dismissed, promptText }]). The choice resets when the action returns: a dialog a page timer opens later gets the session default. Actions run one at a time, so it never applies to another action, but a bdg dom eval or bdg cdp call running at the same time shares it. Not with hover --off',
+};
+
+/** How an action's `--prompt-text` answers the prompt() dialogs it opens */
+const ACTION_PROMPT_TEXT_BEHAVIOR: OptionBehavior = {
+  default: 'Accepted prompt() dialogs get "" (the session default may dismiss them)',
+  whenEnabled:
+    'prompt() dialogs the action opens are accepted with this text, also when the session default is dismiss; JSON dialogs[].promptText and the human line ((answered "…") show it. Other dialogs keep their answer',
+};
+
+/** `--dialog` and `--prompt-text` of every DOM action that answers dialogs */
+const ACTION_DIALOG_BEHAVIORS: Record<string, OptionBehavior> = Object.fromEntries(
+  ['fill', 'click', 'hover', 'submit', 'pressKey', 'scroll'].flatMap((command) => [
+    [`${command}:--dialog`, ACTION_DIALOG_BEHAVIOR],
+    [`${command}:--prompt-text`, ACTION_PROMPT_TEXT_BEHAVIOR],
+  ])
+);
+
 /**
  * Registry key format: last command name, colon, long flag (the short flag
  * when there is no long one), e.g. "screenshot:--no-resize", "bdg:--headless"
@@ -57,6 +82,7 @@ const FOLLOW_BEHAVIOR =
  * Keyed by "command:flag" to support same flag names across different commands.
  */
 const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
+  ...ACTION_DIALOG_BEHAVIORS,
   'screenshot:--selector': {
     default: 'Captures the page (full page unless --no-full-page)',
     whenEnabled:
@@ -533,6 +559,15 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
       'Emulates prefers-color-scheme: light or dark for the whole session (Emulation.setEmulatedMedia); other values exit 81 with a suggestion',
     automaticBehavior:
       'Applies to the session page (and its same-process iframes); Chrome drops it when the session ends, also for an attached Chrome (--chrome-ws-url)',
+  },
+
+  'bdg:--dialog': {
+    default:
+      'JavaScript dialogs are accepted as they open (OK; prompt() gets ""), so they never block the page',
+    whenEnabled:
+      'accept or dismiss (Cancel: confirm() returns false, prompt() null) for every alert, confirm and prompt dialog of the session, page loads and navigations included, unless the running DOM action chose otherwise with its own --dialog/--prompt-text. Other values exit 81 with a suggestion',
+    automaticBehavior:
+      'beforeunload dialogs are still accepted (navigation is never blocked); only a DOM action given --dialog dismiss cancels one. With console telemetry each dialog is also a console message ("confirm() dialog dismissed: …"). Applies to an attached Chrome (--chrome-ws-url) too, as bdg always answered its dialogs there: those of the session page are answered as they open, so a person using that browser does not get to answer them; other tabs are left alone',
   },
 
   'bdg:--chrome-ws-url': {

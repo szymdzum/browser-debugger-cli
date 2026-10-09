@@ -16,12 +16,14 @@ BDG_CHROME_FLAGS="--ignore-certificate-errors" bdg https://localhost:5173   # Sa
 CHROME_PATH=/usr/bin/microsoft-edge bdg localhost:3000   # Launch another Chromium-based browser (Edge)
 bdg localhost:3000 --viewport 1280x800       # Exact viewport (CSS px) for the whole session
 bdg localhost:3000 --color-scheme dark       # Emulate prefers-color-scheme: light or dark
+bdg localhost:3000 --dialog dismiss          # Answer JavaScript dialogs with Cancel (default: accept)
 ```
 
 The start output is a few lines: the target, notices (session name, HTTP error, auto-stop), the most useful next commands and a pointer to `bdg --help`. `-q` prints one line.
 
 - `--viewport <WxH>` (e.g. `1280x800`; `X`, `×` and `,` work too, each side 1-10000) gives the page exactly that viewport for the session, through navigations and reloads (`Emulation.setDeviceMetricsOverride` at the display's pixel ratio). A launched Chrome also opens its window at that size, so tabs the page opens get it too. It works with `--chrome-ws-url`: the override belongs to the session's connection and Chrome drops it when the session ends. Without it, a launched Chrome opens a 1920×1080 window (the viewport is smaller by the scrollbar, and by the browser UI in a visible window). Invalid values exit 81
 - `--color-scheme light|dark` emulates `prefers-color-scheme` for the session (`Emulation.setEmulatedMedia`). Without it the page sees the system setting: headless Chrome follows the OS, so a dark OS renders dark pages. Other values exit 81 with a suggestion
+- `--dialog accept|dismiss` sets how the session answers JavaScript dialogs (`alert`, `confirm`, `prompt`), page loads and navigations included (default `accept`); a DOM action can choose otherwise for its own dialogs (see [Form Interaction](#form-interaction)). `beforeunload` is still accepted, so navigation is never blocked. Other values exit 81 with a suggestion. It works with `--chrome-ws-url` too: bdg always answered the dialogs of the attached session page, now as chosen
 - `--mobile` emulates a phone for the session: a mobile viewport (390x844 unless `--viewport` gives one) at pixel ratio 3 with mobile layout (meta viewport honoured, overlay scrollbars, so `100vw` fits and the layout is the full width), touch (`pointer: coarse`, `navigator.maxTouchPoints` 5) and an Android Chrome user agent with mobile client hints. Use it for responsive checks instead of a narrow desktop window, whose classic scrollbar takes ~15px (a 375px viewport lays out at 360). `bdg status` shows `(emulated 390x844, phone)`.
 - `bdg page emulate --viewport <WxH> --color-scheme light|dark` changes either mid-session (`--mobile` turns phone emulation on; a `--viewport` without it, or `--reset`, turns it off), the same way (no reload: the page re-lays out and media queries re-evaluate), and `--reset` goes back to the browser window and the system setting. It prints what is emulated and the layout viewport the page now has (`Layout: 885x700 (without scrollbars)`; JSON `{ emulated: { viewport?, colorScheme? }, viewport?, colorScheme? }`); screenshots and `bdg status` follow the change. Nothing to change, or an invalid value, exits 81
 - `bdg status` shows the viewport and color scheme the page renders with (`Viewport: 1265×800 (emulated 1280x800)`, the layout viewport without the scrollbar; `Color scheme: prefers-color-scheme: dark (from the system setting)`, the media preference the page sees, not the theme it renders); JSON has them in `pageState` (and the start options as `viewport` / `colorScheme`)
@@ -750,7 +752,9 @@ bdg dom click 6                              # Primary submit button
 
 Interact with page elements using real mouse and keyboard input. All interaction commands automatically wait for network stability after the action (disable with `--no-wait`).
 
-JavaScript dialogs (`alert`, `confirm`, `prompt`, `beforeunload`) are accepted automatically so they never block a session; `prompt()` receives an empty string. Dialogs opened by `fill`/`click`/`submit`/`pressKey` are listed in their result (`data.dialogs` in JSON), and every accepted dialog also appears in `bdg console`.
+JavaScript dialogs (`alert`, `confirm`, `prompt`, `beforeunload`) are answered as they open so they never block a session: accepted by default, `prompt()` with an empty string. `bdg <url> --dialog dismiss` makes Cancel the session default. A DOM action (`fill`, `click`, `hover`, `submit`, `pressKey`, `scroll`) answers the dialogs it opens with its own `--dialog accept|dismiss` and `--prompt-text <text>` (which accepts prompts with that text); its choice applies while it runs, its network wait included, and resets when it returns, so a dialog a page timer opens later gets the session default. Actions run one at a time, so the choice never reaches another action (a `dom eval` or `cdp` call running at the same moment shares it). `beforeunload` is accepted unless the action itself has `--dialog dismiss`, which cancels the navigation. An unknown `--dialog` value exits 81 with `Did you mean: dismiss?`; `--prompt-text` with `--dialog dismiss` exits 81.
+
+Dialogs an action opened are listed in its result, `Dialog: confirm() dismissed: "Sure?"` or `Dialog: prompt() accepted: "Name?" (answered "Ada")` (JSON `data.dialogs: [{ type, message, answer: "accepted" | "dismissed", promptText? }]`, `promptText` for accepted prompts), and every dialog also appears in `bdg console` (`confirm() dialog dismissed: "Sure?"`).
 
 The network wait watches requests from before the action, so a request an event handler sends right away (`onclick = () => fetch(...)`) is waited for: the command returns once no request has been running for 150 ms, or after 2 s with the rest still running (a click that starts a navigation to a slow page returns after 2 s with the page request pending).
 
@@ -877,6 +881,8 @@ bdg dom hover "nav .menu"                         # Hover (opens hover menus; li
 bdg dom hover --off                               # Move the mouse off the page (closes them again)
 bdg dom click "#save" --strict                    # Exit 90 instead of DOM events when covered or unreachable
 bdg dom fill "#tags" "a,c"                        # <select multiple>: several options
+bdg dom click "#delete" --dialog dismiss          # Cancel the confirm() it opens (page sees false)
+bdg dom click "#rename" --prompt-text "Ada"       # Answer its prompt() with "Ada"
 
 # Navigate the session page
 bdg page info                                     # URL and title of the session page

@@ -114,8 +114,11 @@ export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
     {
       name: 'dialogs',
       runAlways: true,
-      async start({ cdp, store }) {
-        return startDialogHandling(cdp, (dialog) => store.recordDialog(dialog));
+      async start({ cdp, config, store }) {
+        store.dialogAnswers.setSessionDefault(config.dialog);
+        return startDialogHandling(cdp, store.dialogAnswers, (dialog) =>
+          store.recordDialog(dialog)
+        );
       },
     },
     {

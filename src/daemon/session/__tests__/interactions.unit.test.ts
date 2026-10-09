@@ -86,16 +86,16 @@ void describe('createInteractionRunner', () => {
 
   void it('adds the dialogs opened during the interaction and unbinds the target', async () => {
     const store = new TelemetryStore();
-    store.recordDialog({ type: 'alert', message: 'before' });
+    store.recordDialog({ type: 'alert', message: 'before', answer: 'accepted' });
     const interact = createInteractionRunner(store);
     const cdp = fakeCdp();
 
     const result = await interact(cdp, () => {
-      store.recordDialog({ type: 'confirm', message: 'Sure?' });
+      store.recordDialog({ type: 'confirm', message: 'Sure?', answer: 'accepted' });
       return Promise.resolve({ success: true });
     });
 
-    assert.deepEqual(result.dialogs, [{ type: 'confirm', message: 'Sure?' }]);
+    assert.deepEqual(result.dialogs, [{ type: 'confirm', message: 'Sure?', answer: 'accepted' }]);
     assert.ok(cdp.expressions.includes(UNBIND_TARGET_SCRIPT));
   });
 
@@ -191,19 +191,51 @@ void describe('createInteractionRunner', () => {
       success: true,
     });
   });
+
+  void it('answers dialogs as the interaction chose only while it runs', async () => {
+    const store = new TelemetryStore();
+    const interact = createInteractionRunner(store);
+    const cdp = fakeCdp();
+    const replies: Array<{ accept: boolean }> = [];
+    const answer = async (): Promise<{ success: boolean }> => {
+      await delay(10);
+      replies.push(store.dialogAnswers.reply('confirm'));
+      return { success: true };
+    };
+
+    await Promise.all([
+      interact(cdp, answer),
+      interact(cdp, answer, { dialogs: { dialog: 'dismiss' } }),
+      interact(cdp, answer),
+    ]);
+    await assert.rejects(
+      interact(cdp, () => Promise.reject(new Error('boom')), { dialogs: { dialog: 'dismiss' } })
+    );
+
+    assert.deepEqual(replies, [{ accept: true }, { accept: false }, { accept: true }]);
+    assert.deepEqual(
+      store.dialogAnswers.reply('confirm'),
+      { accept: true },
+      'reset after a failure'
+    );
+  });
 });
 
 void describe('TelemetryStore.recordDialog', () => {
   void it('also lists the dialog among console messages', () => {
     const store = new TelemetryStore();
     store.activeTelemetry = ['console'];
-    store.recordDialog({ type: 'alert', message: 'Saved' });
-    assert.equal(store.consoleMessages[0]?.text, 'alert() dialog accepted: "Saved"');
+    store.recordDialog({ type: 'alert', message: 'Saved', answer: 'accepted' });
+    store.recordDialog({ type: 'confirm', message: 'Sure?', answer: 'dismissed' });
+    assert.deepEqual(
+      store.consoleMessages.map((message) => message.text),
+      ['alert() dialog accepted: "Saved"', 'confirm() dialog dismissed: "Sure?"']
+    );
   });
 
   void it('leaves console messages alone when console telemetry is off', () => {
     const store = new TelemetryStore();
-    store.recordDialog({ type: 'alert', message: 'Saved' });
+    store.recordDialog({ type: 'alert', message: 'Saved', answer: 'accepted' });
     assert.equal(store.consoleMessages.length, 0);
     assert.equal(store.dialogs.length, 1);
   });

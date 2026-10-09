@@ -9,8 +9,21 @@
 
 import type { FormStep, FieldOption, ViewportPosition } from '@/types.js';
 
+/** How bdg answers JavaScript dialogs (`--dialog`) */
+export const DIALOG_ANSWERS = ['accept', 'dismiss'] as const;
+
+/** `accept` (OK) or `dismiss` (Cancel) */
+export type DialogAnswer = (typeof DIALOG_ANSWERS)[number];
+
+/** How an action answers the dialogs it opens (`--dialog`, `--prompt-text`) */
+export interface DialogChoice {
+  dialog?: DialogAnswer;
+  /** Text prompt() dialogs get; accepts them unless `dialog` is dismiss */
+  promptText?: string;
+}
+
 /**
- * A JavaScript dialog (alert, confirm, prompt, beforeunload) that bdg accepted
+ * A JavaScript dialog (alert, confirm, prompt, beforeunload) that bdg answered
  * while a command ran.
  */
 export interface DialogInfo {
@@ -18,6 +31,10 @@ export interface DialogInfo {
   type: string;
   /** Text the page showed */
   message: string;
+  /** How bdg answered it */
+  answer: 'accepted' | 'dismissed';
+  /** Text an accepted prompt() got */
+  promptText?: string;
 }
 
 /**
@@ -191,7 +208,7 @@ export interface FillResult extends ActionEffects {
   /** Elements the selector matched */
   matchCount?: number;
   exitCode?: number;
-  /** Dialogs accepted while the command ran */
+  /** Dialogs answered while the command ran */
   dialogs?: DialogInfo[];
   /** Requests the action triggered (absent when network telemetry is off) */
   triggeredRequests?: TriggeredRequest[];
@@ -223,7 +240,7 @@ export interface ClickResult extends ActionEffects {
   exitCode?: number;
   /** Why the DOM fallback was used (element covered or without size) */
   warning?: string;
-  /** Dialogs accepted while the command ran */
+  /** Dialogs answered while the command ran */
   dialogs?: DialogInfo[];
   /** Requests the action triggered (absent when network telemetry is off) */
   triggeredRequests?: TriggeredRequest[];
@@ -251,7 +268,7 @@ export interface PressKeyResult extends ActionEffects {
   matchCount?: number;
   /** Set when the selector matched several elements */
   warning?: string;
-  /** Dialogs accepted while the command ran */
+  /** Dialogs answered while the command ran */
   dialogs?: DialogInfo[];
   /** Requests the action triggered (absent when network telemetry is off) */
   triggeredRequests?: TriggeredRequest[];
@@ -304,7 +321,7 @@ export interface SubmitResult extends ActionEffects {
   warning?: string;
   suggestion?: string;
   exitCode?: number;
-  /** Dialogs accepted while the command ran */
+  /** Dialogs answered while the command ran */
   dialogs?: DialogInfo[];
   /** Requests the action triggered (absent when network telemetry is off) */
   triggeredRequests?: TriggeredRequest[];

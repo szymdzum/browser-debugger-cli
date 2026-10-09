@@ -203,6 +203,7 @@ export async function startSession(
       chromeFlags: options.chromeFlags,
       viewport: options.viewport,
       colorScheme: options.colorScheme,
+      dialog: options.dialog,
     }),
   });
 

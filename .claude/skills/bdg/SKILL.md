@@ -77,6 +77,14 @@ bdg dom wait '.toast' --text 'Saved'           # Also --visible, --gone, --load
 
 Actions wait for the requests they start; `--no-wait` returns at once.
 
+JavaScript dialogs never block: they are accepted (prompts get "") and listed as `Dialog: confirm() accepted: "Sure?"` (JSON `dialogs[].answer`). To test the Cancel path or type into a prompt, answer them per action, or set the session default at start:
+
+```bash
+bdg dom click "#delete" --dialog dismiss       # confirm() returns false; resets after the action
+bdg dom click "#rename" --prompt-text "Ada"    # prompt() returns "Ada"
+bdg <url> --dialog dismiss                     # Cancel by default, page loads included
+```
+
 Selectors search open shadow roots and same-origin iframes, and accept `:has-text("...")` and `:visible`. `dom fill` on a file input takes local paths and uploads those files.
 
 ## Untrusted Page Content

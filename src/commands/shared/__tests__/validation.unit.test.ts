@@ -14,6 +14,8 @@ import {
   positiveIntRule,
   resourceTypeRule,
   consoleLevelOption,
+  dialogChoice,
+  parseDialogAnswer,
   screenshotFormatOption,
 } from '@/commands/shared/validation.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
@@ -289,5 +291,49 @@ void describe('consoleLevelOption', () => {
 
   void it('rejects other levels as invalid arguments', () => {
     assert.throws(() => consoleLevelOption('loud'), InvalidArgumentError);
+  });
+});
+
+/**
+ * Assert that a call fails with exit 81 and a suggestion.
+ *
+ * @param call - Call that should throw
+ * @param suggestion - Expected suggestion text
+ */
+function assertInvalidArgument(call: () => unknown, suggestion: RegExp): void {
+  assert.throws(call, (error: unknown) => {
+    assert.ok(error instanceof CommandError);
+    assert.equal(error.exitCode, EXIT_CODES.INVALID_ARGUMENTS);
+    assert.match(String(error.metadata['suggestion']), suggestion);
+    return true;
+  });
+}
+
+void describe('validation - --dialog and --prompt-text', () => {
+  void it('reads accept and dismiss in any case', () => {
+    assert.equal(parseDialogAnswer('accept'), 'accept');
+    assert.equal(parseDialogAnswer(' Dismiss '), 'dismiss');
+  });
+
+  void it('suggests the closest answer for a typo, else lists them', () => {
+    assertInvalidArgument(() => parseDialogAnswer('dimiss'), /Did you mean: dismiss\?/);
+    assertInvalidArgument(() => parseDialogAnswer('cancel'), /Available: accept, dismiss/);
+  });
+
+  void it('builds the choice of an action from its options', () => {
+    assert.equal(dialogChoice({}), undefined);
+    assert.deepEqual(dialogChoice({ dialog: 'DISMISS' }), { dialog: 'dismiss' });
+    assert.deepEqual(dialogChoice({ promptText: '' }), { promptText: '' });
+    assert.deepEqual(dialogChoice({ dialog: 'accept', promptText: 'hi' }), {
+      dialog: 'accept',
+      promptText: 'hi',
+    });
+  });
+
+  void it('refuses prompt text for dialogs it dismisses', () => {
+    assertInvalidArgument(
+      () => dialogChoice({ dialog: 'dismiss', promptText: 'hi' }),
+      /drop --prompt-text or --dialog dismiss/
+    );
   });
 });

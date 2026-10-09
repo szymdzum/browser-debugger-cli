@@ -15,6 +15,7 @@ import type {
 } from '@/ipc/protocol/cdpEventTypes.js';
 import type {
   ClickResult,
+  DialogChoice,
   DownloadInfo,
   FillResult,
   LayoutResult,
@@ -276,7 +277,7 @@ export interface DomFramesData {
 /**
  * dom_fill: fill a form field, optionally waiting for network stability after.
  */
-export interface DomFillCommand {
+export interface DomFillCommand extends DialogChoice {
   selector: string;
   /** CLI working directory (file inputs: relative paths) */
   cwd?: string;
@@ -293,7 +294,7 @@ export type DomFillData = FillResult;
 /**
  * dom_click: click an element, optionally waiting for stability after.
  */
-export interface DomClickCommand {
+export interface DomClickCommand extends DialogChoice {
   selector: string;
   index?: number;
   /** Exact element from the query cache (overrides selector/index) */
@@ -310,7 +311,7 @@ export type DomClickData = ClickResult;
 /**
  * dom_submit: submit a form with smart waiting (navigation / network idle).
  */
-export interface DomSubmitCommand {
+export interface DomSubmitCommand extends DialogChoice {
   selector: string;
   index?: number;
   /** Exact element from the query cache (overrides selector/index) */
@@ -325,7 +326,7 @@ export type DomSubmitData = SubmitResult;
 /**
  * dom_press_key: dispatch a key event on an element.
  */
-export interface DomPressKeyCommand {
+export interface DomPressKeyCommand extends DialogChoice {
   selector: string;
   key: string;
   index?: number;
@@ -341,7 +342,7 @@ export type DomPressKeyData = PressKeyResult;
 /**
  * dom_scroll: scroll the page or an element into view.
  */
-export interface DomScrollCommand {
+export interface DomScrollCommand extends DialogChoice {
   selector?: string;
   index?: number;
   /** Exact element from the query cache (overrides selector/index) */
