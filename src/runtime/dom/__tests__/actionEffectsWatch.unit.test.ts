@@ -11,6 +11,7 @@ import { describe, it } from 'node:test';
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import { watchActionEffects, type CollectedEffects } from '@/runtime/dom/actionEffects.js';
+import { delay } from '@/utils/async.js';
 
 type Handler = (params: unknown, sessionId?: string) => void;
 
@@ -29,13 +30,15 @@ class FakeCdp {
    * @param timersRun - Whether the page's timers run (false: throttled or stopped timers)
    * @param answers - Whether the page answers after the action (false: a long script)
    * @param stalls - Replies of the stall reads, in order (page times `[due, ran]`)
+   * @param longTasks - Replies of the long-task reads, in order ({@link NO_ANSWER}: none)
    */
   constructor(
     private readonly start: Promise<unknown>,
     private readonly reads: unknown[] = [],
     private readonly timersRun = true,
     private readonly answers = true,
-    private readonly stalls: unknown[] = []
+    private readonly stalls: unknown[] = [],
+    private readonly longTasks: unknown[] = []
   ) {}
 
   on(event: string, handler: Handler): () => void {
@@ -70,9 +73,17 @@ class FakeCdp {
     }
     if (expression.includes('new MutationObserver')) return this.start.then(wrap);
     if (expression.includes('const ongoing')) return Promise.resolve(wrap(this.stalls.shift()));
+    if (expression.includes('watch.longTasksSeen()')) {
+      const longTasks = this.longTasks.shift();
+      return longTasks === NO_ANSWER
+        ? new Promise(() => undefined)
+        : Promise.resolve(wrap(longTasks));
+    }
     if (expression.includes('const scrolled')) {
       const read = this.reads.shift();
-      return read === NO_ANSWER ? new Promise(() => undefined) : Promise.resolve(wrap(read));
+      if (read === NO_ANSWER) return new Promise(() => undefined);
+      if (read instanceof Late) return delay(LATE_MS).then(() => wrap(read.value));
+      return Promise.resolve(wrap(read));
     }
     return Promise.resolve({});
   }
@@ -115,6 +126,14 @@ function wrap(value: unknown): unknown {
 
 /** A read the page never answers */
 const NO_ANSWER = Symbol('no answer');
+
+/** How late a {@link Late} read answers: past the read's 250 ms */
+const LATE_MS = 300;
+
+/** A read the page answers {@link LATE_MS} late */
+class Late {
+  constructor(readonly value: unknown) {}
+}
 
 /**
  * Effects without the page's work.
@@ -295,6 +314,56 @@ void describe('watchActionEffects', () => {
     });
     assert.equal(effects.work?.unresponsive, true);
     assert.equal(effects.effect, undefined);
+    watch.dispose();
+  });
+
+  void it('waits for a read answered late when the page ran no long task (#533)', async () => {
+    const cdp = new FakeCdp(Promise.resolve(START), [new Late(QUIET), QUIET], true, true, [], [0]);
+    const watch = watchActionEffects(cdp.connection);
+    const effects = await watch.collect({
+      dialogs: 0,
+      consoleMessages: () => 0,
+      detectNoEffect: true,
+    });
+    assert.equal(effects.work?.unresponsive, false, 'a slow renderer is not a busy page');
+    assert.equal(effects.effect, 'none');
+    assert.deepEqual(cdp.readsSent, [false, true], 'the late read is not sent again');
+    watch.dispose();
+  });
+
+  void it('marks a page busy that ran a long task or did not answer the check', async () => {
+    for (const longTasks of [1, NO_ANSWER, null]) {
+      const cdp = new FakeCdp(
+        Promise.resolve(START),
+        [new Late(QUIET)],
+        true,
+        true,
+        [],
+        [longTasks]
+      );
+      const watch = watchActionEffects(cdp.connection);
+      const effects = await watch.collect({
+        dialogs: 0,
+        consoleMessages: () => 0,
+        detectNoEffect: true,
+      });
+      assert.equal(effects.work?.unresponsive, true, String(longTasks));
+      assert.equal(cdp.readsSent.length, 1, String(longTasks));
+      watch.dispose();
+    }
+  });
+
+  void it('waits for a late snapshot when the page ran no long task (#533)', async () => {
+    const late = new Promise((resolve) => setTimeout(() => resolve(START), 260));
+    const cdp = new FakeCdp(late, [QUIET, QUIET], true, true, [], [0]);
+    const watch = watchActionEffects(cdp.connection);
+    const effects = await watch.collect({
+      dialogs: 0,
+      consoleMessages: () => 0,
+      detectNoEffect: true,
+    });
+    assert.equal(effects.work?.unresponsive, false);
+    assert.equal(effects.effect, 'none');
     watch.dispose();
   });
 

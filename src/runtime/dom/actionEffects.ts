@@ -10,7 +10,8 @@
  * count as quiet time when deciding whether the DOM kept changing.
  * Worst case, when the page does not answer (a navigation is pending, or a
  * long script runs), the snapshot is given up after {@link START_TIMEOUT_MS}
- * and each read after {@link READ_TIMEOUT_MS}.
+ * and each read after {@link READ_TIMEOUT_MS}, plus as long again to ask
+ * whether the page ran a long task ({@link pageAnswer}).
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
@@ -27,6 +28,7 @@ import {
   EFFECTS_READ_SCRIPT,
   EFFECTS_START_SCRIPT,
   EFFECTS_STOP_SCRIPT,
+  LONG_TASKS_READ_SCRIPT,
   START_DUE_TIMERS_SCRIPT,
   STALL_READ_SCRIPT,
   STALL_WATCH_START_SCRIPT,
@@ -548,19 +550,64 @@ async function collectEffects(watch: Watch, options: CollectOptions): Promise<Co
 
 /**
  * The snapshot taken before the action, waiting at most
- * {@link START_TIMEOUT_MS}; a snapshot still unanswered then (and no
- * navigation pending) marks the page unresponsive.
+ * {@link START_TIMEOUT_MS} ({@link pageAnswer}); a snapshot still
+ * unanswered then (and no navigation pending) marks the page unresponsive.
  *
  * @param watch - The action's watch
  * @returns The snapshot, or undefined
  */
 async function awaitStart(watch: Watch): Promise<StartSnapshot | undefined> {
-  const started = await raceTimeout(
+  const started = await pageAnswer(
+    watch,
     watch.start.then((value) => ({ value })),
     START_TIMEOUT_MS
   );
   if (!started) watch.unresponsive = !watch.listener.navigationPending();
   return started?.value;
+}
+
+/**
+ * The answer of a page script within a time, or within {@link READ_TIMEOUT_MS}
+ * more when the page only answered late ({@link answeredLate}): the same
+ * script is waited for, not sent again (a read that stopped the page's watch
+ * could not be repeated).
+ *
+ * @param watch - The action's watch
+ * @param answer - The script's answer
+ * @param ms - Time it gets first
+ * @returns The answer, or undefined when the page is busy
+ */
+async function pageAnswer<T>(watch: Watch, answer: Promise<T>, ms: number): Promise<T | undefined> {
+  const first = await raceTimeout(answer, ms);
+  if (first !== undefined || !(await answeredLate(watch))) return first;
+  return raceTimeout(answer, READ_TIMEOUT_MS);
+}
+
+/**
+ * Whether a page whose script got no answer in time only answered late: it
+ * answers now, within {@link READ_TIMEOUT_MS}, and ran no long task since
+ * the watch began ({@link LONG_TASKS_READ_SCRIPT}). The renderer ran the
+ * page's tasks late (a starved machine), and CDP runs a page's scripts in
+ * the order sent, so the script that got no answer has run by now; a page
+ * that ran a long task, or still does not answer, is busy. Not asked while
+ * a main-frame load is pending.
+ *
+ * @param watch - The action's watch
+ * @returns True when the page is not busy, only slow
+ */
+async function answeredLate(watch: Watch): Promise<boolean> {
+  if (watch.listener.navigationPending()) return false;
+  const longTasks = await raceTimeout(
+    evaluateInWorld<number | null>(watch.cdp, LONG_TASKS_READ_SCRIPT, false),
+    READ_TIMEOUT_MS
+  );
+  const late = longTasks === 0;
+  log.debug(
+    late
+      ? 'Page answered late without a long task (a slow renderer); waiting for its answer'
+      : `Page busy (long tasks: ${longTasks ?? 'no answer'})`
+  );
+  return late;
 }
 
 /**
@@ -678,10 +725,11 @@ async function readPage(
   options: { stop: boolean; reportShown: boolean; stalls?: boolean }
 ): Promise<ReadSnapshot | undefined> {
   if (watch.listener.navigationPending()) return undefined;
-  const answered = await letDueTimersRun(watch.cdp);
   const expression = `(${EFFECTS_READ_SCRIPT})(${options.stop}, ${options.reportShown})`;
+  const answered = await letDueTimersRun(watch);
   const answer = answered
-    ? await raceTimeout(
+    ? await pageAnswer(
+        watch,
         evaluate<ReadSnapshot>(watch.cdp, expression).then((value) => ({ value })),
         READ_TIMEOUT_MS
       )
@@ -729,21 +777,26 @@ async function withStalls(
  * its change: set a 0 ms timer ({@link START_DUE_TIMERS_SCRIPT}), then wait
  * for it at most {@link DUE_TIMERS_TIMEOUT_MS}. Both run in bdg's world, whose
  * `setTimeout` the page cannot replace or fake; its timers share the page's
- * queue. Setting the timer has the read's {@link READ_TIMEOUT_MS}; a page
- * that does not answer by then is busy and not read. A page that answers
- * just in time, then keeps its timer waiting the full limit and is slow to
- * read can take about 600 ms (250 + 100 + 250) before the read is given up.
+ * queue. Setting the timer has the read's {@link READ_TIMEOUT_MS}
+ * ({@link pageAnswer}); a page that does not answer by then is busy and not
+ * read. A page that answers just in time, then keeps its timer waiting the
+ * full limit and is slow to read can take about 600 ms (250 + 100 + 250)
+ * before the read is given up, more when it only answered late.
  *
- * @param cdp - CDP connection
- * @returns False when the page did not answer within {@link READ_TIMEOUT_MS} (busy)
+ * @param watch - The action's watch
+ * @returns False when the page did not answer in time (busy)
  */
-async function letDueTimersRun(cdp: CDPConnection): Promise<boolean> {
-  const started = await raceTimeout(
-    evaluateInWorld(cdp, START_DUE_TIMERS_SCRIPT, false).then(() => true),
+async function letDueTimersRun(watch: Watch): Promise<boolean> {
+  const started = await pageAnswer(
+    watch,
+    evaluateInWorld(watch.cdp, START_DUE_TIMERS_SCRIPT, false).then(() => true),
     READ_TIMEOUT_MS
   );
   if (!started) return false;
-  await raceTimeout(evaluateInWorld(cdp, AWAIT_DUE_TIMERS_SCRIPT, true), DUE_TIMERS_TIMEOUT_MS);
+  await raceTimeout(
+    evaluateInWorld(watch.cdp, AWAIT_DUE_TIMERS_SCRIPT, true),
+    DUE_TIMERS_TIMEOUT_MS
+  );
   return true;
 }
 
