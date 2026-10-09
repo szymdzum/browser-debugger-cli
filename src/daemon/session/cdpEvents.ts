@@ -14,6 +14,7 @@
  * cannot send the commands that would answer them.
  */
 
+import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -73,10 +74,30 @@ const TEMP_FILE_FLAGS =
 /** Temp files created by this daemon, for unique names */
 let tempFileCount = 0;
 
+/** Longest file name most file systems allow, in bytes */
+const MAX_NAME_BYTES = 255;
+
+/**
+ * Path of a new temp file next to a target: `.<name>.<pid>.<n>.tmp`, with
+ * a hash of the name instead when the name leaves no room for the suffix.
+ *
+ * @param file - Absolute path of the target
+ * @returns Temp file path
+ */
+function tempPathFor(file: string): string {
+  const suffix = `.${process.pid}.${++tempFileCount}.tmp`;
+  const name = path.basename(file);
+  const fits = Buffer.byteLength(`.${name}${suffix}`) <= MAX_NAME_BYTES;
+  const stem = fits ? name : createHash('sha256').update(name).digest('hex').slice(0, 16);
+  return path.join(path.dirname(file), `.${stem}${suffix}`);
+}
+
 /**
  * An NDJSON file events are written to, one per line. They go to a new temp
  * file next to the target, renamed over it only on {@link commit}, so a
  * failed collection never truncates or deletes a file the user had there.
+ * An existing regular file keeps its mode; a symlink at the target is
+ * replaced by the file (its destination is left as it was).
  */
 class NdjsonFile {
   count = 0;
@@ -105,15 +126,14 @@ class NdjsonFile {
    * @throws CommandError naming the path when it cannot be written
    */
   static async open(file: string, maxPendingBytes = MAX_PENDING_WRITE_BYTES): Promise<NdjsonFile> {
-    const temp = path.join(
-      path.dirname(file),
-      `.${path.basename(file)}.${process.pid}.${++tempFileCount}.tmp`
-    );
+    const temp = tempPathFor(file);
     try {
       const target = await fs.promises.stat(file).catch(() => undefined);
       if (target?.isDirectory()) throw Object.assign(new Error('directory'), { code: 'EISDIR' });
+      const existing = await fs.promises.lstat(file).catch(() => undefined);
       await fs.promises.mkdir(path.dirname(file), { recursive: true });
       const handle = await fs.promises.open(temp, TEMP_FILE_FLAGS, 0o666);
+      if (existing?.isFile()) await handle.chmod(existing.mode & 0o7777);
       return new NdjsonFile(file, temp, handle.createWriteStream(), maxPendingBytes);
     } catch (error) {
       throw outputPathError(file, error, '.ndjson');
@@ -290,6 +310,8 @@ export class CdpEventListener {
   private readonly buffer: EventBuffer;
   private readonly subscriptions = new Map<string, () => void>();
   private readonly waiters = new Set<AbortController>();
+  /** The delivery running, so reads take events out of the buffer one at a time */
+  private delivering: Promise<unknown> = Promise.resolve();
 
   /**
    * @param limits - Buffer caps
@@ -366,7 +388,9 @@ export class CdpEventListener {
     const match = matchEvents(request.events);
     const waitedOut = !(await this.waitForEvent(match, request.waitMs ?? 0, signal));
     if (signal?.aborted) return this.state();
-    const delivery = await this.deliver(request, match);
+    const delivering = this.delivering.then(() => this.deliver(request, match));
+    this.delivering = delivering.catch(() => undefined);
+    const delivery = await delivering;
     return {
       ...this.state(),
       ...delivery,

@@ -260,6 +260,64 @@ void describe('collectEvents', () => {
     );
   });
 
+  void it('keeps the mode of an existing --out file', async () => {
+    const dir = fs.mkdtempSync(path.join(tmpDir, 'mode-'));
+    const file = path.join(dir, 'secret.ndjson');
+    fs.writeFileSync(file, 'old\n', { mode: 0o600 });
+    fs.chmodSync(file, 0o600);
+    const source = new FakeSource();
+    await collectEvents(
+      source,
+      () => {
+        source.emit('A.b', { n: 1 });
+        return Promise.resolve({});
+      },
+      { events: ['A.b'], timeoutMs: 10, out: file }
+    );
+    assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  });
+
+  void it('writes to a target whose name leaves no room for the temp suffix', async () => {
+    const dir = fs.mkdtempSync(path.join(tmpDir, 'long-'));
+    const file = path.join(dir, `${'a'.repeat(248)}.ndjson`);
+    const source = new FakeSource();
+    const outcome = await collectEvents(
+      source,
+      () => {
+        source.emit('A.b', { n: 1 });
+        return Promise.resolve({});
+      },
+      { events: ['A.b'], timeoutMs: 10, out: file }
+    );
+    assert.equal(outcome.collected.count, 1);
+    assert.deepEqual(strayFiles(dir, [path.basename(file)]), []);
+  });
+
+  void it('writes events again once the --out file caught up', async () => {
+    const source = new FakeSource();
+    const file = path.join(tmpDir, 'catch-up.ndjson');
+    const burst = (from: number): void => {
+      for (let n = from; n < from + 20; n++) source.emit('A.b', { n, data: 'x'.repeat(1000) });
+    };
+    const outcome = await collectEvents(
+      source,
+      async () => {
+        burst(1);
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        burst(101);
+        return {};
+      },
+      { events: ['A.b'], timeoutMs: 10, out: file, maxPendingBytes: 2000 }
+    );
+    const written = fs
+      .readFileSync(file, 'utf8')
+      .trimEnd()
+      .split('\n')
+      .map((line) => (JSON.parse(line) as { params: { n: number } }).params.n);
+    assert.ok((outcome.collected.dropped ?? 0) > 0, 'the bursts were over the limit');
+    assert.ok(written.some((n) => n <= 20) && written.some((n) => n > 100), `${written.join()}`);
+  });
+
   void it('names the path when the --out file cannot be written', async () => {
     const source = new FakeSource();
     let called = false;
@@ -427,6 +485,32 @@ void describe('CdpEventListener', () => {
     assert.deepEqual(strayFiles(dir, ['events.ndjson']), []);
     const next = await listener.read({ action: 'read' });
     assert.deepEqual(ns(next.events), [1], 'the events are still buffered');
+  });
+
+  void it('waits for the disk while writing many buffered events', async () => {
+    const source = new FakeSource();
+    const listener = new CdpEventListener();
+    listener.listen(source, ['A.b']);
+    for (let n = 1; n <= 200; n++) source.emit('A.b', { n, data: 'x'.repeat(1000) });
+    const once = mock.method(fs.WriteStream.prototype, 'once');
+    const file = path.join(tmpDir, 'many.ndjson');
+    const read = await listener.read({ action: 'read', out: file });
+    const drains = once.mock.calls.filter((call) => call.arguments[0] === 'drain').length;
+    assert.ok(drains > 0, 'waited for drain');
+    assert.equal(read.count, 200);
+    assert.equal(fs.readFileSync(file, 'utf8').trimEnd().split('\n').length, 200);
+  });
+
+  void it('delivers each buffered event once to concurrent reads', async () => {
+    const source = new FakeSource();
+    const listener = new CdpEventListener();
+    listener.listen(source, ['A.b']);
+    for (let n = 1; n <= 5; n++) source.emit('A.b', { n });
+    const [first, second] = await Promise.all([
+      listener.read({ action: 'read', out: path.join(tmpDir, 'first.ndjson') }),
+      listener.read({ action: 'read', out: path.join(tmpDir, 'second.ndjson') }),
+    ]);
+    assert.equal((first.count ?? 0) + (second.count ?? 0), 5);
   });
 
   void it('writes the buffered events to a file with out', async () => {
