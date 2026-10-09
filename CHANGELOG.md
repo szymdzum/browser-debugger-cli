@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`dom form` finds forms in shadow roots** (#456): it searched only the light DOM, so a form rendered by a web component (Lit, Shoelace, LWC, MDN's search modal) gave `No forms discovered on the page` while `dom query` and `dom a11y` saw its fields. Forms and form-less fields in open shadow roots, nested ones included, are now listed and marked `(in shadow root of <x-login>)` (JSON `shadowHost`). Labels (`for`, `aria-labelledby`), required stars and error texts are read in the field's own root, and secret fields there are masked as elsewhere. A field in a component inside a light DOM form (an `sl-input`) belongs to that form. Indices work with `dom fill`, `dom click` and `dom submit`: the daemon now binds each listed field and button to its node during discovery instead of re-running its selector, which in a shadow root may not be unique. Closed shadow roots cannot be read by page scripts, but CDP sees them: a defined custom element whose closed shadow root holds a field is named as not inspectable (`Note: <x-vault> has a closed shadow root with form fields; …`, JSON `closedShadowHosts`; the first 50 custom elements without an open root are checked, and closed roots attached to built-in elements such as `div` are not).
+
 ## [0.16.0] - 2026-10-09
 
 ### Changed

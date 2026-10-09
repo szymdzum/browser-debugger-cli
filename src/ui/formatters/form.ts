@@ -15,6 +15,7 @@ import type {
 import { OutputFormatter, areHintsHidden } from '@/ui/formatting.js';
 import {
   REQUIRED_FIELD_EMPTY_REASON,
+  closedShadowRootMessage,
   formReadinessMessage,
   requiredFieldsEmptyMessage,
 } from '@/ui/messages/commands.js';
@@ -167,7 +168,7 @@ function formatButtonRow(button: FormButton): string {
  * @returns Header string
  */
 function formatFormHeader(form: DiscoveredForm): string {
-  let header = `Form: "${form.name ?? 'Unnamed'}"${formVisibilityMarker(form)}`;
+  let header = `Form: "${form.name ?? 'Unnamed'}"${formVisibilityMarker(form)}${shadowRootMarker(form)}`;
 
   if (form.step) {
     header += ` (step ${form.step.current} of ${form.step.total})`;
@@ -185,6 +186,16 @@ function formatFormHeader(form: DiscoveredForm): string {
 function formVisibilityMarker(form: Pick<DiscoveredForm, 'hidden' | 'inDialog'>): string {
   if (form.hidden) return ' (hidden)';
   return form.inDialog ? ' (in dialog)' : '';
+}
+
+/**
+ * Marker of a form in a shadow root, like `dom query` shows elements there.
+ *
+ * @param form - Form (or its listing in "Other forms")
+ * @returns ` (in shadow root of <x-login>)`, or empty
+ */
+function shadowRootMarker(form: Pick<DiscoveredForm, 'shadowHost'>): string {
+  return form.shadowHost ? ` (in shadow root of <${form.shadowHost}>)` : '';
 }
 
 /**
@@ -330,7 +341,7 @@ function formatOtherForms(
   fmt.text('Other forms on page:');
   for (const form of others) {
     fmt.text(
-      `  Form ${form.index}: "${form.name ?? 'Unnamed'}"${formVisibilityMarker(form)} - ${form.fieldCount} field(s)`
+      `  Form ${form.index}: "${form.name ?? 'Unnamed'}"${formVisibilityMarker(form)}${shadowRootMarker(form)} - ${form.fieldCount} field(s)`
     );
   }
   fmt.blank();
@@ -356,6 +367,11 @@ export function formatFormDiscovery(result: FormDiscoveryResult): string {
   }
 
   if (result.otherForms) formatOtherForms(result.otherForms, fmt);
+
+  for (const host of result.closedShadowHosts ?? []) {
+    fmt.text(`Note: ${closedShadowRootMessage(host)}`);
+    fmt.blank();
+  }
 
   fmt.hints('Suggested commands:', [
     'bdg dom fill <index> "<value>"     Fill a field',

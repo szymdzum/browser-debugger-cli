@@ -509,6 +509,8 @@ export interface RawFormData {
   frameForms?: Array<{ url: string }>;
   /** The page's `document.readyState` when the forms were read */
   readyState?: string;
+  /** Custom elements (e.g. `x-vault#pay`) whose closed shadow roots hold form fields, which cannot be listed */
+  closedShadowHosts?: string[];
 }
 
 export interface RawForm {
@@ -525,6 +527,8 @@ export interface RawForm {
   inIframe: boolean;
   iframeUrl?: string;
   crossOrigin?: boolean;
+  /** Host of the open shadow root holding the form (or all fields of a form-less group), e.g. `x-login#main` */
+  shadowHost?: string;
   fields: RawField[];
   buttons: RawButton[];
 }
@@ -556,6 +560,8 @@ export interface RawField {
   hasErrorClass?: boolean;
   siblingErrorText?: string;
   options?: FieldOption[];
+  /** Backend node id of the field, when the daemon could resolve it */
+  backendNodeId?: number;
 }
 
 export interface RawButton {
@@ -570,4 +576,6 @@ export interface RawButton {
   formDefault: boolean;
   /** Has a class like `primary`, `btn-primary` or `submit` */
   primaryClass: boolean;
+  /** Backend node id of the button, when the daemon could resolve it */
+  backendNodeId?: number;
 }

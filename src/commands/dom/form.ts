@@ -277,6 +277,7 @@ function transformForm(raw: RawForm): DiscoveredForm {
     relevanceScore: raw.relevanceScore,
     hidden: raw.hidden === true,
     inDialog: raw.inDialog === true,
+    ...(raw.shadowHost && { shadowHost: raw.shadowHost }),
     fields,
     buttons,
     summary: calculateSummary(fields, buttons),
@@ -288,30 +289,40 @@ function transformForm(raw: RawForm): DiscoveredForm {
  *
  * Each field and button is cached with its selector and backend node id, so
  * an index keeps addressing the same element even if other elements match
- * the selector later.
+ * the selector later. The daemon binds the node ids during discovery; an
+ * element it could not bind is resolved by its selector.
  *
  * @param forms - Discovered forms
+ * @param rawForms - The same forms as the daemon found them (same order and indices), with node ids
  * @param document - Identity of the page document they were found in, read before discovery
  */
 async function cacheFormElements(
   forms: DiscoveredForm[],
+  rawForms: RawForm[],
   document: string | undefined
 ): Promise<void> {
   const elements = forms.flatMap((form) => [...form.fields, ...form.buttons]);
-  const backendNodeIds = await resolveBackendNodeIds(elements.map((el) => el.selector)).catch(
+  const nodeIds = new Map(
+    rawForms
+      .flatMap((form) => [...form.fields, ...form.buttons])
+      .map((el) => [el.index, el.backendNodeId])
+  );
+  const unbound = elements.filter((el) => nodeIds.get(el.index) === undefined);
+  const resolved = await resolveBackendNodeIds(unbound.map((el) => el.selector)).catch(
     (error: unknown) => {
       log.debug(`Form fields not cached by node: ${getErrorMessage(error)}`);
       return [];
     }
   );
+  unbound.forEach((el, i) => nodeIds.set(el.index, resolved[i]));
 
   await QueryCacheManager.getInstance().set(
     {
       selector: FORM_DISCOVERY_CACHE_SELECTOR,
       count: elements.length,
-      nodes: elements.map((el, i) => ({
+      nodes: elements.map((el) => ({
         index: el.index,
-        nodeId: backendNodeIds[i] ?? 0,
+        nodeId: nodeIds.get(el.index) ?? 0,
         selector: el.selector,
       })),
     },
@@ -353,7 +364,7 @@ async function handleFormCommand(options: FormCommandOptions): Promise<void> {
       }
 
       if (rawData.forms.length === 0) {
-        const err = noFormsFoundError(rawData.readyState);
+        const err = noFormsFoundError(rawData.readyState, rawData.closedShadowHosts);
         return {
           success: false,
           error: err.message,
@@ -376,11 +387,12 @@ async function handleFormCommand(options: FormCommandOptions): Promise<void> {
         };
       }
 
-      const allForms = orderForms(rawData.forms).map(transformForm);
+      const orderedForms = orderForms(rawData.forms);
+      const allForms = orderedForms.map(transformForm);
       const forms = options.all ? allForms : [allForms[0] as DiscoveredForm];
 
       // Cache ALL forms so global indices work with bdg dom fill/click
-      await cacheFormElements(allForms, document);
+      await cacheFormElements(allForms, orderedForms, document);
 
       const result: FormDiscoveryResult = {
         formCount: rawData.forms.length,
@@ -395,8 +407,10 @@ async function handleFormCommand(options: FormCommandOptions): Promise<void> {
               : form.fields.filter((field) => !field.hidden).length,
             hidden: form.hidden,
             inDialog: form.inDialog,
+            ...(form.shadowHost && { shadowHost: form.shadowHost }),
           })),
         }),
+        ...(rawData.closedShadowHosts && { closedShadowHosts: rawData.closedShadowHosts }),
         brief: options.brief,
       };
 

@@ -156,6 +156,11 @@ void describe('Shadow DOM and iframe targeting', () => {
   });
 
   void it('points to fields of a form inside a same-origin frame (89)', async () => {
+    const removed = await runCommand('dom', [
+      'eval',
+      "document.querySelector('shadow-form').remove(); 1",
+    ]);
+    assert.equal(removed.exitCode, 0, removed.stderr);
     const result = await runCommand('dom', ['form', '--json']);
     assert.equal(result.exitCode, 89);
     assert.match(result.stdout, /deep-frame/);

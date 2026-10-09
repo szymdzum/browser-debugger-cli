@@ -142,6 +142,17 @@ export function requiredFieldsEmptyMessage(labels: string[]): string {
 }
 
 /**
+ * Note on a component whose closed shadow root holds form fields: page
+ * scripts cannot reach a closed root, so `bdg dom form` cannot list them.
+ *
+ * @param host - Short name of the component, e.g. `x-vault#pay`
+ * @returns e.g. "<x-vault> has a closed shadow root with form fields; closed shadow roots are not inspectable, so they are not listed"
+ */
+export function closedShadowRootMessage(host: string): string {
+  return `<${host}> has a closed shadow root with form fields; closed shadow roots are not inspectable, so they are not listed`;
+}
+
+/**
  * Readiness at the end of the `bdg dom form` summary.
  *
  * @param summary - Whether the form is ready, how many fields are filled and
