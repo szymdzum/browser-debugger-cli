@@ -3,6 +3,7 @@
  */
 
 import { MAX_CONSOLE_JSON_TEXT_LENGTH } from '@/constants.js';
+import type { TabSwitchInfo } from '@/ipc/protocol/tabTypes.js';
 import type { ConsoleLevel, ConsoleMessage, PageIssue, StackFrame } from '@/types.js';
 import { capLength } from '@/utils/strings.js';
 
@@ -63,6 +64,8 @@ export interface ConsoleFormatOptions {
   dropped?: number | undefined;
   /** When the page crashed (epoch ms), while it is not loaded again */
   pageCrashedAt?: number | undefined;
+  /** The session's latest move to another tab */
+  tabSwitch?: TabSwitchInfo | undefined;
   /** Print message texts whole (`--full`) */
   full?: boolean | undefined;
   /** Chrome Issues of the page currently loaded (the Issues block; not shown with `--level`) */
@@ -135,6 +138,8 @@ export interface ConsoleJsonOutput {
   dropped?: number;
   /** When the page crashed (epoch ms), while it is not loaded again */
   pageCrashedAt?: number;
+  /** The session's latest move to another tab (`consoleReplayed` false: what that tab logged while the session was away is not recorded) */
+  tabSwitch?: TabSwitchInfo;
   /** Chrome Issues of the page currently loaded (quirks mode, form errors, ...), in the order they arrived */
   issues?: PageIssue[];
   /** Chrome Issues of the page not kept past the per-page limit (100) */

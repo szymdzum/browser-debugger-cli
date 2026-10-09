@@ -14,7 +14,12 @@ import {
   getRequestState,
 } from '@/ui/formatters/requestStatus.js';
 import { OutputFormatter, truncateUrl, truncateText } from '@/ui/formatting.js';
-import { downloadsSummary, moreCharsNote, withPageCrashedNote } from '@/ui/messages/commands.js';
+import {
+  downloadsSummary,
+  moreCharsNote,
+  withPageCrashedNote,
+  withTabSwitchNote,
+} from '@/ui/messages/commands.js';
 import { consoleDroppedNote } from '@/ui/messages/consoleMessages.js';
 import { peekIssuesLine } from '@/ui/messages/issueMessages.js';
 import { networkEvictedNote } from '@/ui/messages/networkMessages.js';
@@ -118,6 +123,8 @@ export interface PreviewJsonData {
   pageCrashedAt?: number;
   /** Downloads that began during the session, oldest first */
   downloads?: BdgOutput['downloads'];
+  /** The session's latest move to another tab */
+  tabSwitch?: BdgOutput['tabSwitch'];
   network?: BdgOutput['data']['network'];
   console?: BdgOutput['data']['console'];
 }
@@ -144,6 +151,7 @@ export function buildPreviewJsonData(output: BdgOutput, options: PreviewOptions)
     ...(output.totals && { totals: output.totals }),
     ...(output.pageCrashedAt !== undefined && { pageCrashedAt: output.pageCrashedAt }),
     ...(output.downloads && { downloads: output.downloads }),
+    ...(output.tabSwitch && { tabSwitch: output.tabSwitch }),
     ...(pick('network') && output.data.network && { network: last(output.data.network) }),
     ...(pick('console') &&
       output.data.console && {
@@ -167,13 +175,15 @@ function formatPreviewAsJson(output: BdgOutput, options: PreviewOptions): string
 
 /**
  * Format preview as human-readable output, after a warning when the page
- * crashed (what is shown was collected before).
+ * crashed (what is shown was collected before), and with a note when the
+ * session moved to a tab whose earlier activity is not recorded.
  */
 function formatPreviewHumanReadable(output: BdgOutput, options: PreviewOptions): string {
   const body = options.verbose
     ? formatPreviewVerbose(output, options)
     : formatPreviewCompact(output, options);
-  return withPageCrashedNote(body, output.pageCrashedAt);
+  const view = options.network ? 'network' : options.console ? 'console' : 'all';
+  return withPageCrashedNote(withTabSwitchNote(body, output.tabSwitch, view), output.pageCrashedAt);
 }
 
 /**

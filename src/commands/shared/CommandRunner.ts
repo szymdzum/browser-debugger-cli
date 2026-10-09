@@ -10,8 +10,10 @@ import {
   sessionEndedDuringCommandError,
 } from '@/errors/messages.js';
 import { IPCEarlyCloseError, IPCTimeoutError } from '@/ipc/transport/IPCError.js';
+import { takeTabMove } from '@/ipc/utils/tabMove.js';
 import { OutputBuilder, buildSuccessResponse, stringifyEnvelope } from '@/ui/OutputBuilder.js';
 import { escapeControlChars } from '@/ui/formatting.js';
+import { tabClosedText } from '@/ui/messages/commands.js';
 import { noActiveSessionMessage, startSessionSuggestion } from '@/ui/messages/sessionCommand.js';
 import { getErrorExitCode, getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -52,7 +54,7 @@ export function noActiveSessionError(): CommandError {
 export async function runJsonCommand<T>(fn: () => Promise<T>): Promise<never> {
   try {
     const data = await fn();
-    console.log(stringifyEnvelope(buildSuccessResponse(data)));
+    console.log(stringifyEnvelope(withTabMove(buildSuccessResponse(data))));
     process.exit(EXIT_CODES.SUCCESS);
   } catch (caught) {
     const error = isDaemonConnectionError(caught)
@@ -67,10 +69,12 @@ export async function runJsonCommand<T>(fn: () => Promise<T>): Promise<never> {
         : undefined;
     console.log(
       stringifyEnvelope(
-        OutputBuilder.buildJsonError(getErrorMessage(error), {
-          exitCode,
-          ...(suggestion && { suggestion }),
-        })
+        withTabMove(
+          OutputBuilder.buildJsonError(getErrorMessage(error), {
+            exitCode,
+            ...(suggestion && { suggestion }),
+          })
+        )
       )
     );
     process.exit(exitCode);
@@ -149,6 +153,33 @@ function sessionEndedError(): CommandError {
 }
 
 /**
+ * Add a move of the session to another tab that a daemon response of this
+ * command carried (its tab closed on its own and no command reported it
+ * yet) to a `--json` envelope: top-level `tabClosed` and `switchedTo`.
+ *
+ * @param envelope - Response envelope
+ * @returns The envelope, with the move when there was one
+ */
+function withTabMove<T extends object>(envelope: T): T {
+  const moved = takeTabMove();
+  return moved ? { ...envelope, ...moved } : envelope;
+}
+
+/**
+ * Print a move of the session to another tab that a daemon response of this
+ * command carried on stderr (text output), unless the text shown already
+ * says it (an action refused because of it).
+ *
+ * @param shown - Text already printed
+ */
+function printTabMove(shown = ''): void {
+  const moved = takeTabMove();
+  if (!moved) return;
+  const line = tabClosedText(moved.tabClosed, moved.switchedTo);
+  if (!shown.includes(line)) console.error(escapeControlChars(line));
+}
+
+/**
  * Print a command's warning on stderr (text output; `--json` has it in the envelope).
  *
  * @param warning - Warning, if any
@@ -196,15 +227,18 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
       if (options.json) {
         console.log(
           stringifyEnvelope(
-            OutputBuilder.buildJsonError(result.error ?? 'Unknown error', {
-              ...result.errorContext,
-              ...(result.warning && { warning: result.warning }),
-              exitCode,
-            })
+            withTabMove(
+              OutputBuilder.buildJsonError(result.error ?? 'Unknown error', {
+                ...result.errorContext,
+                ...(result.warning && { warning: result.warning }),
+                exitCode,
+              })
+            )
           )
         );
       } else {
         console.error(result.error ? genericError(result.error) : unknownError());
+        printTabMove(result.error);
         if (result.errorContext && typeof result.errorContext === 'object') {
           for (const value of Object.values(result.errorContext)) {
             if (value !== undefined && value !== null) {
@@ -219,18 +253,23 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
       process.exit(exitCode);
     }
 
-    if (!options.json) printWarning(result.warning);
+    if (!options.json) {
+      printWarning(result.warning);
+      printTabMove();
+    }
     if (result.hint && !options.quiet) {
       console.error(escapeControlChars(result.hint));
     }
 
     if (options.json) {
-      console.log(stringifyEnvelope(buildSuccessResponse(result.data, result.warning)));
+      console.log(
+        stringifyEnvelope(withTabMove(buildSuccessResponse(result.data, result.warning)))
+      );
     } else if (formatter) {
       const formattedOutput = formatter(result.data as TResult);
       console.log(escapeControlChars(formattedOutput));
     } else {
-      console.log(stringifyEnvelope(buildSuccessResponse(result.data)));
+      console.log(stringifyEnvelope(withTabMove(buildSuccessResponse(result.data))));
     }
 
     process.exit(EXIT_CODES.SUCCESS);
@@ -245,15 +284,18 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
       if (options.json) {
         console.log(
           stringifyEnvelope(
-            OutputBuilder.buildJsonError(error.message, {
-              ...error.metadata,
-              exitCode: error.exitCode,
-            })
+            withTabMove(
+              OutputBuilder.buildJsonError(error.message, {
+                ...error.metadata,
+                exitCode: error.exitCode,
+              })
+            )
           )
         );
       } else {
         const { warning, ...metadata } = error.metadata;
         console.error(genericError(error.message));
+        printTabMove(error.message);
         for (const value of Object.values(metadata)) {
           console.error(
             escapeControlChars(typeof value === 'string' ? value : JSON.stringify(value))
@@ -284,9 +326,12 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
 
     const exitCode = getErrorExitCode(error, EXIT_CODES.UNHANDLED_EXCEPTION);
     if (options.json) {
-      console.log(stringifyEnvelope(OutputBuilder.buildJsonError(errorMessage, { exitCode })));
+      console.log(
+        stringifyEnvelope(withTabMove(OutputBuilder.buildJsonError(errorMessage, { exitCode })))
+      );
     } else {
       console.error(genericError(errorMessage));
+      printTabMove(errorMessage);
     }
     process.exit(exitCode);
   }

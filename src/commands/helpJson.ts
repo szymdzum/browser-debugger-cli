@@ -149,6 +149,45 @@ export interface Capabilities {
   };
 }
 
+/** A top-level field of the `--json` response envelope */
+export interface EnvelopeField {
+  name: string;
+  /** Absent from some responses */
+  optional: boolean;
+  description: string;
+}
+
+/** The top-level fields of every `--json` response (`BdgResponse`) */
+const ENVELOPE_FIELDS: readonly EnvelopeField[] = [
+  { name: 'version', optional: false, description: 'bdg version' },
+  { name: 'success', optional: false, description: 'Whether the command succeeded' },
+  { name: 'data', optional: true, description: 'The result (on success)' },
+  { name: 'error', optional: true, description: 'What went wrong (on failure)' },
+  {
+    name: 'exitCode',
+    optional: true,
+    description: 'Semantic exit code (on failure; see exitCodes)',
+  },
+  { name: 'suggestion', optional: true, description: 'How to recover (on failure)' },
+  {
+    name: 'warning',
+    optional: true,
+    description: 'How the command ran despite something unusual (success or failure)',
+  },
+  {
+    name: 'tabClosed',
+    optional: true,
+    description:
+      "The session's tab that closed on its own since the last command, when no command reported it yet { index?, targetId, url, title }; given once, on success or failure; the first page action after it exits 90 without running",
+  },
+  {
+    name: 'switchedTo',
+    optional: true,
+    description:
+      'The tab the session moved to when tabClosed closed (its opener, else the tab used before it) { index, targetId, url, title }',
+  },
+];
+
 /**
  * Root machine-readable help structure (`bdg --help --json --full`).
  */
@@ -170,6 +209,8 @@ export interface MachineReadableHelp {
     /** Exit code description */
     description: string;
   }[];
+  /** Top-level fields of every `--json` response envelope */
+  envelope: EnvelopeField[];
   /** Task-to-command mappings with CDP alternatives */
   taskMappings: Record<string, TaskMapping>;
   /** Current runtime state */
@@ -440,6 +481,7 @@ export function generateMachineReadableHelp(program: Command): MachineReadableHe
     description: program.description(),
     command: convertCommand(program),
     exitCodes: [...EXIT_CODE_DOCS],
+    envelope: [...ENVELOPE_FIELDS],
     taskMappings: getAllTaskMappings(),
     runtimeState: generateRuntimeState(),
     decisionTrees: getAllDecisionTrees(),

@@ -35,9 +35,11 @@ export interface TabRef {
 /** A tab as `bdg page tabs` lists it */
 export interface TabInfo extends TabRef {
   index: number;
+  /** `popup` when it can reach its opener through `window.opener`, else `tab` */
+  kind: OpenedTabKind;
   /** The tab the session acts on */
   current?: true;
-  /** Index of the tab that opened it, while that one is open */
+  /** Index of the popup's opener, while that one is open (not for `tab`: noopener and `target=_blank`) */
   openedBy?: number;
 }
 
@@ -47,6 +49,24 @@ export interface TabClosedSwitch {
   tabClosed: TabRef;
   /** The tab the session acts on now: the closed tab's opener, else the tab used before it */
   switchedTo: TabRef;
+}
+
+/**
+ * The session's latest move to another tab (`page switch`, `page close`, or
+ * its tab closing), for the console and network views: what that tab did
+ * before is not recorded, and what is listed before it is another tab's.
+ */
+export interface TabSwitchInfo {
+  /** When the session moved (epoch ms) */
+  at: number;
+  /** The tab it moved to */
+  tab: TabRef;
+  /**
+   * The session had never been on that tab, so Chrome replayed the console
+   * messages it had logged; false when it returned to a tab, whose messages
+   * from while it was away are not recorded
+   */
+  consoleReplayed: boolean;
 }
 
 /** page_tabs: list the page targets (tabs and windows) */

@@ -7,7 +7,7 @@
  */
 
 import type { ConsoleMessage } from '@/types.js';
-import { withPageCrashedNote } from '@/ui/messages/commands.js';
+import { withPageCrashedNote, withTabSwitchNote } from '@/ui/messages/commands.js';
 
 import { formatConsoleChronological } from './console/chronological.js';
 import { type ConsoleFormatOptions } from './console/shared.js';
@@ -31,12 +31,16 @@ export { formatConsoleSummary } from './console/summarize.js';
  * Format console output based on options. Routes to the per-mode formatter:
  * a `--level` filter lists the matching messages (the summary only shows
  * errors and warnings, so it would hide e.g. `--level info`). The text
- * starts with a warning when the page crashed.
+ * starts with a warning when the page crashed, and ends with a note when
+ * the session moved to a tab whose earlier messages are not recorded.
  */
 export function formatConsole(messages: ConsoleMessage[], options: ConsoleFormatOptions): string {
   const body =
     options.list || options.level
       ? formatConsoleChronological(messages, options)
       : formatConsoleSummary(messages, options);
-  return withPageCrashedNote(body, options.pageCrashedAt);
+  return withPageCrashedNote(
+    withTabSwitchNote(body, options.tabSwitch, 'console'),
+    options.pageCrashedAt
+  );
 }

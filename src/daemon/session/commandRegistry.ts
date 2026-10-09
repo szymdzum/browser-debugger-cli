@@ -646,6 +646,7 @@ export function createCommandRegistry(
         ...(requestsDropped > 0 && { droppedNetwork: requestsDropped }),
         ...(bodiesEvicted > 0 && { evictedNetworkBodies: bodiesEvicted }),
         ...sessionDownloads(store),
+        ...(store.tabSwitch && { tabSwitch: store.tabSwitch }),
         hasMoreNetwork: networkBounds.start > 0,
         hasMoreConsole: consoleBounds.start > 0,
       });

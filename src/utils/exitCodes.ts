@@ -136,7 +136,7 @@ export const EXIT_CODE_REGISTRY: readonly ExitCodeEntry[] = [
     code: EXIT_CODES.RESOURCE_CONFLICT,
     name: 'RESOURCE_CONFLICT',
     description:
-      'Request conflicts with current state (e.g., session attached to different target, start cancelled by bdg stop)',
+      'Request conflicts with current state (e.g., session attached to different target, start cancelled by bdg stop, an action meant for a tab that closed on its own)',
   },
   {
     code: EXIT_CODES.SCRIPT_ERROR,

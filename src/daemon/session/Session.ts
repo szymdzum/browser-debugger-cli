@@ -33,6 +33,7 @@ import { chromeInUseBySessionError, unknownSessionCommandMessage } from '@/error
 import type { ChromeNoticeCode, NoticeSink } from '@/errors/notices.js';
 import type { CommandName, CommandSchemas } from '@/ipc/index.js';
 import type { PageLoadingState } from '@/ipc/protocol/commands.js';
+import type { TabClosedSwitch } from '@/ipc/protocol/tabTypes.js';
 import type { SessionOptions } from '@/ipc/session/lifecycle.js';
 import type { StatusResponseData } from '@/ipc/session/queries.js';
 import { applySessionEmulation, type SessionEmulation } from '@/runtime/page/emulation.js';
@@ -78,6 +79,20 @@ const RUN_ON_CRASHED_PAGE: ReadonlySet<CommandName> = new Set<CommandName>([
   'page_switch',
   'page_close',
   'cdp_call',
+]);
+
+/**
+ * Commands that act on the page: the first one after the session's tab
+ * closed on its own and the session moved is refused once (it was meant for
+ * the tab that closed), see {@link TabTracker.refuseActionAfterMove}.
+ */
+const PAGE_ACTIONS: ReadonlySet<CommandName> = new Set<CommandName>([
+  'dom_fill',
+  'dom_click',
+  'dom_submit',
+  'dom_press_key',
+  'dom_scroll',
+  'page_navigate',
 ]);
 
 /**
@@ -229,7 +244,9 @@ export class Session {
    * drop `dom inspect`'s kept matched rules ({@link withMatchedStylesReset}).
    * Page commands run once a screenshot running before them has put the
    * page's emulation back ({@link CaptureGate}), on the tab a tab switch
-   * running before them moved to.
+   * running before them moved to. The first page action after the session's
+   * tab closed on its own and the session moved is refused once (exit 90)
+   * instead of running on the other tab.
    *
    * @param name - Command name
    * @param params - Command parameters
@@ -262,8 +279,19 @@ export class Session {
       await this.pages.settled();
       const cdp = this.pages.connection;
       if (!cdp) throw new Error('No active session');
+      if (PAGE_ACTIONS.has(name)) this.tabs.refuseActionAfterMove();
       return withMatchedStylesReset(cdp, name, () => handler(cdp, params, abandoned));
     });
+  }
+
+  /**
+   * The session's move to another tab after its tab closed on its own, for
+   * the next command's response; given once.
+   *
+   * @returns The move, or undefined when there is none to report
+   */
+  takeTabMoveNotice(): TabClosedSwitch | undefined {
+    return this.tabs.takeMoveNotice();
   }
 
   /**

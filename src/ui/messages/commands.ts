@@ -21,7 +21,7 @@ import type {
   ShownElement,
 } from '@/ipc/protocol/domTypes.js';
 import type { InspectVisibility } from '@/ipc/protocol/inspectTypes.js';
-import type { OpenedTab, TabInfo, TabRef } from '@/ipc/protocol/tabTypes.js';
+import type { OpenedTab, TabInfo, TabRef, TabSwitchInfo } from '@/ipc/protocol/tabTypes.js';
 import type { DelegationNote } from '@/runtime/dom/listenerSummary.js';
 import type { WaitCondition, WaitSnapshot } from '@/runtime/dom/waitCondition.js';
 import type { DocumentRequestState, ViewportPosition } from '@/types.js';
@@ -772,6 +772,57 @@ export function pageCrashedNote(crashedAt: number): string {
  */
 export function withPageCrashedNote(body: string, crashedAt: number | undefined): string {
   return crashedAt === undefined ? body : `${pageCrashedNote(crashedAt)}\n\n${body}`;
+}
+
+/**
+ * Note under a console or network view after the session moved to another
+ * tab: what that tab did before is not recorded (Chrome replays the console
+ * messages of a tab the session was never on, so those are), and what is
+ * listed from before is the other tab's.
+ *
+ * @param tabSwitch - The session's latest move
+ * @param view - What the view lists
+ * @returns e.g. `Switched to tab 1 at 18:02:11 (http://localhost/popup); its earlier requests are not recorded`, or undefined when nothing is missing
+ */
+export function tabSwitchNote(
+  tabSwitch: TabSwitchInfo,
+  view: 'network' | 'console' | 'all'
+): string | undefined {
+  const requests = view !== 'console';
+  const messages = view !== 'network' && !tabSwitch.consoleReplayed;
+  if (!requests && !messages) return undefined;
+  const logged = 'what it logged while the session was on another tab';
+  const missing =
+    requests && messages
+      ? `its earlier requests and ${logged} are not recorded`
+      : requests
+        ? 'its earlier requests are not recorded'
+        : `${logged} is not recorded`;
+  const tab = tabSwitch.tab.index === undefined ? 'a tab' : `tab ${tabSwitch.tab.index}`;
+  const at = new Date(tabSwitch.at).toLocaleTimeString();
+  return `Switched to ${tab} at ${at} (${tabSwitch.tab.url}); ${missing}`;
+}
+
+/**
+ * Put the tab-switch note under a console or network view, after the
+ * session moved to another tab.
+ *
+ * @param body - The view
+ * @param tabSwitch - The session's latest move, if any
+ * @param view - What the view lists
+ * @returns The view, with the note when something is missing
+ */
+export function withTabSwitchNote(
+  body: string,
+  tabSwitch: TabSwitchInfo | undefined,
+  view: 'network' | 'console' | 'all'
+): string {
+  const note = tabSwitch && tabSwitchNote(tabSwitch, view);
+  return note
+    ? `${body}
+
+${note}`
+    : body;
 }
 
 /**

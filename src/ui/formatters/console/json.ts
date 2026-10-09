@@ -62,6 +62,7 @@ export function buildConsoleJsonOutput(
     ...(warnings.more > 0 && { moreWarnings: warnings.more }),
     ...(options.dropped && { dropped: options.dropped }),
     ...(options.pageCrashedAt !== undefined && { pageCrashedAt: options.pageCrashedAt }),
+    ...(options.tabSwitch && { tabSwitch: options.tabSwitch }),
     ...(options.issues && { issues: [...options.issues] }),
     ...(options.issuesDropped && { issuesDropped: options.issuesDropped }),
   };

@@ -8,6 +8,7 @@ import type { IPCMessage } from './lifecycle.js';
 import type { PageState, SessionActivity } from './types.js';
 
 import type { DownloadInfo } from '@/ipc/protocol/domTypes.js';
+import type { TabClosedSwitch } from '@/ipc/protocol/tabTypes.js';
 import type { ColorScheme, NetworkRequest, TelemetryType, ViewportSize } from '@/types.js';
 
 /**
@@ -15,6 +16,8 @@ import type { ColorScheme, NetworkRequest, TelemetryType, ViewportSize } from '@
  */
 export interface StatusRequest extends IPCMessage {
   type: 'status_request';
+  /** Put a move of the session to another tab that no command reported yet on the response (`bdg page info`) */
+  tabMove?: boolean;
 }
 
 /**
@@ -65,6 +68,8 @@ export interface StatusResponse extends IPCMessage {
   status: 'ok' | 'error';
   data?: StatusResponseData;
   error?: string;
+  /** The session moved to another tab after its tab closed, and no command reported it yet (when asked) */
+  tabMoved?: TabClosedSwitch;
 }
 
 /**
@@ -78,6 +83,8 @@ export interface PeekRequest extends IPCMessage {
   only?: 'network' | 'console';
   /** Include request/response headers in network items. */
   withHeaders?: boolean;
+  /** Put a move of the session to another tab that no command reported yet on the response */
+  tabMove?: boolean;
 }
 
 /**
@@ -110,6 +117,8 @@ export interface PeekResponse extends IPCMessage {
   status: 'ok' | 'error';
   data?: PeekResponseData;
   error?: string;
+  /** The session moved to another tab after its tab closed, and no command reported it yet (when asked) */
+  tabMoved?: TabClosedSwitch;
 }
 
 /**

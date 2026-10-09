@@ -33,10 +33,13 @@ const log = createLogger('session');
 
 /**
  * How the collectors of a tab start: on the session's first tab, on a tab
- * the session moved to (its page is the next navigation), or again on the
- * tab a failed switch went back to (its navigation goes on)
+ * the session moved to (its page is the next navigation; `firstVisit` when
+ * the session was never on it, so Chrome's replay of its console messages
+ * is kept), or again on the tab a failed switch went back to (its
+ * navigation goes on)
  */
-export type PageStart = { kind: 'first' } | { kind: 'switched'; url: string } | { kind: 'resumed' };
+export type PageStart =
+  { kind: 'first' } | { kind: 'switched'; url: string; firstVisit: boolean } | { kind: 'resumed' };
 
 /** What the switcher needs of the session */
 export interface PageHost {
@@ -151,9 +154,10 @@ export class PageSwitcher {
     return this.exclusive(async () => {
       await this.refresh();
       const tab = this.host.tabs.resolve(target);
-      if (tab.current) return { tab };
       const previous = this.host.tabs.current();
-      await this.move(tab);
+      if (!tab.current) await this.move(tab);
+      this.host.tabs.acknowledgeMove();
+      if (tab.current) return { tab };
       const previousRef = previous && this.host.tabs.ref(previous.targetId);
       return {
         tab: this.host.tabs.current() ?? tab,
@@ -174,13 +178,14 @@ export class PageSwitcher {
     return this.exclusive(async () => {
       await this.refresh();
       const tabs = this.host.tabs;
-      const tab = target === undefined ? tabs.current() : tabs.resolve(target);
+      const tab = target === undefined ? tabs.current() : tabs.resolve(target, 'close');
       if (!tab) throw new Error('No tab is known');
       const fallback = tab.current ? tabs.fallbackFor(tab.targetId, true) : undefined;
       if (tab.current && !fallback) fail(lastTabCloseError(), EXIT_CODES.INVALID_ARGUMENTS);
       if (fallback) await this.move(fallback);
       await this.cdp?.send('Target.closeTarget', { targetId: tab.targetId });
       tabs.remove(tab.targetId);
+      tabs.acknowledgeMove();
       const current = tabs.current();
       if (!current) throw new Error('No tab is current');
       const closed = tabs.ref(tab.targetId) ?? tab;
@@ -264,14 +269,35 @@ export class PageSwitcher {
     await runCleanups(this.cleanups, log);
     this.cleanups = [];
     this.prepareStore(snapshot, tabTarget(tab, wsUrl));
+    const firstVisit = !this.host.tabs.hasVisited(tab.targetId);
     try {
-      this.cleanups = await this.host.startPage(next, { kind: 'switched', url: tab.url });
+      this.cleanups = await this.host.startPage(next, {
+        kind: 'switched',
+        url: tab.url,
+        firstVisit,
+      });
     } catch (error) {
       next.close();
       await this.rollBack(snapshot, error);
       throw error;
     }
     this.commit(next, tab);
+    this.recordSwitch(tab, firstVisit);
+  }
+
+  /**
+   * Note the move for the console and network views (`tabSwitch`).
+   *
+   * @param tab - The tab moved to
+   * @param firstVisit - The session was never on it (its console messages were replayed)
+   */
+  private recordSwitch(tab: TabInfo, firstVisit: boolean): void {
+    const { index, targetId, url, title } = tab;
+    this.host.store.tabSwitch = {
+      at: Date.now(),
+      tab: this.host.tabs.ref(targetId) ?? { index, targetId, url, title },
+      consoleReplayed: firstVisit,
+    };
   }
 
   /**

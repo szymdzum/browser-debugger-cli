@@ -122,6 +122,20 @@ export interface TelemetryPluginContext {
   pageStart?: PageStart | undefined;
 }
 
+/**
+ * Whether the console messages Chrome replays as collection starts are new
+ * to the session: on its first tab, and on a tab it was never on (what that
+ * tab logged before the switch, e.g. a popup's load errors). On a tab it
+ * returns to, or resumes on, they were recorded already.
+ *
+ * @param pageStart - How the page collectors start
+ * @returns True to keep the replay
+ */
+function keepsConsoleReplay(pageStart: PageStart | undefined): boolean {
+  if (pageStart === undefined || pageStart.kind === 'first') return true;
+  return pageStart.kind === 'switched' && pageStart.firstVisit;
+}
+
 export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
   return [
     {
@@ -217,7 +231,7 @@ export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
             store.consoleDropped++;
           },
           () => store.receiveConsoleMessage(),
-          { skipReplay: pageStart !== undefined && pageStart.kind !== 'first' }
+          { skipReplay: !keepsConsoleReplay(pageStart) }
         );
       },
     },

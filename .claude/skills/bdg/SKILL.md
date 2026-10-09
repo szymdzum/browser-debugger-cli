@@ -49,7 +49,7 @@ bdg page info                                # URL and title
 
 ### Tabs and Popups
 
-An action that opens a tab or window says `Opened: popup <url> (bdg page switch 1)` (JSON `opened`). Switch to it, act there; a popup that closes itself (OAuth/SSO) returns the session to its opener and the action says `Tab closed: …; now on tab 0: …` (JSON `tabClosed`, `switchedTo`).
+An action that opens a tab or window says `Opened: popup <url> (bdg page switch 1)` (JSON `opened`). Switch to it, act there; a popup that closes itself (OAuth/SSO) returns the session to its opener and the action says `Tab closed: …; now on tab 0: …` (JSON `tabClosed`, `switchedTo`). If it closed on its own (a timer), the next command says so, and the first action after it exits 90 without running: check where you are, then run it again.
 
 ```bash
 bdg page tabs                                # * marks the session tab, (opened by N)
@@ -57,7 +57,7 @@ bdg page switch 1                            # By 0-based index or part of the U
 bdg page close 1                             # Default: the session tab (moves to its opener)
 ```
 
-Network and console follow the session tab from the switch on.
+Network and console follow the session tab from the switch on (console also lists what a tab logged before the first switch to it; `network list` notes the switch).
 
 ## Actions Report What Changed
 

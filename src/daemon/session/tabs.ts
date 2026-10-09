@@ -11,7 +11,13 @@
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CommandError } from '@/errors/index.js';
-import { tabAmbiguousError, tabIndexOutOfRangeError, tabNotFoundError } from '@/errors/messages.js';
+import {
+  actionAfterTabMoveError,
+  tabAmbiguousError,
+  tabIndexOutOfRangeError,
+  tabNotFoundError,
+  type TabCommand,
+} from '@/errors/messages.js';
 import type {
   OpenedTab,
   OpenedTabKind,
@@ -123,10 +129,12 @@ export class TabTracker {
   private readonly opened: string[] = [];
   /** Tabs the session acted on before, most recent last */
   private readonly history: string[] = [];
-  /** Switches made because the session's tab closed, oldest first */
-  private readonly switches: TabClosedSwitch[] = [];
-  /** How many of {@link switches} actions have reported */
-  private switchesReported = 0;
+  /** Tabs the session has been on */
+  private readonly visited = new Set<string>();
+  /** The latest move after the session's tab closed that no command reported yet */
+  private moveNotice: TabClosedSwitch | undefined;
+  /** The latest such move no action reported or was refused for, and no tab was chosen after */
+  private moveGuard: TabClosedSwitch | undefined;
   private currentId = '';
   /** Why tabs cannot be tracked (Chrome refused target discovery); undefined while they are */
   unavailable: string | undefined;
@@ -219,9 +227,21 @@ export class TabTracker {
     if (targetId === this.currentId) return;
     const previous = this.currentId;
     this.currentId = targetId;
+    this.visited.add(targetId);
     if (!previous) return;
     if (this.gone.has(previous)) this.remove(previous);
     else this.history.push(previous);
+  }
+
+  /**
+   * Whether the session has been on a tab (Chrome replays a tab's console
+   * messages to each new connection, so they are recorded already).
+   *
+   * @param targetId - Target id
+   * @returns True for a tab the session was on
+   */
+  hasVisited(targetId: string): boolean {
+    return this.visited.has(targetId);
   }
 
   /**
@@ -266,19 +286,22 @@ export class TabTracker {
    * are an index, `url:<text>` matches the URL only (e.g. `url:8080`).
    *
    * @param target - What was given
+   * @param command - The command, which its error suggestions name
    * @returns The tab
    * @throws CommandError 81 for an index out of range or text several URLs contain; 83 when no URL contains it
    */
-  resolve(target: string): TabInfo {
+  resolve(target: string, command: TabCommand = 'switch'): TabInfo {
     const tabs = this.list();
-    if (target.startsWith(URL_PREFIX)) return this.byUrl(target.slice(URL_PREFIX.length), tabs);
+    if (target.startsWith(URL_PREFIX)) {
+      return this.byUrl(target.slice(URL_PREFIX.length), tabs, command);
+    }
     if (/^\d+$/.test(target)) {
       const tab = tabs[Number(target)];
       if (tab) return tab;
       fail(tabIndexOutOfRangeError(Number(target), tabs), EXIT_CODES.INVALID_ARGUMENTS);
     }
     const byId = tabs.find((tab) => tab.targetId.toLowerCase() === target.toLowerCase());
-    return byId ?? this.byUrl(target, tabs);
+    return byId ?? this.byUrl(target, tabs, command);
   }
 
   /**
@@ -286,17 +309,20 @@ export class TabTracker {
    *
    * @param target - Text
    * @param tabs - Open tabs
+   * @param command - The command, which its error suggestions name
    * @returns The tab
    * @throws CommandError 81 when several URLs contain it, 83 when none does
    */
-  private byUrl(target: string, tabs: TabInfo[]): TabInfo {
+  private byUrl(target: string, tabs: TabInfo[], command: TabCommand): TabInfo {
     const needle = target.toLowerCase();
     const matches = tabs.filter((tab) => tab.url.toLowerCase().includes(needle));
     const [only] = matches;
     if (only && matches.length === 1) return only;
-    if (matches.length > 1) fail(tabAmbiguousError(target, matches), EXIT_CODES.INVALID_ARGUMENTS);
+    if (matches.length > 1) {
+      fail(tabAmbiguousError(target, matches, command), EXIT_CODES.INVALID_ARGUMENTS);
+    }
     const similar = findSimilar(target, urlParts(tabs.map((tab) => tab.url)));
-    fail(tabNotFoundError(target, tabs, similar), EXIT_CODES.RESOURCE_NOT_FOUND);
+    fail(tabNotFoundError(target, tabs, similar, command), EXIT_CODES.RESOURCE_NOT_FOUND);
   }
 
   /**
@@ -359,7 +385,10 @@ export class TabTracker {
   }
 
   /**
-   * Note that the session moved to another tab because its own closed.
+   * Note that the session moved to another tab because its own closed: the
+   * next command reports it ({@link takeMoveNotice}), and the next action is
+   * refused once ({@link refuseActionAfterMove}) unless an action reported
+   * it ({@link takeClosedSwitch}) or a tab was chosen ({@link acknowledgeMove}).
    *
    * @param closedId - The tab that closed
    * @param currentId - The tab the session moved to
@@ -370,19 +399,60 @@ export class TabTracker {
     const switchedTo = this.ref(currentId);
     if (!tabClosed || !switchedTo) return undefined;
     const record = { tabClosed, switchedTo };
-    this.switches.push(record);
+    this.moveNotice = record;
+    this.moveGuard = record;
     return record;
   }
 
   /**
-   * The latest switch no action reported yet; later calls do not return it again.
+   * For an action's result: the latest switch after the session's tab
+   * closed that no command reported yet. The action reported it, so it is
+   * neither reported again nor a reason to refuse the next action.
    *
    * @returns The switch, or undefined when there was none since the last call
    */
   takeClosedSwitch(): TabClosedSwitch | undefined {
-    if (this.switchesReported === this.switches.length) return undefined;
-    this.switchesReported = this.switches.length;
-    return this.switches.at(-1);
+    const record = this.moveNotice ?? this.moveGuard;
+    this.moveNotice = undefined;
+    this.moveGuard = undefined;
+    return record;
+  }
+
+  /**
+   * For any command's response: the latest switch after the session's tab
+   * closed that no command reported yet; later calls do not return it again.
+   *
+   * @returns The switch, or undefined
+   */
+  takeMoveNotice(): TabClosedSwitch | undefined {
+    const record = this.moveNotice;
+    this.moveNotice = undefined;
+    return record;
+  }
+
+  /**
+   * Refuse an action meant for the tab that closed: the first action after
+   * the session moved on its own (no action reported the move and no tab was
+   * chosen since) would otherwise run on the other tab. Refused once; the
+   * move goes on the refused action's response ({@link takeMoveNotice}).
+   *
+   * @throws CommandError (90) naming the move
+   */
+  refuseActionAfterMove(): void {
+    const record = this.moveGuard;
+    if (!record) return;
+    this.moveGuard = undefined;
+    this.moveNotice = record;
+    const err = actionAfterTabMoveError(record.tabClosed, record.switchedTo);
+    fail(err, EXIT_CODES.RESOURCE_CONFLICT);
+  }
+
+  /**
+   * A tab was chosen (`page switch`, `page close`): actions after it are
+   * meant for the tab the session is on.
+   */
+  acknowledgeMove(): void {
+    this.moveGuard = undefined;
   }
 
   /**
@@ -447,12 +517,16 @@ export class TabTracker {
    * @returns Listing
    */
   private info(tab: Tab, index: number): TabInfo {
-    const openedBy = this.tabs.findIndex((candidate) => candidate.targetId === tab.openerId);
+    const openedBy =
+      tab.kind === 'popup'
+        ? this.tabs.findIndex((candidate) => candidate.targetId === tab.openerId)
+        : -1;
     return {
       index,
       targetId: tab.targetId,
       url: tab.url,
       title: tab.title,
+      kind: tab.kind,
       ...(tab.targetId === this.currentId && { current: true as const }),
       ...(openedBy >= 0 && { openedBy }),
     };

@@ -191,6 +191,7 @@ void describe('SessionController.command timeouts', () => {
       metadata: () => ({ startTime: Date.now(), bdgPid: process.pid, port: 9222 }),
       execute: () => new Promise(() => undefined),
       fetchInterceptionEnabled: () => fetchInterception,
+      takeTabMoveNotice: () => undefined,
     };
     mock.method(Session, 'create', () => session as unknown as Session);
     const controller = new SessionController(Date.now(), '/tmp/test.sock', () => undefined);
@@ -219,5 +220,95 @@ void describe('SessionController.command timeouts', () => {
     const response = await timedOutReload(false);
     assert.equal(response.error, 'Command timeout (30s)');
     assert.equal(response.suggestion, undefined);
+  });
+});
+
+void describe('SessionController: a move no command reported yet', () => {
+  afterEach(() => mock.restoreAll());
+
+  const moved = {
+    tabClosed: { targetId: 'P', url: 'http://a/popup', title: 'Popup' },
+    switchedTo: { index: 0, targetId: 'A', url: 'http://a/', title: 'App' },
+  };
+
+  /**
+   * Start a fake session with a move to report once.
+   *
+   * @param execute - What its commands do
+   * @returns Controller
+   */
+  async function controllerWithMove(execute: () => Promise<unknown>): Promise<SessionController> {
+    let pending: typeof moved | undefined = moved;
+    const session = {
+      launch: () => Promise.resolve(),
+      stop: () => Promise.resolve(),
+      stopRequested: () => false,
+      info: () => ({ chromePid: 1234, port: 9222, targetUrl: request.url }),
+      metadata: () => ({ startTime: Date.now(), bdgPid: process.pid, port: 9222 }),
+      execute,
+      fetchInterceptionEnabled: () => false,
+      takeTabMoveNotice: () => {
+        const notice = pending;
+        pending = undefined;
+        return notice;
+      },
+    };
+    mock.method(Session, 'create', () => session as unknown as Session);
+    const controller = new SessionController(Date.now(), '/tmp/test.sock', () => undefined);
+    await controller.startSession(request);
+    return controller;
+  }
+
+  void it('puts it on the next command response, once', async () => {
+    const controller = await controllerWithMove(() => Promise.resolve({ result: 1 }));
+    const command = { type: 'dom_eval_request', sessionId: 's', script: '1' } as never;
+
+    const first = (await controller.command(command)) as { tabMoved?: unknown };
+    const second = (await controller.command(command)) as { tabMoved?: unknown };
+
+    assert.deepEqual(first.tabMoved, moved);
+    assert.equal(second.tabMoved, undefined);
+  });
+
+  void it('puts it on a failed command too', async () => {
+    const controller = await controllerWithMove(() => Promise.reject(new Error('No nodes')));
+
+    const response = (await controller.command({
+      type: 'dom_eval_request',
+      sessionId: 's',
+      script: '1',
+    } as never)) as { status: string; tabMoved?: unknown };
+
+    assert.equal(response.status, 'error');
+    assert.deepEqual(response.tabMoved, moved);
+  });
+
+  void it('puts it on peek and status only when asked to', async () => {
+    const controller = await controllerWithMove(() =>
+      Promise.resolve({
+        version: '0',
+        startTime: Date.now(),
+        duration: 0,
+        target: { url: 'http://a/', title: '' },
+        activeTelemetry: [],
+        currentNavigationId: 0,
+        network: [],
+        console: [],
+        totalNetwork: 0,
+        totalConsole: 0,
+        hasMoreNetwork: false,
+        hasMoreConsole: false,
+        activity: {},
+        navigationId: 0,
+      })
+    );
+
+    const quiet = await controller.peek({ type: 'peek_request', sessionId: 's' });
+    const quietStatus = await controller.status({ type: 'status_request', sessionId: 's' });
+    const told = await controller.peek({ type: 'peek_request', sessionId: 's', tabMove: true });
+
+    assert.equal((quiet as { tabMoved?: unknown }).tabMoved, undefined);
+    assert.equal((quietStatus as { tabMoved?: unknown }).tabMoved, undefined);
+    assert.deepEqual((told as { tabMoved?: unknown }).tabMoved, moved);
   });
 });
