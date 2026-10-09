@@ -129,7 +129,6 @@ export function createInteractionRunner(store: TelemetryStore): InteractionRunne
     options: InteractionOptions = {}
   ) => {
     const run = queue.then(async (): Promise<T & InteractionReport> => {
-      store.dialogAnswers.setActionChoice(options.dialogs);
       const firstDialog = store.dialogs.length;
       const firstDownload = store.downloads.length;
       const firstConsoleMessage = consoleMessagesLogged(store);
@@ -138,6 +137,7 @@ export function createInteractionRunner(store: TelemetryStore): InteractionRunne
       const effects = options.reportEffects === false ? undefined : watchActionEffects(cdp);
       const collectErrors = effects && watchActionErrors(store);
       try {
+        store.dialogAnswers.setActionChoice(options.dialogs);
         const result = await action();
         const dialogs = store.dialogs.slice(firstDialog);
         if (!succeeded(result)) return { ...result, ...(dialogs.length > 0 && { dialogs }) };

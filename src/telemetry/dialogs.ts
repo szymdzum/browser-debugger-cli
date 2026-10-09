@@ -4,6 +4,7 @@ import { TypedCDPConnection } from '@/connection/typed-cdp.js';
 import type { DialogAnswer, DialogChoice, DialogInfo } from '@/ipc/protocol/domTypes.js';
 import type { CleanupFunction } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { dialogNotAnsweredText } from '@/ui/messages/commands.js';
 
 const log = createLogger('dialogs');
 
@@ -74,7 +75,8 @@ export class DialogAnswers {
  *
  * @param cdp - CDP connection instance
  * @param answers - How to answer them
- * @param onDialog - Called for each dialog, with its answer
+ * @param onDialog - Called for each dialog once Chrome took its answer (not
+ *   for one it refused, e.g. closed meanwhile; that is logged instead)
  * @returns Cleanup function to remove event handlers
  */
 export async function startDialogHandling(
@@ -90,17 +92,21 @@ export async function startDialogHandling(
   registry.registerTyped(typed, 'Page.javascriptDialogOpening', (params) => {
     const reply = answers.reply(params.type);
     const answer = reply.accept ? 'accepted' : 'dismissed';
-    log.debug(`${answer} ${params.type} dialog: "${params.message}" from ${params.url}`);
-    onDialog?.({
+    const dialog: DialogInfo = {
       type: params.type,
       message: params.message,
       answer,
       ...(reply.promptText !== undefined && { promptText: reply.promptText }),
-    });
-
-    void cdp.send('Page.handleJavaScriptDialog', { ...reply }).catch((error: Error) => {
-      log.debug(`Failed to answer dialog: ${error.message}`);
-    });
+    };
+    void cdp.send('Page.handleJavaScriptDialog', { ...reply }).then(
+      () => {
+        log.debug(`${answer} ${params.type} dialog: "${params.message}" from ${params.url}`);
+        onDialog?.(dialog);
+      },
+      (error: Error) => {
+        log.info(dialogNotAnsweredText(dialog, error.message));
+      }
+    );
   });
 
   return () => {

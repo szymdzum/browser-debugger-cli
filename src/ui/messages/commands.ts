@@ -1076,6 +1076,19 @@ export function reactHandlersSkippedNote(count: number): string {
 }
 
 /**
+ * Log line for a dialog Chrome did not take bdg's answer for.
+ *
+ * @param dialog - Dialog and the answer bdg sent
+ * @param reason - Chrome's error
+ * @returns e.g. 'Could not answer confirm() dialog "Sure?" (dismiss): No dialog is showing'
+ */
+export function dialogNotAnsweredText(dialog: DialogInfo, reason: string): string {
+  const kind = dialog.type === 'beforeunload' ? 'beforeunload' : `${dialog.type}()`;
+  const answer = dialog.answer === 'accepted' ? 'accept' : 'dismiss';
+  return `Could not answer ${kind} dialog "${dialog.message}" (${answer}): ${reason}`;
+}
+
+/**
  * A JavaScript dialog bdg answered, as one line.
  *
  * @param dialog - Dialog type, text and answer

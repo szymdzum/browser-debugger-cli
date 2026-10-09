@@ -17,6 +17,11 @@ class MockCDP {
   private handlers = new Map<string, Array<(params: unknown) => void>>();
 
   /**
+   * @param failing - CDP method whose calls are rejected
+   */
+  constructor(private readonly failing?: string) {}
+
+  /**
    * Record a command.
    *
    * @param method - CDP method
@@ -25,6 +30,7 @@ class MockCDP {
    */
   send(method: string, params?: unknown): Promise<unknown> {
     this.sent.push({ method, params });
+    if (method === this.failing) return Promise.reject(new Error('No dialog is showing'));
     return Promise.resolve({});
   }
 
@@ -51,6 +57,13 @@ class MockCDP {
   emit(event: string, params: unknown = {}): void {
     this.handlers.get(event)?.forEach((handler) => handler(params));
   }
+}
+
+/**
+ * Let pending promise callbacks run.
+ */
+function settle(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
 }
 
 void describe('DialogAnswers', () => {
@@ -108,6 +121,7 @@ void describe('startDialogHandling', () => {
     cdp.emit('Page.javascriptDialogOpening', { type: 'confirm', message: 'Sure?', url: 'x' });
     answers.setActionChoice({ promptText: 'hello' });
     cdp.emit('Page.javascriptDialogOpening', { type: 'prompt', message: 'Name?', url: 'x' });
+    await settle();
     stop();
 
     assert.deepEqual(seen, [
@@ -119,5 +133,21 @@ void describe('startDialogHandling', () => {
       cdp.sent.filter((call) => call.method === 'Page.handleJavaScriptDialog').map((c) => c.params),
       [{ accept: true }, { accept: false }, { accept: true, promptText: 'hello' }]
     );
+  });
+
+  void it('records no answer for a dialog Chrome did not take the answer for', async () => {
+    const cdp = new MockCDP('Page.handleJavaScriptDialog');
+    const seen: DialogInfo[] = [];
+    const stop = await startDialogHandling(
+      cdp as unknown as CDPConnection,
+      new DialogAnswers(),
+      (dialog) => seen.push(dialog)
+    );
+
+    cdp.emit('Page.javascriptDialogOpening', { type: 'confirm', message: 'Sure?', url: 'x' });
+    await settle();
+    stop();
+
+    assert.deepEqual(seen, []);
   });
 });
