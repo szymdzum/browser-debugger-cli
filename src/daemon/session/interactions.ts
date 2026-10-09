@@ -14,6 +14,7 @@ import { toDownloadInfo } from '@/telemetry/downloads.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
+import { watchActionErrors } from './actionErrors.js';
 import { watchTriggeredRequests } from './triggeredRequests.js';
 
 const log = createLogger('dom');
@@ -92,8 +93,11 @@ function consoleMessagesLogged(store: TelemetryStore): number {
  * the new page commits), and the dialogs it opened, what it changed on the
  * page (see {@link watchActionEffects}; a console message logged meanwhile
  * counts as an effect), the network requests it
- * triggered (see {@link watchTriggeredRequests}) and the downloads that began
- * meanwhile (as they stand when it returns) are added to its result,
+ * triggered (see {@link watchTriggeredRequests}), the console errors it
+ * caused (see {@link watchActionErrors}; read once its effects were
+ * collected, so a timer's error after the action is in) and the downloads
+ * that began meanwhile (as they stand when it returns) are added to its
+ * result,
  * and, when asked, what the page was still working on (see
  * {@link pendingChanges}). They are attributed by time: a dialog or request
  * started by a page timer or a navigation started earlier is reported by
@@ -116,6 +120,7 @@ export function createInteractionRunner(store: TelemetryStore): InteractionRunne
       const collectRequests =
         options.reportRequests === false ? undefined : watchTriggeredRequests(store);
       const effects = options.reportEffects === false ? undefined : watchActionEffects(cdp);
+      const collectErrors = effects && watchActionErrors(store);
       try {
         const result = await action();
         const dialogs = store.dialogs.slice(firstDialog);
@@ -138,6 +143,7 @@ export function createInteractionRunner(store: TelemetryStore): InteractionRunne
           ...result,
           ...(dialogs.length > 0 && { dialogs }),
           ...changes,
+          ...collectErrors?.(),
           ...(pending && { settled: false as const, pending }),
           ...(downloads.length > 0 && { downloads }),
           ...requests,

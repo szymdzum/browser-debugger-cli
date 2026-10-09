@@ -7,6 +7,7 @@
 
 import type { DomFrame, PageLoadingState, PendingRequestInfo } from '@/ipc/protocol/commands.js';
 import type {
+  ActionError,
   DownloadInfo,
   ElementLayout,
   FillValueMismatch,
@@ -312,6 +313,31 @@ export function downloadsDirUnavailableReason(detail: string): string {
  */
 export function moreMessagesText(count: number): string {
   return `(+${count} more)`;
+}
+
+/**
+ * A console error an action caused, for its `Errors:` rows: repeats counted
+ * like `bdg console` counts them, the source shortened to its file name.
+ *
+ * @param error - Reported error
+ * @returns e.g. `[2x] Uncaught Error: handler exploded (app.js:3:142)`
+ */
+export function actionErrorText(error: ActionError): string {
+  const repeats = error.count > 1 ? `[${error.count}x] ` : '';
+  const source = error.source ?? '';
+  const file = source.slice(source.lastIndexOf('/') + 1);
+  const shown = file === '' ? source : file;
+  return `${repeats}${error.text}${shown ? ` (${shown})` : ''}`;
+}
+
+/**
+ * Last `Errors:` row when an action caused more distinct errors than are listed.
+ *
+ * @param count - Distinct errors not listed
+ * @returns e.g. `+2 more (bdg console --level error)`
+ */
+export function moreErrorsText(count: number): string {
+  return `+${count} more (${sessionCommand('bdg console --level error')})`;
 }
 
 /** Result line of `bdg dom hover --off` */

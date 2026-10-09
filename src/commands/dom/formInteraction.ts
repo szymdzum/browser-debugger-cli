@@ -50,9 +50,11 @@ import {
   POINTER_ACTION_DONE,
   POINTER_ACTION_NOUN,
   pointerScrollText,
+  actionErrorText,
   actionStatusLine,
   dialogConsoleText,
   downloadText,
+  moreErrorsText,
   moreMessagesText,
   newMessageText,
   pageNavigationText,
@@ -442,7 +444,7 @@ interface ActionNotices extends ActionEffects {
  * "⚠ Element Clicked (page still changing)" with what it was still working
  * on, or "⚠ Element Clicked (no visible effect: …)"), the details, what
  * changed on the page (`Page:` navigation, `New text:` messages, `Shown:`
- * elements), then the network requests it triggered, the downloads it
+ * elements), the console errors it caused (`Errors:`), then the network requests it triggered, the downloads it
  * started and the dialogs it caused. No request list is shown when there
  * were none (JSON has an empty `triggeredRequests` then).
  *
@@ -485,6 +487,15 @@ function formatActionOutput(
     keyWidth
   );
   listRows(fmt, 'Shown', (result.shown ?? []).map(shownElementText), keyWidth);
+  listRows(
+    fmt,
+    'Errors',
+    [
+      ...(result.errors ?? []).map(actionErrorText),
+      ...(result.moreErrors ? [moreErrorsText(result.moreErrors)] : []),
+    ],
+    keyWidth
+  );
 
   const omitted = result.triggeredRequestsOmitted;
   const requests = formatTriggeredRequestLines(result.triggeredRequests ?? [], omitted);
