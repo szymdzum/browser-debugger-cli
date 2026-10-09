@@ -44,3 +44,6 @@ docs/priv/
 
 # Claude Code agent worktrees
 .claude/worktrees/
+
+# Claude Code personal settings
+.claude/settings.local.json
