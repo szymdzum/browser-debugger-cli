@@ -4,7 +4,8 @@
  * whose handlers throw (synchronously, from a timer, as an unhandled
  * rejection), log errors (repeated, several distinct ones, with a warning)
  * or link to `/action-errors-target`, which throws as it loads; a field
- * throws on input and on key presses, a box on hover, the window on scroll
+ * throws on input and on key presses, a box on its first hover (the mouse
+ * crosses it again on later clicks), the window on its first scroll
  * and a form on submit.
  */
 
@@ -18,7 +19,7 @@ const ACTION_ERRORS_HTML = `<!doctype html><title>action errors</title>
 <button id="many" onclick="['first', 'second', 'third', 'fourth'].forEach((text) => console.error(text + ' error'))">Many</button>
 <a id="navigate" href="/action-errors-target">Navigate</a>
 <input id="field" oninput="throw new Error('input exploded')" onkeydown="if (event.key === 'Enter') throw new Error('key exploded')">
-<div id="hover-box" style="width: 100px; height: 40px" onmouseenter="throw new Error('hover exploded')">Hover</div>
+<div id="hover-box" style="width: 100px; height: 40px" onmouseenter="this.onmouseenter = null; throw new Error('hover exploded')">Hover</div>
 <form id="form" onsubmit="event.preventDefault(); throw new Error('submit exploded')"><button>Send</button></form>
 <div style="height: 3000px"></div>
 <script>
