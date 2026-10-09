@@ -33,6 +33,7 @@ import type {
   PageSwitchData,
   PageTabsCommand,
   PageTabsData,
+  TabSwitchInfo,
 } from '@/ipc/protocol/tabTypes.js';
 import type { PageState, SessionActivity } from '@/ipc/session/types.js';
 import type {
@@ -116,6 +117,8 @@ export interface SessionPeekData {
   evictedNetworkBodies?: number;
   /** Downloads that began during the session, oldest first (left out when none) */
   downloads?: DownloadInfo[];
+  /** The session's latest move to another tab (left out while it stayed on its first tab) */
+  tabSwitch?: TabSwitchInfo;
   /** Whether there are more network items available. */
   hasMoreNetwork?: boolean;
   /** Whether there are more console items available. */

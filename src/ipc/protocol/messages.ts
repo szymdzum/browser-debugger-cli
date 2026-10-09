@@ -6,6 +6,7 @@
  */
 
 import type { COMMANDS, CommandName } from './commands.js';
+import type { TabClosedSwitch } from './tabTypes.js';
 
 /**
  * Client request message (CLI → daemon).
@@ -33,6 +34,8 @@ export type ClientResponse<T extends CommandName> = {
   exitCode?: number;
   /** Recovery suggestion forwarded from the handler (present on failure). */
   suggestion?: string;
+  /** The session moved to another tab after its tab closed on its own, and no command reported it yet */
+  tabMoved?: TabClosedSwitch;
 };
 
 /**

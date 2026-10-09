@@ -18,6 +18,7 @@ import { handleValidationError } from '@/commands/shared/handleValidationError.j
 import type { ConsoleCommandOptions } from '@/commands/shared/optionTypes.js';
 import { consoleLevelOption, positiveIntRule } from '@/commands/shared/validation.js';
 import { MAX_CONSOLE_JSON_TEXT_LENGTH, MAX_CONSOLE_TEXT_LENGTH } from '@/constants.js';
+import type { TabSwitchInfo } from '@/ipc/protocol/tabTypes.js';
 import type { ConsoleMessage, PageIssue } from '@/types.js';
 import { buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import {
@@ -128,13 +129,19 @@ function applyFilters(
 /**
  * Messages the filters left out between the first and the last listed
  * message (their session indices skip them), by why: logged by another page
- * load, or of another level.
+ * load, or of another level. With `--history` every page load is listed, so
+ * all of them are of another level.
  *
  * @param all - All messages of the session
  * @param listed - Messages listed
+ * @param history - `--history`: messages of every page load were listed
  * @returns Counts per reason
  */
-export function skippedMessages(all: ConsoleMessage[], listed: ConsoleMessage[]): ConsoleSkipped {
+export function skippedMessages(
+  all: ConsoleMessage[],
+  listed: ConsoleMessage[],
+  history = false
+): ConsoleSkipped {
   const shown = new Set(listed.map((message) => message.index));
   const indices = listed.map((message) => message.index).filter((index) => index !== undefined);
   const skipped = { otherPages: 0, otherLevels: 0 };
@@ -143,7 +150,7 @@ export function skippedMessages(all: ConsoleMessage[], listed: ConsoleMessage[])
   const pages = new Set(listed.map((message) => message.navigationId));
   for (const { index, navigationId } of all) {
     if (index === undefined || index < first || index > last || shown.has(index)) continue;
-    if (pages.has(navigationId)) skipped.otherLevels++;
+    if (history || pages.has(navigationId)) skipped.otherLevels++;
     else skipped.otherPages++;
   }
   return skipped;
@@ -157,7 +164,8 @@ export function skippedMessages(all: ConsoleMessage[], listed: ConsoleMessage[])
  * @param skipped - Messages the filters left out between the listed ones
  * @param dropped - Oldest messages the session dropped at its limit
  * @param pageCrashedAt - When the page crashed, while it is not loaded again
- * @param issues - Chrome Issues of the page and how many were not kept
+ * @param page - Chrome Issues of the page and how many were not kept, and
+ *   the session's latest move to another tab
  * @returns Formatting options
  */
 function buildFormatOptions(
@@ -166,13 +174,14 @@ function buildFormatOptions(
   skipped?: ConsoleSkipped,
   dropped?: number,
   pageCrashedAt?: number,
-  issues?: PageIssues
+  page?: PageNotes
 ): ConsoleFormatOptions {
   return {
     ...(options.last !== undefined && { groupLimit: lastN }),
     ...(dropped && { dropped }),
     ...(pageCrashedAt !== undefined && { pageCrashedAt }),
-    ...(issues && { issues: issues.issues, issuesDropped: issues.issuesDropped }),
+    ...(page && { issues: page.issues, issuesDropped: page.issuesDropped }),
+    ...(page?.tabSwitch && { tabSwitch: page.tabSwitch }),
     list: listsMessages(options),
     follow: options.follow,
     last: lastN,
@@ -269,7 +278,13 @@ interface PageIssues {
   issuesDropped: number;
 }
 
-interface ConsoleResult extends PageIssues {
+/** What the console view notes about the page besides its messages */
+interface PageNotes extends PageIssues {
+  /** The session's latest move to another tab */
+  tabSwitch?: TabSwitchInfo | undefined;
+}
+
+interface ConsoleResult extends PageNotes {
   messages: ConsoleMessage[];
   filtered: ConsoleMessage[];
   /** Dropped messages that could have been in the view (see {@link droppedInView}) */
@@ -324,12 +339,19 @@ export function registerConsoleCommand(program: Command): void {
 
       await runCommand<ConsoleCommandOptions, unknown>(
         async () => {
-          const result = await fetchConsoleMessages();
+          const result = await fetchConsoleMessages(true);
           if (!result.success) {
             return createErrorResult(result.error, result.exitCode, result.suggestion);
           }
-          const { messages, currentNavigationId, dropped, pageCrashedAt, issues, issuesDropped } =
-            result.data;
+          const {
+            messages,
+            currentNavigationId,
+            dropped,
+            pageCrashedAt,
+            tabSwitch,
+            issues,
+            issuesDropped,
+          } = result.data;
           const filtered = applyFilters(messages, options, currentNavigationId);
           if (options.json) {
             return {
@@ -339,6 +361,7 @@ export function registerConsoleCommand(program: Command): void {
                 buildFormatOptions(options, lastN, undefined, dropped, pageCrashedAt, {
                   issues,
                   issuesDropped,
+                  tabSwitch,
                 })
               ),
             };
@@ -351,6 +374,7 @@ export function registerConsoleCommand(program: Command): void {
               filtered,
               dropped: droppedShown,
               pageCrashedAt,
+              tabSwitch,
               issues,
               issuesDropped,
             },
@@ -358,14 +382,19 @@ export function registerConsoleCommand(program: Command): void {
         },
         options,
         (data) => {
-          const { messages, filtered, dropped, pageCrashedAt, issues, issuesDropped } =
+          const { messages, filtered, dropped, pageCrashedAt, tabSwitch, issues, issuesDropped } =
             data as ConsoleResult;
-          const skipped = skippedMessages(messages, lastMessages(filtered, lastN));
+          const skipped = skippedMessages(
+            messages,
+            lastMessages(filtered, lastN),
+            options.history === true
+          );
           return formatConsole(
             filtered,
             buildFormatOptions(options, lastN, skipped, dropped, pageCrashedAt, {
               issues,
               issuesDropped,
+              tabSwitch,
             })
           );
         }

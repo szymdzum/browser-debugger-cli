@@ -6,6 +6,7 @@ import { sessionNotRespondingError, sessionUnavailableSuggestion } from '@/error
 import { getPeek } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
 import type { PeekSection } from '@/ipc/protocol/commands.js';
+import type { TabSwitchInfo } from '@/ipc/protocol/tabTypes.js';
 import {
   IPCConnectionError,
   IPCEarlyCloseError,
@@ -46,6 +47,8 @@ export interface PreviewQuery {
   only?: PeekSection;
   /** Include request/response headers in network items */
   withHeaders?: boolean;
+  /** Take a move of the session to another tab that no command reported yet, for this command to report */
+  tabMove?: boolean;
 }
 
 /**
@@ -133,24 +136,31 @@ export async function fetchPreviewData(
  * Fetch all captured network requests from daemon.
  *
  * @param withHeaders - Include request/response headers (needed by header filters)
- * @returns Requests, when the page crashed (while it is not loaded again)
- *   and what the session let go at its capture limits, or a fetch error
+ * @param tabMove - Take a move to another tab no command reported yet (see {@link PreviewQuery})
+ * @returns Requests, when the page crashed (while it is not loaded again),
+ *   the session's latest move to another tab and what the session let go at
+ *   its capture limits, or a fetch error
  */
-export async function fetchNetworkRequests(withHeaders = false): Promise<
+export async function fetchNetworkRequests(
+  withHeaders = false,
+  tabMove = false
+): Promise<
   FetchResult<{
     requests: NetworkRequest[];
     pageCrashedAt: number | undefined;
+    tabSwitch: TabSwitchInfo | undefined;
     evictions: NetworkEvictionCounts;
   }>
 > {
-  const result = await fetchPreviewData({ lastN: 0, only: 'network', withHeaders });
+  const result = await fetchPreviewData({ lastN: 0, only: 'network', withHeaders, tabMove });
   if (!result.success) return result;
-  const { totals, pageCrashedAt } = result.data.output;
+  const { totals, pageCrashedAt, tabSwitch } = result.data.output;
   return {
     success: true,
     data: {
       requests: result.data.network,
       pageCrashedAt,
+      tabSwitch,
       evictions: {
         requestsDropped: totals?.networkDropped ?? 0,
         bodiesEvicted: totals?.networkBodiesEvicted ?? 0,
@@ -162,22 +172,25 @@ export async function fetchNetworkRequests(withHeaders = false): Promise<
 /**
  * Fetch all console messages from daemon.
  *
+ * @param tabMove - Take a move to another tab no command reported yet (see {@link PreviewQuery})
  * @returns Messages (with their session-wide index), the navigation id of
  *   the page currently loaded, how many of the oldest messages the session
  *   dropped at its limit, when the page crashed (while it is not loaded
- *   again), and the page's Chrome Issues with how many were not kept
+ *   again), the session's latest move to another tab, and the page's Chrome
+ *   Issues with how many were not kept
  */
-export async function fetchConsoleMessages(): Promise<
+export async function fetchConsoleMessages(tabMove = false): Promise<
   FetchResult<{
     messages: ConsoleMessage[];
     currentNavigationId: number | undefined;
     dropped: number;
     pageCrashedAt: number | undefined;
+    tabSwitch: TabSwitchInfo | undefined;
     issues: PageIssue[];
     issuesDropped: number;
   }>
 > {
-  const result = await fetchPreviewData({ lastN: 0, only: 'console' });
+  const result = await fetchPreviewData({ lastN: 0, only: 'console', tabMove });
   if (!result.success) return result;
   return {
     success: true,
@@ -186,6 +199,7 @@ export async function fetchConsoleMessages(): Promise<
       currentNavigationId: result.data.output.currentNavigationId,
       dropped: result.data.output.totals?.consoleDropped ?? 0,
       pageCrashedAt: result.data.output.pageCrashedAt,
+      tabSwitch: result.data.output.tabSwitch,
       issues: result.data.output.data.issues ?? [],
       issuesDropped: result.data.output.totals?.issuesDropped ?? 0,
     },

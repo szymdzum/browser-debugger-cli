@@ -16,6 +16,7 @@ import type { CleanupFunction } from '@/types.js';
 
 /** Targets Chrome lists, newest first */
 const TARGETS: TargetInfoEvent[] = [
+  { targetId: 'N', type: 'page', url: 'http://n/', title: 'New' },
   { targetId: 'P', type: 'page', url: 'http://a/popup', title: 'Popup', openerId: 'A' },
   { targetId: 'A', type: 'page', url: 'http://a/', title: 'App' },
 ];
@@ -136,6 +137,86 @@ void describe('PageSwitcher', () => {
     assert.equal(popup.closed, true);
   });
 
+  void it("keeps Chrome's console replay on a tab the session was never on, not on one it was on", async () => {
+    const starts: PageStart[] = [];
+    const host = await fakeHost((_cdp, start) => {
+      starts.push(start);
+      return Promise.resolve([]);
+    });
+    const switcher = new PageSwitcher(host);
+    switcher.adopt(new FakeConnection('P') as unknown as CDPConnection, []);
+
+    await switcher.switchTo('N');
+    await switcher.switchTo('A');
+    await switcher.switchTo('N');
+
+    assert.deepEqual(
+      starts.map((start) =>
+        start.kind === 'switched' ? [start.url, start.firstVisit] : start.kind
+      ),
+      [
+        ['http://n/', true],
+        ['http://a/', false],
+        ['http://n/', false],
+      ]
+    );
+  });
+
+  void it('records when the session moved and to which tab, for console and network views', async () => {
+    const host = await fakeHost();
+    const switcher = new PageSwitcher(host);
+    switcher.adopt(new FakeConnection('P') as unknown as CDPConnection, []);
+    const before = Date.now();
+
+    await switcher.switchTo('N');
+
+    const moved = host.store.tabSwitch;
+    assert.equal(moved?.tab.url, 'http://n/');
+    assert.equal(moved?.tab.index, 2);
+    assert.equal(moved?.consoleReplayed, true);
+    assert.ok(moved && moved.at >= before && moved.at <= Date.now());
+  });
+
+  void it('records the move back to the opener when the session tab closed', async () => {
+    const host = await fakeHost();
+    const switcher = new PageSwitcher(host);
+    const popup = new FakeConnection('P');
+    switcher.adopt(popup as unknown as CDPConnection, []);
+
+    host.tabs.markClosed('P');
+    switcher.onPageDisconnected(popup as unknown as CDPConnection, true);
+    await switcher.pageLost(popup as unknown as CDPConnection);
+
+    assert.equal(host.store.tabSwitch?.tab.url, 'http://a/');
+    assert.equal(host.store.tabSwitch?.consoleReplayed, false);
+  });
+
+  void it('leaves the switch record as it was when a switch fails', async () => {
+    const host = await fakeHost((_cdp, start) =>
+      start.kind === 'switched' ? Promise.reject(new Error('setup failed')) : Promise.resolve([])
+    );
+    const switcher = new PageSwitcher(host);
+    switcher.adopt(new FakeConnection('P') as unknown as CDPConnection, []);
+
+    await assert.rejects(switcher.switchTo('N'));
+
+    assert.equal(host.store.tabSwitch, undefined);
+  });
+
+  void it('stops refusing actions once the agent switched tabs itself', async () => {
+    const host = await fakeHost();
+    const switcher = new PageSwitcher(host);
+    const popup = new FakeConnection('P');
+    switcher.adopt(popup as unknown as CDPConnection, []);
+    host.tabs.markClosed('P');
+    switcher.onPageDisconnected(popup as unknown as CDPConnection, true);
+    await switcher.pageLost(popup as unknown as CDPConnection);
+
+    await switcher.switchTo('N');
+
+    host.tabs.refuseActionAfterMove();
+  });
+
   void it('puts the session tab back as it was when the new tab cannot be set up', async () => {
     const host = await fakeHost((cdp, start) => {
       if (start.kind !== 'switched') return Promise.resolve([]);
@@ -202,7 +283,10 @@ void describe('PageSwitcher', () => {
     assert.equal((switcher.connection as unknown as FakeConnection).id, 'A');
     assert.deepEqual(
       host.tabs.list().map((tab) => [tab.targetId, tab.current]),
-      [['A', true]]
+      [
+        ['A', true],
+        ['N', undefined],
+      ]
     );
   });
 

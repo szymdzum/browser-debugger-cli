@@ -9,6 +9,7 @@ import * as path from 'path';
 import { getIPCRequestTimeout } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
 import { untrustedSessionDirError } from '@/errors/messages.js';
+import { noteTabMove } from '@/ipc/utils/tabMove.js';
 import { getDaemonSocketPath, secureSessionDir } from '@/session/paths.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -120,6 +121,7 @@ export async function sendRequest<
                 validateResponseType(response, expectedType, requestName);
               }
 
+              noteTabMove(response);
               resolveOnce(cleanup, undefined, response);
             } catch (error) {
               resolveOnce(cleanup, formatParseError(requestName, error));

@@ -7,10 +7,15 @@ import { Option, type Command } from 'commander';
 
 import { noActiveSessionError, runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
+import {
+  abortOnInterrupt,
+  interruptExitCode,
+  interruptSignal,
+} from '@/commands/shared/interrupt.js';
 import type { BaseOptions } from '@/commands/shared/optionTypes.js';
 import { parseColorScheme, requestedViewport } from '@/commands/start.js';
 import { CommandError } from '@/errors/index.js';
-import { javascriptNavigationError } from '@/errors/messages.js';
+import { javascriptNavigationError, pageSwitchInterruptedError } from '@/errors/messages.js';
 import {
   getStatus,
   pageClose,
@@ -150,7 +155,7 @@ async function runPageAction(
 async function showPageInfo(options: BaseOptions): Promise<void> {
   await runCommand(
     async () => {
-      const response = await getStatus();
+      const response = await getStatus(undefined, { tabMove: true });
       if (response.status === 'error') {
         return {
           success: false,
@@ -280,6 +285,51 @@ async function runTabCommand<T>(
 }
 
 /**
+ * Ask the daemon for a tab switch. Ctrl-C or SIGTERM does not drop the
+ * request: the command waits for the answer (a second signal exits at once),
+ * then fails with exit 130 (143) saying whether the switch completed.
+ *
+ * @param target - Index, target id or part of the URL
+ * @param interrupt - Aborted on Ctrl-C or SIGTERM
+ * @param send - Sends the request
+ * @returns The daemon's answer, when not interrupted
+ * @throws CommandError (130/143) once interrupted, naming the session's tab
+ */
+export async function switchTab(
+  target: string,
+  interrupt: AbortSignal,
+  send: (params: { target: string }) => Promise<TabResponse<PageSwitchData>> = pageSwitch
+): Promise<TabResponse<PageSwitchData>> {
+  if (interrupt.aborted) throw switchInterrupted(interrupt, undefined);
+  const response = await send({ target });
+  if (interrupt.aborted) throw switchInterrupted(interrupt, response);
+  return response;
+}
+
+/**
+ * The error of an interrupted `bdg page switch`.
+ *
+ * @param interrupt - The aborted interrupt
+ * @param response - The daemon's answer, if the request was sent
+ * @returns Command error (130 for Ctrl-C, 143 for SIGTERM)
+ */
+function switchInterrupted(
+  interrupt: AbortSignal,
+  response: TabResponse<PageSwitchData> | undefined
+): CommandError {
+  const signal = interruptSignal(interrupt);
+  const data = response?.status === 'ok' ? response.data : undefined;
+  const outcome =
+    response === undefined
+      ? undefined
+      : data
+        ? { tab: data.tab, switched: data.previous !== undefined }
+        : { error: response.error ?? 'no answer' };
+  const err = pageSwitchInterruptedError(signal, outcome);
+  return new CommandError(err.message, { suggestion: err.suggestion }, interruptExitCode(signal));
+}
+
+/**
  * `bdg page tabs` output.
  *
  * @param data - Tabs
@@ -356,8 +406,9 @@ function registerTabCommands(page: Command): void {
     )
     .addOption(jsonOption())
     .action(async (target: string, options: BaseOptions) => {
+      const interrupt = abortOnInterrupt();
       await runTabCommand(
-        () => pageSwitch({ target }),
+        () => switchTab(target, interrupt),
         options,
         formatSwitch,
         'Failed to switch tabs'
@@ -367,7 +418,10 @@ function registerTabCommands(page: Command): void {
   page
     .command('close')
     .description(PAGE_CLOSE_DESCRIPTION)
-    .argument('[target]', '0-based index from bdg page tabs, a target id, or part of the URL')
+    .argument(
+      '[target]',
+      '0-based index from bdg page tabs, a target id, or part of the URL (url:<part> for one of only digits)'
+    )
     .addOption(jsonOption())
     .action(async (target: string | undefined, options: BaseOptions) => {
       await runTabCommand(

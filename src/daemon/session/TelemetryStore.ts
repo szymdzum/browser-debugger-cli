@@ -1,5 +1,6 @@
 import { MAX_CONSOLE_MESSAGES } from '@/constants.js';
 import type { DialogInfo } from '@/ipc/protocol/domTypes.js';
+import type { TabSwitchInfo } from '@/ipc/protocol/tabTypes.js';
 import { DialogAnswers } from '@/telemetry/dialogs.js';
 import type { TrackedDownload } from '@/telemetry/downloads.js';
 import { PageIssueLog } from '@/telemetry/issues.js';
@@ -54,6 +55,8 @@ export class TelemetryStore {
   activeTelemetry: TelemetryType[] = [];
   /** When the page's renderer crashed (epoch ms); undefined while the page is alive */
   pageCrashedAt: number | undefined;
+  /** The session's latest move to another tab; undefined while it stayed on its first tab */
+  tabSwitch: TabSwitchInfo | undefined;
   /** Set after `bdg cdp Fetch.enable` until `Fetch.disable`: matching requests pause until continued */
   fetchInterceptionEnabled = false;
   getCurrentNavigationId: (() => number) | null = null;

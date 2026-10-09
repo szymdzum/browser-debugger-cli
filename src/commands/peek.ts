@@ -100,11 +100,13 @@ function peekSection(options: PeekCommandOptions): PeekSection | undefined {
 async function fetchAndFilterPreview(
   lastN: number,
   resourceTypes: Protocol.Network.ResourceType[],
-  only?: PeekSection
+  only?: PeekSection,
+  tabMove = false
 ): Promise<FetchResult<ProcessedPreview>> {
   const result = await fetchPreviewOutput({
     lastN: resourceTypes.length > 0 ? 0 : lastN,
     ...(only && { only }),
+    tabMove,
   });
   if (!result.success) return result;
 
@@ -251,7 +253,12 @@ export function registerPeekCommand(program: Command): void {
 
       await runCommand<PeekCommandOptions, BdgOutput | PreviewJsonData>(
         async () => {
-          const result = await fetchAndFilterPreview(lastN, resourceTypes, peekSection(options));
+          const result = await fetchAndFilterPreview(
+            lastN,
+            resourceTypes,
+            peekSection(options),
+            true
+          );
           if (!result.success) {
             return createErrorResult(result.error, result.exitCode, result.suggestion);
           }

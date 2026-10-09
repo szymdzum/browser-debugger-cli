@@ -41,6 +41,7 @@ import {
   type StopSessionResponse,
   IPCErrorCode,
 } from '@/ipc/index.js';
+import type { TabClosedSwitch } from '@/ipc/protocol/tabTypes.js';
 import { clearLastSessionEnd, writeLastSessionEnd } from '@/session/lastSession.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { fetchInterceptionTimeoutCause } from '@/ui/messages/cdpEvents.js';
@@ -279,10 +280,23 @@ export class SessionController {
         pageState: live.target,
         navigationId: live.navigationId,
       });
-      return { ...base, status: 'ok', data };
+      return { ...base, status: 'ok', data, ...this.tabMoved(request.tabMove) };
     } catch (error) {
       return { ...base, status: 'error', data, error: getErrorMessage(error) };
     }
+  }
+
+  /**
+   * A move of the session to another tab no command reported yet, for a
+   * response (given once).
+   *
+   * @param asked - Whether the request takes it (status and peek ask; the
+   *   commands always do)
+   * @returns `tabMoved`, or nothing
+   */
+  private tabMoved(asked: boolean | undefined): { tabMoved?: TabClosedSwitch } {
+    const moved = asked === true ? this.session?.takeTabMoveNotice() : undefined;
+    return moved ? { tabMoved: moved } : {};
   }
 
   /**
@@ -334,9 +348,11 @@ export class SessionController {
             currentNavigationId: data.currentNavigationId,
             ...(data.pageCrashedAt !== undefined && { pageCrashedAt: data.pageCrashedAt }),
             ...(data.downloads && { downloads: data.downloads }),
+            ...(data.tabSwitch && { tabSwitch: data.tabSwitch }),
             partial: true,
           },
         },
+        ...this.tabMoved(request.tabMove),
       };
     } catch (error) {
       return { ...base, status: 'error', error: getErrorMessage(error) };
@@ -391,9 +407,9 @@ export class SessionController {
         commandTimeoutMs(name, params),
         'Command'
       );
-      return { ...base, status: 'ok', data };
+      return { ...base, status: 'ok', data, ...this.tabMoved(true) };
     } catch (error) {
-      return { ...base, status: 'error', ...this.describeFailure(error) };
+      return { ...base, status: 'error', ...this.describeFailure(error), ...this.tabMoved(true) };
     }
   }
 

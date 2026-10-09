@@ -1,5 +1,6 @@
 import type { Protocol } from '@/connection/typed-cdp.js';
 import type { DownloadInfo, FormIssue } from '@/ipc/protocol/domTypes.js';
+import type { TabSwitchInfo } from '@/ipc/protocol/tabTypes.js';
 
 /**
  * Standard response envelope for all bdg command JSON output.
@@ -288,6 +289,8 @@ export interface BdgOutput {
   pageCrashedAt?: number;
   /** Downloads that began during the session, oldest first (live previews) */
   downloads?: DownloadInfo[];
+  /** The session's latest move to another tab (live previews; absent while it stayed on its first tab) */
+  tabSwitch?: TabSwitchInfo;
   /** Counts of all captured items matching the request (e.g. `peek --type`), when `data` holds only the most recent ones */
   totals?: {
     network: number;

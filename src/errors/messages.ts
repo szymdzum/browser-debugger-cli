@@ -9,6 +9,7 @@ import * as path from 'path';
 
 import type { MissingMethodCause } from '@/cdp/methodTarget.js';
 import type { DomFrame, PendingRequestInfo } from '@/ipc/protocol/commands.js';
+import type { TabRef } from '@/ipc/protocol/tabTypes.js';
 import {
   countedMatches,
   type WaitCondition,
@@ -23,6 +24,7 @@ import {
   frameLabel,
   frameUrlLabel,
   pendingRequestsText,
+  tabClosedText,
   waitSnapshotSummary,
   waitTargetLabel,
 } from '@/ui/messages/commands.js';
@@ -2635,6 +2637,9 @@ interface ListedTab {
   url: string;
 }
 
+/** The tab commands that take a target */
+export type TabCommand = 'switch' | 'close';
+
 /**
  * The tabs listed one per line, e.g. `  [1] http://localhost/popup`.
  *
@@ -2672,21 +2677,23 @@ export function tabIndexOutOfRangeError(
  * @param part - Text given
  * @param tabs - Open tabs
  * @param similar - Closest URL parts, best first
+ * @param command - The command given, which the suggestions name
  * @returns Message and suggestion
  */
 export function tabNotFoundError(
   part: string,
   tabs: readonly ListedTab[],
-  similar: readonly string[]
+  similar: readonly string[],
+  command: TabCommand = 'switch'
 ): ErrorWithSuggestion {
   return {
     message: `No tab URL contains "${part}"`,
     suggestion: joinLines(
       similar[0] !== undefined &&
-        `Did you mean: ${sessionCommand(`bdg page switch ${similar[0]}`)}?`,
+        `Did you mean: ${sessionCommand(`bdg page ${command} ${similar[0]}`)}?`,
       'Open tabs:',
       ...tabLines(tabs),
-      `Switch by index: ${sessionCommand('bdg page switch <index>')}`
+      `${command === 'switch' ? 'Switch' : 'Close'} by index: ${sessionCommand(`bdg page ${command} <index>`)}`
     ),
   };
 }
@@ -2696,18 +2703,67 @@ export function tabNotFoundError(
  *
  * @param part - Text given
  * @param matches - Tabs whose URL contains it
+ * @param command - The command given, which the suggestion names
  * @returns Message and suggestion
  */
 export function tabAmbiguousError(
   part: string,
-  matches: readonly ListedTab[]
+  matches: readonly ListedTab[],
+  command: TabCommand = 'switch'
 ): ErrorWithSuggestion {
   return {
     message: `"${part}" matches ${matches.length} tabs`,
     suggestion: joinLines(
       ...tabLines(matches),
-      `Pick one by index, e.g. ${sessionCommand(`bdg page switch ${matches[0]?.index ?? 0}`)}`
+      `Pick one by index, e.g. ${sessionCommand(`bdg page ${command} ${matches[0]?.index ?? 0}`)}`
     ),
+  };
+}
+
+/**
+ * The first action after the session's tab closed on its own (e.g. a popup's
+ * timer called `window.close()`) and the session moved to another tab
+ * without a command reporting it: the action was meant for the closed tab,
+ * so it is not run on the other one.
+ *
+ * @param closed - The tab that closed
+ * @param current - The tab the session moved to
+ * @returns Message and suggestion
+ */
+export function actionAfterTabMoveError(closed: TabRef, current: TabRef): ErrorWithSuggestion {
+  return {
+    message: `${tabClosedText(closed, current)}. The action was not run: it was meant for the tab that closed`,
+    suggestion: `Run it again to act on the current tab, or list the tabs with: ${sessionCommand('bdg page tabs')}`,
+  };
+}
+
+/**
+ * `bdg page switch` interrupted by Ctrl-C or SIGTERM: the command waited for
+ * the daemon's answer, so it says whether the session moved.
+ *
+ * @param signal - The signal
+ * @param outcome - The daemon's answer: the tab switched to (`switched`
+ *   false when the session already was on it), the switch's error, or
+ *   nothing when the request was never sent
+ * @returns Message and suggestion
+ */
+export function pageSwitchInterruptedError(
+  signal: 'SIGINT' | 'SIGTERM',
+  outcome:
+    { tab: { index: number; url: string }; switched: boolean } | { error: string } | undefined
+): ErrorWithSuggestion {
+  const how = signal === 'SIGINT' ? 'Interrupted (Ctrl-C)' : 'Terminated (SIGTERM)';
+  const message =
+    outcome === undefined
+      ? `${how} before the switch was sent; the session did not switch`
+      : 'error' in outcome
+        ? `${how}; the session did not switch (${outcome.error})`
+        : outcome.switched
+          ? `${how}, but the switch completed: now on tab ${outcome.tab.index}: ${outcome.tab.url}`
+          : `${how}; the session was already on tab ${outcome.tab.index}: ${outcome.tab.url}`;
+  return {
+    message,
+    suggestion: `The session tab is marked * in: ${sessionCommand('bdg page tabs')}`,
   };
 }
 

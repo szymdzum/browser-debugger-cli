@@ -65,6 +65,13 @@ void describe('console index gaps', () => {
     assert.deepEqual(skippedMessages(all, listed), { otherPages: 0, otherLevels: 1 });
   });
 
+  void it('with --history, counts the messages left out between as of another level', () => {
+    const all = [message(0, 1, 'error'), message(1, 2), message(2, 3, 'error')];
+    const listed = [all[0], all[2]] as ConsoleMessage[];
+    assert.deepEqual(skippedMessages(all, listed, true), { otherPages: 0, otherLevels: 1 });
+    assert.deepEqual(skippedMessages(all, listed), { otherPages: 1, otherLevels: 0 });
+  });
+
   void it('explains the gap under the list', () => {
     const output = formatConsole([message(0), message(1), message(3)], {
       list: true,

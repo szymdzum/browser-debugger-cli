@@ -80,6 +80,25 @@ function thrown(call: () => unknown): CommandError {
   assert.fail('expected an error');
 }
 
+/**
+ * A tracker whose session tab, popup P of A, closed on its own: the session
+ * moved back to A and no action reported it.
+ *
+ * @returns Tracker
+ */
+async function movedFromPopup(): Promise<TabTracker> {
+  const tracker = new TabTracker();
+  const { source, emit } = fakeSource([page('A', 'http://a/')]);
+  tracker.setCurrent('A');
+  await tracker.attach(source);
+  emit('Target.targetCreated', { targetInfo: page('P', 'http://a/popup', { openerId: 'A' }) });
+  tracker.setCurrent('P');
+  tracker.markClosed('P');
+  tracker.setCurrent('A');
+  tracker.recordClosedSwitch('P', 'A');
+  return tracker;
+}
+
 void describe('TabTracker', () => {
   void it('lists the session tab first, then the other pages oldest first, and enables discovery', async () => {
     const tracker = new TabTracker();
@@ -233,6 +252,106 @@ void describe('TabTracker', () => {
       switchedTo: { index: 0, targetId: 'A', url: 'http://a/', title: 'A' },
     });
     assert.equal(tracker.takeClosedSwitch(), undefined);
+  });
+
+  void it('reports a move no action reported to the next command, and refuses the next action once (90)', async () => {
+    const tracker = await movedFromPopup();
+
+    const notice = tracker.takeMoveNotice();
+    assert.equal(notice?.tabClosed.targetId, 'P');
+    assert.equal(notice?.switchedTo.index, 0);
+    assert.equal(tracker.takeMoveNotice(), undefined, 'the notice is given once');
+
+    const refused = thrown(() => tracker.refuseActionAfterMove());
+    assert.equal(refused.exitCode, EXIT_CODES.RESOURCE_CONFLICT);
+    assert.match(refused.message, /Tab closed: http:\/\/a\/popup; now on tab 0: http:\/\/a\//);
+    assert.match(refused.message, /not run/);
+    assert.match(refused.metadata.suggestion ?? '', /bdg page tabs/);
+    tracker.refuseActionAfterMove();
+  });
+
+  void it('puts the move on the response of the refused action, and does not refuse an action that reported it', async () => {
+    const readFirst = await movedFromPopup();
+    readFirst.takeMoveNotice();
+    thrown(() => readFirst.refuseActionAfterMove());
+    assert.equal(readFirst.takeMoveNotice()?.tabClosed.targetId, 'P');
+    assert.equal(readFirst.takeMoveNotice(), undefined);
+
+    const reported = await movedFromPopup();
+    assert.equal(reported.takeClosedSwitch()?.tabClosed.targetId, 'P');
+    reported.refuseActionAfterMove();
+    assert.equal(reported.takeMoveNotice(), undefined);
+  });
+
+  void it('does not refuse an action after the agent chose a tab itself', async () => {
+    const tracker = await movedFromPopup();
+
+    tracker.acknowledgeMove();
+
+    tracker.refuseActionAfterMove();
+    assert.equal(tracker.takeMoveNotice()?.tabClosed.targetId, 'P', 'the notice still comes');
+  });
+
+  void it('knows the tabs the session has been on', async () => {
+    const tracker = new TabTracker();
+    const { source, emit } = fakeSource([page('A', 'http://a/')]);
+    tracker.setCurrent('A');
+    await tracker.attach(source);
+    emit('Target.targetCreated', { targetInfo: page('P', 'http://a/popup', { openerId: 'A' }) });
+
+    assert.equal(tracker.hasVisited('A'), true);
+    assert.equal(tracker.hasVisited('P'), false);
+    tracker.setCurrent('P');
+    assert.equal(tracker.hasVisited('P'), true);
+  });
+
+  void it('lists the kind of each tab, and the opener only of popups', async () => {
+    const tracker = new TabTracker();
+    const { source, emit } = fakeSource([page('A', 'http://a/')]);
+    tracker.setCurrent('A');
+    await tracker.attach(source);
+    emit('Target.targetCreated', {
+      targetInfo: page('P', 'http://a/popup', { openerId: 'A', canAccessOpener: true }),
+    });
+    emit('Target.targetCreated', {
+      targetInfo: page('T', 'http://a/tab', { openerId: 'A', canAccessOpener: false }),
+    });
+
+    assert.deepEqual(
+      tracker.list().map((tab) => [tab.targetId, tab.kind, tab.openedBy]),
+      [
+        ['A', 'tab', undefined],
+        ['P', 'popup', 0],
+        ['T', 'tab', undefined],
+      ]
+    );
+    tracker.setCurrent('T');
+    assert.equal(
+      tracker.fallbackFor('T')?.targetId,
+      'A',
+      'a noopener tab still returns to its opener'
+    );
+  });
+
+  void it('names page close in the suggestions of page close errors', async () => {
+    const tracker = new TabTracker();
+    const { source } = fakeSource([
+      page('C', 'http://a/three'),
+      page('B', 'http://a/two'),
+      page('A', 'http://a/one'),
+    ]);
+    tracker.setCurrent('A');
+    await tracker.attach(source);
+
+    const missing = thrown(() => tracker.resolve('nosuch', 'close'));
+    assert.match(missing.metadata.suggestion ?? '', /bdg page close <index>/);
+    assert.doesNotMatch(missing.metadata.suggestion ?? '', /page switch/);
+    const similar = thrown(() => tracker.resolve('threee', 'close'));
+    assert.match(similar.metadata.suggestion ?? '', /Did you mean: bdg page close three\?/);
+    const ambiguous = thrown(() => tracker.resolve('http://a/t', 'close'));
+    assert.match(ambiguous.metadata.suggestion ?? '', /bdg page close 1/);
+    const outOfRange = thrown(() => tracker.resolve('9', 'close'));
+    assert.doesNotMatch(outOfRange.metadata.suggestion ?? '', /page switch/);
   });
 
   void it('drops tabs that closed while it was attached elsewhere', async () => {

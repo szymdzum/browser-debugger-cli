@@ -73,6 +73,8 @@ async function assertResponsive(): Promise<void> {
  * Returns daemon state, session metadata, and activity metrics.
  *
  * @param socketPath - Daemon socket to ask (default: the selected session's)
+ * @param options - `tabMove`: take a move of the session to another tab that
+ *   no command reported yet (`tabMoved`), for a command that reports it
  * @returns Status response with daemon and session information
  * @throws Error if connection fails or times out
  *
@@ -85,8 +87,14 @@ async function assertResponsive(): Promise<void> {
  * }
  * ```
  */
-export async function getStatus(socketPath?: string): Promise<StatusResponse> {
-  const request: StatusRequest = withSession({ type: 'status_request' });
+export async function getStatus(
+  socketPath?: string,
+  options: { tabMove?: boolean } = {}
+): Promise<StatusResponse> {
+  const request: StatusRequest = withSession({
+    type: 'status_request',
+    ...(options.tabMove && { tabMove: true }),
+  });
   return sendRequest<StatusRequest, StatusResponse>(
     request,
     'status',
@@ -100,7 +108,8 @@ export async function getStatus(socketPath?: string): Promise<StatusResponse> {
  * Request preview data from the daemon.
  * Returns snapshot of collected telemetry without stopping session.
  *
- * @param options - Optional parameters for the peek request (lastN: number of items, 0 = all)
+ * @param options - Optional parameters for the peek request (lastN: number of items, 0 = all;
+ *   tabMove: take a move of the session to another tab that no command reported yet)
  * @returns Peek response with preview data
  * @throws Error if connection fails, times out, or no active session
  *
@@ -123,12 +132,14 @@ export async function getPeek(options?: {
   lastN?: number;
   only?: 'network' | 'console';
   withHeaders?: boolean;
+  tabMove?: boolean;
 }): Promise<PeekResponse> {
   const request: PeekRequest = withSession({
     type: 'peek_request',
     ...(options?.lastN !== undefined && { lastN: options.lastN }),
     ...(options?.only && { only: options.only }),
     ...(options?.withHeaders && { withHeaders: true }),
+    ...(options?.tabMove && { tabMove: true }),
   });
   return sendRequest<PeekRequest, PeekResponse>(
     request,

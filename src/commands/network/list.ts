@@ -18,6 +18,7 @@ import { handleValidationError } from '@/commands/shared/handleValidationError.j
 import type { BaseOptions } from '@/commands/shared/optionTypes.js';
 import { positiveIntRule, resourceTypeRule } from '@/commands/shared/validation.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
+import type { TabSwitchInfo } from '@/ipc/protocol/tabTypes.js';
 import { applyFilters, getFilterHelpText, validateFilterString } from '@/telemetry/filterDsl.js';
 import { resolvePreset, FILTER_PRESETS } from '@/telemetry/filterPresets.js';
 import { filterByResourceType } from '@/telemetry/filters.js';
@@ -30,7 +31,7 @@ import {
   type NetworkListOptions,
   type PageStart,
 } from '@/ui/formatters/networkList.js';
-import { pageCrashedNote, withPageCrashedNote } from '@/ui/messages/commands.js';
+import { pageCrashedNote, withPageCrashedNote, withTabSwitchNote } from '@/ui/messages/commands.js';
 import {
   followingNetworkMessage,
   stoppedFollowingNetworkMessage,
@@ -307,6 +308,8 @@ interface NetworkListResult {
   pageStart?: PageStart;
   /** When the page crashed (epoch ms), while it is not loaded again */
   pageCrashedAt?: number;
+  /** The session's latest move to another tab: that tab's earlier requests are not recorded, and those before `at` are another tab's */
+  tabSwitch?: TabSwitchInfo;
   /** Oldest finished requests the session dropped at its cap (left out when none) */
   dropped?: number;
   /** Oldest response bodies the session evicted at its body budget (left out when none) */
@@ -368,7 +371,7 @@ export function registerListCommand(networkCmd: Command): void {
 
       await runCommand(
         async () => {
-          const result = await fetchNetworkRequests(filtersNeedHeaders(options));
+          const result = await fetchNetworkRequests(filtersNeedHeaders(options), true);
 
           if (!result.success) {
             if (result.exitCode === EXIT_CODES.SUCCESS) {
@@ -377,7 +380,7 @@ export function registerListCommand(networkCmd: Command): void {
             return createErrorResult(result.error, result.exitCode, result.suggestion);
           }
 
-          const { requests, pageCrashedAt, evictions } = result.data;
+          const { requests, pageCrashedAt, tabSwitch, evictions } = result.data;
           const filtered = filterRequests(requests, options, resourceTypes);
           const pageStart = pageStartOf(requests);
           return {
@@ -388,6 +391,7 @@ export function registerListCommand(networkCmd: Command): void {
               filteredCount: filtered.length,
               ...(pageStart && { pageStart }),
               ...(pageCrashedAt !== undefined && { pageCrashedAt }),
+              ...(tabSwitch && { tabSwitch }),
               ...evictionFields(evictions),
             },
           };
@@ -395,7 +399,11 @@ export function registerListCommand(networkCmd: Command): void {
         options,
         (data: NetworkListResult) =>
           withPageCrashedNote(
-            formatNetworkList(data.requests, buildFormatOptions(options, data, lastN)),
+            withTabSwitchNote(
+              formatNetworkList(data.requests, buildFormatOptions(options, data, lastN)),
+              data.tabSwitch,
+              'network'
+            ),
             data.pageCrashedAt
           )
       );
