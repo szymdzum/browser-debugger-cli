@@ -197,6 +197,40 @@ void describe('Errors an action caused', () => {
     assert.deepEqual(await takeInputLog(), ['when input Event  ']);
   });
 
+  void it('leaves a number field alone when it rejects the text, firing no events', async () => {
+    const result = await runCommand('dom', ['fill', '#amount', 'abc', '--json'], {
+      timeout: 60000,
+    });
+    assert.equal(result.exitCode, 81, result.stdout);
+    assert.match((JSON.parse(result.stdout) as { error: string }).error, /rejected "abc"/);
+    assert.deepEqual(await takeInputLog(), []);
+    await bdg(['dom', 'fill', '#amount', '42']);
+    assert.deepEqual(await takeInputLog(), [
+      'amount beforeinput InputEvent insertText 42',
+      'amount input InputEvent insertText 42',
+    ]);
+  });
+
+  void it('fires nothing when filling "" into an empty field', async () => {
+    await bdg(['dom', 'fill', '#amount', '']);
+    await takeInputLog();
+    await bdg(['dom', 'fill', '#amount', '']);
+    await bdg(['dom', 'fill', '#editor', '']);
+    await takeInputLog();
+    await bdg(['dom', 'fill', '#editor', '']);
+    assert.deepEqual(await takeInputLog(), []);
+  });
+
+  void it('updates a React-style controlled input through its value tracker', async () => {
+    assert.equal(errorTexts(await act(['fill', '#controlled', 'Ada'])).length, 0);
+    const shown = await bdg([
+      'dom',
+      'eval',
+      '[document.getElementById("controlled").value, document.getElementById("controlled-state").textContent].join("|")',
+    ]);
+    assert.match(shown, /Ada\|Ada/);
+  });
+
   void it('sets the value when the page cancels beforeinput, with a warning', async () => {
     const data = await act(['fill', '#rejecting', 'kept']);
     assert.match(data.warning ?? '', /The page cancelled beforeinput/);

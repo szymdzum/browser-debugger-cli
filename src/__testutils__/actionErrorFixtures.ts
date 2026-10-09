@@ -10,8 +10,14 @@
  * (`e.inputType.startsWith('insert')` throws on a plain `Event`) record
  * each `beforeinput` and `input` in `window.inputLog` as
  * `id type InputEvent|Event inputType data`: a text input with a value, a
- * textarea, a contenteditable editor, a date field, and an input whose
- * `beforeinput` listener cancels it, as a rich editor may.
+ * textarea, a contenteditable editor, a date field, a number field, and
+ * an input whose `beforeinput` listener cancels it, as a rich editor may.
+ * `#controlled` is controlled the way React does it: a value tracker (an
+ * own `value` property whose setter records the value) and one listener on
+ * the document that calls onChange only when the native value differs from
+ * the tracked one, and puts the state back after every input event, so a
+ * fill that bypassed the tracker or sent no `input` event is undone. The
+ * state is shown in `#controlled-state`.
  */
 
 /** Page whose controls make errors */
@@ -28,7 +34,9 @@ const ACTION_ERRORS_HTML = `<!doctype html><title>action errors</title>
 <textarea id="notes"></textarea>
 <div id="editor" contenteditable="true"></div>
 <input id="when" type="date">
+<input id="amount" type="number">
 <input id="rejecting">
+<input id="controlled"><output id="controlled-state"></output>
 <div id="hover-box" style="width: 100px; height: 40px" onmouseenter="this.onmouseenter = null; throw new Error('hover exploded')">Hover</div>
 <form id="form" onsubmit="event.preventDefault(); throw new Error('submit exploded')"><button>Send</button></form>
 <div style="height: 3000px"></div>
@@ -36,7 +44,7 @@ const ACTION_ERRORS_HTML = `<!doctype html><title>action errors</title>
   console.error('on load error');
   console.warn('on load warning');
   window.inputLog = [];
-  for (const id of ['typed', 'notes', 'editor', 'when', 'rejecting']) {
+  for (const id of ['typed', 'notes', 'editor', 'when', 'amount', 'rejecting']) {
     const field = document.getElementById(id);
     for (const type of ['beforeinput', 'input']) {
       field.addEventListener(type, (e) => {
@@ -46,6 +54,28 @@ const ACTION_ERRORS_HTML = `<!doctype html><title>action errors</title>
     }
   }
   document.getElementById('rejecting').addEventListener('beforeinput', (e) => e.preventDefault());
+  const controlled = document.getElementById('controlled');
+  const nativeValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+  let tracked = '';
+  let state = '';
+  Object.defineProperty(controlled, 'value', {
+    configurable: true,
+    get() { return nativeValue.get.call(this); },
+    set(value) { tracked = String(value); nativeValue.set.call(this, value); }
+  });
+  const render = () => {
+    controlled.value = state;
+    document.getElementById('controlled-state').textContent = state;
+  };
+  document.addEventListener('input', (e) => {
+    if (e.target !== controlled) return;
+    const current = nativeValue.get.call(controlled);
+    if (current !== tracked) {
+      tracked = current;
+      state = current;
+    }
+    render();
+  });
   addEventListener('scroll', () => { throw new Error('scroll exploded'); }, { once: true });
 </script>`;
 

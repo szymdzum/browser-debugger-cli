@@ -4,7 +4,8 @@
  * with `inputType` `insertText` and the text as `data`, or
  * `deleteContentBackward` without data when the field is cleared. The events
  * come from the field's own realm; a page whose `InputEvent` constructor
- * throws gets plain events.
+ * throws, or a field in a document without a window, gets plain events that
+ * still carry `inputType` and `data`.
  *
  * The helper is a page script, run here in an isolated VM context on a
  * target-like object.
@@ -23,6 +24,8 @@ interface Fired {
   init?: Record<string, unknown>;
   bubbles?: boolean;
   cancelable?: boolean;
+  inputType?: unknown;
+  data?: unknown;
 }
 
 const fireInputEvent = vm.runInNewContext(`(${FIRE_INPUT_EVENT_JS})`) as (
@@ -35,10 +38,13 @@ const fireInputEvent = vm.runInNewContext(`(${FIRE_INPUT_EVENT_JS})`) as (
  * Build a target whose realm has an `InputEvent` constructor (or one that
  * throws) and that records the events dispatched to it.
  *
- * @param options - Whether the realm's `InputEvent` throws, whether listeners cancel
+ * @param options - Whether the realm's `InputEvent` throws, whether the
+ *   document has no window, whether listeners cancel
  * @returns Target and the events it received
  */
-function target(options: { brokenInputEvent?: boolean; cancels?: boolean } = {}): {
+function target(
+  options: { brokenInputEvent?: boolean; noWindow?: boolean; cancels?: boolean } = {}
+): {
   el: object;
   fired: Fired[];
 } {
@@ -64,7 +70,10 @@ function target(options: { brokenInputEvent?: boolean; cancels?: boolean } = {})
     };
     return event;
   };
-  const ownerDocument = { defaultView: { InputEvent }, createEvent: plainEvent };
+  const ownerDocument = {
+    defaultView: options.noWindow ? null : { InputEvent },
+    createEvent: plainEvent,
+  };
   const el = {
     ownerDocument,
     dispatchEvent: (event: Record<string, unknown>): boolean => {
@@ -76,6 +85,8 @@ function target(options: { brokenInputEvent?: boolean; cancels?: boolean } = {})
               type: String(event['type']),
               bubbles: Boolean(event['bubbles']),
               cancelable: Boolean(event['cancelable']),
+              inputType: event['inputType'],
+              data: event['data'],
             }
       );
       return !options.cancels;
@@ -127,13 +138,35 @@ void describe('fill input events', () => {
     assert.equal(fireInputEvent(el, 'beforeinput', 'x'), false);
   });
 
-  void it("falls back to a plain event when the realm's InputEvent throws", () => {
+  void it("falls back to a plain event with inputType and data when the realm's InputEvent throws", () => {
     const { el, fired } = target({ brokenInputEvent: true });
     fireInputEvent(el, 'beforeinput', 'x');
-    fireInputEvent(el, 'input', 'x');
+    fireInputEvent(el, 'input', '');
     assert.deepEqual(fired, [
-      { kind: 'Event', type: 'beforeinput', bubbles: true, cancelable: true },
-      { kind: 'Event', type: 'input', bubbles: true, cancelable: false },
+      {
+        kind: 'Event',
+        type: 'beforeinput',
+        bubbles: true,
+        cancelable: true,
+        inputType: 'insertText',
+        data: 'x',
+      },
+      {
+        kind: 'Event',
+        type: 'input',
+        bubbles: true,
+        cancelable: false,
+        inputType: 'deleteContentBackward',
+        data: null,
+      },
     ]);
+  });
+
+  void it('falls back to a plain event with inputType for a document without a window', () => {
+    const { el, fired } = target({ noWindow: true });
+    fireInputEvent(el, 'input', 'x');
+    assert.equal(fired[0]?.kind, 'Event');
+    assert.equal(fired[0]?.inputType, 'insertText');
+    assert.equal(fired[0]?.data, 'x');
   });
 });
