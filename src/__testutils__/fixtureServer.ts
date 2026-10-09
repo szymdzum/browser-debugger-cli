@@ -33,7 +33,8 @@
  * frame order, rejections and framework listeners come from
  * `knownLimitFixtures.ts`; the `dom inspect` pages from `inspectFixtures.ts`;
  * the shadow root form pages from `shadowFormFixtures.ts`; the pages whose
- * actions throw from `actionErrorFixtures.ts`.
+ * actions throw from `actionErrorFixtures.ts`; the dialog pages from
+ * `dialogFixtures.ts`.
  */
 
 import * as fs from 'fs';
@@ -45,6 +46,7 @@ import { fileURLToPath } from 'url';
 import { WebSocketServer } from 'ws';
 
 import { ACTION_ERROR_ROUTES } from '@/__testutils__/actionErrorFixtures.js';
+import { DIALOG_ROUTES } from '@/__testutils__/dialogFixtures.js';
 import { INSPECT_ROUTES } from '@/__testutils__/inspectFixtures.js';
 import { KNOWN_LIMIT_ROUTES } from '@/__testutils__/knownLimitFixtures.js';
 import { SHADOW_FORM_ROUTES } from '@/__testutils__/shadowFormFixtures.js';
@@ -680,7 +682,8 @@ export async function startFixtureServer(): Promise<FixtureServer> {
       KNOWN_LIMIT_ROUTES[req.url ?? ''] ??
       INSPECT_ROUTES[req.url ?? ''] ??
       SHADOW_FORM_ROUTES[req.url ?? ''] ??
-      ACTION_ERROR_ROUTES[req.url ?? ''];
+      ACTION_ERROR_ROUTES[req.url ?? ''] ??
+      DIALOG_ROUTES[req.url ?? ''];
     if (knownLimitPage !== undefined) {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(knownLimitPage);

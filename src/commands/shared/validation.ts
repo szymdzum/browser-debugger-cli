@@ -7,6 +7,8 @@ import { InvalidArgumentError } from 'commander';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { resourceTypeFromName } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
+import { conflictingOptionsError, invalidDialogAnswerError } from '@/errors/messages.js';
+import { DIALOG_ANSWERS, type DialogAnswer, type DialogChoice } from '@/ipc/protocol/domTypes.js';
 import type { ConsoleLevel } from '@/types.js';
 import { integerOutOfRangeError, invalidIntegerError } from '@/ui/messages/validation.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -282,5 +284,48 @@ export function resourceTypeRule(): ValidationRule<Protocol.Network.ResourceType
 
       return normalized;
     },
+  };
+}
+
+/**
+ * Parse a `--dialog` value (case-insensitive).
+ *
+ * @param value - Option value
+ * @returns accept or dismiss
+ * @throws CommandError (81) for another value, suggesting the closest one
+ */
+export function parseDialogAnswer(value: string): DialogAnswer {
+  const answer = DIALOG_ANSWERS.find((candidate) => candidate === value.trim().toLowerCase());
+  if (answer) return answer;
+  const err = invalidDialogAnswerError(value, findSimilar(value, DIALOG_ANSWERS), DIALOG_ANSWERS);
+  throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
+}
+
+/**
+ * How a DOM action answers the dialogs it opens, from its `--dialog` and
+ * `--prompt-text`.
+ *
+ * @param options - The action's options
+ * @returns Its choice, or undefined when it made none (the session default applies)
+ * @throws CommandError (81) for an unknown `--dialog`, or prompt text with `--dialog dismiss`
+ */
+export function dialogChoice(options: {
+  dialog?: string | undefined;
+  promptText?: string | undefined;
+}): DialogChoice | undefined {
+  const dialog = options.dialog === undefined ? undefined : parseDialogAnswer(options.dialog);
+  const { promptText } = options;
+  if (dialog === 'dismiss' && promptText !== undefined) {
+    const err = conflictingOptionsError('--prompt-text', '--dialog dismiss');
+    throw new CommandError(
+      err.message,
+      { suggestion: err.suggestion },
+      EXIT_CODES.INVALID_ARGUMENTS
+    );
+  }
+  if (dialog === undefined && promptText === undefined) return undefined;
+  return {
+    ...(dialog !== undefined && { dialog }),
+    ...(promptText !== undefined && { promptText }),
   };
 }

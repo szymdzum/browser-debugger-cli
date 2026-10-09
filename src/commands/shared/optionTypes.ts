@@ -213,10 +213,19 @@ export interface FormCommandOptions extends BaseOptions {
 }
 
 /**
+ * How a DOM action answers the dialogs it opens, as typed
+ * (`--dialog <accept|dismiss>`, `--prompt-text <text>`).
+ */
+export interface DialogOptions {
+  dialog?: string;
+  promptText?: string;
+}
+
+/**
  * Options for fill command.
  * Note: Commander parses --no-blur and --no-wait as boolean flags.
  */
-export interface FillCommandOptions extends BaseOptions, IndexOptions {
+export interface FillCommandOptions extends BaseOptions, IndexOptions, DialogOptions {
   /** Blur element after filling (--no-blur sets to false) */
   blur: boolean;
   /** Wait for stability after fill (--no-wait sets to false) */
@@ -227,7 +236,7 @@ export interface FillCommandOptions extends BaseOptions, IndexOptions {
  * Options for click command.
  * Note: Commander parses --no-wait as boolean flag.
  */
-export interface ClickCommandOptions extends BaseOptions, IndexOptions {
+export interface ClickCommandOptions extends BaseOptions, IndexOptions, DialogOptions {
   /** Wait for stability after click (--no-wait sets to false) */
   wait: boolean;
   /** Double-click */
@@ -241,7 +250,7 @@ export interface ClickCommandOptions extends BaseOptions, IndexOptions {
 /**
  * Options for submit command.
  */
-export interface SubmitCommandOptions extends BaseOptions, IndexOptions {
+export interface SubmitCommandOptions extends BaseOptions, IndexOptions, DialogOptions {
   /** Wait for navigation to complete */
   waitNavigation?: boolean;
   /** Wait for network idle (milliseconds) */
@@ -254,7 +263,8 @@ export interface SubmitCommandOptions extends BaseOptions, IndexOptions {
  * Options for pressKey command.
  * Note: Commander parses --no-wait as boolean flag.
  */
-export interface PressKeyCommandOptions extends BaseOptions, IndexOptions, KeyPressOptions {
+export interface PressKeyCommandOptions
+  extends BaseOptions, IndexOptions, KeyPressOptions, DialogOptions {
   /** Wait for stability after key press (--no-wait sets to false) */
   wait: boolean;
 }
@@ -263,7 +273,7 @@ export interface PressKeyCommandOptions extends BaseOptions, IndexOptions, KeyPr
  * Options for scroll command.
  * Supports scrolling to elements, by pixels, or to page boundaries.
  */
-export interface ScrollCommandOptions extends BaseOptions, IndexOptions {
+export interface ScrollCommandOptions extends BaseOptions, IndexOptions, DialogOptions {
   /** Scroll down by pixels */
   down?: number;
   /** Scroll up by pixels */
@@ -398,6 +408,8 @@ export interface SessionStartOptions {
   viewport?: ViewportSize | undefined;
   /** `prefers-color-scheme` to emulate (`--color-scheme`) */
   colorScheme?: ColorScheme | undefined;
+  /** How dialogs no action chose an answer for are answered (`--dialog`) */
+  dialog?: DialogAnswer | undefined;
 }
 
 // ConsoleLevel is defined in types.ts for proper architectural layering
@@ -405,6 +417,7 @@ export interface SessionStartOptions {
 export type { ConsoleLevel } from '@/types.js';
 
 // Import locally for use in ConsoleCommandOptions
+import type { DialogAnswer } from '@/ipc/protocol/domTypes.js';
 import type { ColorScheme, ConsoleLevel, ViewportSize } from '@/types.js';
 
 /**

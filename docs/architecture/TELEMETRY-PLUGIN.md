@@ -51,7 +51,7 @@ disconnect, `--timeout`, daemon signals, or a failed start.
 
 | Plugin    | Type        | Purpose |
 |-----------|-------------|---------|
-| `dialogs` | `runAlways` | Auto-dismiss JavaScript dialogs |
+| `dialogs` | `runAlways` | Answer JavaScript dialogs as they open (`--dialog`; accept by default) |
 | `navigation` | `runAlways` | Track navigation events and expose `getCurrentNavigationId` |
 | `network` | `telemetry: 'network'` | Subscribe to `Network.*` events and store requests |
 | `websocket` | `telemetry: 'network'` | Track WebSocket connections and frames |

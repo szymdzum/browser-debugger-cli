@@ -7,7 +7,7 @@
  * subscriptions for network-stability waits) on behalf of the CLI.
  */
 
-import { InvalidArgumentError, type Command } from 'commander';
+import { InvalidArgumentError, Option, type Command } from 'commander';
 
 import { runElementCommand } from '@/commands/dom/helpers/runElementCommand.js';
 import { runCommand, type CommandResult } from '@/commands/shared/CommandRunner.js';
@@ -20,7 +20,7 @@ import type {
   ScrollCommandOptions,
 } from '@/commands/shared/optionTypes.js';
 import { createErrorResult } from '@/commands/shared/dataFetcher.js';
-import { integerOption } from '@/commands/shared/validation.js';
+import { dialogChoice, integerOption } from '@/commands/shared/validation.js';
 import { CommandError } from '@/errors/index.js';
 import {
   VIA_LABEL_SUFFIX,
@@ -69,6 +69,30 @@ const STRICT_OPTION_HELP =
   'Fail (exit 90) instead of using DOM events when a real mouse cannot reach the element (covered, hidden, zero-size)';
 
 /**
+ * `--dialog` of a DOM action.
+ *
+ * @returns Option
+ */
+function dialogOption(): Option {
+  return new Option(
+    '--dialog <answer>',
+    'Answer dialogs this action opens (alert, confirm, prompt, beforeunload) with accept or dismiss (default: the session default, accept unless bdg <url> --dialog)'
+  );
+}
+
+/**
+ * `--prompt-text` of a DOM action.
+ *
+ * @returns Option
+ */
+function promptTextOption(): Option {
+  return new Option(
+    '--prompt-text <text>',
+    'Text prompt() dialogs this action opens get (accepts them; default "")'
+  );
+}
+
+/**
  * Commander parser for `--modifiers`: rejects unknown names instead of
  * silently pressing the bare key.
  *
@@ -113,15 +137,19 @@ export function registerFormInteractionCommands(program: Command): void {
     .option('--index <n>', 'Element index if selector matches multiple (0-based)', integerOption(0))
     .option('--no-blur', 'Do not blur after filling (keeps focus on element)')
     .option('--no-wait', 'Skip waiting for network stability after fill')
+    .addOption(dialogOption())
+    .addOption(promptTextOption())
     .addOption(jsonOption())
     .action(async (selectorOrIndex: string, value: string, options: FillCommandOptions) => {
       await runCommand(
-        () =>
-          runElementCommand<Parameters<typeof domFill>[0], FillResult>({
+        async () => {
+          const dialogs = dialogChoice(options);
+          return runElementCommand<Parameters<typeof domFill>[0], FillResult>({
             selectorOrIndex,
             index: options.index,
             buildRequest: (target) => ({
               ...target,
+              ...dialogs,
               value,
               cwd: process.cwd(),
               ...(options.blur !== undefined && { blur: options.blur }),
@@ -132,7 +160,8 @@ export function registerFormInteractionCommands(program: Command): void {
             action: 'fill element',
             failureSuggestion:
               'Verify the selector matches a fillable element (input, textarea, select)',
-          }),
+          });
+        },
         options,
         formatFillOutput
       );
@@ -147,6 +176,8 @@ export function registerFormInteractionCommands(program: Command): void {
     .option('--right', 'Right-click (opens the context menu)')
     .option('--strict', STRICT_OPTION_HELP)
     .option('--no-wait', 'Skip waiting for network stability after click')
+    .addOption(dialogOption())
+    .addOption(promptTextOption())
     .addOption(jsonOption())
     .addHelpText('after', CLICK_RESULT_WAIT_HELP)
     .action(async (selectorOrIndex: string, options: ClickCommandOptions) => {
@@ -164,6 +195,8 @@ export function registerFormInteractionCommands(program: Command): void {
     .option('--off', 'Move the mouse off the page instead (closes menus that open on hover)')
     .option('--strict', STRICT_OPTION_HELP)
     .option('--no-wait', 'Skip waiting for network stability after hovering')
+    .addOption(dialogOption())
+    .addOption(promptTextOption())
     .addOption(jsonOption())
     .action(
       async (
@@ -191,16 +224,20 @@ export function registerFormInteractionCommands(program: Command): void {
       1000
     )
     .option('--timeout <ms>', 'Maximum time to wait (milliseconds)', integerOption(1), 10000)
+    .addOption(dialogOption())
+    .addOption(promptTextOption())
     .addOption(jsonOption())
     .addHelpText('after', CLICK_RESULT_WAIT_HELP)
     .action(async (selectorOrIndex: string, options: SubmitCommandOptions) => {
       await runCommand(
-        () =>
-          runElementCommand<Parameters<typeof domSubmit>[0], SubmitResult>({
+        async () => {
+          const dialogs = dialogChoice(options);
+          return runElementCommand<Parameters<typeof domSubmit>[0], SubmitResult>({
             selectorOrIndex,
             index: options.index,
             buildRequest: (target) => ({
               ...target,
+              ...dialogs,
               ...(options.waitNavigation !== undefined && {
                 waitNavigation: options.waitNavigation,
               }),
@@ -211,7 +248,8 @@ export function registerFormInteractionCommands(program: Command): void {
             command: 'submit',
             action: 'submit form',
             failureSuggestion: 'Verify the selector matches a form or submit button',
-          }),
+          });
+        },
         options,
         formatSubmitOutput
       );
@@ -230,15 +268,19 @@ export function registerFormInteractionCommands(program: Command): void {
       modifiersOption
     )
     .option('--no-wait', 'Skip waiting for network stability after key press')
+    .addOption(dialogOption())
+    .addOption(promptTextOption())
     .addOption(jsonOption())
     .action(async (selectorOrIndex: string, key: string, options: PressKeyCommandOptions) => {
       await runCommand(
-        () =>
-          runElementCommand<Parameters<typeof domPressKey>[0], PressKeyResult>({
+        async () => {
+          const dialogs = dialogChoice(options);
+          return runElementCommand<Parameters<typeof domPressKey>[0], PressKeyResult>({
             selectorOrIndex,
             index: options.index,
             buildRequest: (target) => ({
               ...target,
+              ...dialogs,
               key,
               ...(options.times !== undefined && { times: options.times }),
               ...(options.modifiers !== undefined && { modifiers: options.modifiers }),
@@ -248,7 +290,8 @@ export function registerFormInteractionCommands(program: Command): void {
             command: 'pressKey',
             action: 'press key',
             failureSuggestion: 'Verify the selector matches a focusable element',
-          }),
+          });
+        },
         options,
         formatPressKeyOutput
       );
@@ -269,6 +312,8 @@ export function registerFormInteractionCommands(program: Command): void {
     .option('--top', 'Scroll to page top')
     .option('--bottom', 'Scroll to page bottom')
     .option('--no-wait', 'Skip waiting for lazy-loaded content after scroll')
+    .addOption(dialogOption())
+    .addOption(promptTextOption())
     .addOption(jsonOption())
     .action(async (selector: string | undefined, options: ScrollCommandOptions) => {
       await runCommand(() => runScroll(selector, options), options, formatScrollOutput);
@@ -297,6 +342,7 @@ async function runScroll(
     };
   }
   const request = {
+    ...dialogChoice(options),
     ...(options.down !== undefined && { down: options.down }),
     ...(options.up !== undefined && { up: options.up }),
     ...(options.left !== undefined && { left: options.left }),
@@ -400,25 +446,31 @@ async function runPointerCommand(
 ): Promise<void> {
   const conflict = conflictingOptionsError('--double', '--right');
   await runCommand(
-    () =>
-      options.double && options.right
-        ? Promise.resolve(
-            createErrorResult(conflict.message, EXIT_CODES.INVALID_ARGUMENTS, conflict.suggestion)
-          )
-        : runElementCommand<Parameters<typeof domClick>[0], ClickResult>({
-            selectorOrIndex,
-            index: options.index,
-            buildRequest: (target) => ({
-              ...target,
-              wait: options.wait !== false,
-              ...(action !== 'click' && { action }),
-              ...(options.strict && { strict: true }),
-            }),
-            call: domClick,
-            command: action === 'hover' ? 'hover' : 'click',
-            action: action === 'hover' ? 'hover element' : 'click element',
-            failureSuggestion: 'Verify the selector matches a clickable element',
-          }),
+    async () => {
+      if (options.double && options.right) {
+        return createErrorResult(
+          conflict.message,
+          EXIT_CODES.INVALID_ARGUMENTS,
+          conflict.suggestion
+        );
+      }
+      const dialogs = dialogChoice(options);
+      return runElementCommand<Parameters<typeof domClick>[0], ClickResult>({
+        selectorOrIndex,
+        index: options.index,
+        buildRequest: (target) => ({
+          ...target,
+          ...dialogs,
+          wait: options.wait !== false,
+          ...(action !== 'click' && { action }),
+          ...(options.strict && { strict: true }),
+        }),
+        call: domClick,
+        command: action === 'hover' ? 'hover' : 'click',
+        action: action === 'hover' ? 'hover element' : 'click element',
+        failureSuggestion: 'Verify the selector matches a clickable element',
+      });
+    },
     options,
     formatClickOutput
   );
@@ -509,7 +561,7 @@ function formatActionOutput(
   for (const download of result.downloads ?? []) fmt.text(downloadText(download));
   for (const dialog of result.dialogs ?? []) {
     fmt.blank();
-    fmt.text(`Dialog: ${dialogConsoleText(dialog)}`);
+    fmt.text(`Dialog: ${dialogConsoleText(dialog, { labelled: true })}`);
   }
   return fmt;
 }

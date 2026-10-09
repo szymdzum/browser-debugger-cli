@@ -479,6 +479,7 @@ function buildConfig(url: string, port: number, options: SessionOptions): Sessio
       chromeFlags: options.chromeFlags,
       viewport: options.viewport,
       colorScheme: options.colorScheme,
+      dialog: options.dialog,
     }),
   };
 }

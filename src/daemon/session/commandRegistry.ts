@@ -733,20 +733,23 @@ export function createCommandRegistry(
     },
 
     dom_fill: async (cdp, params) =>
-      interact(cdp, async () =>
-        onScriptTarget(cdp, params, (target) =>
-          withActionStability(
-            cdp,
-            () =>
-              fillElement(
-                target.cdp,
-                target.selector,
-                params.value,
-                filterDefined({ index: target.index, blur: params.blur, cwd: params.cwd })
-              ),
-            params.wait !== false
-          )
-        )
+      interact(
+        cdp,
+        async () =>
+          onScriptTarget(cdp, params, (target) =>
+            withActionStability(
+              cdp,
+              () =>
+                fillElement(
+                  target.cdp,
+                  target.selector,
+                  params.value,
+                  filterDefined({ index: target.index, blur: params.blur, cwd: params.cwd })
+                ),
+              params.wait !== false
+            )
+          ),
+        { dialogs: params }
       ),
 
     dom_click: async (cdp, params) =>
@@ -774,6 +777,7 @@ export function createCommandRegistry(
             params.wait !== false && params.action !== 'hover' && params.action !== 'right',
           reportShown: params.action === 'hover',
           detectUnsettled: params.wait !== false && params.action !== 'hover',
+          dialogs: params,
         }
       ),
 
@@ -793,7 +797,10 @@ export function createCommandRegistry(
                 pendingRequests: () => store.pendingNetworkRequests.values(),
               })
             ),
-          { detectNoEffect: params.waitNetwork !== 0 || params.waitNavigation === true }
+          {
+            detectNoEffect: params.waitNetwork !== 0 || params.waitNavigation === true,
+            dialogs: params,
+          }
         )
       ),
 
@@ -818,31 +825,34 @@ export function createCommandRegistry(
               params.wait !== false
             )
           ),
-        { reportShown: true, detectUnsettled: params.wait !== false }
+        { reportShown: true, detectUnsettled: params.wait !== false, dialogs: params }
       ),
 
     dom_scroll: async (cdp, params) =>
-      interact(cdp, async () =>
-        onScriptTarget(cdp, params, (target) =>
-          withActionStability(
-            cdp,
-            () =>
-              scrollPage(
-                target.cdp,
-                target.selector || undefined,
-                filterDefined({
-                  index: target.index,
-                  down: params.down,
-                  up: params.up,
-                  left: params.left,
-                  right: params.right,
-                  top: params.top,
-                  bottom: params.bottom,
-                })
-              ),
-            params.wait !== false
-          )
-        )
+      interact(
+        cdp,
+        async () =>
+          onScriptTarget(cdp, params, (target) =>
+            withActionStability(
+              cdp,
+              () =>
+                scrollPage(
+                  target.cdp,
+                  target.selector || undefined,
+                  filterDefined({
+                    index: target.index,
+                    down: params.down,
+                    up: params.up,
+                    left: params.left,
+                    right: params.right,
+                    top: params.top,
+                    bottom: params.bottom,
+                  })
+                ),
+              params.wait !== false
+            )
+          ),
+        { dialogs: params }
       ),
 
     dom_listeners: async (cdp, params) =>

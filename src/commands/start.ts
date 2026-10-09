@@ -6,7 +6,7 @@ import { Option, type Command } from 'commander';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import { handleValidationError } from '@/commands/shared/handleValidationError.js';
 import { startSessionViaDaemon } from '@/commands/shared/startHelpers.js';
-import { positiveIntRule } from '@/commands/shared/validation.js';
+import { parseDialogAnswer, positiveIntRule } from '@/commands/shared/validation.js';
 import { PORT_OPTION_DESCRIPTION } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
 import {
@@ -20,6 +20,7 @@ import {
   missingStartUrlError,
   unknownCommandError,
 } from '@/errors/messages.js';
+import type { DialogAnswer } from '@/ipc/protocol/domTypes.js';
 import type { ColorScheme, TelemetryType, ViewportSize } from '@/types.js';
 import { startCommandHelpMessage } from '@/ui/messages/commands.js';
 import { directoryProblem } from '@/utils/directories.js';
@@ -59,6 +60,8 @@ export interface CollectorOptions {
   mobile?: boolean;
   /** `prefers-color-scheme` to emulate: light or dark. */
   colorScheme?: string;
+  /** How dialogs are answered unless an action chooses: accept or dismiss. */
+  dialog?: string;
 }
 
 /**
@@ -153,6 +156,10 @@ export function applyCollectorOptions(command: Command): Command {
       'Emulate prefers-color-scheme for the session: light or dark (default: the system setting)'
     )
     .option(
+      '--dialog <answer>',
+      'Answer JavaScript dialogs (alert, confirm, prompt) with accept (OK) or dismiss (Cancel) for the session, page loads included (default: accept); a DOM action can choose otherwise with its own --dialog'
+    )
+    .option(
       '--mobile',
       `Emulate a phone for the session: mobile viewport (${MOBILE_VIEWPORT.width}x${MOBILE_VIEWPORT.height} unless --viewport), touch, mobile user agent`
     );
@@ -235,6 +242,7 @@ function buildSessionOptions(options: CollectorOptions): {
   chromeFlags: string[] | undefined;
   viewport: ViewportSize | undefined;
   colorScheme: ColorScheme | undefined;
+  dialog: DialogAnswer | undefined;
 } {
   const maxBodySizeRule = positiveIntRule({
     name: '--max-body-size',
@@ -276,6 +284,7 @@ function buildSessionOptions(options: CollectorOptions): {
     viewport: requestedViewport(options.viewport, options.mobile),
     colorScheme:
       options.colorScheme !== undefined ? parseColorScheme(options.colorScheme) : undefined,
+    dialog: options.dialog !== undefined ? parseDialogAnswer(options.dialog) : undefined,
   };
 }
 

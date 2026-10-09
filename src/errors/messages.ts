@@ -649,6 +649,24 @@ export function invalidColorSchemeError(
 }
 
 /**
+ * `--dialog` given something other than accept or dismiss.
+ *
+ * @param value - What was given
+ * @param similar - Answers close to it, closest first
+ * @param answers - Valid answers
+ */
+export function invalidDialogAnswerError(
+  value: string,
+  similar: string[],
+  answers: readonly string[]
+): ErrorWithSuggestion {
+  return {
+    message: `Unknown --dialog: "${value}"`,
+    suggestion: similar[0] ? `Did you mean: ${similar[0]}?` : `Available: ${answers.join(', ')}`,
+  };
+}
+
+/**
  * `-u` / `--user-data-dir` given something that is not a directory path.
  *
  * @param value - What was given

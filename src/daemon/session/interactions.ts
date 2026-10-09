@@ -7,7 +7,12 @@
 import type { TelemetryStore } from './TelemetryStore.js';
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import type { ActionEffects, DialogInfo, TriggeredRequest } from '@/ipc/protocol/domTypes.js';
+import type {
+  ActionEffects,
+  DialogChoice,
+  DialogInfo,
+  TriggeredRequest,
+} from '@/ipc/protocol/domTypes.js';
 import { pendingChanges, watchActionEffects } from '@/runtime/dom/actionEffects.js';
 import { UNBIND_TARGET_SCRIPT } from '@/runtime/dom/targetNode.js';
 import { toDownloadInfo } from '@/telemetry/downloads.js';
@@ -54,6 +59,11 @@ export interface InteractionOptions {
    * press) and waited for the network
    */
   detectUnsettled?: boolean;
+  /**
+   * How to answer the dialogs opened while it runs (`--dialog`,
+   * `--prompt-text`; default: the session default)
+   */
+  dialogs?: DialogChoice;
 }
 
 /** Runs one interaction after the previous one finished */
@@ -101,9 +111,14 @@ function consoleMessagesLogged(store: TelemetryStore): number {
  * and, when asked, what the page was still working on (see
  * {@link pendingChanges}). They are attributed by time: a dialog or request
  * started by a page timer or a navigation started earlier is reported by
- * whichever interaction is running then.
+ * whichever interaction is running then. Dialogs opened while it runs (its
+ * effect wait included) are answered as it chose (`dialogs`); because
+ * interactions are queued, its choice never reaches another interaction, and
+ * it is cleared when it returns, so a dialog a timer opens later gets the
+ * session default. A command that is not an interaction (`dom eval`, `cdp`)
+ * running meanwhile shares its choice.
  *
- * @param store - Session store recording accepted dialogs and network requests
+ * @param store - Session store recording answered dialogs and network requests
  * @returns Interaction runner
  */
 export function createInteractionRunner(store: TelemetryStore): InteractionRunner {
@@ -122,6 +137,7 @@ export function createInteractionRunner(store: TelemetryStore): InteractionRunne
       const effects = options.reportEffects === false ? undefined : watchActionEffects(cdp);
       const collectErrors = effects && watchActionErrors(store);
       try {
+        store.dialogAnswers.setActionChoice(options.dialogs);
         const result = await action();
         const dialogs = store.dialogs.slice(firstDialog);
         if (!succeeded(result)) return { ...result, ...(dialogs.length > 0 && { dialogs }) };
@@ -149,6 +165,7 @@ export function createInteractionRunner(store: TelemetryStore): InteractionRunne
           ...requests,
         };
       } finally {
+        store.dialogAnswers.setActionChoice(undefined);
         effects?.dispose();
         void cdp
           .send('Runtime.evaluate', { expression: UNBIND_TARGET_SCRIPT })

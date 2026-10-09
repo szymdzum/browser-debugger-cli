@@ -7,6 +7,7 @@
 import type { IPCErrorCode } from './errors.js';
 
 import type { PageLoadingState } from '@/ipc/protocol/commands.js';
+import type { DialogAnswer } from '@/ipc/protocol/domTypes.js';
 import type { ColorScheme, TelemetryType, ViewportSize } from '@/types.js';
 
 /**
@@ -64,6 +65,8 @@ export interface SessionOptions {
   viewport?: ViewportSize;
   /** `prefers-color-scheme` the page is emulated with (`--color-scheme`). */
   colorScheme?: ColorScheme;
+  /** How dialogs no action chose an answer for are answered (`--dialog`). */
+  dialog?: DialogAnswer;
 }
 
 /**
