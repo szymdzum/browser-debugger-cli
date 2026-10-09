@@ -431,6 +431,47 @@ void describe('watchActionEffects', () => {
     }
   });
 
+  void it('reads stalls at the second look even when the bursts the first saw left the window', async () => {
+    const read = (at: number, burstAges: number[]): unknown => ({
+      ...QUIET,
+      changes: burstAges.length,
+      settle: { at, burstAges, loading: null },
+    });
+    const first = read(1000, [450, 400]);
+    const recheck = read(1254, [704, 654, 10]);
+    const stalls = [[[610, 1000]], [[610, 1244]]];
+    const cdp = new FakeCdp(Promise.resolve(START), [first, recheck], true, true, stalls);
+    const watch = watchActionEffects(cdp.connection);
+    const effects = await watch.collect({
+      dialogs: 0,
+      consoleMessages: () => 0,
+      detectNoEffect: false,
+      detectUnsettled: true,
+    });
+    assert.equal(effects.work?.domChanging, true, 'one long task from the first look to the step');
+    watch.dispose();
+    await tick();
+    assert.deepEqual(cdp.stallScripts, ['start', 'read', 'read', 'stop']);
+  });
+
+  void it('does not stop the stall watch of a document the action navigated away from', async () => {
+    const fresh = { ...QUIET, href: 'https://a.test/next', fresh: true };
+    const cdp = new FakeCdp(Promise.resolve(START), [fresh]);
+    const watch = watchActionEffects(cdp.connection);
+    cdp.emit('Page.frameNavigated', { frame: MAIN_FRAME });
+    await watch.collect({ dialogs: 0, consoleMessages: () => 0, detectNoEffect: false });
+    await tick();
+    const worldsMade = cdp.methods.filter((m) => m === 'Page.getFrameTree').length;
+    watch.dispose();
+    await tick();
+    assert.deepEqual(cdp.stallScripts, ['start'], 'its watch went with the document');
+    assert.equal(
+      cdp.methods.filter((m) => m === 'Page.getFrameTree').length,
+      worldsMade,
+      'no world made to stop it'
+    );
+  });
+
   void it('reads no stalls after a read with too few bursts to look busy', async () => {
     const cdp = new FakeCdp(Promise.resolve(START), [
       { ...QUIET, changes: 1, settle: { at: 1000, burstAges: [30], loading: null } },

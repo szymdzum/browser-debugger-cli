@@ -491,8 +491,9 @@ export const EFFECTS_READ_SCRIPT = `((stop, shown) => {
  * has its own `setTimeout`, so a page that replaced it is still watched, and
  * its timers share the page's queue: a stall is time the page's own timers
  * could not run either (a long task, or a renderer that runs the page's
- * tasks late). The page sees nothing of it. It stops itself after
- * {@link MAX_WATCH_MS}.
+ * tasks late). The page cannot see it, except in the main-world fallback
+ * for frame-scoped connections (no bdg world), where `__bdgStalls` is a
+ * global of the page. It stops itself after {@link MAX_WATCH_MS}.
  */
 export const STALL_WATCH_START_SCRIPT = `(() => {
   if (globalThis.__bdgStalls) globalThis.__bdgStalls.stop();

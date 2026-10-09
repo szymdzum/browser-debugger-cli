@@ -53,6 +53,18 @@ function worldContext(cdp: PageConnection): Promise<number | null> {
 }
 
 /**
+ * Whether bdg's world is known for a connection: created or being created,
+ * and not forgotten since (the top frame navigated, or its contexts were
+ * cleared). Scripts left in a forgotten world went with its document.
+ *
+ * @param cdp - Connection to the page
+ * @returns True while the world is known
+ */
+export function hasBdgWorld(cdp: PageConnection): boolean {
+  return worlds.has(cdp);
+}
+
+/**
  * Create the world in the top frame and forget it when the page changes.
  *
  * @param cdp - Connection to the page

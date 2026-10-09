@@ -37,7 +37,7 @@ import {
   type ActivityListener,
   type NavigationEvents,
 } from '@/runtime/dom/pageActivity.js';
-import { evaluateInBdgWorld } from '@/runtime/page/bdgWorld.js';
+import { evaluateInBdgWorld, hasBdgWorld } from '@/runtime/page/bdgWorld.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { delay, raceTimeout } from '@/utils/async.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -563,7 +563,8 @@ async function stillChanging(watch: Watch, snapshot: ReadSnapshot | undefined): 
   if (!domLooksBusy(first)) return false;
   const firstRead = Date.now();
   await delay(STILL_CHANGING_RECHECK_MS);
-  const recheck = (await readPage(watch, { stop: false, reportShown: false }))?.settle;
+  const recheck = (await readPage(watch, { stop: false, reportShown: false, stalls: true }))
+    ?.settle;
   const sinceMs =
     first?.at !== undefined && recheck?.at !== undefined
       ? Math.round(recheck.at - first.at)
@@ -647,18 +648,19 @@ function effectsOf(
  * Read the page after the action, unless a main-frame load is pending (the
  * read would wait for the new page). The page first gets to run a timer that
  * fell due meanwhile ({@link letDueTimersRun}); the read itself does not wait
- * for timers. A read whose bursts may make the DOM look busy also gets the
- * stalls up to it ({@link withStalls}). A stopping read that answered stops
- * the page's watch, so disposing need not. A page that did not answer in
- * time is marked unresponsive.
+ * for timers. A read whose bursts may make the DOM look busy, and the second
+ * look at a DOM that did (`stalls`: its first look's bursts may have left
+ * the window by then), also gets the stalls up to it ({@link withStalls}).
+ * A stopping read that answered stops the page's watch, so disposing need
+ * not. A page that did not answer in time is marked unresponsive.
  *
  * @param watch - The action's watch
- * @param options - Also stop the page's watch; list shown elements
+ * @param options - Also stop the page's watch; list shown elements; always read stalls
  * @returns The read, or undefined
  */
 async function readPage(
   watch: Watch,
-  options: { stop: boolean; reportShown: boolean }
+  options: { stop: boolean; reportShown: boolean; stalls?: boolean }
 ): Promise<ReadSnapshot | undefined> {
   if (watch.listener.navigationPending()) return undefined;
   const answered = await letDueTimersRun(watch.cdp);
@@ -672,23 +674,29 @@ async function readPage(
   if (!answer) watch.unresponsive = !watch.listener.navigationPending();
   const snapshot = answer?.value;
   if (options.stop && snapshot) watch.stopConfirmed = true;
-  return snapshot && withStalls(watch.cdp, snapshot);
+  return snapshot && withStalls(watch.cdp, snapshot, options.stalls === true);
 }
 
 /**
- * A read with the stalls up to it, as ages at the read, when it has enough
- * recent bursts for them to matter ({@link recentBursts}); other reads (a
- * static page) are returned as they are, without a further page script.
- * Stalls are read right after the read, in bdg's world, within
- * {@link STALLS_READ_TIMEOUT_MS}; page times after the read are cut off.
+ * A read with the stalls up to it, as ages at the read, when asked to or
+ * when it has enough recent bursts for them to matter
+ * ({@link recentBursts}); other reads (a static page) are returned as they
+ * are, without a further page script. Stalls are read right after the read,
+ * in bdg's world, within {@link STALLS_READ_TIMEOUT_MS}; page times after
+ * the read are cut off.
  *
  * @param cdp - CDP connection
  * @param snapshot - The read
+ * @param always - Read stalls whatever the bursts (the second look at a busy DOM)
  * @returns The read, with stalls when known
  */
-async function withStalls(cdp: CDPConnection, snapshot: ReadSnapshot): Promise<ReadSnapshot> {
+async function withStalls(
+  cdp: CDPConnection,
+  snapshot: ReadSnapshot,
+  always: boolean
+): Promise<ReadSnapshot> {
   const settle = snapshot.settle;
-  if (settle?.at === undefined || recentBursts(settle).length === 0) return snapshot;
+  if (settle?.at === undefined || (!always && recentBursts(settle).length === 0)) return snapshot;
   const at = settle.at;
   const stalls = await raceTimeout(
     evaluateInWorld<Array<[number, number]> | null>(cdp, STALL_READ_SCRIPT, false),
@@ -749,17 +757,19 @@ async function evaluateInWorld<T = unknown>(
 }
 
 /**
- * Stop listening and the stall watch, and stop the page's watch unless a
- * read did. The stop is
- * sent even when the snapshot never answered: CDP runs it after the
- * snapshot, wherever that ran (the page also stops watching on its own
- * after 30 s).
+ * Stop listening, stop the stall watch and stop the page's watch unless a
+ * read did. The page's stop is sent even when the snapshot never answered:
+ * CDP runs it after the snapshot, wherever that ran (the page also stops
+ * watching on its own after 30 s). The stall watch is not stopped when a new
+ * document committed and bdg's world is gone with the old one: its watch
+ * went with it, and stopping would only make a new world.
  *
  * @param watch - The action's watch
  */
 function disposeWatch(watch: Watch): void {
+  const documentGone = watch.listener.events.document !== undefined && !hasBdgWorld(watch.cdp);
   watch.listener.dispose();
-  void evaluateInWorld(watch.cdp, STALL_WATCH_STOP_SCRIPT, false);
+  if (!documentGone) void evaluateInWorld(watch.cdp, STALL_WATCH_STOP_SCRIPT, false);
   if (watch.stopConfirmed) return;
   void watch.cdp
     .send('Runtime.evaluate', { expression: EFFECTS_STOP_SCRIPT })
