@@ -207,7 +207,10 @@ void describe('SessionController.command timeouts', () => {
 
   void it('names Fetch interception when a command times out while it is on', async () => {
     const response = await timedOutReload(true);
-    assert.match(response.error ?? '', /^Command timeout \(30s\): Fetch interception is enabled/);
+    assert.match(
+      response.error ?? '',
+      /^Command timeout \(30s\): Fetch interception may be enabled/
+    );
     assert.equal(response.exitCode, EXIT_CODES.CDP_TIMEOUT);
     assert.match(response.suggestion ?? '', /bdg cdp Fetch\.disable/);
   });

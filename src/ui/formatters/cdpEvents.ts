@@ -77,7 +77,11 @@ function resultLine(method: string | undefined, result: unknown): string | undef
  * @returns Text output
  */
 export function formatCdpCollect(data: CdpCollectData): string {
-  const status = data.complete ? '' : ' (incomplete: timed out)';
+  const status = data.dropped
+    ? ` (incomplete: ${data.dropped} dropped, the disk fell behind)`
+    : data.complete
+      ? ''
+      : ' (incomplete: timed out)';
   return joinLines(
     resultLine(data.method, data.result),
     (fileLine(data) ?? `Collected ${pluralize(data.count, 'event')}`) + status,

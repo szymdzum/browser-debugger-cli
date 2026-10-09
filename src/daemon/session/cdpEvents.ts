@@ -57,16 +57,39 @@ function onPageEvent(
 }
 
 /**
- * An NDJSON file events are written to as they arrive, one per line.
+ * Most bytes a collection's `--out` file may have waiting to be written
+ * (64 MB). CDP events cannot be paused, so past this the events are dropped
+ * and counted, rather than piling up in the daemon's memory.
+ */
+const MAX_PENDING_WRITE_BYTES = 64 * 1024 * 1024;
+
+/** Flags of a temp file: created new (never an existing file or a symlink) */
+const TEMP_FILE_FLAGS =
+  fs.constants.O_WRONLY |
+  fs.constants.O_CREAT |
+  fs.constants.O_EXCL |
+  (fs.constants.O_NOFOLLOW ?? 0);
+
+/** Temp files created by this daemon, for unique names */
+let tempFileCount = 0;
+
+/**
+ * An NDJSON file events are written to, one per line. They go to a new temp
+ * file next to the target, renamed over it only on {@link commit}, so a
+ * failed collection never truncates or deletes a file the user had there.
  */
 class NdjsonFile {
   count = 0;
   bytes = 0;
-  private error: unknown;
+  /** Events dropped while too much was waiting to be written */
+  dropped = 0;
+  private error: Error | undefined;
 
   private constructor(
     readonly file: string,
-    private readonly stream: fs.WriteStream
+    private readonly temp: string,
+    private readonly stream: fs.WriteStream,
+    private readonly maxPendingBytes: number
   ) {
     stream.on('error', (error) => {
       this.error = error;
@@ -74,44 +97,101 @@ class NdjsonFile {
   }
 
   /**
-   * Create (or truncate) the file, with its directory.
+   * Create the temp file of a target, with the target's directory.
    *
-   * @param file - Absolute path
+   * @param file - Absolute path of the target
+   * @param maxPendingBytes - Bytes allowed to wait for the disk before events are dropped
    * @returns The open file
    * @throws CommandError naming the path when it cannot be written
    */
-  static async open(file: string): Promise<NdjsonFile> {
+  static async open(file: string, maxPendingBytes = MAX_PENDING_WRITE_BYTES): Promise<NdjsonFile> {
+    const temp = path.join(
+      path.dirname(file),
+      `.${path.basename(file)}.${process.pid}.${++tempFileCount}.tmp`
+    );
     try {
+      const target = await fs.promises.stat(file).catch(() => undefined);
+      if (target?.isDirectory()) throw Object.assign(new Error('directory'), { code: 'EISDIR' });
       await fs.promises.mkdir(path.dirname(file), { recursive: true });
-      const handle = await fs.promises.open(file, 'w');
-      return new NdjsonFile(file, handle.createWriteStream());
+      const handle = await fs.promises.open(temp, TEMP_FILE_FLAGS, 0o666);
+      return new NdjsonFile(file, temp, handle.createWriteStream(), maxPendingBytes);
     } catch (error) {
       throw outputPathError(file, error, '.ndjson');
     }
   }
 
   /**
-   * Append an event.
+   * Append an event, or drop it while too much waits to be written.
    *
    * @param event - Event
+   * @returns Whether it was written
    */
-  write(event: CdpEventRecord): void {
+  write(event: CdpEventRecord): boolean {
+    if (this.stream.writableLength >= this.maxPendingBytes) {
+      this.dropped++;
+      return false;
+    }
     const line = `${JSON.stringify(event)}\n`;
     this.stream.write(line);
     this.count++;
     this.bytes += Buffer.byteLength(line);
+    return true;
   }
 
   /**
-   * Flush and close the file.
+   * Append events, waiting for the disk whenever its buffer is full.
+   *
+   * @param events - Events
+   */
+  async writeAll(events: CdpEventRecord[]): Promise<void> {
+    for (const event of events) {
+      const line = `${JSON.stringify(event)}\n`;
+      this.count++;
+      this.bytes += Buffer.byteLength(line);
+      if (!this.stream.write(line) && !this.error) {
+        await new Promise<void>((resolve) => {
+          this.stream.once('drain', resolve);
+          this.stream.once('error', () => resolve());
+        });
+      }
+    }
+  }
+
+  /**
+   * Flush and close the temp file, then rename it over the target.
    *
    * @returns What was written
-   * @throws CommandError naming the path when a write failed
+   * @throws CommandError naming the path when a write or the rename failed (the temp file is removed)
    */
-  async close(): Promise<Required<Pick<CdpEventsDelivery, 'file' | 'count' | 'bytes'>>> {
-    await new Promise<void>((resolve) => this.stream.end(resolve));
-    if (this.error) throw outputPathError(this.file, this.error, '.ndjson');
+  async commit(): Promise<Required<Pick<CdpEventsDelivery, 'file' | 'count' | 'bytes'>>> {
+    try {
+      await this.end();
+      if (this.error) throw this.error;
+      await fs.promises.rename(this.temp, this.file);
+    } catch (error) {
+      await fs.promises.rm(this.temp, { force: true });
+      throw outputPathError(this.file, error, '.ndjson');
+    }
     return { file: this.file, count: this.count, bytes: this.bytes };
+  }
+
+  /**
+   * Close and remove the temp file, leaving the target as it was.
+   */
+  async discard(): Promise<void> {
+    await this.end();
+    await fs.promises.rm(this.temp, { force: true });
+  }
+
+  /**
+   * Flush and close the stream (it reports errors through {@link error}).
+   */
+  private async end(): Promise<void> {
+    if (this.stream.closed) return;
+    await new Promise<void>((resolve) => {
+      this.stream.once('close', resolve);
+      this.stream.end();
+    });
   }
 }
 
@@ -121,6 +201,8 @@ export interface CollectOptions extends CdpCollectParams {
   signal?: AbortSignal | undefined;
   /** Output budget without `out` (default {@link EVENT_OUTPUT_MAX_CHARS}) */
   maxChars?: number | undefined;
+  /** Bytes the `out` file may have waiting to be written before events are dropped */
+  maxPendingBytes?: number | undefined;
 }
 
 /**
@@ -140,7 +222,10 @@ export async function collectEvents(
   call: () => Promise<unknown>,
   options: CollectOptions
 ): Promise<{ result: unknown; collected: CdpCollectedEvents }> {
-  const file = options.out === undefined ? undefined : await NdjsonFile.open(options.out);
+  const file =
+    options.out === undefined
+      ? undefined
+      : await NdjsonFile.open(options.out, options.maxPendingBytes);
   const page = new EventPage(options.maxChars ?? EVENT_OUTPUT_MAX_CHARS);
   const untilArrived = new AbortController();
   const deadline = Date.now() + options.timeoutMs;
@@ -160,11 +245,13 @@ export async function collectEvents(
       ...(options.signal ? [options.signal] : []),
     ]);
     await delay(Math.max(0, deadline - Date.now()), stop);
-    const complete =
-      !options.signal?.aborted && (options.until === undefined || untilArrived.signal.aborted);
     unsubscribe.forEach((off) => off());
+    const complete =
+      !options.signal?.aborted &&
+      !file?.dropped &&
+      (options.until === undefined || untilArrived.signal.aborted);
     const delivery = file
-      ? await file.close()
+      ? { ...(await file.commit()), ...(file.dropped > 0 && { dropped: file.dropped }) }
       : {
           events: page.events,
           count: page.events.length,
@@ -173,19 +260,9 @@ export async function collectEvents(
     return { result, collected: { complete, ...delivery } };
   } catch (error) {
     unsubscribe.forEach((off) => off());
-    if (file) await discard(file);
+    await file?.discard();
     throw error;
   }
-}
-
-/**
- * Close and delete the file of a collection that failed.
- *
- * @param file - Open file
- */
-async function discard(file: NdjsonFile): Promise<void> {
-  await file.close().catch(() => undefined);
-  await fs.promises.rm(file.file, { force: true });
 }
 
 /** A `cdp_events` read request */
@@ -274,7 +351,8 @@ export class CdpEventListener {
 
   /**
    * Read buffered events: return them (within the output budget, the rest
-   * staying buffered), write them to a file, or discard them; first waiting
+   * staying buffered), write them to a file (taken out of the buffer only
+   * once the file is in place), or discard them; first waiting
    * up to `waitMs` for one when none is buffered. A client that left
    * during the wait takes nothing, so its events stay for the next read.
    *
@@ -307,8 +385,16 @@ export class CdpEventListener {
     if (request.clear) return { cleared: this.buffer.clear(match) };
     if (request.out !== undefined) {
       const file = await NdjsonFile.open(request.out);
-      this.buffer.take(match).forEach((event) => file.write(event));
-      return file.close();
+      const events = this.buffer.peek(match);
+      try {
+        await file.writeAll(events);
+      } catch (error) {
+        await file.discard();
+        throw error;
+      }
+      const written = await file.commit();
+      this.buffer.remove(new Set(events));
+      return written;
     }
     const page = new EventPage(this.maxChars);
     this.buffer.take(match, page);

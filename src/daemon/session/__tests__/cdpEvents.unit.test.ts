@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { after, describe, it } from 'node:test';
+import { after, afterEach, describe, it, mock } from 'node:test';
 
 import { CdpEventListener, collectEvents, type EventSource } from '@/daemon/session/cdpEvents.js';
 import { CommandError } from '@/errors/index.js';
@@ -42,6 +42,18 @@ class FakeSource implements EventSource {
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-cdp-events-'));
 after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+afterEach(() => mock.restoreAll());
+
+/**
+ * Files in a directory other than the given ones (temp files left behind).
+ *
+ * @param dir - Directory
+ * @param expected - Names that should be there
+ * @returns Other names
+ */
+function strayFiles(dir: string, expected: string[]): string[] {
+  return fs.readdirSync(dir).filter((name) => !expected.includes(name));
+}
 
 /**
  * Params of the events, by their `n`.
@@ -186,6 +198,66 @@ void describe('collectEvents', () => {
     const first = JSON.parse(lines[0] ?? '') as CdpEventRecord;
     assert.equal(first.method, 'A.b');
     assert.equal(typeof first.ts, 'number');
+  });
+
+  void it('leaves an existing --out file untouched when the method fails', async () => {
+    const dir = fs.mkdtempSync(path.join(tmpDir, 'keep-'));
+    const file = path.join(dir, 'keep.ndjson');
+    fs.writeFileSync(file, 'precious\n');
+    const source = new FakeSource();
+    await assert.rejects(
+      collectEvents(
+        source,
+        () => {
+          source.emit('A.b', { n: 1 });
+          return Promise.reject(new Error("'Page.bogusMethodX' wasn't found"));
+        },
+        { events: ['A.b'], timeoutMs: 10, out: file }
+      ),
+      /bogusMethodX/
+    );
+    assert.equal(fs.readFileSync(file, 'utf8'), 'precious\n');
+    assert.deepEqual(strayFiles(dir, ['keep.ndjson']), [], 'no temp file left');
+  });
+
+  void it('replaces an existing --out file only once the collection succeeded', async () => {
+    const dir = fs.mkdtempSync(path.join(tmpDir, 'replace-'));
+    const file = path.join(dir, 'trace.ndjson');
+    fs.writeFileSync(file, 'old\n');
+    const source = new FakeSource();
+    const outcome = await collectEvents(
+      source,
+      () => {
+        assert.equal(fs.readFileSync(file, 'utf8'), 'old\n', 'not truncated before the call');
+        source.emit('A.b', { n: 1 });
+        return Promise.resolve({});
+      },
+      { events: ['A.b'], timeoutMs: 10, out: file }
+    );
+    assert.equal(outcome.collected.count, 1);
+    assert.equal(fs.readFileSync(file, 'utf8').trimEnd().split('\n').length, 1);
+    assert.deepEqual(strayFiles(dir, ['trace.ndjson']), []);
+  });
+
+  void it('drops and counts events while the --out file is too far behind', async () => {
+    const source = new FakeSource();
+    const file = path.join(tmpDir, 'slow.ndjson');
+    const outcome = await collectEvents(
+      source,
+      () => {
+        for (let n = 1; n <= 50; n++) source.emit('A.b', { n, data: 'x'.repeat(100) });
+        return Promise.resolve({});
+      },
+      { events: ['A.b'], timeoutMs: 10, out: file, maxPendingBytes: 1 }
+    );
+    const dropped = outcome.collected.dropped ?? 0;
+    assert.ok(dropped > 0, 'events were dropped');
+    assert.equal(outcome.collected.count + dropped, 50);
+    assert.equal(outcome.collected.complete, false);
+    assert.equal(
+      fs.readFileSync(file, 'utf8').trimEnd().split('\n').length,
+      outcome.collected.count
+    );
   });
 
   void it('names the path when the --out file cannot be written', async () => {
@@ -336,6 +408,25 @@ void describe('CdpEventListener', () => {
     assert.equal(read.cleared, 2);
     assert.equal(read.events, undefined);
     assert.equal(read.buffered, 0);
+  });
+
+  void it('keeps the events buffered when the --out file cannot be committed', async () => {
+    const source = new FakeSource();
+    const listener = new CdpEventListener();
+    listener.listen(source, ['A.b']);
+    source.emit('A.b', { n: 1 });
+    const dir = fs.mkdtempSync(path.join(tmpDir, 'commit-'));
+    const file = path.join(dir, 'events.ndjson');
+    fs.writeFileSync(file, 'precious\n');
+    mock.method(fs.promises, 'rename', () =>
+      Promise.reject(Object.assign(new Error('no space'), { code: 'ENOSPC' }))
+    );
+    await assert.rejects(listener.read({ action: 'read', out: file }), CommandError);
+    mock.restoreAll();
+    assert.equal(fs.readFileSync(file, 'utf8'), 'precious\n');
+    assert.deepEqual(strayFiles(dir, ['events.ndjson']), []);
+    const next = await listener.read({ action: 'read' });
+    assert.deepEqual(ns(next.events), [1], 'the events are still buffered');
   });
 
   void it('writes the buffered events to a file with out', async () => {

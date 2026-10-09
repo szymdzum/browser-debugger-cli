@@ -26,6 +26,7 @@ import {
   cdpMethodNotEventError,
   cdpSecondsRangeError,
   cdpUnlistedEventWarning,
+  collectDroppedHint,
   collectIncompleteHint,
   eventsOmittedHint,
   eventsWaitedOutHint,
@@ -305,6 +306,7 @@ export function collectHints(data: CdpCollectData, collect: CdpCollectParams): s
       ? [collectIncompleteHint(collect.until, collect.timeoutMs / 1000)]
       : []),
     ...(data.omitted ? [eventsOmittedHint(data.omitted, false)] : []),
+    ...(data.dropped ? [collectDroppedHint(data.dropped)] : []),
   ];
 }
 

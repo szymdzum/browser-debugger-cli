@@ -80,6 +80,20 @@ void describe('EventBuffer', () => {
     assert.ok(buffer.bytes <= size * 2 + 10);
   });
 
+  void it('measures its budget in UTF-8 bytes, not characters', () => {
+    const accented = (n: number): CdpEventRecord => ({
+      method: 'A.b',
+      params: 'é'.repeat(100),
+      ts: n,
+    });
+    const chars = eventJsonLength(accented(1));
+    const buffer = new EventBuffer({ maxEvents: 100, maxBytes: chars * 2 + 10 });
+    buffer.push(accented(1));
+    buffer.push(accented(2));
+    assert.equal(buffer.size, 1, 'two events of 100 two-byte letters are over the byte budget');
+    assert.equal(buffer.bytes, Buffer.byteLength(JSON.stringify(accented(2))));
+  });
+
   void it('drops an event alone over the byte budget', () => {
     const buffer = new EventBuffer({ maxEvents: 100, maxBytes: 50 });
     buffer.push(event('A.b', 1, 500));

@@ -58,6 +58,8 @@ export interface CdpCollectedEvents extends CdpEventsDelivery {
   complete: boolean;
   /** Matching events left out of `events` to stay within the output budget (use `out`) */
   omitted?: number;
+  /** Events not written to `file` because the disk fell too far behind (complete is false) */
+  dropped?: number;
 }
 
 /** `cdp_events` request: start listening, read the buffer, or stop */

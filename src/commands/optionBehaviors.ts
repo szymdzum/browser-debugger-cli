@@ -590,14 +590,14 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   'cdp:--out': {
     default: 'Events are returned in the output, kept to about 20000 characters',
     whenEnabled:
-      'The daemon writes every event as one NDJSON line ({ method, params, ts }) to the file as it arrives, creating its directory, and returns { file, count, bytes } instead of the events. A trace becomes a DevTools Performance file with: jq -s \'{traceEvents: [.[] | select(.method == "Tracing.dataCollected") | .params.value[]]}\' trace.ndjson > trace.json',
+      'The daemon writes every event as one NDJSON line ({ method, params, ts }) as it arrives, to a new temp file next to the target (created exclusively, never through a symlink) that replaces the file only once the command succeeded: a failed method or write leaves an existing file as it was. It returns { file, count, bytes } instead of the events. Should the disk fall over 64 MB behind, further events are dropped and counted (dropped, complete: false); --events removes events from the buffer only once the file is in place. A trace becomes a DevTools Performance file with: jq -s \'{traceEvents: [.[] | select(.method == "Tracing.dataCollected") | .params.value[]]}\' trace.ndjson > trace.json',
   },
   'cdp:--listen': {
     default: 'Events between commands are not kept',
     whenEnabled:
       'Buffers the events (comma-separated) in the daemon until read with --events or dropped with --unlisten; repeated --listen adds events. With a method, listening starts before it is sent (bdg cdp Fetch.enable --params ... --listen Fetch.requestPaused)',
     automaticBehavior:
-      'The buffer holds at most 1000 events and 10 MB of event JSON; beyond either the oldest are dropped and counted in dropped. Only events of the session page are kept (not of attached iframe or worker sessions). The buffer ends with the session',
+      'The buffer holds at most 1000 events and 10 MB of event JSON (UTF-8 bytes); beyond either the oldest are dropped and counted in dropped. Only events of the session page are kept (not of attached iframe or worker sessions). The buffer ends with the session',
   },
   'cdp:--events': {
     default: 'Buffered events stay in the daemon',

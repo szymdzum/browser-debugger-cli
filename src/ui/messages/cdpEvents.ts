@@ -45,7 +45,7 @@ export const FETCH_ENABLE_NOTE =
 export function fetchInterceptionTimeoutCause(): ErrorWithSuggestion {
   return {
     message:
-      'Fetch interception is enabled (bdg cdp Fetch.enable): requests matching its patterns stay paused until continued, which can stall loads and actions',
+      'Fetch interception may be enabled (bdg cdp Fetch.enable ran without Fetch.disable since): requests matching its patterns stay paused until continued, which can stall loads and actions',
     suggestion: [
       `Release them: ${sessionCommand('bdg cdp Fetch.disable')}`,
       `Or answer each: ${sessionCommand('bdg cdp --events Fetch.requestPaused')} (after --listen Fetch.requestPaused), then Fetch.continueRequest / Fetch.fulfillRequest with its requestId`,
@@ -191,6 +191,16 @@ export function cdpSecondsRangeError(
  */
 export function collectIncompleteHint(until: string, timeoutS: number): string {
   return `${until} did not arrive within ${timeoutS}s: the events are partial (complete: false). Raise --timeout (max 120) or check that the method starts what sends it`;
+}
+
+/**
+ * Hint for events a collection dropped because its file fell behind.
+ *
+ * @param dropped - Events dropped
+ * @returns Hint text
+ */
+export function collectDroppedHint(dropped: number): string {
+  return `${dropped} ${dropped === 1 ? 'event was' : 'events were'} dropped: the disk fell over 64 MB behind (complete: false). Write to a faster disk, or collect fewer events`;
 }
 
 /**

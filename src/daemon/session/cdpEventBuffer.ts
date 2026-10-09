@@ -15,11 +15,11 @@ export const EVENT_OUTPUT_MAX_CHARS = 20_000;
 export interface EventBufferLimits {
   /** Events kept at most */
   maxEvents: number;
-  /** Characters of event JSON kept at most */
+  /** Bytes of event JSON (UTF-8) kept at most */
   maxBytes: number;
 }
 
-/** Caps of the `--listen` buffer: 1000 events, 10 MB of event JSON */
+/** Caps of the `--listen` buffer: 1000 events, 10 MB of event JSON (UTF-8 bytes) */
 export const LISTEN_LIMITS: EventBufferLimits = { maxEvents: 1000, maxBytes: 10 * 1024 * 1024 };
 
 /** Picks the events a read is about, by name */
@@ -89,7 +89,17 @@ function cutParams(event: CdpEventRecord, maxChars: number): CdpEventOutput {
   return { ...event, params: text, truncatedFrom: json.length };
 }
 
-/** A buffered event and its JSON length */
+/**
+ * Size of an event's JSON in UTF-8 bytes, what the buffer's byte budget counts.
+ *
+ * @param event - Event
+ * @returns Bytes
+ */
+function eventByteLength(event: CdpEventRecord): number {
+  return Buffer.byteLength(JSON.stringify(event));
+}
+
+/** A buffered event and its JSON size in bytes */
 interface Entry {
   event: CdpEventRecord;
   size: number;
@@ -115,7 +125,7 @@ export class EventBuffer {
     return this.entries.length;
   }
 
-  /** Characters of event JSON buffered */
+  /** Bytes of event JSON (UTF-8) buffered */
   get bytes(): number {
     return this.totalBytes;
   }
@@ -131,7 +141,7 @@ export class EventBuffer {
    * @param event - Event
    */
   push(event: CdpEventRecord): void {
-    const size = eventJsonLength(event);
+    const size = eventByteLength(event);
     this.entries.push({ event, size });
     this.totalBytes += size;
     while (
@@ -160,18 +170,38 @@ export class EventBuffer {
    *
    * @param match - Event filter
    * @param page - Output budget the events go to
+   * @param only - Take only these events
    * @returns Events taken, in order
    */
-  take(match: EventMatch, page?: EventPage): CdpEventRecord[] {
+  take(match: EventMatch, page?: EventPage, only?: ReadonlySet<CdpEventRecord>): CdpEventRecord[] {
     const taken: CdpEventRecord[] = [];
     this.entries = this.entries.filter((entry) => {
-      if (!match(entry.event.method)) return true;
+      if (!match(entry.event.method) || (only && !only.has(entry.event))) return true;
       if (page && !page.add(entry.event)) return true;
       taken.push(entry.event);
       this.totalBytes -= entry.size;
       return false;
     });
     return taken;
+  }
+
+  /**
+   * Matching events, left in the buffer.
+   *
+   * @param match - Event filter
+   * @returns Events, in order
+   */
+  peek(match: EventMatch): CdpEventRecord[] {
+    return this.entries.filter((entry) => match(entry.event.method)).map((entry) => entry.event);
+  }
+
+  /**
+   * Remove these events (ones dropped meanwhile are skipped).
+   *
+   * @param events - Events returned by {@link peek}
+   */
+  remove(events: ReadonlySet<CdpEventRecord>): void {
+    this.take((_method) => true, undefined, events);
   }
 
   /**
