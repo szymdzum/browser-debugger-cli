@@ -193,12 +193,23 @@ void describe('takeScreenshot', () => {
     assert.equal(sent.at(-1), 'Emulation.setDeviceMetricsOverride 0');
   });
 
+  void it('skips the capture of a client that left, and still puts the emulation back', async () => {
+    const { cdp, sent } = fakePage({ pixelRatio: 3 });
+    const abandoned = new AbortController();
+    const shot = takeScreenshot(cdp, { format: 'png', fullPage: false }, noViewport, {
+      abandoned: abandoned.signal,
+    });
+    abandoned.abort();
+    await assert.rejects(shot);
+    assert.ok(!sent.includes('Page.captureScreenshot'), sent.join(', '));
+    assert.equal(sent.at(-1), 'Emulation.clearDeviceMetricsOverride');
+  });
+
   void it('answers a busy page with 102 only after the emulation is back', async () => {
     const { cdp, sent } = fakePage({ busy: true });
     await assert.rejects(
       takeScreenshot(cdp, { format: 'png', backendNodeId: 7 }, noViewport, {
-        busyAfterMs: 30,
-        livenessMs: 30,
+        recovery: { busyAfterMs: 30, livenessMs: 30 },
       }),
       (error) => error instanceof CommandError && error.exitCode === 102
     );

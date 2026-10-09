@@ -185,6 +185,22 @@ export function commandTimedOutError(seconds: number): ErrorWithSuggestion {
 }
 
 /**
+ * A screenshot interrupted by Ctrl-C or SIGTERM: the daemon skips the
+ * capture if it has not started and puts the page's emulation back before
+ * any later page command runs.
+ *
+ * @param signal - The signal that stopped it
+ * @returns Message and suggestion
+ */
+export function screenshotInterruptedError(signal: 'SIGINT' | 'SIGTERM'): ErrorWithSuggestion {
+  return {
+    message: `Screenshot cancelled (${signal === 'SIGINT' ? 'interrupted' : 'terminated'})`,
+    suggestion:
+      "No file was written; run it again to capture (the next command sees the page's own emulation)",
+  };
+}
+
+/**
  * What to do when a command finds no session to work with.
  *
  * @param exitCode - 85 while a start is in progress, otherwise 83

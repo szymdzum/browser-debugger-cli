@@ -9,6 +9,7 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import { ChromeLaunchError } from '@/connection/errors.js';
 import { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
+import { CaptureGate } from '@/daemon/session/captureGate.js';
 import { connectCDP, navigateToTarget } from '@/daemon/session/cdpSetup.js';
 import {
   externalChromePort,
@@ -123,6 +124,7 @@ export class Session {
       filterDefined({ viewport: this.config.viewport, colorScheme: this.config.colorScheme }),
     set: (emulation) => this.setEmulation(emulation),
   });
+  private readonly captures = new CaptureGate();
   private readonly notify: NoticeSink<ChromeNoticeCode> = (notice) =>
     log.info(formatChromeNotice(notice));
   private chrome: LaunchedChrome | null = null;
@@ -206,14 +208,18 @@ export class Session {
    * {@link CRASH_SAFE_CDP} methods); others fail with exit 107 instead of
    * waiting for a page that cannot answer. Commands that may change the page
    * drop `dom inspect`'s kept matched rules ({@link withMatchedStylesReset}).
+   * Page commands run once a screenshot running before them has put the
+   * page's emulation back ({@link CaptureGate}).
    *
    * @param name - Command name
    * @param params - Command parameters
+   * @param abandoned - Aborted when the requesting client disconnects
    * @returns Command result
    */
   execute<K extends CommandName>(
     name: K,
-    params: CommandSchemas[K]['requestSchema']
+    params: CommandSchemas[K]['requestSchema'],
+    abandoned?: AbortSignal
   ): Promise<CommandSchemas[K]['responseSchema']> {
     if (!this.cdp || !this.started || this.stopping) {
       return Promise.reject(new Error('No active session'));
@@ -233,7 +239,9 @@ export class Session {
     }
     const handler = this.registry[name];
     const cdp = this.cdp;
-    return withMatchedStylesReset(cdp, name, () => handler(cdp, params));
+    return this.captures.run(name, () =>
+      withMatchedStylesReset(cdp, name, () => handler(cdp, params, abandoned))
+    );
   }
 
   /**

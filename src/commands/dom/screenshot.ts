@@ -9,6 +9,7 @@ import type * as FsModule from 'fs';
 import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
 import { captureScreenshot, resolveSelector, selectMatch } from '@/commands/dom/helpers/index.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
+import { abortOnInterrupt } from '@/commands/shared/interrupt.js';
 import type { DomScreenshotCommandOptions } from '@/commands/shared/optionTypes.js';
 import { assertFilePath, outputPathError } from '@/commands/shared/outputFile.js';
 import { positiveIntRule } from '@/commands/shared/validation.js';
@@ -166,13 +167,22 @@ function formatFrameFilename(frameNumber: number, format: string): string {
   return `${String(frameNumber).padStart(3, '0')}.${format}`;
 }
 
+/**
+ * Capture the page. Ctrl-C (or SIGTERM) cancels the capture and exits 130
+ * (143), with the error envelope under `--json`.
+ *
+ * @param outputPath - File to write
+ * @param options - Command options
+ */
 async function handlePageScreenshot(
   outputPath: string,
   options: DomScreenshotCommandOptions
 ): Promise<void> {
+  const interrupt = abortOnInterrupt();
   await runCommand(
     async () => {
-      const result = await captureScreenshot(outputPath, buildScreenshotRequest(options));
+      const request = buildScreenshotRequest(options);
+      const result = await captureScreenshot(outputPath, request, interrupt);
       return { success: true, data: result };
     },
     options,
@@ -180,15 +190,23 @@ async function handlePageScreenshot(
   );
 }
 
+/**
+ * Capture one element; interrupted like {@link handlePageScreenshot}.
+ *
+ * @param outputPath - File to write
+ * @param options - Command options
+ */
 async function handleElementScreenshot(
   outputPath: string,
   options: DomScreenshotCommandOptions
 ): Promise<void> {
+  const interrupt = abortOnInterrupt();
   await runCommand(
     async () => {
       const backendNodeId = await resolveElementNodeId(options);
       const request = buildScreenshotRequest(options, backendNodeId);
-      const elementResult = addElementInfo(await captureScreenshot(outputPath, request), options);
+      const shot = await captureScreenshot(outputPath, request, interrupt);
+      const elementResult = addElementInfo(shot, options);
       return { success: true, data: elementResult };
     },
     options,

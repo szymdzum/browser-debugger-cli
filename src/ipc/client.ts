@@ -248,13 +248,16 @@ export async function stopSession(): Promise<StopSessionResponse> {
  * @param commandName - Name of the command to send
  * @param params - Command parameters (without type field)
  * @param timeoutMs - How long to wait (default: IPC timeout; page work can take long)
+ * @param signal - Cancels the command: closes the connection, which the daemon notices
  * @returns Command response from the session
  * @throws Error if connection fails or command execution fails
+ * @throws IPCCancelledError if `signal` aborts first
  */
 async function sendCommand<T extends CommandName>(
   commandName: T,
   params: NoType<(typeof COMMANDS)[T]['requestSchema']>,
-  timeoutMs?: number
+  timeoutMs?: number,
+  signal?: AbortSignal
 ): Promise<ClientResponse<T>> {
   const request: ClientRequest<T> = {
     ...params,
@@ -267,7 +270,9 @@ async function sendCommand<T extends CommandName>(
     request,
     commandName,
     `${commandName}_response`,
-    timeoutMs
+    timeoutMs,
+    undefined,
+    signal
   );
 }
 
@@ -525,11 +530,17 @@ export async function domInspect(
 /**
  * Capture the page or one element; the daemon puts back the emulation the
  * capture changed before it answers.
+ *
+ * @param params - What to capture and how
+ * @param signal - Cancels the capture (the daemon skips it and only restores)
+ * @returns The image and what was captured
+ * @throws IPCCancelledError if `signal` aborts first
  */
 export async function domScreenshot(
-  params: NoType<(typeof COMMANDS)['dom_screenshot']['requestSchema']>
+  params: NoType<(typeof COMMANDS)['dom_screenshot']['requestSchema']>,
+  signal?: AbortSignal
 ): Promise<ClientResponse<'dom_screenshot'>> {
-  return sendCommand('dom_screenshot', params);
+  return sendCommand('dom_screenshot', params, undefined, signal);
 }
 
 /** Time the client gives `dom wait` beyond its --timeout (the daemon reports the timeout first) */

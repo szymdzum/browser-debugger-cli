@@ -950,6 +950,8 @@ bdg dom screenshot high-res.jpg --quality 100
 - Use `--no-resize` for full resolution when needed; human output says when an image was scaled (`scaled from 1280×2777 to 723×1568; --no-resize for full size`)
 - Token estimates account for device pixel ratio (Retina displays)
 
+**Emulation during a capture:** a capture may change the page's emulation (a pixel ratio of 1 on a high-DPI or `--mobile` page, which also turns touch off; the viewport and scrollbars for an area beyond the viewport) and puts it back before it ends, however it ends. Other page commands (`dom`, `page`, `cdp`, from any terminal) wait until it is back (at most 15 s), so none sees the capture's emulation; `status`, `peek` and the telemetry lists do not wait. Ctrl-C exits 130 at once (SIGTERM 143), with the error envelope under `--json`; the daemon then skips the capture if it has not started and only puts the emulation back.
+
 ## Network Commands
 
 ### List Network Requests
