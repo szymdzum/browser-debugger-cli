@@ -7,6 +7,7 @@
 
 import type { DomFrame, PageLoadingState, PendingRequestInfo } from '@/ipc/protocol/commands.js';
 import type {
+  ActionError,
   DownloadInfo,
   ElementLayout,
   FillValueMismatch,
@@ -22,6 +23,7 @@ import type { InspectVisibility } from '@/ipc/protocol/inspectTypes.js';
 import type { DelegationNote } from '@/runtime/dom/listenerSummary.js';
 import type { WaitCondition, WaitSnapshot } from '@/runtime/dom/waitCondition.js';
 import type { DocumentRequestState, ViewportPosition } from '@/types.js';
+import { shortUrlName } from '@/ui/formatters/console/shared.js';
 import {
   buildAgentDiscoveryHelp,
   buildCommonTaskExamples,
@@ -312,6 +314,30 @@ export function downloadsDirUnavailableReason(detail: string): string {
  */
 export function moreMessagesText(count: number): string {
   return `(+${count} more)`;
+}
+
+/**
+ * A console error an action caused, for its `Errors:` rows: repeats counted
+ * and the source shortened like `bdg console` does ({@link shortUrlName}).
+ *
+ * @param error - Reported error
+ * @returns e.g. `[2x] Uncaught Error: handler exploded (app.js:3:142)`
+ */
+export function actionErrorText(error: ActionError): string {
+  const repeats = error.count > 1 ? `[${error.count}x] ` : '';
+  if (error.source === undefined) return `${repeats}${error.text}`;
+  const [, url = error.source, position = ''] = /^(.*?)((?::\d+){2})?$/.exec(error.source) ?? [];
+  return `${repeats}${error.text} (${shortUrlName(url)}${position})`;
+}
+
+/**
+ * Last `Errors:` row when an action caused more distinct errors than are listed.
+ *
+ * @param count - Distinct errors not listed
+ * @returns e.g. `+2 more (bdg console --level error)`
+ */
+export function moreErrorsText(count: number): string {
+  return `+${count} more (${sessionCommand('bdg console --level error')})`;
 }
 
 /** Result line of `bdg dom hover --off` */

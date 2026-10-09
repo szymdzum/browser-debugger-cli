@@ -111,6 +111,16 @@ export interface PendingChanges {
   busy?: true;
 }
 
+/** A console error or uncaught exception an action caused, repeats counted */
+export interface ActionError {
+  /** e.g. `Uncaught Error: handler exploded` (on one line, at most 120 characters) */
+  text: string;
+  /** Where it was thrown or logged: `url:line:column` (1-based), or a failed load's URL */
+  source?: string;
+  /** Times it was logged during the action (same text and source) */
+  count: number;
+}
+
 /** What an action changed on the page, besides its triggered requests */
 export interface ActionEffects {
   /** The page navigated or changed its URL (absent when it did not) */
@@ -131,6 +141,10 @@ export interface ActionEffects {
   replacedBuiltins?: string[];
   /** Downloads that began during the action (absent when none did) */
   downloads?: DownloadInfo[];
+  /** Console errors and uncaught exceptions logged during the action (at most 3 distinct; absent when none) */
+  errors?: ActionError[];
+  /** How many more distinct errors there were than `errors` lists */
+  moreErrors?: number;
 }
 
 /** A filled field's value differing from the one given */

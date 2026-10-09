@@ -157,6 +157,29 @@ void describe('createInteractionRunner', () => {
     assert.equal('work' in plain, false, 'the page work stays internal');
   });
 
+  void it('adds the console errors logged during the interaction', async () => {
+    const store = new TelemetryStore();
+    const onLoad = { type: 'error' as const, text: 'on load', timestamp: Date.now() };
+    store.receiveConsoleMessage()(onLoad);
+    store.consoleMessages.push(onLoad);
+    const interact = createInteractionRunner(store);
+    const throwing = (): Promise<{ success: boolean }> => {
+      const thrown = {
+        type: 'error' as const,
+        text: 'Uncaught Error: handler exploded',
+        timestamp: Date.now(),
+      };
+      store.receiveConsoleMessage()(thrown);
+      store.consoleMessages.push(thrown);
+      return Promise.resolve({ success: true });
+    };
+
+    const result = await interact(fakeCdp(), throwing);
+    assert.deepEqual(result.errors, [{ text: 'Uncaught Error: handler exploded', count: 1 }]);
+    assert.equal(result.moreErrors, undefined);
+    assert.equal((await interact(fakeCdp(), throwing, { reportEffects: false })).errors, undefined);
+  });
+
   void it('reports nothing when effects are off or the page could not be read', async () => {
     const interact = createInteractionRunner(new TelemetryStore());
     const action = (): Promise<{ success: boolean }> => Promise.resolve({ success: true });

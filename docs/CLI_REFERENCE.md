@@ -807,6 +807,18 @@ Method:        mouse events
 Shown:         div.figcaption "name: user2 View profile"
 ```
 
+`click`, `fill`, `pressKey`, `submit`, `hover` and `scroll` also list the console errors and uncaught exceptions they caused, after `Shown`: a handler's throw, a throw in a timer or promise it started (`Uncaught (in promise) …` for an unhandled rejection), `console.error` and failed `console.assert`, browser errors such as failed loads, from the page, its iframes and workers, and after a navigation the errors of the new page. `Errors: Uncaught Error: handler exploded (app.js:3:142)`, `[2x]` before a repeated one, and `+N more (bdg console --level error)` when there were more than 3 distinct ones (`errors: [{ text, source, count }]` and `moreErrors` in JSON; `source` is `url:line:column`, 1-based, or a failed load's URL; texts on one line, 120 characters each; absent when there were none). Repeats are grouped like `bdg console` groups them (same text and source). An error counts when bdg received it from the start of the action until its result was read (by arrival, not by Chrome's timestamps, so a remote Chrome whose clock differs makes no difference), so one a page timer or poller logs meanwhile is listed too, and one the page logs after the action returned is not (`bdg console` has it). Errors logged before the action and warnings are left out. A failed action (target not found, not fillable, refused with `--strict`) has no `errors`: it fails before the page's handlers run, and a handler that throws does not make the action fail (the action succeeds and lists the error). They are read from the session's console telemetry (none when it is off), without waiting.
+
+```text
+✓ Element Clicked
+
+Selector:      #save
+Element:       button#save "Save"
+Method:        mouse events
+Errors:        Uncaught TypeError: Cannot read properties of undefined (reading 'id') (app.js:41:17)
+               [2x] Save failed (app.js:52:13)
+```
+
 `click` (also `--double`/`--right`) and `pressKey` say when the page was still changing as they returned, so an agent waits for the result instead of reading a half-rendered page: the status line ends `(page still changing)` and a note below it says what was pending, e.g. `⚠ The page was still changing when the click returned (page busy running a script); wait for the result with bdg dom wait <selector>`. JSON has `settled: false` and `pending` with what was seen (absent when the page looked settled; the exit code stays 0):
 
 - `requests`: document, fetch/XHR and script requests the action started that were still running (images, stylesheets, fonts and streams do not count)

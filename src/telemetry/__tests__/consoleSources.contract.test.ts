@@ -319,4 +319,38 @@ void describe('Console sources', () => {
     assert.equal(kept.at(-1)?.text, `msg ${MAX_CONSOLE_MESSAGES + 1}`);
     assert.equal(dropped, 3);
   });
+
+  void it('reports when each message was received, also one added after its expansion', async () => {
+    const stamped = new MockSessionCDP();
+    const added: ConsoleMessage[] = [];
+    const received: string[] = [];
+    let events = 0;
+    const stop = await startConsoleCollection(
+      stamped as unknown as CDPConnection,
+      added,
+      false,
+      undefined,
+      undefined,
+      () => {
+        const receipt = ++events;
+        return (message) => received.push(`${receipt}:${message.text}`);
+      }
+    );
+    stamped.emit('Runtime.consoleAPICalled', {
+      type: 'error',
+      args: [{ type: 'object', objectId: 'obj-1', description: 'Object' }],
+      executionContextId: 1,
+      timestamp: 1000,
+    });
+    stamped.emit('Runtime.exceptionThrown', {
+      timestamp: 1001,
+      exceptionDetails: { exceptionId: 1, text: 'Uncaught', lineNumber: 0, columnNumber: 0 },
+    });
+    await flush();
+    await flush();
+    await stop();
+
+    assert.equal(added.length, 2);
+    assert.deepEqual(received, ['2:Uncaught', `1:${added[0]?.text ?? ''}`]);
+  });
 });

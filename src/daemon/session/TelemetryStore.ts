@@ -29,6 +29,10 @@ export class TelemetryStore {
    * `consoleMessages[i]` in the session is `consoleDropped + i`
    */
   consoleDropped = 0;
+  /** Console events received so far (daemon side, in arrival order) */
+  private consoleReceived = 0;
+  /** Which received event each console message came from (1-based) */
+  private readonly consoleReceipts = new WeakMap<ConsoleMessage, number>();
   readonly navigationEvents: NavigationEvent[] = [];
   readonly websocketConnections: WebSocketConnection[] = [];
   /** JavaScript dialogs accepted during the session */
@@ -58,6 +62,39 @@ export class TelemetryStore {
   }
 
   /**
+   * Note that a console event arrived, before its message is added: the
+   * message may be added later (its objects expanded first) and is kept in
+   * the page's timestamp order, so neither its position nor Chrome's clock
+   * tells when bdg received it.
+   *
+   * @returns Records the event's message once it is added
+   */
+  receiveConsoleMessage(): (message: ConsoleMessage) => void {
+    const receipt = ++this.consoleReceived;
+    return (message) => this.consoleReceipts.set(message, receipt);
+  }
+
+  /**
+   * Console events received so far, a mark for {@link receivedAfter}.
+   *
+   * @returns Count that only grows
+   */
+  consoleMessagesReceived(): number {
+    return this.consoleReceived;
+  }
+
+  /**
+   * Whether a console message's event arrived after a mark.
+   *
+   * @param message - Message
+   * @param mark - {@link consoleMessagesReceived} at some moment
+   * @returns False for a message received by then or not recorded
+   */
+  receivedAfter(message: ConsoleMessage, mark: number): boolean {
+    return (this.consoleReceipts.get(message) ?? 0) > mark;
+  }
+
+  /**
    * Record an accepted dialog, and show it among the console messages when
    * console telemetry is collected (it is otherwise invisible: bdg accepts it
    * before anyone could see it), dropping the oldest message at the limit.
@@ -71,12 +108,14 @@ export class TelemetryStore {
       this.consoleMessages.shift();
       this.consoleDropped++;
     }
-    this.consoleMessages.push({
+    const message: ConsoleMessage = {
       type: 'info',
       text: dialogConsoleText(dialog),
       timestamp: Date.now(),
       source: 'other',
       ...(this.getCurrentNavigationId && { navigationId: this.getCurrentNavigationId() }),
-    });
+    };
+    this.receiveConsoleMessage()(message);
+    this.consoleMessages.push(message);
   }
 }

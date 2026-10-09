@@ -56,10 +56,12 @@ bdg page info                                # URL and title
 Page: navigated to https://app.test/secure (200)    # navigation (or "URL changed ... (same document)")
 New text: "Your password is invalid!" (div#flash)   # alert/status/aria-live messages that appeared
 ⚠ Element Clicked (no visible effect observed ...)  # nothing changed - wrong element or a broken handler
+Errors: Uncaught Error: handler exploded (app.js:3:142)  # console errors/exceptions the action caused
 Download: report.txt → ~/.bdg/downloads/report.txt (completed, 15 B)  # files go to <session dir>/downloads
 ```
 
-- In `--json`: `navigation`, `messages`, `downloads`, `effect: "none"` and pending work (timers, spinners) are fields on `data`.
+- In `--json`: `navigation`, `messages`, `errors` (`[{ text, source, count }]`, max 3, then `moreErrors`), `downloads`, `effect: "none"` and pending work (timers, spinners) are fields on `data`.
+- `errors` covers throws in handlers and their timers, unhandled rejections, `console.error` and the errors of a page the action navigated to; earlier errors and warnings are left out (`bdg console --level error` has them all).
 - Results the page shows later are not waited for: follow up with `bdg dom wait`.
 
 ```bash

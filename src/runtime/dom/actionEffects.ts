@@ -255,7 +255,7 @@ export function newMessages(
  * @param text - Text
  * @returns Text of at most that length
  */
-function cutText(text: string): string {
+export function cutText(text: string): string {
   const characters = Array.from(text);
   if (characters.length <= MAX_MESSAGE_LENGTH) return text;
   return `${characters.slice(0, MAX_MESSAGE_LENGTH - 1).join('')}…`;

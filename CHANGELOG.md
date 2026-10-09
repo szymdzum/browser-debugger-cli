@@ -7,9 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Actions report the errors they caused** (#449): `dom click`, `fill`, `pressKey`, `submit`, `hover` and `scroll` list the console errors and uncaught exceptions logged while they ran: a handler's throw, a throw in a timer it set, an unhandled rejection, `console.error`, and the errors of a page the action navigated to. Human output has `Errors: Uncaught Error: handler exploded (app.js:3:142)` (`[2x]` for repeats, then `+N more (bdg console --level error)`), JSON `errors: [{ text, source, count }]` (at most 3 distinct ones, grouped like `bdg console`) and `moreErrors`. Errors logged before the action and warnings are left out. They come from the session's console telemetry, so actions without errors take no longer.
+
 ### Fixed
 
 - **`dom form` finds forms in shadow roots** (#456): it searched only the light DOM, so a form rendered by a web component (Lit, Shoelace, LWC, MDN's search modal) gave `No forms discovered on the page` while `dom query` and `dom a11y` saw its fields. Forms and form-less fields in open shadow roots, nested ones included, are now listed and marked `(in shadow root of <x-login>)` (JSON `shadowHost`). Labels (`for`, `aria-labelledby`), required stars and error texts are read in the field's own root, and secret fields there are masked as elsewhere. A field in a component inside a light DOM form (an `sl-input`) belongs to that form. Indices work with `dom fill`, `dom click` and `dom submit`: the daemon now binds each listed field and button to its node during discovery instead of re-running its selector, which in a shadow root may not be unique. Closed shadow roots cannot be read by page scripts, but CDP sees them: a defined custom element whose closed shadow root holds a field is named as not inspectable (`Note: <x-vault> has a closed shadow root with form fields; …`, JSON `closedShadowHosts`; the first 50 custom elements without an open root are checked, and closed roots attached to built-in elements such as `div` are not). A page whose only fields outside iframes are in shadow roots now lists them instead of exiting 89 with the iframe hint; the hint is kept as a note whenever same-origin iframes hold form fields, also next to other forms (`Note: an iframe holds form fields dom form does not list: <url>; …`, JSON `formsInFrames`), so a login form in an iframe is not lost behind a header search component.
+- **`bdg console` names the source of an inline script and of a URL with a query**: a message from a page at `https://app.test/` showed `→ :3:142`, and one from `/a?next=/x/y` showed `→ y:1:1`. It now shows the file name of the URL path without query or hash (`a:1:1`), or the host when the path has none (`app.test:3:142`).
 
 ## [0.16.0] - 2026-10-09
 

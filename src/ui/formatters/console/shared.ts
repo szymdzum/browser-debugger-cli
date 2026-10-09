@@ -273,10 +273,21 @@ function getFilenameFromUrl(url: string | undefined, functionName?: string): str
   if (url.startsWith('eval')) {
     return '<eval>';
   }
-  if (url.includes('/')) {
-    return url.split('/').pop() ?? url;
-  }
-  return url;
+  return shortUrlName(url);
+}
+
+/**
+ * A URL's short name: the file name of its path (without query or hash),
+ * else its host, else the whole text (not a URL).
+ *
+ * @param url - URL
+ * @returns e.g. `app.js` for `https://app.test/js/app.js?v=2`, `app.test` for `https://app.test/`
+ */
+export function shortUrlName(url: string): string {
+  if (!URL.canParse(url)) return url;
+  const { pathname, host } = new URL(url);
+  const name = pathname.slice(pathname.lastIndexOf('/') + 1);
+  return name || host || url;
 }
 
 /**
