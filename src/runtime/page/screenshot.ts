@@ -504,6 +504,7 @@ function elementScreenshot(
     height,
     size,
     fullPage: false,
+    captureMode: 'element',
     finalTokens: calculateImageTokens(width, height),
     element,
     ...(quality !== undefined && { quality }),

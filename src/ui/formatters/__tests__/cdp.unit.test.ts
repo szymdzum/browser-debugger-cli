@@ -85,6 +85,23 @@ void describe('formatCdpDomains and formatCdpDomainMethods', () => {
 });
 
 void describe('formatCdpDescription', () => {
+  void it('says a redirect target missing from the protocol is unresolved', () => {
+    const output = formatCdpDescription({
+      type: 'method',
+      name: 'Page.deleteCookie',
+      domain: 'Page',
+      method: 'deleteCookie',
+      parameters: [],
+      returns: [],
+      redirect: { method: 'Network.deleteCookie', resolved: false, parameters: [] },
+    });
+    assert.match(
+      output,
+      /^Redirect target Network\.deleteCookie is not in the protocol \(unresolved redirect\)$/m
+    );
+    assert.doesNotMatch(output, /Implemented by/);
+  });
+
   void it('shows parameters (? = optional), returns, note and example', () => {
     const output = formatCdpDescription({
       type: 'method',
@@ -140,6 +157,7 @@ void describe('formatCdpDescription details', () => {
       returns: [],
       redirect: {
         method: 'Overlay.highlightNode',
+        resolved: true,
         parameters: [
           {
             name: 'highlightConfig',

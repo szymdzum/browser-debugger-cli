@@ -117,6 +117,7 @@ void describe('takeScreenshot', () => {
     const shot = await takeScreenshot(cdp, { format: 'png', backendNodeId: 7 }, noViewport);
     assert.equal(shot.image, IMAGE);
     assert.equal(shot.screenshot.element?.bounds.height, 3000);
+    assert.equal(shot.screenshot.captureMode, 'element');
     assert.deepEqual(sent, [
       'Emulation.setScrollbarsHidden true',
       'Emulation.setDeviceMetricsOverride 1',
@@ -155,6 +156,7 @@ void describe('takeScreenshot', () => {
     const { cdp, sent } = fakePage();
     const shot = await takeScreenshot(cdp, { format: 'jpeg' }, noViewport);
     assert.deepEqual(sent, ['Page.captureScreenshot']);
+    assert.equal(shot.screenshot.captureMode, 'full_page');
     assert.equal(shot.screenshot.quality, 90);
     assert.equal(shot.screenshot.size, 8);
   });

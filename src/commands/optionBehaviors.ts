@@ -555,11 +555,11 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
 
   'cdp:--describe': {
     default:
-      'Without --describe, a Domain.method is called (one missing from the bundled protocol is sent as typed, with a warning)',
+      'Without --describe, a Domain.method is called (one missing from the bundled protocol is sent as typed, with a warning: only bundled methods are matched case-insensitively)',
     whenEnabled:
       'Describes a domain, a method (parameters with ? for optional, returns, example) or a protocol type (Domain.Type: enum values or object properties)',
     automaticBehavior:
-      'Parameters referring to an enum type list its values inline (JSON enum, ref, refType); a redirected method (DOM.highlightNode) also shows the method implementing it and its parameters, which Chrome checks (JSON redirect)',
+      'Parameters referring to an enum type list its values inline (JSON enum, ref, refType); a redirected method (DOM.highlightNode) also shows the method implementing it and its parameters, which Chrome checks (JSON redirect, resolved: true); a redirect to a method the protocol lacks (Page.deleteCookie → Network.deleteCookie) is shown as unresolved (resolved: false). Example values work as typed: width 1280, height 800, x/y 100, deviceScaleFactor/scale 1, timeout 5000, url https://example.com, other numbers 1 (never 0, which often means off)',
   },
 
   'status:--verbose': {

@@ -45,7 +45,7 @@ import {
   type CdpSearchData,
   type CdpTypeDescription,
 } from '@/ui/formatters/cdp.js';
-import { cdpUnlistedMethodWarning } from '@/ui/messages/commands.js';
+import { CDP_EXECUTION_HELP, cdpUnlistedMethodWarning } from '@/ui/messages/commands.js';
 import { formatHint } from '@/ui/messages/hints.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -137,7 +137,7 @@ export function registerCdpCommand(program: Command): void {
     .description(
       'CDP protocol introspection and execution\n' +
         '  Discovery: --list, --search, --describe\n' +
-        '  Execution: case-insensitive (network.getcookies works)'
+        CDP_EXECUTION_HELP
     )
     .argument('[method]', 'CDP method name (e.g., Network.getCookies, network.getcookies)')
     .addOption(new Option('--params <json>', 'Method parameters as JSON'))
@@ -546,6 +546,7 @@ function describeMethod(schema: MethodSchema): CdpMethodDescription {
     })),
     redirect: schema.redirect && {
       method: schema.redirect.method,
+      resolved: schema.redirect.resolved,
       parameters: schema.redirect.parameters.map(describeParameter),
     },
     example: alternative ? { command: alternative } : schema.example,

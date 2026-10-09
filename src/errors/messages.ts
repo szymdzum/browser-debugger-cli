@@ -7,6 +7,7 @@
 import * as os from 'os';
 import * as path from 'path';
 
+import type { MissingMethodCause } from '@/cdp/methodTarget.js';
 import type { DomFrame, PendingRequestInfo } from '@/ipc/protocol/commands.js';
 import {
   countedMatches,
@@ -2410,25 +2411,52 @@ export function cdpCallError(
 
 /**
  * `bdg cdp` when Chrome answered -32601: it has no such method (for the
- * page target).
+ * page target). What it says depends on why, as far as the bundled protocol
+ * tells: an unknown domain, a redirect to a method the protocol lacks, a
+ * Chrome older than the protocol, or a method only Chrome could know (typed
+ * in one case, it gets a reminder that such names are case-sensitive).
  *
  * @param method - CDP method
  * @param chromeMessage - Chrome's error, e.g. "'Foo.bar' wasn't found"
- * @param inBundledProtocol - Whether bdg's bundled protocol has the method
+ * @param cause - Why Chrome may lack it
  * @returns Message and suggestion
  */
 export function cdpMethodNotImplementedError(
   method: string,
   chromeMessage: string,
-  inBundledProtocol: boolean
+  cause: MissingMethodCause
 ): ErrorWithSuggestion {
   const search = sessionCommand('bdg cdp --search <keyword>');
-  return {
-    message: `This Chrome doesn't implement ${method} (${chromeMessage})`,
-    suggestion: inBundledProtocol
-      ? `bdg's bundled protocol has it, but this Chrome is older (or ${method} is not available on a page). Use a newer Chrome, or find another method: ${search}`
-      : `Check the spelling (Chrome's method names are case-sensitive), or find a method: ${search}`,
-  };
+  switch (cause.kind) {
+    case 'unknownDomain':
+      return {
+        message: `Unknown CDP domain ${cause.domain}: it is not in bdg's bundled protocol, and this Chrome doesn't implement ${method} (${chromeMessage})`,
+        suggestion: joinLines(
+          cause.similar.length > 0 ? `Did you mean: ${cause.similar.join(', ')}?` : undefined,
+          `List the domains: ${sessionCommand('bdg cdp --list')}`
+        ),
+      };
+    case 'deadRedirect':
+      return {
+        message: `This Chrome doesn't implement ${method}: the protocol redirects it to ${cause.target}, which does not exist (${chromeMessage})`,
+        suggestion:
+          cause.similar.length > 0
+            ? `Did you mean: ${cause.similar.join(', ')}? See: ${sessionCommand(`bdg cdp ${cause.similar[0]} --describe`)}`
+            : `Find another method: ${search}`,
+      };
+    case 'older':
+      return {
+        message: `This Chrome doesn't implement ${method} (${chromeMessage})`,
+        suggestion: `bdg's bundled protocol has it, but this Chrome is older (or ${method} is not available on a page). Use a newer Chrome, or find another method: ${search}`,
+      };
+    case 'unlisted':
+      return {
+        message: `This Chrome doesn't implement ${method} (${chromeMessage})`,
+        suggestion: cause.oneCase
+          ? `CDP method names are case-sensitive for methods bdg doesn't know: ${method} was sent as typed. Type it in lowerCamelCase as Chrome names it (getCookies, not getcookies), or find a method: ${search}`
+          : `Check the spelling (Chrome's method names are case-sensitive), or find a method: ${search}`,
+      };
+  }
 }
 
 /**

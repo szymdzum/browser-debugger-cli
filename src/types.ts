@@ -574,8 +574,8 @@ export interface ScreenshotResult {
     /** `--padding` given: CSS px of page added around the captured area */
     padding?: number;
   };
-  /** Capture mode used */
-  captureMode?: 'full_page' | 'viewport';
+  /** Capture mode used: the whole page, the viewport, or one element */
+  captureMode?: 'full_page' | 'viewport' | 'element';
   /** Whether the image was auto-resized to fit token budget */
   resized?: boolean;
   /** Original width before resize (pixels) */
