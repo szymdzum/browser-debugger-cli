@@ -17,6 +17,7 @@ import {
   newMessages,
   pageNavigation,
   pendingChanges,
+  quietMs,
   shownElements,
   type NavigationEvents,
   type PageWork,
@@ -467,6 +468,99 @@ void describe('domLooksBusy and domKeptChanging', () => {
     );
     assert.equal(domKeptChanging(settle({ burstAges: [40] }), 260), true, 'only new bursts kept');
     assert.equal(domKeptChanging(undefined, 260), false);
+  });
+
+  void it('does not count stalls, when the page could not run, as quiet time', () => {
+    assert.equal(quietMs(260, 10), 250);
+    assert.equal(quietMs(260, 10, [[230, 20]]), 40, 'a stall inside the gap');
+    assert.equal(quietMs(260, 10, [[300, 200]]), 190, 'a stall that began before the gap');
+    assert.equal(quietMs(260, 10, [[50, 0]]), 210, 'a stall that ended after the gap');
+    assert.equal(
+      quietMs(260, 10, [
+        [400, 300],
+        [5, 0],
+      ]),
+      250,
+      'stalls outside the gap'
+    );
+    assert.equal(
+      quietMs(260, 10, [
+        [240, 160],
+        [140, 60],
+      ]),
+      90,
+      'two stalls in the gap'
+    );
+  });
+
+  void it('keeps a DOM changing whose steps came apart only around a stall (#531)', () => {
+    const steps = { burstAges: [410, 355, 304, 250, 7] };
+    assert.equal(domKeptChanging(settle(steps), 254), false, 'without the stall: settled');
+    assert.equal(
+      domKeptChanging(settle({ ...steps, stalls: [[190, 10]] }), 254),
+      true,
+      'a 200 ms long task between the steps'
+    );
+    assert.equal(
+      domKeptChanging(settle({ burstAges: [422, 266, 91], stalls: [[240, 100]] }), 258),
+      true,
+      'timers a starved renderer ran 140 ms late'
+    );
+    assert.equal(
+      domKeptChanging(
+        settle({
+          ...steps,
+          stalls: [
+            [190, 160],
+            [140, 110],
+          ],
+        }),
+        254
+      ),
+      false,
+      'short stalls leave over 150 ms quiet'
+    );
+    assert.equal(
+      domKeptChanging(settle({ burstAges: [400, 300, 60], stalls: [[260, 240]] }), 260),
+      false,
+      'a poller is still settled'
+    );
+    assert.equal(
+      domKeptChanging(settle({ burstAges: [410, 310, 210], stalls: [[400, 300]] }), 255),
+      false,
+      'a stall before a render that then stopped'
+    );
+  });
+
+  void it('looks again when the time since the last burst was mostly a stall', () => {
+    assert.equal(domLooksBusy(settle({ burstAges: [300, 250] })), false);
+    assert.equal(domLooksBusy(settle({ burstAges: [300, 250], stalls: [[230, 0]] })), true);
+    assert.equal(
+      domLooksBusy(settle({ burstAges: [300, 250], stalls: [[230, 150]] })),
+      false,
+      'quiet for 170 ms after the stall'
+    );
+  });
+
+  void it('looks again after one burst when the page stalled since (its next step could not come)', () => {
+    assert.equal(domLooksBusy(settle({ burstAges: [160] })), false, 'one render');
+    assert.equal(domLooksBusy(settle({ burstAges: [160], stalls: [[140, 0]] })), true);
+    assert.equal(
+      domLooksBusy(settle({ burstAges: [160], stalls: [[140, 120]] })),
+      false,
+      'quiet for 140 ms after a short task'
+    );
+    assert.equal(
+      domLooksBusy(settle({ burstAges: [160], stalls: [[140, 60]] })),
+      false,
+      'quiet for 80 ms: stalled for under half the time'
+    );
+    assert.equal(
+      domLooksBusy(settle({ burstAges: [100], stalls: [[90, 0]] })),
+      false,
+      'a render under 150 ms old is one render'
+    );
+    assert.equal(domLooksBusy(settle({ burstAges: [600], stalls: [[590, 0]] })), false);
   });
 });
 

@@ -53,14 +53,15 @@ function worldContext(cdp: PageConnection): Promise<number | null> {
 }
 
 /**
- * Create the world now, without waiting, so a script run later does not
- * first wait for it: creating it takes a turn of the page's main thread,
- * which a page busy right after an action holds.
+ * Whether bdg's world is known for a connection: created or being created,
+ * and not forgotten since (the top frame navigated, or its contexts were
+ * cleared). Scripts left in a forgotten world went with its document.
  *
  * @param cdp - Connection to the page
+ * @returns True while the world is known
  */
-export function prepareBdgWorld(cdp: PageConnection): void {
-  void worldContext(cdp);
+export function hasBdgWorld(cdp: PageConnection): boolean {
+  return worlds.has(cdp);
 }
 
 /**

@@ -105,7 +105,7 @@ export interface PendingChanges {
   navigation?: true;
   /** A loading indicator that appeared during the action and was still shown, e.g. `div#loading` */
   loading?: string;
-  /** The DOM was still changing (several bursts of changes, the last one under 150 ms ago) */
+  /** The DOM was still changing (several bursts of changes, the last one under 150 ms of quiet time ago) */
   domChanging?: true;
   /** The page did not answer within 250 ms (a long-running script) */
   busy?: true;

@@ -82,6 +82,15 @@ const MAX_WATCH_MS = 30000;
 /** Bursts of DOM changes a watch keeps (their times) */
 const MAX_BURSTS = 20;
 
+/** Delay of the stall watch's timer ({@link STALL_WATCH_START_SCRIPT}, ms) */
+const STALL_BEAT_MS = 20;
+
+/** How late the stall watch's timer must run to count as a stall (ms) */
+const STALL_MIN_MS = 10;
+
+/** Stalls a stall watch keeps */
+const MAX_STALLS = 50;
+
 /**
  * Page-side test whether an element is shown: rendered, not aria-hidden,
  * not `visibility: hidden` and not fully transparent.
@@ -331,14 +340,16 @@ export const UNCERTAIN_JS = `(state, active) => {
 
 /**
  * Page-side signs, at a read, that the page is still working on the
- * action's result: how long ago each recent burst of DOM changes was (ms,
- * newest last), and a loading indicator shown since the start (described).
+ * action's result: the page time of the read, how long ago each recent
+ * burst of DOM changes was (ms, newest last), and a loading indicator shown
+ * since the start (described).
  */
 const SETTLE_JS = `(state) => {
   const now = performance.now();
   const describe = ${ELEMENT_DESCRIPTION_JS};
   const loader = (${LOADERS_JS})().find((el) => !state.loaders.has(el));
   return {
+    at: now,
     burstAges: state.bursts.map((time) => Math.round(now - time)),
     loading: loader ? describe(loader) : null
   };
@@ -471,6 +482,66 @@ export const EFFECTS_READ_SCRIPT = `((stop, shown) => {
     shown: shown ? (${SHOWN_ELEMENTS_JS})(state) : undefined
   };
 })`;
+
+/**
+ * Stall watch, run in bdg's world while an action's effects are watched,
+ * left in `globalThis.__bdgStalls`: a timer every {@link STALL_BEAT_MS}
+ * that notes when it ran over {@link STALL_MIN_MS} late, as a stall from
+ * when it was due to when it ran (the last {@link MAX_STALLS}). bdg's world
+ * has its own `setTimeout`, so a page that replaced it is still watched, and
+ * its timers share the page's queue: a stall is time the page's own timers
+ * could not run either (a long task, or a renderer that runs the page's
+ * tasks late). The page cannot see it, except in the main-world fallback
+ * for frame-scoped connections (no bdg world), where `__bdgStalls` is a
+ * global of the page. It stops itself after {@link MAX_WATCH_MS}.
+ */
+export const STALL_WATCH_START_SCRIPT = `(() => {
+  if (globalThis.__bdgStalls) globalThis.__bdgStalls.stop();
+  const native = String(setTimeout).includes('[native code]');
+  const watch = { stalls: [], due: 0, ticked: native, stopped: false, timer: 0 };
+  const schedule = () => {
+    watch.due = performance.now() + ${STALL_BEAT_MS};
+    watch.timer = setTimeout(beat, ${STALL_BEAT_MS});
+  };
+  const beat = () => {
+    const now = performance.now();
+    watch.ticked = true;
+    if (now - watch.due > ${STALL_MIN_MS}) {
+      watch.stalls.push([watch.due, now]);
+      if (watch.stalls.length > ${MAX_STALLS}) watch.stalls.shift();
+    }
+    schedule();
+  };
+  watch.stop = () => {
+    watch.stopped = true;
+    clearTimeout(watch.timer);
+    clearTimeout(expiry);
+  };
+  const expiry = setTimeout(watch.stop, ${MAX_WATCH_MS});
+  schedule();
+  globalThis.__bdgStalls = watch;
+  return true;
+})()`;
+
+/**
+ * Reads the stalls {@link STALL_WATCH_START_SCRIPT} noted, as page times
+ * `[due, ran]`, plus the stall still going on (its timer over
+ * {@link STALL_MIN_MS} overdue now) as `[due, now]`; that one only with the
+ * browser's own `setTimeout` or once the timer has run at least once (in the
+ * main world, where bdg's scripts run without bdg's world, a page may have
+ * replaced `setTimeout` with one that never runs). Null without a watch.
+ */
+export const STALL_READ_SCRIPT = `(() => {
+  const watch = globalThis.__bdgStalls;
+  if (!watch) return null;
+  const now = performance.now();
+  const ongoing = watch.ticked && !watch.stopped && now - watch.due > ${STALL_MIN_MS};
+  return ongoing ? watch.stalls.concat([[watch.due, now]]) : watch.stalls;
+})()`;
+
+/** Stops the watch {@link STALL_WATCH_START_SCRIPT} left */
+export const STALL_WATCH_STOP_SCRIPT =
+  'if (globalThis.__bdgStalls) { globalThis.__bdgStalls.stop(); delete globalThis.__bdgStalls; }';
 
 /** Stops the watch {@link EFFECTS_START_SCRIPT} left (when no read stopped it) */
 export const EFFECTS_STOP_SCRIPT =
