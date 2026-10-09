@@ -301,6 +301,16 @@ export class Session {
   }
 
   /**
+   * Whether `bdg cdp Fetch.enable` left requests to pause until continued,
+   * which stalls loads and actions (named when a command times out).
+   *
+   * @returns True while Fetch interception is on
+   */
+  fetchInterceptionEnabled(): boolean {
+    return this.store.fetchInterceptionEnabled;
+  }
+
+  /**
    * Whether stop() has been called.
    *
    * @returns True once the session is stopping

@@ -4,6 +4,7 @@ import { missingMethodCause } from '@/cdp/methodTarget.js';
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPConnectionError, CDPProtocolError } from '@/connection/errors.js';
 import { PatternDetector } from '@/daemon/patternDetector.js';
+import { CdpEventListener, collectEvents } from '@/daemon/session/cdpEvents.js';
 import { createInteractionRunner } from '@/daemon/session/interactions.js';
 import { withTriggeredRequestCount } from '@/daemon/session/triggeredRequests.js';
 import { CommandError } from '@/errors/index.js';
@@ -484,6 +485,41 @@ export function callerError(method: string, error: unknown): CommandError | unde
   return undefined;
 }
 
+/** CDP methods that turn Fetch interception on or off */
+const FETCH_INTERCEPTION_SWITCH: Record<string, boolean> = {
+  'Fetch.enable': true,
+  'Fetch.disable': false,
+};
+
+/**
+ * Send a `bdg cdp` (or bdg page script) call, recovering a busy page and
+ * explaining Chrome's errors; notes whether Fetch interception is on, so a
+ * command that times out meanwhile can name it.
+ *
+ * @param cdp - CDP connection
+ * @param params - Method, params, and whether it is a bdg page script
+ * @param store - Session state (Fetch interception flag)
+ * @returns The method's result
+ */
+async function sendCdpCall(
+  cdp: CDPConnection,
+  params: CommandSchemas['cdp_call']['requestSchema'],
+  store: TelemetryStore
+): Promise<unknown> {
+  const send = params.isolated
+    ? sendForBdgScript(cdp, params.method, params.params ?? {})
+    : cdp.send(params.method, params.params ?? {});
+  const result = await withBusyPageRecovery(
+    cdp,
+    send.catch((error: unknown) => {
+      throw callerError(params.method, error) ?? error;
+    })
+  );
+  const interception = FETCH_INTERCEPTION_SWITCH[params.method];
+  if (interception !== undefined) store.fetchInterceptionEnabled = interception;
+  return result;
+}
+
 /** The session's page emulation, which `page emulate` reads and changes */
 export interface EmulationState {
   get: () => SessionEmulation;
@@ -505,6 +541,8 @@ export function createCommandRegistry(
   const interact = createInteractionRunner(store);
   /** Frame id behind each index of the last `dom frames` listing */
   let listedFrameIds: string[] | undefined;
+  /** Events `bdg cdp --listen` buffers between commands (gone with the session) */
+  const eventListener = new CdpEventListener();
 
   return {
     session_peek: async (_cdp, params) => {
@@ -641,16 +679,11 @@ export function createCommandRegistry(
       });
     },
 
-    cdp_call: async (cdp, params) => {
-      const send = params.isolated
-        ? sendForBdgScript(cdp, params.method, params.params ?? {})
-        : cdp.send(params.method, params.params ?? {});
-      const result = await withBusyPageRecovery(
-        cdp,
-        send.catch((error: unknown) => {
-          throw callerError(params.method, error) ?? error;
-        })
-      );
+    cdp_call: async (cdp, params, abandoned) => {
+      const call = (): Promise<unknown> => sendCdpCall(cdp, params, store);
+      const { result, collected } = params.collect
+        ? await collectEvents(cdp, call, { ...params.collect, signal: abandoned })
+        : { result: await call(), collected: undefined };
 
       const detectionResult = params.isolated
         ? { shouldShow: false, pattern: undefined }
@@ -667,7 +700,18 @@ export function createCommandRegistry(
         };
       }
 
-      return { result, ...(hint !== undefined && { hint }) };
+      return {
+        result,
+        ...(hint !== undefined && { hint }),
+        ...(collected !== undefined && { collected }),
+      };
+    },
+
+    cdp_events: async (cdp, params, abandoned) => {
+      if (params.action === 'listen')
+        return Promise.resolve(eventListener.listen(cdp, params.events));
+      if (params.action === 'unlisten') return Promise.resolve(eventListener.unlisten());
+      return eventListener.read(params, abandoned);
     },
 
     dom_eval: async (cdp, params) =>

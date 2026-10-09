@@ -141,6 +141,24 @@ export interface CdpMethodOptions {
   search?: string;
   /** Send a method that looks like a typo of a bundled one as typed */
   sendAnyway?: boolean;
+  /** Events to collect while the method runs (comma-separated) */
+  collect?: string;
+  /** Event that ends the collection */
+  until?: string;
+  /** Seconds to collect at most */
+  timeout?: string;
+  /** NDJSON file for collected or buffered events */
+  out?: string;
+  /** Events to buffer between commands (comma-separated) */
+  listen?: string;
+  /** Read buffered events: true for all, or the events to read (comma-separated) */
+  events?: string | boolean;
+  /** Seconds `--events` waits for an event */
+  wait?: string;
+  /** `--events`: discard instead of returning */
+  clear?: boolean;
+  /** Stop listening and discard the buffer */
+  unlisten?: boolean;
 }
 
 /** Options for stop command */

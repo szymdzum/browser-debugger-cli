@@ -100,6 +100,7 @@ void describe('withMatchedStylesReset', () => {
 
   void it('lists only commands that leave the page as it is (a deliberate change)', () => {
     assert.deepEqual([...KEEPS_MATCHED_STYLES].sort(), [
+      'cdp_events',
       'css_search',
       'dom_audit',
       'dom_form_discover',

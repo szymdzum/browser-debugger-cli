@@ -21,6 +21,7 @@ export const KEEPS_MATCHED_STYLES: ReadonlySet<CommandName> = new Set<CommandNam
   'session_status',
   'session_har_data',
   'session_network_headers',
+  'cdp_events',
   'dom_frames',
   'dom_form_discover',
   'dom_listeners',

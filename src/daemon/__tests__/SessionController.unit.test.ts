@@ -167,3 +167,57 @@ void describe('SessionController while a start is in progress', () => {
     await start;
   });
 });
+
+void describe('SessionController.command timeouts', () => {
+  afterEach(() => {
+    mock.timers.reset();
+    mock.restoreAll();
+  });
+
+  /**
+   * Start a fake session whose commands never answer, then time one out.
+   *
+   * @param fetchInterception - Whether Fetch interception is on
+   * @returns The command's response
+   */
+  async function timedOutReload(
+    fetchInterception: boolean
+  ): Promise<{ error?: string; exitCode?: number; suggestion?: string }> {
+    const session = {
+      launch: () => Promise.resolve(),
+      stop: () => Promise.resolve(),
+      stopRequested: () => false,
+      info: () => ({ chromePid: 1234, port: 9222, targetUrl: request.url }),
+      metadata: () => ({ startTime: Date.now(), bdgPid: process.pid, port: 9222 }),
+      execute: () => new Promise(() => undefined),
+      fetchInterceptionEnabled: () => fetchInterception,
+    };
+    mock.method(Session, 'create', () => session as unknown as Session);
+    const controller = new SessionController(Date.now(), '/tmp/test.sock', () => undefined);
+    await controller.startSession(request);
+    mock.timers.enable({ apis: ['setTimeout'] });
+    const response = controller.command({
+      type: 'page_navigate_request',
+      sessionId: 's',
+      action: 'reload',
+    } as never);
+    mock.timers.tick(30_000);
+    return (await response) as { error?: string; exitCode?: number; suggestion?: string };
+  }
+
+  void it('names Fetch interception when a command times out while it is on', async () => {
+    const response = await timedOutReload(true);
+    assert.match(
+      response.error ?? '',
+      /^Command timeout \(30s\): Fetch interception may be enabled/
+    );
+    assert.equal(response.exitCode, EXIT_CODES.CDP_TIMEOUT);
+    assert.match(response.suggestion ?? '', /bdg cdp Fetch\.disable/);
+  });
+
+  void it('leaves other timeouts as they were', async () => {
+    const response = await timedOutReload(false);
+    assert.equal(response.error, 'Command timeout (30s)');
+    assert.equal(response.suggestion, undefined);
+  });
+});

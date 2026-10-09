@@ -12,6 +12,13 @@ import {
   type MethodSchema,
   type ParameterSchema,
 } from '@/cdp/schema.js';
+import {
+  COLLECT_DEFAULT_TIMEOUT_S,
+  collectHints,
+  EVENT_WAIT_MAX_S,
+  planEventCommand,
+  runEventsRequest,
+} from '@/commands/cdpEvents.js';
 import { runCommand, type CommandResult } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type { CdpCommandOptions } from '@/commands/shared/optionTypes.js';
@@ -29,6 +36,7 @@ import {
 } from '@/errors/messages.js';
 import { callCDP } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
+import type { CdpCollectedEvents, CdpCollectParams } from '@/ipc/protocol/cdpEventTypes.js';
 import { describeException } from '@/runtime/dom/evalHelpers.js';
 import {
   formatCdpDescription,
@@ -45,6 +53,18 @@ import {
   type CdpSearchData,
   type CdpTypeDescription,
 } from '@/ui/formatters/cdp.js';
+import {
+  formatCdpEventCommand,
+  type CdpCollectData,
+  type CdpEventCommandData,
+  type CdpEventsCommandData,
+} from '@/ui/formatters/cdpEvents.js';
+import {
+  CDP_EVENTS_HELP,
+  FETCH_ENABLE_NOTE,
+  HEAP_SNAPSHOT_COLLECT_COMMAND,
+  TRACING_COLLECT_COMMAND,
+} from '@/ui/messages/cdpEvents.js';
 import { CDP_EXECUTION_HELP, cdpUnlistedMethodWarning } from '@/ui/messages/commands.js';
 import { formatHint } from '@/ui/messages/hints.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
@@ -68,15 +88,16 @@ const DOMAIN_NOTES: Record<string, string> = {
   Profiler:
     'Sampling profiler. Call Profiler.start, perform actions, then Profiler.stop to get results.',
   HeapProfiler:
-    'Heap profiler. Results collected via events after takeHeapSnapshot or startSampling.',
+    'Heap profiler. A snapshot arrives as HeapProfiler.addHeapSnapshotChunk events: ' +
+    HEAP_SNAPSHOT_COLLECT_COMMAND,
   Tracing:
-    'Performance tracing. Call Tracing.start, perform actions, then Tracing.end. ' +
-    'Data arrives via Tracing.dataCollected events.',
+    'Performance tracing. Call Tracing.start, perform actions, then collect the trace (Tracing.dataCollected events): ' +
+    TRACING_COLLECT_COMMAND,
 };
 
 /** Usage of `bdg cdp`, suggested when it gets neither a method nor a flag */
 const CDP_USAGE =
-  'Usage: bdg cdp [method] [--params <json>] [--list] [--describe] [--search <query>]';
+  'Usage: bdg cdp [method] [--params <json>] [--list] [--describe] [--search <query>] [--collect <events>] [--listen <events>] [--events [events]]';
 
 /**
  * Domain and method counts of the bundled protocol, for the help text.
@@ -97,7 +118,8 @@ const METHOD_NOTES: Record<string, string> = {
     'Highlights a node visually. Returns empty on success. Use Overlay.hideHighlight to clear.',
   'Profiler.start':
     'Starts CPU profiling. Returns empty. Call Profiler.stop to get the profile data.',
-  'Tracing.start': 'Starts tracing. Returns empty. Data arrives via events after Tracing.end.',
+  'Tracing.start': `Starts tracing. Returns empty. End it and collect the trace with: ${TRACING_COLLECT_COMMAND}`,
+  'Fetch.enable': FETCH_ENABLE_NOTE,
 };
 
 /**
@@ -161,12 +183,76 @@ export function registerCdpCommand(program: Command): void {
         'params',
       ])
     )
+    .addOption(
+      eventOption(
+        '--collect <events>',
+        'Collect these events (comma-separated) while the method runs'
+      )
+    )
+    .addOption(
+      eventOption('--until <event>', 'With a method: stop collecting when this event arrives')
+    )
+    .addOption(
+      eventOption(
+        '--timeout <seconds>',
+        `Collect for at most this long (default ${COLLECT_DEFAULT_TIMEOUT_S}, max ${EVENT_WAIT_MAX_S})`
+      )
+    )
+    .addOption(eventOption('--out <file>', 'Write collected or read events to a file (NDJSON)'))
+    .addOption(
+      eventOption(
+        '--listen <events>',
+        'Buffer these events (comma-separated) between commands'
+      ).conflicts(['events', 'unlisten', 'collect', 'until'])
+    )
+    .addOption(
+      eventOption('--events [events]', 'Read and remove buffered events (all, or these)').conflicts(
+        ['unlisten', 'collect', 'until', 'params']
+      )
+    )
+    .addOption(
+      eventOption('--wait <seconds>', `With --events: wait for an event (max ${EVENT_WAIT_MAX_S})`)
+    )
+    .addOption(
+      eventOption('--clear', 'With --events: discard the events instead of returning them')
+    )
+    .addOption(
+      eventOption('--unlisten', 'Stop listening and discard the buffer').conflicts([
+        'collect',
+        'until',
+        'params',
+      ])
+    )
     .addOption(jsonOption())
-    .addHelpText('after', () => `\nBundled protocol: ${cdpCountsText()}`)
+    .addHelpText('after', () => `\n${CDP_EVENTS_HELP}\n\nBundled protocol: ${cdpCountsText()}`)
     .action(async (method: string | undefined, options: CdpCommandOptions) => {
       await runCdpCommand(method, options);
     });
 }
+
+/**
+ * An event option, which discovery modes cannot take.
+ *
+ * @param flags - Option flags
+ * @param description - Help text
+ * @returns Option
+ */
+function eventOption(flags: string, description: string): Option {
+  return new Option(flags, description).conflicts(['list', 'describe', 'search']);
+}
+
+/** Options of the event modes */
+const EVENT_FLAGS = [
+  'collect',
+  'until',
+  'timeout',
+  'out',
+  'listen',
+  'events',
+  'wait',
+  'clear',
+  'unlisten',
+] as const satisfies readonly (keyof CdpCommandOptions)[];
 
 /**
  * Run the `bdg cdp` mode the options select, with its human-readable output.
@@ -179,6 +265,13 @@ async function runCdpCommand(
   method: string | undefined,
   options: CdpCommandOptions
 ): Promise<void> {
+  if (EVENT_FLAGS.some((flag) => options[flag] !== undefined)) {
+    return runCommand(
+      async () => handleEventCommand(method, options),
+      options,
+      formatCdpEventCommand
+    );
+  }
   if (options.search !== undefined) {
     const query = options.search;
     return runCommand(async () => handleSearch(query, method), options, formatCdpSearch);
@@ -653,46 +746,138 @@ function withWarning(error: unknown, warning: string | undefined): unknown {
   return new CommandError(error.message, { ...error.metadata, warning }, error.exitCode);
 }
 
+/** A call `bdg cdp` is about to send */
+interface PreparedCall {
+  method: string;
+  params?: Record<string, unknown>;
+  /** Warning for a method the bundled protocol lacks */
+  warning?: string;
+}
+
+/**
+ * Check a method and its `--params` before anything is sent.
+ *
+ * @param methodName - Method name (case-insensitive for bundled methods)
+ * @param options - Command options
+ * @returns Method, parameters and warning
+ * @throws CommandError (81) for a refused method or invalid `--params` JSON
+ */
+function prepareCall(methodName: string, options: CdpCommandOptions): PreparedCall {
+  const { method, warning } = methodToSend(methodName, options);
+  const call = { method, ...(warning && { warning }) };
+  if (!options.params) return call;
+  try {
+    return { ...call, params: JSON.parse(options.params) as Record<string, unknown> };
+  } catch (error) {
+    throw new CommandError(
+      `Invalid --params JSON: ${getErrorMessage(error)}`,
+      {
+        suggestion: `Use: bdg cdp ${method} --describe (to see parameter schema)`,
+        ...(warning && { warning }),
+      },
+      EXIT_CODES.INVALID_ARGUMENTS
+    );
+  }
+}
+
+/**
+ * Send a prepared call, with the events to collect while it runs.
+ *
+ * @param call - Method, parameters and warning
+ * @param collect - Events to collect (`--collect`), if any
+ * @param notes - Whether to add the method's note (not when events are read already)
+ * @returns Command result, with the collected events
+ */
+async function sendCall(
+  call: PreparedCall,
+  collect?: CdpCollectParams,
+  notes = !collect
+): Promise<CommandResult<CdpExecuteData & Partial<CdpCollectedEvents>>> {
+  const response = await callCDP(call.method, call.params, collect ? { collect } : {});
+  try {
+    validateIPCResponse(response);
+  } catch (error) {
+    throw withWarning(error, call.warning);
+  }
+  const ipcHint = response.data?.hint && formatHint(response.data.hint);
+  const result = cdpCallResult(call.method, response.data?.result, call.warning, ipcHint, {
+    notes,
+  });
+  const collected = response.data?.collected;
+  if (!result.success || !result.data || !collected || !collect) return result;
+  const data = { ...result.data, ...collected };
+  const hints = [result.hint, ...collectHints(data, collect)].filter(Boolean);
+  return { ...result, data, ...(hints.length > 0 && { hint: hints.join('\n') }) };
+}
+
 /**
  * Handle execute method mode: Call CDP method.
  *
  * @param methodName - Method name (case-insensitive for bundled methods)
- * @param paramsJson - Parameters as JSON string
+ * @param options - Command options (`--params` as JSON)
  * @returns Success result with method response
  */
 async function handleExecuteMethod(
   methodName: string,
   options: CdpCommandOptions
 ): Promise<CommandResult<CdpExecuteData>> {
-  const { method: normalized, warning } = methodToSend(methodName, options);
+  return sendCall(prepareCall(methodName, options));
+}
 
-  let params: Record<string, unknown> | undefined;
-  if (options.params) {
-    try {
-      params = JSON.parse(options.params) as Record<string, unknown>;
-    } catch (error) {
-      return {
-        success: false,
-        error: `Invalid --params JSON: ${getErrorMessage(error)}`,
-        exitCode: EXIT_CODES.INVALID_ARGUMENTS,
-        errorContext: {
-          suggestion: `Use: bdg cdp ${normalized} --describe (to see parameter schema)`,
-        },
-        ...(warning && { warning }),
-      };
-    }
+/**
+ * Join warnings, leaving out missing ones.
+ *
+ * @param warnings - Warnings
+ * @returns Joined warnings, or undefined
+ */
+function joinWarnings(...warnings: (string | undefined)[]): string | undefined {
+  const present = warnings.filter(Boolean);
+  return present.length > 0 ? present.join('\n') : undefined;
+}
+
+/**
+ * Handle the event modes: collect while a method runs, listen (and call a
+ * method once listening), read the buffer, or stop listening.
+ *
+ * @param methodName - Method argument
+ * @param options - Command options
+ * @returns Command result
+ * @throws CommandError (81) for bad event names or flags, before anything is sent
+ */
+async function handleEventCommand(
+  methodName: string | undefined,
+  options: CdpCommandOptions
+): Promise<CommandResult<CdpEventCommandData>> {
+  const plan = planEventCommand(methodName, options);
+  const call = methodName === undefined ? undefined : prepareCall(methodName, options);
+  if (plan?.mode === 'unlisten') return runEventsRequest({ action: 'unlisten' });
+  if (plan?.mode === 'events') return runEventsRequest(plan.request, plan.warning);
+  if (plan?.mode === 'collect' && call) {
+    const result = await sendCall(call, plan.collect);
+    const warning = joinWarnings(result.warning, plan.warning);
+    return { ...result, ...(warning && { warning }) } as CommandResult<CdpCollectData>;
   }
-
-  const response = await callCDP(normalized, params);
-
-  try {
-    validateIPCResponse(response);
-  } catch (error) {
-    throw withWarning(error, warning);
+  if (plan?.mode !== 'listen') {
+    const err = missingArgumentError(CDP_USAGE);
+    throw new CommandError(
+      err.message,
+      { suggestion: err.suggestion },
+      EXIT_CODES.INVALID_ARGUMENTS
+    );
   }
-
-  const ipcHint = response.data?.hint && formatHint(response.data.hint);
-  return cdpCallResult(normalized, response.data?.result, warning, ipcHint);
+  const listened = await runEventsRequest({ action: 'listen', events: plan.events }, plan.warning);
+  if (!call) return listened;
+  const called = await sendCall(call, undefined, false).catch((error: unknown) => {
+    throw withWarning(error, plan.warning);
+  });
+  const warning = joinWarnings(called.warning, plan.warning);
+  if (!called.success) return { ...called, ...(warning && { warning }) } as CommandResult<never>;
+  return {
+    ...called,
+    data: { ...listened.data, ...called.data } as CdpEventsCommandData,
+    ...(warning && { warning }),
+    ...(listened.hint && { hint: listened.hint }),
+  };
 }
 
 /**
@@ -704,19 +889,21 @@ async function handleExecuteMethod(
  * @param cdpResult - What Chrome returned
  * @param warning - Warning for a method the bundled protocol lacks
  * @param ipcHint - Hint the session gave (e.g. a repeated-call pattern)
+ * @param options - `notes: false` leaves out the method's note (a collection already reads its events)
  * @returns Command result
  */
 export function cdpCallResult(
   method: string,
   cdpResult: unknown,
   warning?: string,
-  ipcHint?: string
+  ipcHint?: string,
+  { notes = true }: { notes?: boolean } = {}
 ): CommandResult<CdpExecuteData> {
   const withCallWarning = warning ? { warning } : {};
   const exception = pageExceptionResult(cdpResult);
   if (exception) return { ...exception, ...withCallWarning };
 
-  const hints = [ipcHint, getMethodHint(method, cdpResult)].filter(Boolean);
+  const hints = [ipcHint, notes ? getMethodHint(method, cdpResult) : undefined].filter(Boolean);
   return {
     success: true,
     data: { method, result: cdpResult },

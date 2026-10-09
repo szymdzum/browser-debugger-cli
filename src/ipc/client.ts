@@ -26,6 +26,7 @@ import type { NoType } from './utils/index.js';
 
 import { getIPCRequestTimeout, getQuickIPCRequestTimeout } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
+import type { CdpCollectParams, CdpEventsCommand } from '@/ipc/protocol/cdpEventTypes.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 import { sendRequest } from './transport/index.js';
@@ -347,7 +348,8 @@ export async function getNetworkHeaders(options?: {
  * @param method - CDP method name (e.g., 'Network.getCookies')
  * @param params - Optional method parameters
  * @param options - `isolated`: a bdg page script, run in bdg's isolated world
- *   (`Runtime.evaluate`, `DOM.resolveNode`)
+ *   (`Runtime.evaluate`, `DOM.resolveNode`); `collect`: events to collect
+ *   while the method runs (the request waits for its timeout)
  * @returns Response with CDP method result
  * @throws Error if connection fails; CommandError (102) when the page was busy and its scripts were terminated, (107) when the page crashed
  *
@@ -362,13 +364,18 @@ export async function getNetworkHeaders(options?: {
 export async function callCDP(
   method: string,
   params?: Record<string, unknown>,
-  options: { isolated?: boolean } = {}
+  options: { isolated?: boolean; collect?: CdpCollectParams } = {}
 ): Promise<ClientResponse<'cdp_call'>> {
-  const response = await sendCommand('cdp_call', {
-    method,
-    ...(params && { params }),
-    ...(options.isolated && { isolated: true }),
-  });
+  const response = await sendCommand(
+    'cdp_call',
+    {
+      method,
+      ...(params && { params }),
+      ...(options.isolated && { isolated: true }),
+      ...(options.collect && { collect: options.collect }),
+    },
+    options.collect && waitingTimeoutMs(options.collect.timeoutMs)
+  );
   const fatal = [EXIT_CODES.CDP_TIMEOUT, EXIT_CODES.PAGE_CRASHED] as number[];
   if (response.status === 'error' && response.exitCode && fatal.includes(response.exitCode)) {
     throw new CommandError(
@@ -547,6 +554,29 @@ export async function domScreenshot(
 const WAIT_IPC_MARGIN_MS = 10_000;
 
 /**
+ * IPC timeout of a request that waits by its own options, so the daemon
+ * reports that wait running out first.
+ *
+ * @param waitMs - The request's own wait
+ * @returns Timeout in milliseconds
+ */
+function waitingTimeoutMs(waitMs: number): number {
+  return Math.max(getIPCRequestTimeout(), waitMs + WAIT_IPC_MARGIN_MS);
+}
+
+/**
+ * Start buffering CDP events, read the buffer, or stop
+ * (`bdg cdp --listen`, `--events`, `--unlisten`).
+ *
+ * @param request - What to do
+ * @returns The daemon's response
+ */
+export async function cdpEvents(request: CdpEventsCommand): Promise<ClientResponse<'cdp_events'>> {
+  const waitMs = request.action === 'read' ? (request.waitMs ?? 0) : 0;
+  return sendCommand('cdp_events', request, waitMs > 0 ? waitingTimeoutMs(waitMs) : undefined);
+}
+
+/**
  * Wait until elements appear, become visible, contain a text or are gone,
  * and/or the page has loaded.
  *
@@ -556,9 +586,5 @@ const WAIT_IPC_MARGIN_MS = 10_000;
 export async function domWait(
   params: NoType<(typeof COMMANDS)['dom_wait']['requestSchema']>
 ): Promise<ClientResponse<'dom_wait'>> {
-  return sendCommand(
-    'dom_wait',
-    params,
-    Math.max(getIPCRequestTimeout(), params.timeout + WAIT_IPC_MARGIN_MS)
-  );
+  return sendCommand('dom_wait', params, waitingTimeoutMs(params.timeout));
 }

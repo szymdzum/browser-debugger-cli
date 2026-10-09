@@ -8,6 +8,12 @@
 import type { HintDetails } from '@/errors/notices.js';
 import type { AuditCheck, AuditResult, CssSearchResult } from '@/ipc/protocol/auditTypes.js';
 import type {
+  CdpCollectedEvents,
+  CdpCollectParams,
+  CdpEventsCommand,
+  CdpEventsData,
+} from '@/ipc/protocol/cdpEventTypes.js';
+import type {
   ClickResult,
   DownloadInfo,
   FillResult,
@@ -129,6 +135,8 @@ export interface CdpCallCommand {
    * `bdg cdp`, whose calls stay in the page's world)
    */
   isolated?: boolean;
+  /** Collect these events while the method runs (`bdg cdp --collect`) */
+  collect?: CdpCollectParams;
 }
 
 /**
@@ -139,6 +147,8 @@ export interface CdpCallData {
   result: unknown;
   /** Structured hint suggesting a more efficient alternative. UI formats at boundary. */
   hint?: HintDetails;
+  /** Events collected (with `collect`) */
+  collected?: CdpCollectedEvents;
 }
 
 /**
@@ -478,6 +488,7 @@ export type RegistryShape = {
   session_har_data: CommandDef<SessionHARDataCommand, SessionHARDataData>;
   session_network_headers: CommandDef<SessionNetworkHeadersCommand, SessionNetworkHeadersData>;
   cdp_call: CommandDef<CdpCallCommand, CdpCallData>;
+  cdp_events: CommandDef<CdpEventsCommand, CdpEventsData>;
   dom_eval: CommandDef<DomEvalCommand, DomEvalData>;
   dom_frames: CommandDef<DomFramesCommand, DomFramesData>;
   dom_fill: CommandDef<DomFillCommand, DomFillData>;
@@ -625,6 +636,7 @@ export const COMMANDS: RegistryShape = {
   session_har_data: defineCommand(),
   session_network_headers: defineCommand(),
   cdp_call: defineCommand(),
+  cdp_events: defineCommand(),
   dom_eval: defineCommand(),
   dom_frames: defineCommand(),
   dom_fill: defineCommand(),
