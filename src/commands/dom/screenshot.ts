@@ -7,9 +7,14 @@ import { extname } from 'path';
 import type * as FsModule from 'fs';
 
 import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
-import { captureScreenshot, resolveSelector, selectMatch } from '@/commands/dom/helpers/index.js';
+import {
+  captureScreenshot,
+  resolveSelector,
+  screenshotInterrupted,
+  selectMatch,
+} from '@/commands/dom/helpers/index.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
-import { abortOnInterrupt } from '@/commands/shared/interrupt.js';
+import { abortOnInterrupt, unlessInterrupted } from '@/commands/shared/interrupt.js';
 import type { DomScreenshotCommandOptions } from '@/commands/shared/optionTypes.js';
 import { assertFilePath, outputPathError } from '@/commands/shared/outputFile.js';
 import { positiveIntRule } from '@/commands/shared/validation.js';
@@ -191,7 +196,8 @@ async function handlePageScreenshot(
 }
 
 /**
- * Capture one element; interrupted like {@link handlePageScreenshot}.
+ * Capture one element; interrupted like {@link handlePageScreenshot}, also
+ * while the element is looked up.
  *
  * @param outputPath - File to write
  * @param options - Command options
@@ -203,7 +209,8 @@ async function handleElementScreenshot(
   const interrupt = abortOnInterrupt();
   await runCommand(
     async () => {
-      const backendNodeId = await resolveElementNodeId(options);
+      const lookup = resolveElementNodeId(options);
+      const backendNodeId = await unlessInterrupted(lookup, interrupt, screenshotInterrupted);
       const request = buildScreenshotRequest(options, backendNodeId);
       const shot = await captureScreenshot(outputPath, request, interrupt);
       const elementResult = addElementInfo(shot, options);

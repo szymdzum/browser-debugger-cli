@@ -108,6 +108,22 @@ void describe('CaptureGate', () => {
     capture.end();
   });
 
+  void it("holds a capture behind another capture past the wait (it would record the first one's emulation as the page's)", async () => {
+    const gate = new CaptureGate(30);
+    const first = heldCapture();
+    const one = gate.run('dom_screenshot', first.work);
+    let second = false;
+    const two = gate.run('dom_screenshot', () => {
+      second = true;
+      return Promise.resolve();
+    });
+    await delay(90);
+    assert.equal(second, false);
+    first.end();
+    await Promise.all([one, two]);
+    assert.equal(second, true);
+  });
+
   void it('runs page commands at once when no capture is running', async () => {
     const gate = new CaptureGate();
     await gate.run('dom_screenshot', () => Promise.resolve());

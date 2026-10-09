@@ -4,7 +4,12 @@
  * it returns.
  */
 
-import { interruptExitCode, interruptSignal } from '@/commands/shared/interrupt.js';
+import {
+  interruptExitCode,
+  interruptSignal,
+  unlessInterrupted,
+  type InterruptSignal,
+} from '@/commands/shared/interrupt.js';
 import { writeOutputFile } from '@/commands/shared/outputFile.js';
 import { CommandError } from '@/errors/index.js';
 import { operationFailedError, screenshotInterruptedError } from '@/errors/messages.js';
@@ -17,19 +22,19 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 /**
  * The error of a screenshot interrupted by Ctrl-C or SIGTERM.
  *
- * @param interrupt - Aborted interrupt (reason: the signal)
+ * @param signal - The signal
  * @returns Command error (exit 130, or 143 for SIGTERM)
  */
-function interruptedError(interrupt: AbortSignal): CommandError {
-  const signal = interruptSignal(interrupt);
+export function screenshotInterrupted(signal: InterruptSignal): CommandError {
   const err = screenshotInterruptedError(signal);
   return new CommandError(err.message, { suggestion: err.suggestion }, interruptExitCode(signal));
 }
 
 /**
- * Ask the daemon for the capture. An interrupt closes the connection: the
- * daemon skips the capture if it has not started, and puts the emulation
- * back before it runs any later page command, so this need not wait.
+ * Ask the daemon for the capture. An interrupt ends the wait at once and
+ * closes the connection: the daemon skips the capture if it has not started,
+ * and puts the emulation back before it runs any later page command, so this
+ * need not wait.
  *
  * @param request - What to capture and how
  * @param interrupt - Aborted on Ctrl-C or SIGTERM
@@ -40,14 +45,11 @@ async function requestCapture(
   request: DomScreenshotCommand,
   interrupt: AbortSignal | undefined
 ): Promise<Awaited<ReturnType<typeof domScreenshot>>> {
-  try {
-    const response = await domScreenshot(request, interrupt);
-    if (interrupt?.aborted) throw interruptedError(interrupt);
-    return response;
-  } catch (error) {
-    if (interrupt?.aborted) throw interruptedError(interrupt);
-    throw error;
-  }
+  if (!interrupt) return domScreenshot(request);
+  const capture = domScreenshot(request, interrupt);
+  const response = await unlessInterrupted(capture, interrupt, screenshotInterrupted);
+  if (interrupt.aborted) throw screenshotInterrupted(interruptSignal(interrupt));
+  return response;
 }
 
 /**

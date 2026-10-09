@@ -45,3 +45,35 @@ export function abortOnInterrupt(): AbortSignal {
   }
   return interrupt.signal;
 }
+
+/**
+ * Wait for work unless interrupted first: the first signal ends the wait at
+ * once with the interrupted error (the work is left to the exiting process).
+ *
+ * @param work - Work to wait for
+ * @param interrupt - Aborted on Ctrl-C or SIGTERM (reason: the signal)
+ * @param interruptedError - The error for an interrupt by a signal
+ * @returns The work's value
+ * @throws The interrupted error once interrupted, else the work's error
+ */
+export async function unlessInterrupted<T>(
+  work: Promise<T>,
+  interrupt: AbortSignal,
+  interruptedError: (signal: InterruptSignal) => Error
+): Promise<T> {
+  const fail = (): Error => interruptedError(interruptSignal(interrupt));
+  if (interrupt.aborted) throw fail();
+  let onAbort = (): void => undefined;
+  const interrupted = new Promise<never>((_, reject) => {
+    onAbort = () => reject(fail());
+    interrupt.addEventListener('abort', onAbort, { once: true });
+  });
+  try {
+    return await Promise.race([work, interrupted]);
+  } catch (error) {
+    if (interrupt.aborted) throw fail();
+    throw error;
+  } finally {
+    interrupt.removeEventListener('abort', onAbort);
+  }
+}

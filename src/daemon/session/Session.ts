@@ -9,7 +9,7 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import { ChromeLaunchError } from '@/connection/errors.js';
 import { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
-import { CaptureGate } from '@/daemon/session/captureGate.js';
+import { CaptureGate, TELEMETRY_READS } from '@/daemon/session/captureGate.js';
 import { connectCDP, navigateToTarget } from '@/daemon/session/cdpSetup.js';
 import {
   externalChromePort,
@@ -61,11 +61,7 @@ const PORT_ATTEMPTS = 3;
  * send raw CDP. Every other command needs the page and fails at once.
  */
 const RUN_ON_CRASHED_PAGE: ReadonlySet<CommandName> = new Set<CommandName>([
-  'session_peek',
-  'session_details',
-  'session_status',
-  'session_har_data',
-  'session_network_headers',
+  ...TELEMETRY_READS,
   'page_navigate',
   'cdp_call',
 ]);
