@@ -1,6 +1,6 @@
 {
   "name": "browser-debugger-cli",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "Let Claude Code and other coding agents drive and debug Chrome from the shell. DOM, network, console and raw CDP as short commands, no screenshots and no MCP needed.",
   "type": "module",
   "bin": {
