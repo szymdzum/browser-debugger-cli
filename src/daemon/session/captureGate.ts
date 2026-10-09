@@ -22,6 +22,7 @@ export const TELEMETRY_READS: readonly CommandName[] = [
   'session_status',
   'session_har_data',
   'session_network_headers',
+  'cdp_events',
 ];
 
 const IGNORES_CAPTURE: ReadonlySet<CommandName> = new Set(TELEMETRY_READS);

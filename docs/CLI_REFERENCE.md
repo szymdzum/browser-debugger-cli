@@ -1358,33 +1358,84 @@ When Chrome rejects a call, the exit code says whose mistake it was: a node, tar
 
 **Event-Based Domains:**
 
-Some CDP domains use event-based reporting rather than synchronous responses. When methods return empty results, bdg provides contextual hints:
+Some CDP domains report through events rather than method responses. A call that returns nothing gets a note on stderr, and `--describe` shows the domain's note:
 
 ```bash
 bdg cdp Audits.enable
 # Audits.enable: done (no result data)
 # (stderr) Enables the Audits domain. Issues will arrive via Audits.issueAdded events.
+
+bdg cdp Tracing --describe
+# ... Performance tracing. Call Tracing.start, perform actions, then collect the trace (Tracing.dataCollected events): bdg cdp Tracing.end --collect ...
 ```
 
-The `--describe` output includes domain notes for event-based APIs:
+| Domain | Behavior | How to get the data |
+|--------|----------|---------------------|
+| Tracing | Data via `Tracing.dataCollected` after `Tracing.end` | `Tracing.end --collect Tracing.dataCollected --until Tracing.tracingComplete --out trace.ndjson` |
+| HeapProfiler | Snapshot via `HeapProfiler.addHeapSnapshotChunk` | `HeapProfiler.takeHeapSnapshot --collect HeapProfiler.addHeapSnapshotChunk --timeout 1 --out heap.ndjson` |
+| Fetch | Matching requests pause (`Fetch.requestPaused`) until answered | `--listen Fetch.requestPaused`, then `--events` (recipe below) |
+| Audits | Issues via `Audits.issueAdded` events | `--listen Audits.issueAdded`, or `bdg dom audit` |
+| Profiler | Data in the `Profiler.stop` response | Call start, perform actions, then stop |
+| Overlay | Visual only, returns empty | Use `Overlay.hideHighlight` to clear |
+
+### Collecting CDP events
+
+IPC between the CLI and the daemon is request/response, so the daemon holds events and returns them with an answer. Two ways:
 
 ```bash
-bdg cdp Audits --describe
-# Audits: 4 methods, 1 event (experimental)
-# Audits domain allows investigation of page violations and possible improvements.
-# Event-based domain. Results arrive via events (e.g., Audits.issueAdded), not method responses. ...
-# Use: bdg cdp Audits --list (to see all methods)
+# One shot: subscribe, call the method, collect until --until arrives or --timeout passes
+bdg cdp <Method> [--params <json>] --collect <Event>[,<Event>] [--until <Event>] [--timeout <s>] [--out <file>]
+
+# Buffered between commands
+bdg cdp [<Method>] --listen <Event>[,<Event>]        # with a method: listening starts before it is sent
+bdg cdp --events [<Event>[,<Event>]] [--wait <s>]   # read and remove buffered events
+bdg cdp --events --clear                            # discard them
+bdg cdp --unlisten                                  # stop listening, discard the buffer
 ```
 
-**Domains with Event-Based Patterns:**
+- **`--collect`** subscribes to the events before the method is sent and collects them until the `--until` event arrives (it is collected too, as the last event) or `--timeout` passes (default 10 s, max 120; decimals allowed), at least until the method answered. Without `--until` it collects for the whole timeout. `--until` alone waits for that one event (`bdg cdp Page.reload --until Page.loadEventFired`). JSON: `data: { method, result, events: [{ method, params, ts }], count, complete }`, `ts` being when bdg received the event (epoch ms). A timeout before the `--until` event is not an error: exit 0, the events so far, `complete: false`, and a hint on stderr. A method that fails exits as without `--collect` and collects nothing. The daemon's 30 s command timeout is extended to `--timeout` plus 5 s.
+- **Output is bounded**: without `--out`, events are kept to about 20000 characters of JSON (as `dom eval --json`). Later events are counted in `omitted` (with a hint), and a first event that alone is over it has its `params` replaced by the start of their JSON text (a string) with `truncatedFrom` (the full length). **`--out <file>`** makes the daemon write every event as one NDJSON line (`{"method","params","ts"}`) as it arrives, creating the directory, and returns `{ file, count, bytes }` instead of the events; use it for traces and heap snapshots (megabytes).
+- **`--listen`** keeps events in a buffer of at most 1000 events and 10 MB of event JSON; beyond either the oldest are dropped and counted (`dropped`). Another `--listen` adds events. **`--events`** returns the buffered events (all, or the ones named) in arrival order and removes them, within the same 20000-character budget: events that do not fit stay buffered (`remaining`, with a hint) for the next call, and `--out` writes them all. `--wait <s>` (max 120) waits for a matching event when none is buffered; when none comes it returns no events with `waitedOut: true`, exit 0. `--events` and `--unlisten` exit 83 when nothing is listened to. The buffer ends with the session.
+- **Event names** are checked against the bundled protocol, case-insensitively: a typo exits 81 with `Did you mean:` and the domain's events (`Unknown CDP event 'Tracing.dataColected'`), a method name exits 81 (`Tracing.end is a method, not an event`), and a well-formed name the protocol lacks is listened to as typed, with a warning (Chrome can have newer events).
+- **Only events of the session page's own target are kept.** Events Chrome sends for attached child sessions (out-of-process iframes, or workers after `Target.setAutoAttach` with `flatten`) carry a `sessionId`, and `bdg cdp` cannot send commands to those sessions (so a paused request of a worker could not be answered anyway); they are left out. Same-process iframes are part of the page target and included.
 
-| Domain | Behavior | Alternative |
-|--------|----------|-------------|
-| Audits | Issues via `Audits.issueAdded` events | `bdg dom eval` with `getComputedStyle()` |
-| Profiler | Data after `Profiler.stop` | Call start, perform actions, then stop |
-| HeapProfiler | Events after `takeHeapSnapshot` | Collect events or use snapshots |
-| Tracing | Data via `Tracing.dataCollected` | Call start, perform actions, then end |
-| Overlay | Visual only, returns empty | Use `Overlay.hideHighlight` to clear |
+**Performance trace** (loads in the DevTools Performance panel):
+
+```bash
+bdg cdp Tracing.start
+bdg dom click "#run"                       # what you want to measure
+bdg cdp Tracing.end --collect Tracing.dataCollected --until Tracing.tracingComplete --out trace.ndjson
+jq -s '{traceEvents: [.[] | select(.method == "Tracing.dataCollected") | .params.value[]]}' trace.ndjson > trace.json
+```
+
+**Heap snapshot** (the chunks arrive before `takeHeapSnapshot` answers, so a short `--timeout` ends the collection right after it):
+
+```bash
+bdg cdp HeapProfiler.takeHeapSnapshot --collect HeapProfiler.addHeapSnapshotChunk --timeout 1 --out heap.ndjson
+jq -j '.params.chunk' heap.ndjson > page.heapsnapshot     # load in DevTools Memory panel
+```
+
+### Network recipes: mock, block, throttle
+
+```bash
+# Mock: answer a request with a 500 (or any status and body)
+bdg cdp Fetch.enable --params '{"patterns":[{"urlPattern":"*api/orders*"}]}' --listen Fetch.requestPaused
+bdg dom click "#load-orders"               # the request pauses ("1 request pending")
+ID=$(bdg cdp --events Fetch.requestPaused --wait 5 --json | jq -r '.data.events[0].params.requestId')
+bdg cdp Fetch.fulfillRequest --params "{\"requestId\":\"$ID\",\"responseCode\":500,\"responseHeaders\":[{\"name\":\"Content-Type\",\"value\":\"application/json\"}],\"body\":\"$(printf '{"error":"boom"}' | base64)\"}"
+# or let it through: bdg cdp Fetch.continueRequest --params "{\"requestId\":\"$ID\"}"
+# or fail it:        bdg cdp Fetch.failRequest --params "{\"requestId\":\"$ID\",\"errorReason\":\"Failed\"}"
+bdg cdp Fetch.disable && bdg cdp --unlisten   # Fetch.disable releases any request still paused
+
+# Block URLs (requests fail with net::ERR_BLOCKED_BY_CLIENT)
+bdg cdp Network.setBlockedURLs --params '{"urls":["*.png","*analytics*"]}'
+
+# Throttle the network and the CPU
+bdg cdp Network.emulateNetworkConditions --params '{"offline":false,"latency":400,"downloadThroughput":50000,"uploadThroughput":20000}'
+bdg cdp Emulation.setCPUThrottlingRate --params '{"rate":4}'   # rate 1 resets
+```
+
+`Fetch.fulfillRequest` takes the body base64-encoded. Listen before the requests start: events sent before `--listen` are not kept. `Fetch.enable` without `patterns` pauses every request, the page's own document and scripts included. While Fetch interception is on, a command that times out (e.g. `bdg page reload` whose document is paused) says so: `Command timeout (30s): Fetch interception is enabled (bdg cdp Fetch.enable): requests matching its patterns stay paused until continued, …` with `bdg cdp Fetch.disable` as the way out (exit 102).
 
 ## Maintenance
 

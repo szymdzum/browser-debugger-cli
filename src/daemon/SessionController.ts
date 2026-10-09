@@ -23,6 +23,7 @@ import {
   sessionUnavailableSuggestion,
 } from '@/errors/messages.js';
 import {
+  type CdpCallCommand,
   type ClientRequestUnion,
   type CommandName,
   type HandshakeRequest,
@@ -42,6 +43,7 @@ import {
 } from '@/ipc/index.js';
 import { clearLastSessionEnd, writeLastSessionEnd } from '@/session/lastSession.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { fetchInterceptionTimeoutCause } from '@/ui/messages/cdpEvents.js';
 import { formatChromeIssue } from '@/ui/messages/chrome.js';
 import { noActiveSessionMessage } from '@/ui/messages/sessionCommand.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -54,21 +56,40 @@ const log = createLogger('daemon');
 const STARTING_ERROR = 'The session is still starting';
 const COMMAND_TIMEOUT_MS = 30000;
 const QUERY_TIMEOUT_MS = 5000;
-/** Time a `dom wait` gets beyond its own --timeout to report the timeout itself */
+/** Time a command that waits (`dom wait`, `cdp --collect`, `cdp --events --wait`) gets beyond its own wait */
 const WAIT_COMMAND_MARGIN_MS = 5000;
 
 /**
- * How long a session command may run: `dom wait` runs for its own
- * --timeout, everything else gets {@link COMMAND_TIMEOUT_MS}.
+ * How long a command waits by its own options: `dom wait` its --timeout,
+ * `bdg cdp --collect` its --timeout, `bdg cdp --events` its --wait.
+ *
+ * @param name - Command name
+ * @param params - Command parameters
+ * @returns Milliseconds (0 for commands that do not wait)
+ */
+function ownWaitMs(name: CommandName, params: unknown): number {
+  if (name === 'dom_wait') return (params as { timeout?: number }).timeout ?? 0;
+  if (name === 'cdp_call') return (params as CdpCallCommand).collect?.timeoutMs ?? 0;
+  if (name === 'cdp_events') return (params as { waitMs?: number }).waitMs ?? 0;
+  return 0;
+}
+
+/**
+ * How long a session command may run: {@link COMMAND_TIMEOUT_MS}, or longer
+ * for a command that waits by its own options, so it reports its own
+ * timeout.
  *
  * @param name - Command name
  * @param params - Command parameters
  * @returns Timeout in milliseconds
  */
 function commandTimeoutMs(name: CommandName, params: unknown): number {
-  if (name !== 'dom_wait') return COMMAND_TIMEOUT_MS;
-  const { timeout } = params as { timeout?: number };
-  return Math.max(COMMAND_TIMEOUT_MS, (timeout ?? 0) + WAIT_COMMAND_MARGIN_MS);
+  return Math.max(COMMAND_TIMEOUT_MS, ownWaitMs(name, params) + WAIT_COMMAND_MARGIN_MS);
+}
+
+/** A session command that ran out of time */
+class CommandTimeoutError extends Error {
+  override readonly name = 'CommandTimeoutError';
 }
 
 /**
@@ -84,7 +105,7 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: str
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(
-      () => reject(new Error(`${label} timeout (${timeoutMs / 1000}s)`)),
+      () => reject(new CommandTimeoutError(`${label} timeout (${timeoutMs / 1000}s)`)),
       timeoutMs
     );
   });
@@ -366,8 +387,29 @@ export class SessionController {
       );
       return { ...base, status: 'ok', data };
     } catch (error) {
-      return { ...base, status: 'error', ...describeCommandError(error) };
+      return { ...base, status: 'error', ...this.describeFailure(error) };
     }
+  }
+
+  /**
+   * Error fields of a failed session command; a timeout while Fetch
+   * interception is on names it, since paused requests stall loads and
+   * actions.
+   *
+   * @param error - Error the command failed with
+   * @returns Message, exit code and suggestion
+   */
+  private describeFailure(error: unknown): ReturnType<typeof describeCommandError> {
+    const described = describeCommandError(error);
+    if (!(error instanceof CommandTimeoutError) || !this.session?.fetchInterceptionEnabled()) {
+      return described;
+    }
+    const cause = fetchInterceptionTimeoutCause();
+    return {
+      error: `${described.error}: ${cause.message}`,
+      exitCode: EXIT_CODES.CDP_TIMEOUT,
+      suggestion: cause.suggestion,
+    };
   }
 
   /**

@@ -62,20 +62,25 @@ function closeNames(input: string, candidates: readonly string[]): string[] {
 }
 
 /**
- * Methods of a domain close to the typed method name.
+ * Methods (or events) of a domain close to the typed name.
  *
  * @param domainName - Domain with its schema casing
- * @param methodName - Method part as typed
- * @returns Full names of close methods
+ * @param memberName - Method or event part as typed
+ * @param members - `commands` for methods, `events` for events
+ * @returns Full names of close methods or events
  */
-function closeMethods(domainName: string, methodName: string): string[] {
-  const commands = findDomain(domainName)?.commands ?? [];
-  const exact = commands.find((c) => c.name.toLowerCase() === methodName.toLowerCase());
+function closeMembers(
+  domainName: string,
+  memberName: string,
+  members: 'commands' | 'events' = 'commands'
+): string[] {
+  const entries = findDomain(domainName)?.[members] ?? [];
+  const exact = entries.find((c) => c.name.toLowerCase() === memberName.toLowerCase());
   const names = exact
     ? [exact.name]
     : closeNames(
-        methodName,
-        commands.map((c) => c.name)
+        memberName,
+        entries.map((c) => c.name)
       );
   return names.map((name) => `${domainName}.${name}`);
 }
@@ -95,7 +100,7 @@ function resolveUnknownDomain(domainName: string, methodName: string): MethodTar
   );
   const method = `${domainName}.${methodName}`;
   if (domains.length === 0) return { kind: 'unlisted', method };
-  return { kind: 'typo', method, suggestions: domains.flatMap((d) => closeMethods(d, methodName)) };
+  return { kind: 'typo', method, suggestions: domains.flatMap((d) => closeMembers(d, methodName)) };
 }
 
 /**
@@ -123,10 +128,62 @@ export function resolveMethodTarget(input: string): MethodTarget {
   const type = findType(domain.domain, methodName);
   if (type) return { kind: 'type', name: `${domain.domain}.${type.id}` };
   const method = `${domain.domain}.${methodName}`;
-  const suggestions = closeMethods(domain.domain, methodName);
+  const suggestions = closeMembers(domain.domain, methodName);
   return suggestions.length > 0
     ? { kind: 'typo', method, suggestions }
     : { kind: 'unlisted', method };
+}
+
+/** What an event name (`--collect`, `--until`, `--listen`, `--events`) resolves to */
+export type CdpEventTarget =
+  /** An event in the bundled protocol, with its casing */
+  | { kind: 'known'; event: string }
+  /** A well-formed event the bundled protocol lacks, listened to as typed (known domain recased) */
+  | { kind: 'unlisted'; event: string }
+  /** A close typo of bundled events (suggestions may be empty when only the domain is close) */
+  | { kind: 'typo'; event: string; suggestions: string[] }
+  /** A method of the bundled protocol, not an event */
+  | { kind: 'method'; method: string }
+  /** Not `Domain.event` */
+  | { kind: 'malformed' };
+
+/**
+ * Decide which event `bdg cdp` listens to for a name: like methods, a
+ * well-formed name the bundled protocol lacks is taken as typed (Chrome may
+ * have newer events), unless it is a close typo of a bundled event or domain.
+ *
+ * @param input - Event name as typed (case-insensitive for bundled events)
+ * @returns Known, unlisted, typo, method or malformed
+ *
+ * @example
+ * ```typescript
+ * resolveEventTarget('fetch.requestpaused'); // known Fetch.requestPaused
+ * resolveEventTarget('Fetch.requestPausd');  // typo of Fetch.requestPaused
+ * resolveEventTarget('Tracing.end');         // a method, not an event
+ * ```
+ */
+export function resolveEventTarget(input: string): CdpEventTarget {
+  if (!METHOD_NAME.test(input)) return { kind: 'malformed' };
+  const [domainName = '', eventName = ''] = input.split('.');
+  const domain = findDomain(domainName);
+  if (!domain) {
+    const domains = closeNames(
+      domainName,
+      loadProtocol().domains.map((d) => d.domain)
+    );
+    if (domains.length === 0) return { kind: 'unlisted', event: input };
+    const suggestions = domains.flatMap((d) => closeMembers(d, eventName, 'events'));
+    return { kind: 'typo', event: input, suggestions };
+  }
+  const event = domain.events?.find((e) => e.name.toLowerCase() === eventName.toLowerCase());
+  if (event) return { kind: 'known', event: `${domain.domain}.${event.name}` };
+  const command = findCommand(domain.domain, eventName);
+  if (command) return { kind: 'method', method: `${domain.domain}.${command.name}` };
+  const named = `${domain.domain}.${eventName}`;
+  const suggestions = closeMembers(domain.domain, eventName, 'events');
+  return suggestions.length > 0
+    ? { kind: 'typo', event: named, suggestions }
+    : { kind: 'unlisted', event: named };
 }
 
 /**

@@ -45,6 +45,8 @@ export class TelemetryStore {
   activeTelemetry: TelemetryType[] = [];
   /** When the page's renderer crashed (epoch ms); undefined while the page is alive */
   pageCrashedAt: number | undefined;
+  /** Set after `bdg cdp Fetch.enable` until `Fetch.disable`: matching requests pause until continued */
+  fetchInterceptionEnabled = false;
   getCurrentNavigationId: (() => number) | null = null;
   sessionStartTime = Date.now();
   targetInfo: CDPTarget | null = null;
