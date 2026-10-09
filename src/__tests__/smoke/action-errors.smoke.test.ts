@@ -6,7 +6,8 @@
  * synchronous throw, a throw from a timer it set, an unhandled rejection,
  * `console.error`, and the errors of the page a click navigated to; for
  * click, fill, pressKey, submit, hover and scroll. Errors logged before the
- * action and warnings are left out.
+ * action and warnings are left out. A fill fires the `InputEvent`s Chrome
+ * does, so a listener reading `inputType` causes no error.
  *
  * Timing: the timer's throw (`setTimeout(…, 0)`) runs before the action's
  * result is read, whatever the runner's speed. The click waits at least
@@ -38,6 +39,7 @@ interface ReportedError {
 
 /** The part of an action result this test reads */
 interface ActionData {
+  warning?: string;
   errors?: ReportedError[];
   moreErrors?: number;
   navigation?: { url: string };
@@ -74,6 +76,17 @@ async function act(args: string[]): Promise<ActionData> {
  */
 function errorTexts(data: ActionData): string[] {
   return (data.errors ?? []).map((error) => error.text);
+}
+
+/**
+ * The input events the fixture fields logged since the last call, then
+ * cleared.
+ *
+ * @returns `id type InputEvent|Event inputType data` lines
+ */
+async function takeInputLog(): Promise<string[]> {
+  const output = await bdg(['dom', 'eval', 'window.inputLog.splice(0)', '--json']);
+  return (JSON.parse(output) as { data: { result: string[] } }).data.result;
 }
 
 void describe('Errors an action caused', () => {
@@ -158,6 +171,41 @@ void describe('Errors an action caused', () => {
     assert.deepEqual(errorTexts(await act(['scroll', '--down', '500'])), [
       'Uncaught Error: scroll exploded',
     ]);
+  });
+
+  void it('fills text fields with InputEvents, so listeners reading inputType do not throw', async () => {
+    const typed = await act(['fill', '#typed', 'flexbox']);
+    assert.equal(typed.errors, undefined);
+    assert.equal(typed.warning, undefined);
+    assert.equal(errorTexts(await act(['fill', '#notes', 'line'])).length, 0);
+    assert.equal(errorTexts(await act(['fill', '#editor', 'rich'])).length, 0);
+    assert.equal(errorTexts(await act(['fill', '#typed', ''])).length, 0);
+    assert.deepEqual(await takeInputLog(), [
+      'typed beforeinput InputEvent insertText flexbox',
+      'typed input InputEvent insertText flexbox',
+      'notes beforeinput InputEvent insertText line',
+      'notes input InputEvent insertText line',
+      'editor beforeinput InputEvent insertText rich',
+      'editor input InputEvent insertText rich',
+      'typed beforeinput InputEvent deleteContentBackward ',
+      'typed input InputEvent deleteContentBackward ',
+    ]);
+  });
+
+  void it('keeps a plain input event for a date field', async () => {
+    assert.equal(errorTexts(await act(['fill', '#when', '2024-01-05'])).length, 0);
+    assert.deepEqual(await takeInputLog(), ['when input Event  ']);
+  });
+
+  void it('sets the value when the page cancels beforeinput, with a warning', async () => {
+    const data = await act(['fill', '#rejecting', 'kept']);
+    assert.match(data.warning ?? '', /The page cancelled beforeinput/);
+    assert.equal(data.errors, undefined);
+    assert.deepEqual(await takeInputLog(), [
+      'rejecting beforeinput InputEvent insertText kept',
+      'rejecting input InputEvent insertText kept',
+    ]);
+    assert.match(await bdg(['dom', 'eval', 'document.getElementById("rejecting").value']), /kept/);
   });
 
   void it('reports the errors of the page a click navigated to', async () => {
