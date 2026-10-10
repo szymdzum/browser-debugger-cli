@@ -6,7 +6,9 @@
  * root, secret values masked and indices that `dom fill` / `dom submit`
  * accept; a component whose closed shadow root holds fields is named as not
  * inspectable, with the way to reach them (`dom a11y query`, then
- * `dom fill <index>`), which works; `dom get` on that component says its
+ * `dom fill <index>`), which works, as does clicking its submit button by
+ * index with no "may not have reached" warning (#582); `dom get` on that
+ * component says its
  * root is closed instead of pointing to `dom inspect`. The search form a
  * component renders when it opens is listed once it is open (like MDN's
  * search modal).
@@ -283,6 +285,29 @@ void describe('Forms in shadow roots', () => {
       await bdg(['dom', 'form', '--brief']),
       /Form: "Search" \(in dialog\) \(in shadow root of <x-search-modal>\)/
     );
+  });
+
+  void it('clicks a button in a closed shadow root without a "may not have reached" warning (#582)', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}shadow-forms`]);
+    const query = JSON.parse(await bdg(['dom', 'a11y', 'query', 'role=textbox', '--json'])) as {
+      data: { nodes: Array<{ index: number; backendDOMNodeId: number }> };
+    };
+    let cardHolder: { index: number } | undefined;
+    for (const node of query.data.nodes) {
+      const html = await bdg(['dom', 'get', '--node-id', String(node.backendDOMNodeId)]);
+      if (html.includes('name="card-holder"')) cardHolder = node;
+    }
+    assert.ok(cardHolder, 'dom a11y query lists the field in the closed root');
+    await bdg(['dom', 'fill', String(cardHolder.index), 'Jane Doe']);
+    await bdg(['dom', 'a11y', 'query', 'role=button name=Pay']);
+    const data = (
+      JSON.parse(await bdg(['dom', 'click', '0', '--json'])) as {
+        data: { method: string; warning?: string; navigation?: { url: string } };
+      }
+    ).data;
+    assert.equal(data.method, 'mouse');
+    assert.match(data.navigation?.url ?? '', /\/shadow-forms\?card-holder=Jane\+Doe$/);
+    assert.equal(data.warning, undefined, JSON.stringify(data));
   });
 
   void it('says when the closed shadow host check stopped before the end of the page', async () => {
