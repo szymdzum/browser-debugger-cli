@@ -122,6 +122,22 @@ void describe('Elements with no box of their own', () => {
     assert.equal(nodes[0]?.inViewport, 'hidden');
   });
 
+  void it('does not show a visibility: hidden label slot as text in dom inspect', async () => {
+    const loading = await bdg(['dom', 'inspect', '#loading']);
+    assert.doesNotMatch(loading, /slot#loading-slot/);
+    assert.match(loading, /^ {4}span \S+ "Spinner"\n {4}\(\+1 not rendered\)$/m);
+    const loadingText = await bdg(['dom', 'inspect', '#loading-text']);
+    assert.doesNotMatch(loadingText, /slot#loading-text-slot/);
+    assert.match(
+      await bdg(['dom', 'inspect', '#loading-slot']),
+      /^slot#loading-slot .*\[hidden: visibility: hidden\]/
+    );
+    assert.match(
+      await bdg(['dom', 'inspect', '#loading-text-slot']),
+      /^slot#loading-text-slot \[not rendered: content not shown: visibility: hidden\]/
+    );
+  });
+
   void it('marks the same elements hidden in dom query as in dom layout', async () => {
     const output = await bdg(['dom', 'query', MEASURED]);
     const hidden = output.split('\n').filter((line) => line.endsWith('(hidden)'));

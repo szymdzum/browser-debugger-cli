@@ -6,7 +6,9 @@
  * fallback content, a slot passed on into another component's slot (both
  * show the text assigned to the outer one), a `display: contents` div
  * holding only text, slots showing text inside a closed `<details>` and
- * under `visibility: hidden` ancestors (inline and inline-block), and a slot
+ * under `visibility: hidden` ancestors (inline and inline-block), loading
+ * buttons whose label slot is `visibility: hidden` (with a box of its own and
+ * `display: contents`), and a slot
  * showing text below the fold. Each slot's id
  * is its host's id plus `-slot`.
  */
@@ -24,6 +26,8 @@ const SLOTS_HTML = `<!doctype html><meta charset="utf-8"><title>slots</title>
 <details><summary>Summary</summary><x-box id="det">Inside closed</x-box></details>
 <span style="visibility:hidden"><x-box id="vis-inline">Hidden inline</x-box></span>
 <span style="visibility:hidden;display:inline-block"><x-box id="vis-block">Hidden block</x-box></span>
+<x-loading id="loading">Primary</x-loading>
+<x-loading-text id="loading-text">Secondary</x-loading-text>
 <div style="height:3000px"></div>
 <x-box id="below">Below the fold</x-box>
 <script>
@@ -36,6 +40,8 @@ const SLOTS_HTML = `<!doctype html><meta charset="utf-8"><title>slots</title>
     });
   define('x-box', '<p><slot id="ID"></slot></p>');
   define('x-fallback', '<p><slot id="ID"><b>Fallback element</b></slot></p>');
+  define('x-loading', '<button><slot id="ID" style="display:block;visibility:hidden"></slot><span>Spinner</span></button>');
+  define('x-loading-text', '<button><slot id="ID" style="visibility:hidden"></slot><span>Spinner</span></button>');
   define('x-outer', '<x-box id="inner"><slot id="ID"></slot></x-box>');
 </script>`;
 
