@@ -7,8 +7,9 @@
  * accept; a component whose closed shadow root holds fields is named as not
  * inspectable, with the way to reach them (`dom a11y query`, then
  * `dom fill <index>`), which works; `dom get` on that component says its
- * root is closed instead of pointing to `dom inspect`. The search form a component renders when it opens is listed
- * once it is open (like MDN's search modal).
+ * root is closed instead of pointing to `dom inspect`. The search form a
+ * component renders when it opens is listed once it is open (like MDN's
+ * search modal).
  */
 
 import * as assert from 'node:assert/strict';
