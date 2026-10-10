@@ -100,7 +100,7 @@ Write the agreed changes into project memory or this skill (Project settings), s
 
 ### Recurring traps
 
-- **Changelog conflicts on every merge.** Each PR then needs a rebase plus a full CI rerun. Prefer changelog fragments (one file per PR, assembled at release time). When you resolve a conflict by keeping both sides, check for duplicate entries and wrong sections.
+- **Changelog conflicts on every merge.** Each PR then needs a rebase plus a full CI rerun. In bdg, PRs don't edit `CHANGELOG.md` at all; the release PR writes it from the merged PRs' descriptions.
 - **Shared registries** (route tables, option registries, store fields) conflict when PRs run in parallel. Prefer auto-registration, or tell implementers to keep their edits additive.
 - **A rebase that ran after an agent's last test run.** Re-run at least typecheck and the affected tests before you merge.
 - **A merge state of "UNKNOWN"** right after a push. Re-check after a few seconds.
@@ -140,10 +140,8 @@ Write the agreed changes into project memory or this skill (Project settings), s
 - After merge, watch main's push run, including macOS.
 
 ### Changelog
-- One fragment per PR: `changes/<issue>-<slug>.md` with front matter `section: Breaking|Added|Changed|Fixed|Security|Internal` and the entry as a list item. Never edit `CHANGELOG.md` in a feature PR. Format: `changes/README.md`.
-- Changed defaults or contracts go under Changed; Breaking says what to do.
-- Validate locally: `node scripts/changelog-assemble.mjs --check` (CI runs it in Code Quality).
-- Release PR only: `node scripts/changelog-assemble.mjs --version 0.X.Y` moves the fragments and `## [Unreleased]` into the version section (docs/RELEASE_PROCESS.md).
+- PRs never edit `CHANGELOG.md`. The PR description is the changelog source: it must say what changed for users, and mark changed defaults or contracts and breaking changes (with what to do).
+- The release PR writes the version's section from the PRs merged since the last tag (`docs/RELEASE_PROCESS.md`), in the order Breaking, Added, Changed, Fixed, Security, Internal.
 
 ### Conflict-prone files (avoid shared edit points)
 - Fixture pages: a new module in `src/__testutils__/fixturePages/` exporting `ROUTES`; don't edit `fixtureServer.ts` for static pages.
@@ -304,9 +302,9 @@ Merge a PR only when **all** of these hold. If one fails, fix it; don't negotiat
 5. **Required CI is green on the final head commit.** Re-check the head SHA after any push or rebase. Never merge on a watcher that reported an older commit.
 6. **The branch is mergeable on the current base.** After a rebase:
    - re-run at least typecheck and the affected tests;
-   - check that `CHANGELOG.md` wasn't edited directly and that the fragment is valid (`node scripts/changelog-assemble.mjs --check`);
+   - check that `CHANGELOG.md` wasn't edited;
    - check that no conflict marker is left anywhere.
-7. **Docs match the behaviour:** user docs, help text, agent skill, option registry, a changelog fragment in `changes/` (Added, Changed, Fixed, Security, Internal). Changed defaults or contracts are listed under **Changed**.
+7. **Docs match the behaviour:** user docs, help text, agent skill, option registry, a PR description that says what changed for users (it feeds the changelog at release). Changed defaults or contracts are listed under **Changed**.
 8. **No leftovers:** no temp files in the repo, no stray processes from the agents, nothing written to the user's real data dirs.
 
 #### After merging

@@ -46,6 +46,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Dialogs answered during a page load are reported** (#553): `bdg <url>`, `page navigate`, `page reload` and `page back`/`forward` printed nothing for a dialog the page opened while loading (only `bdg console` had it), so an agent could not tell that a confirm was answered, or how. They now list it like action results do: `Dialog: confirm() dismissed: "Continue loading?"`, JSON `dialogs: [{ type, message, answer, promptText? }]` (start: `data.dialogs`). `bdg status` shows a `--dialog dismiss` session default as `Dialogs: dismiss (session default)` and JSON `dialog: "dismiss"`, next to the other start options (left out for the built-in `accept`).
 - **`--dialog` suggests the answer a button word means** (#554): `--dialog cancel` or `no` listed only the choices; it now exits 81 with `Did you mean: dismiss?`, and `ok` or `yes` with `Did you mean: accept?`. The help and docs now say the value is read in any case (`Dismiss` works).
 
+### Internal
+
+- **Fewer merge conflicts between PRs**: pull requests no longer edit `CHANGELOG.md`; the release PR writes the version's entries from the merged PRs' descriptions. Fixture pages in `src/__testutils__/fixturePages/` register themselves with the fixture server (no import list or lookup chain to edit in `fixtureServer.ts`), and `OPTION_BEHAVIORS` is split into one table per command area under `src/commands/optionBehaviors/`.
+- **One project skill for shipping**: `.claude/skills/ship/SKILL.md` holds the whole bdg shipping workflow in one file: the cycle, the project settings, the brief templates, the merge gates and the fresh-agent test scenarios.
+
 ## [0.16.0] - 2026-10-09
 
 ### Changed
