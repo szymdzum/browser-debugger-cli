@@ -79,6 +79,14 @@ export function domClickFallbackWarning(reason: string | null | undefined): stri
   return `Element is ${reason ?? 'not reachable by the mouse'}; dispatched DOM events instead of mouse events (a user could not reach it like this)`;
 }
 
+/**
+ * Why the mouse cannot reach a `display: contents` element (a `<slot>`): it
+ * has no box to aim at, completing "Element is …" in
+ * {@link domClickFallbackWarning} and the `--strict` refusal.
+ */
+export const NO_BOX_CLICK_REASON =
+  'not a mouse target itself (display: contents, no box of its own)';
+
 /** Reason of a `bdg dom form` blocker for a required field left empty */
 export const REQUIRED_FIELD_EMPTY_REASON = 'Required field is empty';
 

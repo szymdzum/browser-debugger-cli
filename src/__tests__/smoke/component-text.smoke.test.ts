@@ -117,6 +117,15 @@ void describe('Text web components render themselves', () => {
     assert.doesNotMatch(await bdg(['dom', 'inspect', 'slot', '--index', '7']), /not rendered/);
   });
 
+  void it('says a click on a slot found no box to aim at, not display: none', async () => {
+    const output = await bdg(['dom', 'click', 'slot', '--index', '7']);
+    assert.match(
+      output,
+      /Element is not a mouse target itself \(display: contents, no box of its own\)/
+    );
+    assert.doesNotMatch(output, /display: none/);
+  });
+
   void it('names the element an action hit by what a user sees', async () => {
     const shadowButton = await bdg(['dom', 'click', 'button.root']);
     assert.match(shadowButton, /Element: +button\.root "Ok, got it"/);
