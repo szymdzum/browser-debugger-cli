@@ -124,7 +124,10 @@ export function registerDomCommands(program: Command): void {
       '[selectorOrIndex]',
       `${SELECTOR_OR_INDEX_ARGUMENT} (e.g. ".error", "#app", 0); default: ${DOM_GET_DEFAULT_SELECTOR}`
     )
-    .option('--raw', 'Output raw HTML with all filtering options')
+    .option(
+      '--raw',
+      'Output raw HTML with all attributes (secret field values shown as ••••, as in dom query)'
+    )
     .option(
       '--full',
       `Show all of the element text (default: the first 500 characters); with --raw, all of the HTML (default: the first ${MAX_VALUE_LENGTH} characters)`
