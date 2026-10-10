@@ -90,7 +90,9 @@ export function elementLabel(raw: Pick<RawInspect, 'tag' | 'id' | 'classes'>): s
 }
 
 /**
- * Why the element cannot be seen, from `dom layout`'s measurements.
+ * Why the element cannot be seen, from `dom layout`'s measurements. An
+ * element without a box of its own (`display: contents`, a `<slot>`) is
+ * rendered when `dom layout` places it by the content it shows.
  *
  * @param layout - Layout measurements
  * @param rendered - The element has a box
@@ -100,7 +102,7 @@ export function visibilityOf(
   layout: ElementLayout | undefined,
   rendered: boolean
 ): InspectVisibility {
-  if (!rendered)
+  if (!rendered && (!layout || layout.inViewport === 'hidden'))
     return { notRendered: true, ...(layout?.hiddenReason && { hidden: layout.hiddenReason }) };
   if (!layout) return {};
   const hidden = layout.inViewport === 'hidden' ? layout.hiddenReason : layout.invisible;
