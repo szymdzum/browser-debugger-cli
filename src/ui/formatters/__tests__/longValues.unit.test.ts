@@ -148,13 +148,13 @@ void describe('dom get --raw and dom eval human output', () => {
   const html = `<body>${'D'.repeat(3_000_000)}</body>`;
 
   void it('dom get --raw prints the cap and a pointer naming --full', () => {
-    const output = formatDomGet({ nodes: [{ nodeId: 1, outerHTML: html }] });
+    const output = formatDomGet({ nodes: [{ nodeId: 1, classes: [], outerHTML: html }] });
     assert.ok(output.startsWith(html.slice(0, MAX_VALUE_LENGTH)));
     assert.ok(output.endsWith(`… ${html.length - MAX_VALUE_LENGTH} more chars (use --full)`));
     const all = formatDomGet({
       nodes: [
-        { nodeId: 1, outerHTML: html },
-        { nodeId: 2, outerHTML: html },
+        { nodeId: 1, classes: [], outerHTML: html },
+        { nodeId: 2, classes: [], outerHTML: html },
       ],
     });
     assert.ok(all.length < 3 * MAX_VALUE_LENGTH, `--all is ${all.length} chars`);
@@ -169,7 +169,10 @@ void describe('dom get --raw and dom eval human output', () => {
   });
 
   void it('--full prints the value byte for byte', () => {
-    assert.equal(formatDomGet({ nodes: [{ nodeId: 1, outerHTML: html }] }, { full: true }), html);
+    assert.equal(
+      formatDomGet({ nodes: [{ nodeId: 1, classes: [], outerHTML: html }] }, { full: true }),
+      html
+    );
     assert.equal(formatDomEval({ result: html, type: 'string' }, { full: true }), html);
   });
 });

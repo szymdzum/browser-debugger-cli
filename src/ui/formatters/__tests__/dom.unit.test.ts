@@ -159,8 +159,8 @@ void describe('formatDomGet', () => {
   void it('numbers several elements from 0', () => {
     const output = formatDomGet({
       nodes: [
-        { nodeId: 1, outerHTML: '<p>a</p>' },
-        { nodeId: 2, outerHTML: '<p>b</p>' },
+        { nodeId: 1, classes: [], outerHTML: '<p>a</p>' },
+        { nodeId: 2, classes: [], outerHTML: '<p>b</p>' },
       ],
     });
     assert.match(output, /\[0\] <p>a<\/p>/);

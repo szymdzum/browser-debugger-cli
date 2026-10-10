@@ -128,7 +128,7 @@ export function formatA11yNodeWithContext(data: A11yNodeWithContext): string {
   // DOM context fallback when a11y data is sparse
   if (domContext) {
     props.push(['Tag', `<${domContext.tag}>`]);
-    if (domContext.classes && domContext.classes.length > 0) {
+    if (domContext.classes.length > 0) {
       props.push(['Classes', domContext.classes.join(' ')]);
     }
     if (domContext.preview && !node.name && !node.description) {

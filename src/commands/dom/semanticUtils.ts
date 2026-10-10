@@ -44,7 +44,7 @@ function buildContextText(node: A11yNode, domContext: DomContext | null): string
 
   if (domContext) {
     const tagPart = `<${domContext.tag}`;
-    const { shown } = labelClasses(domContext.classes ?? [], 3);
+    const { shown } = labelClasses(domContext.classes, 3);
     const classPart = shown.length > 0 ? `.${shown.join('.')}` : '';
     const previewPart = domContext.preview && !domContext.text ? ` "${domContext.preview}"` : '';
     return ` ${tagPart}${classPart}>${previewPart}`;

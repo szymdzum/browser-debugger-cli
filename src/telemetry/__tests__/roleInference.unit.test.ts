@@ -85,15 +85,15 @@ describe('inferRoleFromTag', () => {
 
 describe('synthesizeA11yNode', () => {
   test('creates node with inferred flag set', () => {
-    const node = synthesizeA11yNode({ tag: 'button' }, 123);
+    const node = synthesizeA11yNode({ tag: 'button', classes: [] }, 123);
 
     assert.equal(node.inferred, true, 'Should have inferred flag');
   });
 
   test('infers role from tag', () => {
-    const buttonNode = synthesizeA11yNode({ tag: 'button' }, 1);
-    const linkNode = synthesizeA11yNode({ tag: 'a' }, 2);
-    const divNode = synthesizeA11yNode({ tag: 'div' }, 3);
+    const buttonNode = synthesizeA11yNode({ tag: 'button', classes: [] }, 1);
+    const linkNode = synthesizeA11yNode({ tag: 'a', classes: [] }, 2);
+    const divNode = synthesizeA11yNode({ tag: 'div', classes: [] }, 3);
 
     assert.equal(buttonNode.role, 'button');
     assert.equal(linkNode.role, 'link');
@@ -101,14 +101,14 @@ describe('synthesizeA11yNode', () => {
   });
 
   test('uses text preview as name', () => {
-    const node = synthesizeA11yNode({ tag: 'a', preview: 'Click here' }, 123);
+    const node = synthesizeA11yNode({ tag: 'a', classes: [], preview: 'Click here' }, 123);
 
     assert.equal(node.name, 'Click here');
   });
 
   test('truncates long names', () => {
     const longText = 'A'.repeat(150);
-    const node = synthesizeA11yNode({ tag: 'a', preview: longText }, 123);
+    const node = synthesizeA11yNode({ tag: 'a', classes: [], preview: longText }, 123);
 
     assert.ok(node.name, 'Should have name');
     assert.ok(node.name.length <= 100, 'Name should be truncated to 100 chars');
@@ -116,21 +116,21 @@ describe('synthesizeA11yNode', () => {
   });
 
   test('sets nodeId as string', () => {
-    const node = synthesizeA11yNode({ tag: 'button' }, 456);
+    const node = synthesizeA11yNode({ tag: 'button', classes: [] }, 456);
 
     assert.equal(node.nodeId, '456');
   });
 
   test('sets backendDOMNodeId', () => {
-    const node = synthesizeA11yNode({ tag: 'button' }, 789);
+    const node = synthesizeA11yNode({ tag: 'button', classes: [] }, 789);
 
     assert.equal(node.backendDOMNodeId, 789);
   });
 
   test('adds heading level for h1-h6 tags', () => {
-    const h1 = synthesizeA11yNode({ tag: 'h1' }, 1);
-    const h2 = synthesizeA11yNode({ tag: 'h2' }, 2);
-    const h6 = synthesizeA11yNode({ tag: 'h6' }, 6);
+    const h1 = synthesizeA11yNode({ tag: 'h1', classes: [] }, 1);
+    const h2 = synthesizeA11yNode({ tag: 'h2', classes: [] }, 2);
+    const h6 = synthesizeA11yNode({ tag: 'h6', classes: [] }, 6);
 
     assert.ok(h1.properties, 'h1 should have properties');
     assert.equal(h1.properties['level'], 1);
@@ -143,21 +143,21 @@ describe('synthesizeA11yNode', () => {
   });
 
   test('does not add level for non-heading tags', () => {
-    const button = synthesizeA11yNode({ tag: 'button' }, 1);
-    const div = synthesizeA11yNode({ tag: 'div' }, 2);
+    const button = synthesizeA11yNode({ tag: 'button', classes: [] }, 1);
+    const div = synthesizeA11yNode({ tag: 'div', classes: [] }, 2);
 
     assert.equal(button.properties, undefined);
     assert.equal(div.properties, undefined);
   });
 
   test('handles missing preview', () => {
-    const node = synthesizeA11yNode({ tag: 'button' }, 123);
+    const node = synthesizeA11yNode({ tag: 'button', classes: [] }, 123);
 
     assert.equal(node.name, undefined);
   });
 
   test('handles empty preview', () => {
-    const node = synthesizeA11yNode({ tag: 'button', preview: '' }, 123);
+    const node = synthesizeA11yNode({ tag: 'button', classes: [], preview: '' }, 123);
 
     assert.equal(node.name, undefined);
   });

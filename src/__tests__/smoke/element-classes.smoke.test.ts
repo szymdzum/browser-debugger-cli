@@ -91,6 +91,14 @@ void describe('Element class lists', () => {
     assert.deepEqual(await classesOf('#styled'), { query: styled, get: styled, raw: styled });
   });
 
+  void it('reports classes: [] in dom a11y describe for an element without classes', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}classes`]);
+    const described = (await data(['dom', 'a11y', 'describe', '#plain'])) as {
+      domContext?: { classes?: unknown };
+    };
+    assert.deepEqual(described.domContext?.classes, []);
+  });
+
   void it('shows no class for an element without classes in human output', async () => {
     await bdg(['page', 'navigate', `${fixture.url}classes`]);
     const query = await bdg(['dom', 'query', 'input, p, button']);
