@@ -11,17 +11,22 @@ import type {
   ActionEffects,
   DialogChoice,
   DialogInfo,
+  InvalidField,
   TriggeredRequest,
 } from '@/ipc/protocol/domTypes.js';
 import type { OpenedTab, TabClosedSwitch } from '@/ipc/protocol/tabTypes.js';
-import { pendingChanges, watchActionEffects } from '@/runtime/dom/actionEffects.js';
+import {
+  pendingChanges,
+  watchActionEffects,
+  type CollectedEffects,
+} from '@/runtime/dom/actionEffects.js';
 import { UNBIND_TARGET_SCRIPT } from '@/runtime/dom/targetNode.js';
 import { toDownloadInfo } from '@/telemetry/downloads.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
 import { watchActionErrors } from './actionErrors.js';
-import { watchTriggeredRequests } from './triggeredRequests.js';
+import { watchTriggeredRequests, type CollectedRequests } from './triggeredRequests.js';
 
 const log = createLogger('dom');
 
@@ -30,6 +35,7 @@ interface InteractionReport extends ActionEffects {
   dialogs?: DialogInfo[];
   triggeredRequests?: TriggeredRequest[];
   triggeredRequestsOmitted?: number;
+  submitBlocked?: InvalidField[];
 }
 
 /** How an interaction is reported */
@@ -60,6 +66,13 @@ export interface InteractionOptions {
    * press) and waited for the network
    */
   detectUnsettled?: boolean;
+  /**
+   * Read which fields blocked the submit it started (`submitBlocked`): for
+   * clicks, whose script left a probe on the submit button's form. Read
+   * only when it neither navigated nor triggered a request (see
+   * {@link blockedSubmit}).
+   */
+  readBlockedSubmit?: () => Promise<InvalidField[] | undefined>;
   /**
    * How to answer the dialogs opened while it runs (`--dialog`,
    * `--prompt-text`; default: the session default)
@@ -134,6 +147,31 @@ async function closedTabReport(
   await lost;
   const report = tabReport(tabs, firstOpened);
   return report.tabClosed ? report : undefined;
+}
+
+/**
+ * The fields that blocked the submit an interaction started: read when it
+ * did not navigate (nor was a new page still loading) and triggered no
+ * request, since a request or navigation means something was sent.
+ *
+ * @param read - Reads the fields (from {@link InteractionOptions})
+ * @param changes - What collecting saw, with the page's work
+ * @param requests - Requests it triggered (none known without network telemetry)
+ * @returns `submitBlocked`, or nothing
+ */
+async function blockedSubmit(
+  read: InteractionOptions['readBlockedSubmit'],
+  changes: CollectedEffects | undefined,
+  requests: CollectedRequests | undefined
+): Promise<Pick<InteractionReport, 'submitBlocked'>> {
+  if (!read || changes?.navigation || changes?.work?.navigating) return {};
+  if (
+    (requests?.triggeredRequests.length ?? 0) > 0 ||
+    (requests?.triggeredRequestsOmitted ?? 0) > 0
+  )
+    return {};
+  const fields = await read();
+  return fields ? { submitBlocked: fields } : {};
 }
 
 /**
@@ -217,6 +255,7 @@ export function createInteractionRunner(
         });
         const { work, ...changes } = collected ?? {};
         const requests = collectRequests?.();
+        const blocked = await blockedSubmit(options.readBlockedSubmit, collected, requests);
         if (effects) await tabs?.pageLost(cdp);
         const downloads = store.downloads.slice(firstDownload).map(toDownloadInfo);
         const pending =
@@ -229,6 +268,7 @@ export function createInteractionRunner(
           ...changes,
           ...collectErrors?.(),
           ...(pending && { settled: false as const, pending }),
+          ...blocked,
           ...(store.fetchInterceptionEnabled &&
             requests?.triggeredRequests.some((request) => request.pending) && {
               fetchInterception: true as const,

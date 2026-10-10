@@ -6,9 +6,14 @@ import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPTimeoutError } from '@/connection/errors.js';
 import { trackInFlightRequests, type InFlightRequests } from '@/connection/inFlightRequests.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
-import { submitNetworkBusyWarning, submitTimeoutError } from '@/errors/messages.js';
+import {
+  invalidFormMessage,
+  submitNetworkBusyWarning,
+  submitTimeoutError,
+} from '@/errors/messages.js';
 import type { PendingRequestInfo } from '@/ipc/protocol/commands.js';
-import type { SubmitResult } from '@/ipc/protocol/domTypes.js';
+import type { InvalidField, SubmitResult } from '@/ipc/protocol/domTypes.js';
+import { INVALID_FIELDS_JS } from '@/runtime/dom/blockedSubmit.js';
 import { DISABLED_CAUSE_JS, ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
 import { throwIfInvalidSelector } from '@/runtime/dom/formFillHelpers/shared.js';
 import { FIND_ELEMENTS_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
@@ -82,10 +87,7 @@ const PREPARE_SUBMIT_SCRIPT = `
     return { action: 'fail', reason: 'disabled', error: 'The form\\'s submit button is disabled' };
   }
   if ((isForm || isSubmitter) && form && !form.noValidate && !el.formNoValidate && !form.checkValidity()) {
-    const invalid = Array.from(form.elements)
-      .filter((f) => f.willValidate && !f.checkValidity())
-      .map((f) => (f.name || f.id || f.tagName.toLowerCase()) + ': ' + f.validationMessage);
-    return { action: 'fail', reason: 'invalid', error: 'Form has invalid fields - ' + invalid.join('; ') };
+    return { action: 'fail', reason: 'invalid', invalid: (${INVALID_FIELDS_JS})(form) };
   }
   if (isForm) {
     // Like pressing Enter: the form's default button is the submitter, so its
@@ -107,6 +109,8 @@ interface PrepareResult {
   element?: string;
   reason?: 'not-found' | 'range' | 'not-submittable' | 'invalid' | 'disabled';
   error?: string;
+  /** The form's invalid fields (reason `invalid`) */
+  invalid?: InvalidField[];
 }
 
 const FAILURE_EXIT_CODES: Record<NonNullable<PrepareResult['reason']>, number> = {
@@ -299,7 +303,9 @@ async function triggerSubmit(
     const reason = prepared?.reason ?? 'not-found';
     const failure: SubmitResult = {
       success: false,
-      error: prepared?.error ?? 'Could not submit',
+      error: prepared?.invalid
+        ? invalidFormMessage(prepared.invalid)
+        : (prepared?.error ?? 'Could not submit'),
       selector,
       clicked: false,
       exitCode: FAILURE_EXIT_CODES[reason],

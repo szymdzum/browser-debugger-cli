@@ -26,6 +26,7 @@ import type { DownloadInfo } from '@/ipc/protocol/domTypes.js';
 import type { PageCloseData, PageSwitchData, PageTabsData } from '@/ipc/protocol/tabTypes.js';
 import { searchStyleSheets } from '@/runtime/css/search.js';
 import { auditPage } from '@/runtime/dom/audit.js';
+import { readBlockedSubmit } from '@/runtime/dom/blockedSubmit.js';
 import { evaluateScript, withBusyPageRecovery } from '@/runtime/dom/evalHelpers.js';
 import { inspectEventListeners } from '@/runtime/dom/eventListeners.js';
 import { evaluateFormDiscovery, readFormDiscovery } from '@/runtime/dom/formDiscoveryNodes.js';
@@ -814,12 +815,15 @@ export function createCommandRegistry(
         { dialogs: params }
       ),
 
-    dom_click: async (cdp, params) =>
-      interact(
+    dom_click: async (cdp, params) => {
+      let scriptCdp = cdp;
+      const presses = params.action !== 'hover' && params.action !== 'right';
+      return interact(
         cdp,
         async () =>
-          onScriptTarget(cdp, params, (target) =>
-            withActionStability(
+          onScriptTarget(cdp, params, (target) => {
+            scriptCdp = target.cdp;
+            return withActionStability(
               cdp,
               () =>
                 clickElement(
@@ -832,16 +836,17 @@ export function createCommandRegistry(
                   })
                 ),
               params.wait !== false
-            )
-          ),
+            );
+          }),
         {
-          detectNoEffect:
-            params.wait !== false && params.action !== 'hover' && params.action !== 'right',
+          detectNoEffect: params.wait !== false && presses,
           reportShown: params.action === 'hover',
           detectUnsettled: params.wait !== false && params.action !== 'hover',
+          ...(presses && { readBlockedSubmit: () => readBlockedSubmit(scriptCdp) }),
           dialogs: params,
         }
-      ),
+      );
+    },
 
     dom_submit: async (cdp, params) =>
       withTriggeredRequestCount(

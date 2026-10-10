@@ -32,7 +32,12 @@ import {
   scrollOptionsError,
 } from '@/errors/messages.js';
 import { callCDP, domClick, domFill, domPressKey, domScroll, domSubmit } from '@/ipc/client.js';
-import type { ActionEffects, DialogInfo, TriggeredRequest } from '@/ipc/protocol/domTypes.js';
+import type {
+  ActionEffects,
+  DialogInfo,
+  InvalidField,
+  TriggeredRequest,
+} from '@/ipc/protocol/domTypes.js';
 import { type PressKeyResult, type ScrollResult } from '@/runtime/dom/formFillHelpers/index.js';
 import type { SubmitResult } from '@/runtime/dom/formSubmitHelpers.js';
 import { findUnknownModifiers } from '@/runtime/dom/keyMapping.js';
@@ -63,6 +68,7 @@ import {
   pageNavigationText,
   shownElementText,
   stillChangingNote,
+  submitBlockedNote,
 } from '@/ui/messages/commands.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -491,13 +497,14 @@ interface ActionNotices extends ActionEffects {
   dialogs?: DialogInfo[] | undefined;
   triggeredRequests?: TriggeredRequest[] | undefined;
   triggeredRequestsOmitted?: number | undefined;
+  submitBlocked?: InvalidField[] | undefined;
 }
 
 /**
  * Build an action's output: the status line ("✓ Element Clicked",
  * "⚠ Element Clicked (with warnings)" with the warning right below it,
  * "⚠ Element Clicked (page still changing)" with what it was still working
- * on, or "⚠ Element Clicked (no visible effect: …)"), the details, what
+ * on, "⚠ Element Clicked (submit blocked)" with the fields that blocked it, or "⚠ Element Clicked (no visible effect: …)"), the details, what
  * changed on the page (`Page:` navigation, `New text:` messages, `Shown:`
  * elements), the console errors it caused (`Errors:`), then the network
  * requests it triggered, the downloads it started, the tabs it opened
@@ -525,8 +532,10 @@ function formatActionOutput(
       warned: result.warning !== undefined,
       noEffect: result.effect === 'none',
       stillChanging,
+      submitBlocked: result.submitBlocked !== undefined,
     })
   );
+  if (result.submitBlocked) fmt.text(`⚠ ${submitBlockedNote(result.submitBlocked)}`);
   if (result.warning) fmt.text(`⚠ Warning: ${result.warning}`);
   const pausedNoted = stillChanging && result.pending?.requests !== undefined;
   if (stillChanging && result.pending) {

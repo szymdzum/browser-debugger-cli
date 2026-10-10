@@ -9,6 +9,7 @@ import * as path from 'path';
 
 import type { MissingMethodCause } from '@/cdp/methodTarget.js';
 import type { DomFrame, PendingRequestInfo } from '@/ipc/protocol/commands.js';
+import type { InvalidField } from '@/ipc/protocol/domTypes.js';
 import type { TabRef } from '@/ipc/protocol/tabTypes.js';
 import {
   countedMatches,
@@ -23,6 +24,7 @@ import {
   documentRequestText,
   frameLabel,
   frameUrlLabel,
+  invalidFieldsText,
   pendingRequestsText,
   tabClosedText,
   waitSnapshotSummary,
@@ -1195,6 +1197,16 @@ function submitWaitDetail(waitNavigation: boolean, blockers: SubmitBlockers): st
   if (document && (waitNavigation || !loadedPage)) return documentRequestText(document);
   if (pending.length === 0) return undefined;
   return `waiting on ${pendingRequestsText(pending, blockers.pendingCount ?? pending.length)}`;
+}
+
+/**
+ * `dom submit` refused, as the browser would: the form has invalid fields.
+ *
+ * @param fields - Invalid fields with the browser's messages
+ * @returns e.g. "Form has invalid fields - email: Please fill out this field."
+ */
+export function invalidFormMessage(fields: InvalidField[]): string {
+  return `Form has invalid fields - ${invalidFieldsText(fields)}`;
 }
 
 /**

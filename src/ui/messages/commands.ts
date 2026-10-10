@@ -13,6 +13,7 @@ import type {
   DownloadInfo,
   ElementLayout,
   FillValueMismatch,
+  InvalidField,
   LayoutPoint,
   LayoutSize,
   NewMessage,
@@ -201,23 +202,53 @@ export const NO_VISIBLE_EFFECT =
   'no visible effect observed: no DOM change, requests or navigation within 300 ms';
 
 /**
- * Status line of a DOM action: a check mark only for a clean success.
+ * Status line of a DOM action: a check mark only for a clean success. A
+ * blocked submit says so instead of "no visible effect" (the line below it
+ * names the fields).
  *
  * @param done - What was done, e.g. "Element Clicked"
- * @param state - Whether the action has warnings (shown right below), had no
- *   visible effect, or returned while the page was still changing
+ * @param state - Whether the action has warnings (shown right below), had its
+ *   submit blocked by validation, had no visible effect, or returned while the
+ *   page was still changing
  * @returns e.g. "✓ Element Clicked", "⚠ Element Clicked (with warnings)",
+ *   "⚠ Element Clicked (submit blocked)",
  *   "⚠ Element Clicked (page still changing)" or
  *   "⚠ Element Clicked (no visible effect observed: no DOM change, requests or navigation within 300 ms)"
  */
 export function actionStatusLine(
   done: string,
-  state: { warned: boolean; noEffect?: boolean; stillChanging?: boolean }
+  state: { warned: boolean; noEffect?: boolean; stillChanging?: boolean; submitBlocked?: boolean }
 ): string {
-  if (state.noEffect) return `⚠ ${done} (${NO_VISIBLE_EFFECT})`;
-  const notes = [state.warned && 'with warnings', state.stillChanging && 'page still changing'];
+  if (state.noEffect && !state.submitBlocked) return `⚠ ${done} (${NO_VISIBLE_EFFECT})`;
+  const notes = [
+    state.submitBlocked && 'submit blocked',
+    state.warned && 'with warnings',
+    state.stillChanging && 'page still changing',
+  ];
   const shown = notes.filter((note): note is string => typeof note === 'string');
   return shown.length > 0 ? `⚠ ${done} (${shown.join('; ')})` : `✓ ${done}`;
+}
+
+/**
+ * A form's invalid fields as `dom submit`'s error and a blocked click name
+ * them.
+ *
+ * @param fields - Invalid fields with the browser's messages
+ * @returns e.g. "email: Please fill out this field.; pin: Please fill out this field."
+ */
+export function invalidFieldsText(fields: InvalidField[]): string {
+  return fields.map((field) => `${field.field}: ${field.message}`).join('; ');
+}
+
+/**
+ * Note under the status line of a click whose submit the browser's
+ * constraint validation blocked.
+ *
+ * @param fields - Fields that blocked it
+ * @returns e.g. "Submit blocked: email: Please fill out this field."
+ */
+export function submitBlockedNote(fields: InvalidField[]): string {
+  return `Submit blocked: ${invalidFieldsText(fields)}`;
 }
 
 /**
