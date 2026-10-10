@@ -91,6 +91,13 @@ void describe('missingBodyReason', () => {
     const { duration: _duration, ...pending } = request();
     assert.match(missingBodyReason(pending) ?? '', /still loading/);
     assert.match(missingBodyReason(request()) ?? '', /no response body was captured/);
+  });
+
+  void it('says a 204, 205, 304 or HEAD response has no body', () => {
+    for (const status of [204, 205, 304]) {
+      assert.equal(missingBodyReason(request({ status })), 'the response has no body');
+    }
+    assert.equal(missingBodyReason(request({ method: 'HEAD' })), 'the response has no body');
     assert.match(
       missingBodyReason(request({ resourceType: 'WebSocket', status: 101 })) ?? '',
       /WebSocket/

@@ -246,6 +246,27 @@ export function bodyStillLoadingReason(): string {
 }
 
 /**
+ * Why `details network --body` has nothing to print: a HEAD request or a
+ * 204, 205 or 304 response, which have no body.
+ *
+ * @returns Reason text
+ */
+export function noBodyInResponseReason(): string {
+  return 'the response has no body';
+}
+
+/**
+ * Hint (stderr) after `details network --body --body-max` printed part of the body.
+ *
+ * @param shown - Characters printed
+ * @param total - Characters of the whole body
+ * @returns e.g. `body cut at 100 of 150000 characters (--body-max 0 for all)`
+ */
+export function bodyCutHint(shown: number, total: number): string {
+  return `body cut at ${shown} of ${total} characters (--body-max 0 for all)`;
+}
+
+/**
  * Why `details network --body` has nothing to print: the request finished without one.
  *
  * @returns Reason text

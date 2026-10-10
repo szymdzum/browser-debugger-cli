@@ -559,6 +559,15 @@ void describe('Network list by page and size, details body options (#451)', () =
     const raw = await runCommand('details', ['network', largeId, '--body'], { timeout: 30000 });
     assert.equal(raw.exitCode, 0, raw.stderr);
     assert.equal(raw.stdout, LARGE_BODY);
+    const cut = await runCommand('details', ['network', largeId, '--body', '--body-max', '100'], {
+      timeout: 30000,
+    });
+    assert.equal(cut.exitCode, 0, cut.stderr);
+    assert.equal(cut.stdout, LARGE_BODY.slice(0, 100));
+    assert.match(
+      cut.stderr,
+      new RegExp(`body cut at 100 of ${LARGE_BODY.length} characters \\(--body-max 0 for all\\)`)
+    );
   });
 
   void it('--no-body drops the body in human and JSON output', async () => {
@@ -584,5 +593,10 @@ void describe('Network list by page and size, details body options (#451)', () =
     const sort = await runCommand('network', ['list', '--sort', 'sise'], { timeout: 30000 });
     assert.equal(sort.exitCode, 81);
     assert.match(sort.stderr, /did you mean size\?/);
+    const follow = await runCommand('network', ['list', '--follow', '--page', 'current'], {
+      timeout: 30000,
+    });
+    assert.equal(follow.exitCode, 81);
+    assert.match(follow.stderr, /--page cannot be combined with --follow/);
   });
 });

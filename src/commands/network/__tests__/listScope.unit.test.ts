@@ -10,6 +10,7 @@ import { InvalidArgumentError } from 'commander';
 
 import {
   defaultPageScope,
+  followConflict,
   pageScopeOption,
   scopeToPage,
   selectRequests,
@@ -38,22 +39,29 @@ void describe('scopeToPage', () => {
   ];
 
   void it("keeps the current page's requests and counts the others", () => {
-    const scoped = scopeToPage(requests, 'current', 3);
+    const scoped = scopeToPage(requests, 'current', { all: requests, currentNavigationId: 3 });
     assert.deepEqual(ids(scoped.requests), ['doc', 'untagged']);
     assert.equal(scoped.hidden, 2);
   });
 
   void it('keeps everything with all', () => {
-    const scoped = scopeToPage(requests, 'all', 3);
+    const scoped = scopeToPage(requests, 'all', { all: requests, currentNavigationId: 3 });
     assert.equal(scoped.requests.length, 4);
     assert.equal(scoped.hidden, 0);
   });
 
-  void it('falls back to the latest navigation among the requests', () => {
-    assert.deepEqual(ids(scopeToPage(requests, 'current', undefined).requests), [
+  void it('falls back to the latest navigation among all captured requests', () => {
+    assert.deepEqual(ids(scopeToPage(requests, 'current', { all: requests }).requests), [
       'doc',
       'untagged',
     ]);
+  });
+
+  void it('takes the fallback from all requests, not from the matches', () => {
+    const matches = [request('old-404', { navigationId: 1 })];
+    const scoped = scopeToPage(matches, 'current', { all: requests });
+    assert.deepEqual(ids(scoped.requests), []);
+    assert.equal(scoped.hidden, 1);
   });
 });
 
@@ -120,5 +128,24 @@ void describe('option parsers', () => {
       (error: unknown) =>
         error instanceof InvalidArgumentError && /size, duration or start/.test(error.message)
     );
+  });
+});
+
+void describe('followConflict', () => {
+  void it('rejects --page and --sort with --follow', () => {
+    assert.match(
+      followConflict({ follow: true, page: 'current' })?.message ?? '',
+      /--page cannot be combined with --follow/
+    );
+    assert.match(followConflict({ follow: true, page: 'all' })?.message ?? '', /--page/);
+    assert.match(
+      followConflict({ follow: true, sort: 'size' })?.message ?? '',
+      /--sort cannot be combined with --follow/
+    );
+  });
+
+  void it('accepts them without --follow, and --follow alone (a preset too)', () => {
+    assert.equal(followConflict({ page: 'current', sort: 'size' }), undefined);
+    assert.equal(followConflict({ follow: true }), undefined);
   });
 });

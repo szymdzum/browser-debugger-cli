@@ -16,7 +16,7 @@ import { validateIPCResponse } from '@/ipc/index.js';
 import { capResponseBody, missingBodyReason } from '@/telemetry/responseBody.js';
 import type { NetworkRequest } from '@/types.js';
 import { formatNetworkDetails, formatConsoleDetails } from '@/ui/formatters/details.js';
-import { base64BodyHint } from '@/ui/messages/networkMessages.js';
+import { base64BodyHint, bodyCutHint } from '@/ui/messages/networkMessages.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { validateDetailsItem } from '@/utils/typeGuards.js';
@@ -113,10 +113,16 @@ function bodyOnly(
   }
   const capped = capResponseBody(request, { bodyMax: bodyMax ?? 0 });
   const body = capped.responseBody ?? '';
+  const hints = [
+    ...(capped.bodyTruncated && capped.bodyLength !== undefined
+      ? [bodyCutHint(body.length, capped.bodyLength)]
+      : []),
+    ...(request.responseBodyBase64 ? [base64BodyHint()] : []),
+  ];
   return {
     success: true,
     raw: true,
-    ...(request.responseBodyBase64 && { hint: base64BodyHint() }),
+    ...(hints.length > 0 && { hint: hints.join('\n') }),
     data: {
       type: 'network-body',
       requestId: request.requestId,

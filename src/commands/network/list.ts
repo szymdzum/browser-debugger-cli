@@ -19,7 +19,6 @@ import type { BaseOptions } from '@/commands/shared/optionTypes.js';
 import { positiveIntRule, resourceTypeRule } from '@/commands/shared/validation.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
-import { conflictingOptionsError } from '@/errors/messages.js';
 import type { TabSwitchInfo } from '@/ipc/protocol/tabTypes.js';
 import { applyFilters, getFilterHelpText, validateFilterString } from '@/telemetry/filterDsl.js';
 import { resolvePreset, FILTER_PRESETS } from '@/telemetry/filterPresets.js';
@@ -43,6 +42,7 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 import {
   defaultPageScope,
+  followConflict,
   pageScopeOption,
   scopeToPage,
   selectRequests,
@@ -254,9 +254,7 @@ async function runFollowMode(
     const { requests, currentNavigationId } = result.data;
     const crashedAt = newCrash(result.data.pageCrashedAt);
     const evictions = newEviction(result.data.evictions);
-    const matching = filterRequests(requests, options, resourceTypes, currentNavigationId);
-    const scope = options.page ?? defaultPageScope(options.preset);
-    const finished = scopeToPage(matching, scope, currentNavigationId).requests.filter(
+    const finished = filterRequests(requests, options, resourceTypes, currentNavigationId).filter(
       (request) => request.duration !== undefined && !shown.has(request.requestId)
     );
     const present = new Set(requests.map((request) => request.requestId));
@@ -400,8 +398,8 @@ export function registerListCommand(networkCmd: Command): void {
           max: MAX_LAST,
           default: DEFAULT_LAST,
         }).validate(options.last);
-        if (options.follow && options.sort) {
-          const err = conflictingOptionsError('--sort', '--follow');
+        const err = followConflict(options);
+        if (err) {
           throw new CommandError(
             err.message,
             { suggestion: err.suggestion },
@@ -432,7 +430,7 @@ export function registerListCommand(networkCmd: Command): void {
             result.data;
           const matching = filterRequests(requests, options, resourceTypes, currentNavigationId);
           const scope = options.page ?? defaultPageScope(options.preset);
-          const scoped = scopeToPage(matching, scope, currentNavigationId);
+          const scoped = scopeToPage(matching, scope, { all: requests, currentNavigationId });
           const pageStart = pageStartOf(requests);
           return {
             success: true,

@@ -490,7 +490,7 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     whenEnabled:
       'current: only requests of the page currently loaded (the latest navigation; requests of another tab before bdg page switch count as earlier pages). all: every captured request, as before',
     automaticBehavior:
-      'When it leaves requests out, the list ends with "N requests from earlier pages hidden (--page all)" (JSON page: "current", hiddenEarlierPages: N; filteredCount counts the current page only). The DSL key page:current does the same inside --filter (!page:current: only earlier pages). Not in --follow',
+      'When it leaves requests out, the list ends with "N requests from earlier pages hidden (--page all)" (JSON page: "current", hiddenEarlierPages: N; filteredCount counts the current page only). The DSL key page:current does the same inside --filter (!page:current: only earlier pages). --follow streams every page: a preset\'s default does not apply there, and --page with --follow exits 81',
     tokenImpact:
       "current makes an errors list after a navigation shorter: the old page's errors are a count, not rows",
   },
@@ -506,9 +506,9 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   'details:--body': {
     default: 'Request details with the response body cut at 20000 characters (human and --json)',
     whenEnabled:
-      'Prints only the response body, whole, for piping (no newline added; control characters escaped only on a terminal). Binary bodies come base64-encoded (hint on stderr). --json: data { type: "network-body", requestId, body, bodyLength, base64Encoded?, mimeType? }. --body-max caps it (bodyTruncated: true)',
+      'Prints only the response body, whole, for piping (no newline added; control characters escaped only on a terminal). Binary bodies come base64-encoded (hint on stderr). --json: data { type: "network-body", requestId, body, bodyLength, base64Encoded?, mimeType? }. --body-max caps it (bodyTruncated: true; on stderr: body cut at N of M characters (--body-max 0 for all))',
     automaticBehavior:
-      'A request without a body to print exits 83 and says why: not captured (binary bodies such as images and fonts are skipped unless the session started with --all; past the session body budget it was evicted), still loading, a WebSocket (messages, not a body), or none captured (redirects, failed requests). Network only (details console exits 81)',
+      'A request without a body to print exits 83 and says why: not captured (binary bodies such as images and fonts are skipped unless the session started with --all; past the session body budget it was evicted), still loading, a WebSocket (messages, not a body), the response has no body (HEAD, 204, 205, 304), or none captured (redirects, failed requests). Network only (details console exits 81)',
     tokenImpact:
       'Whole body: a large HTML document is hundreds of KB. Use --body-max or pipe through head/jq',
   },

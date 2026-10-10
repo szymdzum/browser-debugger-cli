@@ -5,6 +5,8 @@
 
 import { InvalidArgumentError } from 'commander';
 
+import { conflictingOptionsError, type ErrorWithSuggestion } from '@/errors/messages.js';
+
 import { FILTER_PRESETS } from '@/telemetry/filterPresets.js';
 import { currentNavigationOf, isPreviousPage } from '@/telemetry/pageScope.js';
 import type { NetworkRequest } from '@/types.js';
@@ -36,6 +38,24 @@ function choiceOption<T extends string>(value: string, choices: readonly T[], us
   throw new InvalidArgumentError(
     `${usage}${similar.length ? ` (did you mean ${similar[0]}?)` : ''}.`
   );
+}
+
+/**
+ * An option `--follow` does not take: the stream lists every page in
+ * capture order, so `--page` and `--sort` would not hold for it.
+ *
+ * @param options - `--follow`, `--page`, `--sort`
+ * @returns The conflict, or undefined
+ */
+export function followConflict(options: {
+  follow?: boolean | undefined;
+  page?: PageScope | undefined;
+  sort?: SortKey | undefined;
+}): ErrorWithSuggestion | undefined {
+  if (!options.follow) return undefined;
+  if (options.page) return conflictingOptionsError('--page', '--follow');
+  if (options.sort) return conflictingOptionsError('--sort', '--follow');
+  return undefined;
 }
 
 /**
@@ -71,22 +91,31 @@ export function defaultPageScope(preset: string | undefined): PageScope {
   return preset && FILTER_PRESETS[preset.toLowerCase()]?.page === 'current' ? 'current' : 'all';
 }
 
+/** What tells which page is current */
+interface PageContext {
+  /** All captured requests, before filters (the fallback's latest navigation is among them) */
+  all: NetworkRequest[];
+  /** The session's current navigation id, if known */
+  currentNavigationId?: number | undefined;
+}
+
 /**
  * Keep the requests of the page currently loaded (`current`), counting
  * those of earlier pages and of another tab before a switch.
  *
  * @param requests - Requests matching the filters
  * @param scope - Page scope
- * @param currentNavigationId - The session's current navigation id (default: the latest among the requests)
+ * @param page - All captured requests and the session's current navigation id
+ *   (without one, the latest navigation among all captured requests)
  * @returns Requests kept and how many were hidden
  */
 export function scopeToPage(
   requests: NetworkRequest[],
   scope: PageScope,
-  currentNavigationId: number | undefined
+  page: PageContext
 ): { requests: NetworkRequest[]; hidden: number } {
   if (scope === 'all') return { requests, hidden: 0 };
-  const current = currentNavigationOf(requests, currentNavigationId);
+  const current = currentNavigationOf(page.all, page.currentNavigationId);
   const kept = requests.filter((request) => !isPreviousPage(request, current));
   return { requests: kept, hidden: requests.length - kept.length };
 }

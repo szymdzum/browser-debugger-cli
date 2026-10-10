@@ -8,6 +8,7 @@ import { skippedBodyReason } from '@/telemetry/networkRetention.js';
 import type { NetworkRequest } from '@/types.js';
 import {
   bodyStillLoadingReason,
+  noBodyInResponseReason,
   noResponseBodyReason,
   responseBodyNotCapturedReason,
   webSocketHasNoBodyReason,
@@ -15,6 +16,9 @@ import {
 
 /** Characters of a response body `details network` shows by default, in human and JSON output */
 export const DEFAULT_BODY_MAX = 20000;
+
+/** Statuses whose responses have no body (No Content, Reset Content, Not Modified) */
+const BODILESS_STATUSES = new Set([204, 205, 304]);
 
 /** How much of the response body to show */
 export interface BodyOptions {
@@ -82,5 +86,8 @@ export function missingBodyReason(request: NetworkRequest): string | undefined {
   if (request.responseBody !== undefined) return undefined;
   if (request.resourceType === 'WebSocket') return webSocketHasNoBodyReason();
   if (request.duration === undefined) return bodyStillLoadingReason();
+  if (request.method === 'HEAD' || BODILESS_STATUSES.has(request.status ?? 0)) {
+    return noBodyInResponseReason();
+  }
   return noResponseBodyReason();
 }
