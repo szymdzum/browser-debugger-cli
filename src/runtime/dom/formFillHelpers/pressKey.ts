@@ -60,9 +60,10 @@ export type PressKeyOutcome = PressKeyResult & { submitProbe?: true };
 /**
  * Page-side focus of the target, which reports the element. For
  * `submitKey` (Enter or Space, else null) it installs, after focusing, a
- * probe for the submit the key starts ({@link KEY_SUBMIT_PROBE_JS}) and a
- * watch for `invalid` events ({@link WATCH_INVALID_JS}), after removing
- * any an earlier action left.
+ * probe for the submit the key starts ({@link KEY_SUBMIT_PROBE_JS}) and,
+ * only when that applies (the key starts a submit), a watch for `invalid`
+ * events ({@link WATCH_INVALID_JS}), after removing any an earlier action
+ * left.
  */
 const FOCUS_ELEMENT_SCRIPT = `
 (function(selector, parts, index, submitKey) {
@@ -121,8 +122,7 @@ const FOCUS_ELEMENT_SCRIPT = `
   }
 
   const probed = submitKey !== null && !pageLevel && (${KEY_SUBMIT_PROBE_JS})(el, submitKey);
-  const watched = submitKey !== null && (${WATCH_INVALID_JS})(el);
-  const submitProbe = probed || watched;
+  const submitProbe = probed && (${WATCH_INVALID_JS})(el);
 
   return {
     success: true,
@@ -159,9 +159,11 @@ const FOCUS_FAILURES: Record<string, { exitCode: number; suggestion: string }> =
  * browser performs the key's default action exactly like a physical key:
  * the character is inserted (with trusted keypress/input events), Enter adds
  * a newline in a textarea or submits the form once from an input, and Tab
- * moves focus. No synthetic events are fired. Before Enter (or Space on a
- * submit button), a probe is left on the form the key would submit (`submitProbe` in the result), so the
- * result can say when validation blocked the submit.
+ * moves focus. No synthetic events are fired. When the key starts a submit
+ * (Enter or Space on a submit button, Enter in a field the browser submits
+ * implicitly from), a probe on the form and a watch for `invalid` events
+ * are left in the page (`submitProbe` in the result), so the result can
+ * say when validation blocked the submit; other keys and fields get none.
  */
 export async function pressKeyElement(
   cdp: CDPConnection,

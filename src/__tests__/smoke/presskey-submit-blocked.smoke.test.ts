@@ -15,7 +15,8 @@
  * each field named once), Enter while the page loads an image, the sign-up
  * form of the issue (three invalid fields) and a form in a closed shadow
  * root. Validity checks the page runs before the key press (on input and
- * blur) are not reported.
+ * blur), or on a key that starts no submit (Space in a field, Enter in a
+ * form with two text fields and no button), are not reported.
  * Unchanged: a valid form, a `novalidate` form, a default button whose
  * click the page cancels, a submit whose handler empties its field, a
  * `<textarea>`, a form with two text fields and no button, a disabled
@@ -259,6 +260,19 @@ void describe('dom pressKey Enter in forms without a usable submit button', () =
     assert.equal(output.split('alias: ').length - 1, 1, output);
     const data = await pressKeyJson('[name=alias]', 'Enter');
     assert.deepEqual(data.submitBlocked, [{ field: 'alias', message: requiredMessage }]);
+  });
+
+  void it('leaves Space in a field the page validates on input unchanged', async () => {
+    const data = await pressKeyJson('#e', 'Space');
+    assert.equal(data.submitBlocked, undefined);
+    assert.equal(await evaluate('window.echoInputs'), 1);
+    assert.deepEqual(await evaluate('window.submitted'), []);
+  });
+
+  void it('leaves Enter in a form that does not submit but validates on keyup unchanged', async () => {
+    const data = await pressKeyJson('[name=k1]', 'Enter');
+    assert.equal(data.submitBlocked, undefined);
+    assert.deepEqual(await evaluate('window.submitted'), []);
   });
 
   void it('reports a blocked submit while the page loads an asset', async () => {

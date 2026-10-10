@@ -10,10 +10,13 @@
  * (`#off`, which Enter does not submit), a form with two text fields
  * whose only submit button is an `<input type=image>` (`#pics`; image
  * inputs are not in `form.elements`), forms whose own Enter handler
- * submits: `#hand` (`preventDefault()` then `requestSubmit()`, two text
- * fields) and `#both` (`requestSubmit()` only, with a submit button), a
- * form whose field checks its validity on input and blur (`#live`, two
- * text fields and no button), a form whose Enter handler loads an image
+ * submits: `#hand` (`preventDefault()` then `requestSubmit()`, with a
+ * submit button, as on duckduckgo.com) and `#both` (`requestSubmit()` only,
+ * with a submit button), a form whose field checks its validity on input
+ * and blur (`#live`, two text fields and no button), forms that validate
+ * without submitting: `#echo` (an email field calling `reportValidity()`
+ * on input, counted in `window.echoInputs`) and `#keyup` (two text fields,
+ * no button, `reportValidity()` on keyup), a form whose Enter handler loads an image
  * (`#busy`, a request during the key press), and `<x-card>`, whose closed
  * shadow root holds a form with a required field labelled "Card" and a
  * submit button. Every form's `submit` is noted in `window.submitted` and
@@ -45,9 +48,11 @@ const IMPLICIT_SUBMIT_HTML = `<!doctype html><title>implicit submit</title>
 <form id="pics"><input name="t1" required><input name="t2">
   <input type="image" id="pics-go" alt="Go" width="40" height="20"
     src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"></form>
-<form id="hand"><input name="handle" required><input name="bio"></form>
+<form id="hand"><input name="handle" required><input name="bio"><button id="hand-go">Go</button></form>
 <form id="both"><input name="alias" required><button id="both-go">Go</button></form>
 <form id="live"><input name="zip5" pattern="[0-9]{5}"><input name="other"></form>
+<form id="echo"><input id="e" name="email2" type="email" value="abc"></form>
+<form id="keyup"><input name="k1" required><input name="k2"></form>
 <form id="busy"><input name="code5" required><button id="busy-go">Go</button></form>
 <script>
   const onEnter = (name, handler) => document.querySelector('[name=' + name + ']')
@@ -55,6 +60,11 @@ const IMPLICIT_SUBMIT_HTML = `<!doctype html><title>implicit submit</title>
   onEnter('handle', (event) => { event.preventDefault(); event.target.form.requestSubmit(); });
   onEnter('alias', (event) => event.target.form.requestSubmit());
   onEnter('code5', () => { new Image().src = '/implicit-submit-pixel?' + Date.now(); });
+  window.echoInputs = 0;
+  const echo = document.querySelector('#e');
+  echo.addEventListener('input', () => { window.echoInputs++; echo.reportValidity(); });
+  const k1 = document.querySelector('[name=k1]');
+  k1.addEventListener('keyup', () => k1.reportValidity());
   const zip = document.querySelector('[name=zip5]');
   zip.addEventListener('input', () => zip.checkValidity());
   zip.addEventListener('blur', () => zip.checkValidity());

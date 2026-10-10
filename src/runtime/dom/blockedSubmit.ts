@@ -197,7 +197,8 @@ export const KEY_SUBMIT_PROBE_JS = `(el, key) => {
 }`;
 
 /**
- * Page-side watch installed right before a key press (after focusing
+ * Page-side watch installed right before a key press that starts a submit
+ * (when {@link KEY_SUBMIT_PROBE_JS} installed its probe; after focusing
  * `el`, so a validity check the page runs on blur is left out), left in
  * `window.__bdgInvalidWatch`: it notes the fields that fired `invalid`
  * and whether any form fired `submit`, in the capture phase on the window
