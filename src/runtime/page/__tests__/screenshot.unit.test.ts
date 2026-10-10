@@ -34,7 +34,14 @@ interface FakePageOptions {
   refuse?: string;
   /** Page scripts never finish: the capture waits until they are terminated, then fails */
   busy?: boolean;
+  /** The page never sees a metrics change: its window keeps its size */
+  fixedWindow?: boolean;
+  /** Page script reading the window that throws: its size, or the wait for a resize */
+  windowError?: 'size' | 'wait';
 }
+
+/** Page script waiting for a resize: the size it waits to leave */
+const RESIZE_WAIT = /innerWidth !== (\d+) \|\| innerHeight !== (\d+)/;
 
 /** Chrome's answer to a capture whose page scripts were terminated */
 const TERMINATED = new CDPProtocolError('Execution was terminated', -32000, undefined);
@@ -50,9 +57,33 @@ function fakePage(options: FakePageOptions = {}): {
   cdp: CDPConnection;
   sent: string[];
   overrides: Array<Record<string, unknown>>;
+  waits: string[];
 } {
   const sent: string[] = [];
   const overrides: Array<Record<string, unknown>> = [];
+  const waits: string[] = [];
+  let window = WINDOW;
+  const resize = (size: number[]): void => {
+    if (!options.fixedWindow) window = size;
+  };
+  /**
+   * Answer a page script reading the window: its size, or the wait for a
+   * resize (the new size, null when the window still has the size waited on).
+   *
+   * @param expression - Page script
+   * @returns Evaluate response
+   */
+  const readWindow = (expression: string): unknown => {
+    const wait = RESIZE_WAIT.exec(expression);
+    if (options.windowError === (wait ? 'wait' : 'size')) {
+      throw new CDPProtocolError('Execution context was destroyed.', -32000, undefined);
+    }
+    if (!wait) return { result: { value: window } };
+    const [, width, height] = wait;
+    const resized = window[0] !== Number(width) || window[1] !== Number(height);
+    waits.push(`${width}x${height} ${resized ? 'resized' : 'timed out'}`);
+    return { result: { value: resized ? window : null } };
+  };
   let terminate: () => void = () => undefined;
   const terminated = new Promise<void>((resolve) => (terminate = resolve));
   const answers: Record<string, (params: Record<string, unknown>) => unknown> = {
@@ -62,7 +93,8 @@ function fakePage(options: FakePageOptions = {}): {
       if (expression.includes('devicePixelRatio')) {
         return { result: { value: options.pixelRatio ?? 1 } };
       }
-      return { result: { value: expression.includes('innerWidth') ? WINDOW : [0, 0] } };
+      if (expression.includes('innerWidth')) return readWindow(expression);
+      return { result: { value: [0, 0] } };
     },
     'Runtime.terminateExecution': () => terminate(),
     'Page.getLayoutMetrics': () => ({
@@ -83,14 +115,18 @@ function fakePage(options: FakePageOptions = {}): {
     send: (method: string, params: Record<string, unknown> = {}): Promise<unknown> => {
       const label = describeCall(method, params);
       if (label) sent.push(label);
-      if (method === 'Emulation.setDeviceMetricsOverride') overrides.push(params);
+      if (method === 'Emulation.setDeviceMetricsOverride') {
+        overrides.push(params);
+        resize([Number(params['width']), Number(params['height'])]);
+      }
+      if (method === 'Emulation.clearDeviceMetricsOverride') resize(WINDOW);
       if (label !== undefined && label === options.refuse) {
         return Promise.reject(new CDPProtocolError(`${method} refused`, -32000, undefined));
       }
       return Promise.resolve().then(() => answers[method]?.(params) ?? {});
     },
   } as unknown as CDPConnection;
-  return { cdp, sent, overrides };
+  return { cdp, sent, overrides, waits };
 }
 
 /**
@@ -172,7 +208,7 @@ void describe('takeScreenshot', () => {
   });
 
   void it('lays the page out again after a full-page capture: one px taller, then no override (#514)', async () => {
-    const { cdp, sent, overrides } = fakePage();
+    const { cdp, sent, overrides, waits } = fakePage();
     const shot = await takeScreenshot(cdp, { format: 'png' }, noViewport);
     assert.equal(shot.screenshot.captureMode, 'full_page');
     assert.deepEqual(sent, [
@@ -183,6 +219,37 @@ void describe('takeScreenshot', () => {
     assert.deepEqual(overrides, [
       { width: 1920, height: 1001, deviceScaleFactor: 0, mobile: false },
     ]);
+    assert.deepEqual(waits, ['1920x1000 resized', '1920x1001 resized']);
+  });
+
+  void it('skips the second wait when the page never saw the taller viewport, and still clears it (#514)', async () => {
+    const { cdp, sent, waits } = fakePage({ fixedWindow: true });
+    await takeScreenshot(cdp, { format: 'png' }, noViewport);
+    assert.deepEqual(waits, ['1920x1000 timed out']);
+    assert.equal(sent.at(-1), 'Emulation.clearDeviceMetricsOverride');
+  });
+
+  void it('clears the taller viewport when the wait for it fails, and reports the capture (#514)', async () => {
+    const { cdp, sent } = fakePage({ windowError: 'wait' });
+    const shot = await takeScreenshot(cdp, { format: 'png' }, noViewport);
+    assert.equal(shot.screenshot.captureMode, 'full_page');
+    assert.deepEqual(sent.slice(-2), [
+      'Emulation.setDeviceMetricsOverride 0',
+      'Emulation.clearDeviceMetricsOverride',
+    ]);
+  });
+
+  void it('puts the session’s viewport back when the window cannot be read, and reports the error (#514)', async () => {
+    const { cdp, sent, overrides } = fakePage({ windowError: 'size' });
+    await assert.rejects(
+      takeScreenshot(cdp, { format: 'png' }, () => ({ width: 1600, height: 900 })),
+      /Execution context was destroyed/
+    );
+    assert.deepEqual(sent, ['Page.captureScreenshot', 'Emulation.setDeviceMetricsOverride 0']);
+    assert.deepEqual(
+      overrides.map(({ height }) => height),
+      [900]
+    );
   });
 
   void it('lays the page out again after a full-page capture at the session’s viewport, then puts it back (#514)', async () => {

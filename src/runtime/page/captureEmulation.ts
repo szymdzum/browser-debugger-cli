@@ -215,20 +215,25 @@ export class CaptureEmulation {
    * Chrome lays the page out again, with its scrollbars, only when the
    * viewport's size changes, and a capture beyond the viewport left it laid
    * out without them (#514). Each change is waited for in the page, so the
-   * next command reads the size put back, not the taller one.
+   * next command reads the size put back, not the taller one. The size is put
+   * back even when the window could not be read or the taller one not sent.
    *
    * @param viewport - Session's viewport, if any
    * @param view - Visible viewport size, used when the page does not answer
    */
   private async layOutAgain(viewport: ViewportSize | undefined, view: Size): Promise<void> {
-    const before = await this.windowSize(view);
-    const size = viewport ?? before;
-    await this.cdp.send(
-      'Emulation.setDeviceMetricsOverride',
-      viewportOverride({ ...size, height: size.height + 1 })
-    );
-    const taller = await windowResizedFrom(this.connection, before);
-    await this.applySessionMetrics(viewport);
+    let taller: Size | undefined;
+    try {
+      const before = await this.windowSize(view);
+      const size = viewport ?? before;
+      await this.cdp.send(
+        'Emulation.setDeviceMetricsOverride',
+        viewportOverride({ ...size, height: size.height + 1 })
+      );
+      taller = await windowResizedFrom(this.connection, before);
+    } finally {
+      await this.applySessionMetrics(viewport);
+    }
     if (taller) await windowResizedFrom(this.connection, taller);
   }
 
@@ -295,9 +300,28 @@ const RESIZE_WAIT_MS = 1000;
  * @param cdp - Session connection
  * @param size - Size the window had
  * @returns The new size, undefined when it did not change within
- *   {@link RESIZE_WAIT_MS} or the page did not answer
+ *   {@link RESIZE_WAIT_MS} or the page did not answer (its script failed,
+ *   e.g. a navigation or terminated scripts, counts as no change)
  */
 async function windowResizedFrom(cdp: CDPConnection, size: Size): Promise<Size | undefined> {
+  try {
+    return await readResize(cdp, size);
+  } catch (error) {
+    log.debug(
+      `Screenshot restore: waiting for the window to resize failed: ${getErrorMessage(error)}`
+    );
+    return undefined;
+  }
+}
+
+/**
+ * The page side of {@link windowResizedFrom}.
+ *
+ * @param cdp - Session connection
+ * @param size - Size the window had
+ * @returns The new size, undefined when it did not change in time
+ */
+async function readResize(cdp: CDPConnection, size: Size): Promise<Size | undefined> {
   const expression = `new Promise((resolve) => {
     const end = Date.now() + ${RESIZE_WAIT_MS};
     const check = () => {
