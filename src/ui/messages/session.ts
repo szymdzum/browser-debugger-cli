@@ -6,8 +6,9 @@
  */
 
 import type { PageLoadingState } from '@/ipc/protocol/commands.js';
+import type { DialogInfo } from '@/ipc/protocol/domTypes.js';
 import { joinLines } from '@/ui/formatting.js';
-import { pageLoadingWarning } from '@/ui/messages/commands.js';
+import { dialogResultText, pageLoadingWarning } from '@/ui/messages/commands.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 
 /**
@@ -24,18 +25,20 @@ export interface LandingPageOptions {
   autoStopAt?: Date;
   /** Name of a named session (`--session`) */
   session?: string;
+  /** JavaScript dialogs answered while the page loaded */
+  dialogs?: DialogInfo[];
 }
 
 /**
  * Lines shown under the target in both the full and the quiet start output:
- * the session name, an HTTP error of the page, a page still loading, and
- * when the session stops by itself.
+ * the session name, an HTTP error of the page, a page still loading, the
+ * dialogs answered while it loaded, and when the session stops by itself.
  *
  * @param options - Landing page options
  * @returns Lines (empty when there is nothing to say)
  */
 export function startNotices(options: LandingPageOptions): string[] {
-  const { documentStatus, loading, autoStopAt, session } = options;
+  const { documentStatus, loading, autoStopAt, session, dialogs = [] } = options;
   return [
     ...(session
       ? [
@@ -46,6 +49,7 @@ export function startNotices(options: LandingPageOptions): string[] {
       ? [`⚠ The page responded with HTTP ${documentStatus}`]
       : []),
     ...(loading ? [`⚠ ${pageLoadingWarning(loading)}`] : []),
+    ...dialogs.map(dialogResultText),
     ...(autoStopAt ? [`Auto-stop: at ${autoStopAt.toLocaleTimeString()} (--timeout)`] : []),
   ];
 }

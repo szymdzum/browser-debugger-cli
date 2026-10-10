@@ -317,7 +317,16 @@ void describe('validation - --dialog and --prompt-text', () => {
 
   void it('suggests the closest answer for a typo, else lists them', () => {
     assertInvalidArgument(() => parseDialogAnswer('dimiss'), /Did you mean: dismiss\?/);
-    assertInvalidArgument(() => parseDialogAnswer('cancel'), /Available: accept, dismiss/);
+    assertInvalidArgument(() => parseDialogAnswer('nope'), /Available: accept, dismiss/);
+  });
+
+  void it('suggests the answer a common synonym means (#554)', () => {
+    for (const value of ['cancel', 'No', 'CANCEL']) {
+      assertInvalidArgument(() => parseDialogAnswer(value), /Did you mean: dismiss\?/);
+    }
+    for (const value of ['ok', 'Yes', 'OK']) {
+      assertInvalidArgument(() => parseDialogAnswer(value), /Did you mean: accept\?/);
+    }
   });
 
   void it('builds the choice of an action from its options', () => {

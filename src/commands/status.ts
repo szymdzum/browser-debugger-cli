@@ -135,6 +135,7 @@ export function registerStatusCommand(program: Command): void {
               autoStopAt: data.sessionMetadata.autoStopAt,
               viewport: data.sessionMetadata.viewport,
               colorScheme: data.sessionMetadata.colorScheme,
+              dialog: data.sessionMetadata.dialog,
             };
 
             latestMetadata = metadata;

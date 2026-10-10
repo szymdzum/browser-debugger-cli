@@ -23,7 +23,8 @@ export interface DialogReply {
  * A beforeunload dialog is accepted, so navigation is never blocked, unless
  * the running action asked to dismiss dialogs: the session default does not
  * apply to it, or every navigation away from the page would be cancelled.
- * A `--prompt-text` given without `--dialog` accepts the prompt.
+ * A `--prompt-text` given without `--dialog` accepts the prompt; an accepted
+ * prompt without one gets its default value, as pressing OK does.
  */
 export class DialogAnswers {
   private sessionDefault: DialogAnswer = 'accept';
@@ -51,16 +52,17 @@ export class DialogAnswers {
    * How to answer a dialog that opens now.
    *
    * @param type - Dialog type: alert, confirm, prompt or beforeunload
+   * @param defaultPrompt - Default value of a prompt (`prompt(message, value)`)
    * @returns Reply to send
    */
-  reply(type: string): DialogReply {
+  reply(type: string, defaultPrompt = ''): DialogReply {
     const action = this.actionChoice;
     if (type === 'beforeunload') return { accept: action?.dialog !== 'dismiss' };
     const promptAnswered = type === 'prompt' && action?.promptText !== undefined;
     const answer = action?.dialog ?? (promptAnswered ? 'accept' : this.sessionDefault);
     if (answer === 'dismiss') return { accept: false };
     return type === 'prompt'
-      ? { accept: true, promptText: action?.promptText ?? '' }
+      ? { accept: true, promptText: action?.promptText ?? defaultPrompt }
       : { accept: true };
   }
 }
@@ -69,7 +71,8 @@ export class DialogAnswers {
  * Answer JavaScript dialogs as they open, so they never block the page.
  *
  * Each alert(), confirm(), prompt() and beforeunload dialog is answered right
- * away as {@link DialogAnswers} says (accepted, prompts with "", by default)
+ * away as {@link DialogAnswers} says (accepted, prompts with their default
+ * value, by default)
  * and reported with its answer. The answer is chosen when the dialog opens:
  * one a page timer opens after an action returned gets the session default.
  *
@@ -90,7 +93,7 @@ export async function startDialogHandling(
   await cdp.send('Page.enable');
 
   registry.registerTyped(typed, 'Page.javascriptDialogOpening', (params) => {
-    const reply = answers.reply(params.type);
+    const reply = answers.reply(params.type, params.defaultPrompt);
     const answer = reply.accept ? 'accepted' : 'dismissed';
     const dialog: DialogInfo = {
       type: params.type,

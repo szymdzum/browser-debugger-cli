@@ -1,11 +1,17 @@
 import type { SessionActivity, PageState } from '@/ipc/index.js';
+import type { DialogAnswer } from '@/ipc/protocol/domTypes.js';
 import { describeRunningChrome, type RunningChromeInfo } from '@/session/chrome.js';
 import type { LastSessionEnd } from '@/session/lastSession.js';
 import type { SessionMetadata } from '@/session/metadata.js';
 import { calculateDuration, formatTimeAgo } from '@/session/statusData.js';
 import type { ColorScheme, ViewportSize } from '@/types.js';
 import { OutputFormatter } from '@/ui/formatting.js';
-import { colorSchemeLabel, downloadsSummary, sessionActiveLine } from '@/ui/messages/commands.js';
+import {
+  colorSchemeLabel,
+  dialogDefaultText,
+  downloadsSummary,
+  sessionActiveLine,
+} from '@/ui/messages/commands.js';
 import { networkEvictedNote } from '@/ui/messages/networkMessages.js';
 import { lastSessionEndText } from '@/ui/messages/session.js';
 import { noActiveSessionMessage, sessionCommand } from '@/ui/messages/sessionCommand.js';
@@ -34,6 +40,8 @@ export interface StatusData {
   viewport?: ViewportSize;
   /** Color scheme given with `--color-scheme` (`pageState.colorScheme` is the current one) */
   colorScheme?: ColorScheme;
+  /** Session default for dialogs given with `--dialog`, when it is not accept */
+  dialog?: DialogAnswer;
   stale?: boolean;
   stalePid?: number;
   warning?: string;
@@ -83,6 +91,9 @@ export function formatSessionStatus(
       ['Duration', duration.formatted],
       ...(metadata.autoStopAt
         ? [['Auto-stop', new Date(metadata.autoStopAt).toLocaleTimeString()] as [string, string]]
+        : []),
+      ...(dismissesDialogs(metadata)
+        ? [['Dialogs', dialogDefaultText('dismiss')] as [string, string]]
         : []),
     ],
     18
@@ -175,6 +186,17 @@ export function formatSessionStatus(
 }
 
 /**
+ * Whether the session's `--dialog` default is dismiss, which status shows
+ * (the built-in accept is left out).
+ *
+ * @param metadata - Session metadata (the start options)
+ * @returns True for `--dialog dismiss`
+ */
+function dismissesDialogs(metadata: Pick<SessionMetadata, 'dialog'>): boolean {
+  return metadata.dialog === 'dismiss';
+}
+
+/**
  * Viewport and color scheme lines of the target: what the page renders with,
  * and whether `--viewport` / `--color-scheme` set it or it is the system's.
  * The color scheme is the `prefers-color-scheme` the page sees, not its theme.
@@ -251,6 +273,7 @@ export function formatStatusAsJson(
     ...(metadata.autoStopAt && { autoStopAt: new Date(metadata.autoStopAt).toISOString() }),
     ...(metadata.viewport && { viewport: metadata.viewport }),
     ...(metadata.colorScheme && { colorScheme: metadata.colorScheme }),
+    ...(dismissesDialogs(metadata) && { dialog: 'dismiss' as const }),
     targetId: metadata.targetId,
     webSocketDebuggerUrl: metadata.webSocketDebuggerUrl,
     telemetry: metadata.activeTelemetry ?? ['network', 'console', 'dom'],

@@ -287,17 +287,31 @@ export function resourceTypeRule(): ValidationRule<Protocol.Network.ResourceType
   };
 }
 
+/** Words people use for a dialog's buttons, and the `--dialog` answer each means */
+const DIALOG_ANSWER_SYNONYMS: Readonly<Record<string, DialogAnswer>> = {
+  ok: 'accept',
+  yes: 'accept',
+  cancel: 'dismiss',
+  no: 'dismiss',
+};
+
 /**
  * Parse a `--dialog` value (case-insensitive).
  *
  * @param value - Option value
  * @returns accept or dismiss
- * @throws CommandError (81) for another value, suggesting the closest one
+ * @throws CommandError (81) for another value, suggesting the answer a
+ *   synonym means (ok, yes, cancel, no) or else the closest one
  */
 export function parseDialogAnswer(value: string): DialogAnswer {
-  const answer = DIALOG_ANSWERS.find((candidate) => candidate === value.trim().toLowerCase());
+  const normalized = value.trim().toLowerCase();
+  const answer = DIALOG_ANSWERS.find((candidate) => candidate === normalized);
   if (answer) return answer;
-  const err = invalidDialogAnswerError(value, findSimilar(value, DIALOG_ANSWERS), DIALOG_ANSWERS);
+  const synonym = Object.hasOwn(DIALOG_ANSWER_SYNONYMS, normalized)
+    ? DIALOG_ANSWER_SYNONYMS[normalized]
+    : undefined;
+  const similar = synonym ? [synonym] : findSimilar(value, DIALOG_ANSWERS);
+  const err = invalidDialogAnswerError(value, similar, DIALOG_ANSWERS);
   throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
 }
 

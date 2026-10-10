@@ -39,4 +39,12 @@ void describe('landingPage', () => {
     assert.match(text, /^Auto-stop: /m);
     assert.ok(text.split('\n').length <= 8);
   });
+
+  void it('lists the dialogs answered while the page loaded (#553)', () => {
+    const text = landingPage({
+      url: 'http://x/',
+      dialogs: [{ type: 'confirm', message: 'Continue loading?', answer: 'dismissed' }],
+    });
+    assert.match(text, /^Dialog: confirm\(\) dismissed: "Continue loading\?"$/m);
+  });
 });

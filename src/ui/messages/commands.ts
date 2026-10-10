@@ -8,6 +8,7 @@
 import type { DomFrame, PageLoadingState, PendingRequestInfo } from '@/ipc/protocol/commands.js';
 import type {
   ActionError,
+  DialogAnswer,
   DialogInfo,
   DownloadInfo,
   ElementLayout,
@@ -1159,6 +1160,27 @@ export function dialogNotAnsweredText(dialog: DialogInfo, reason: string): strin
   const kind = dialog.type === 'beforeunload' ? 'beforeunload' : `${dialog.type}()`;
   const answer = dialog.answer === 'accepted' ? 'accept' : 'dismiss';
   return `Could not answer ${kind} dialog "${dialog.message}" (${answer}): ${reason}`;
+}
+
+/**
+ * The session's `--dialog` default, as `bdg status` shows it.
+ *
+ * @param answer - Session default
+ * @returns e.g. 'dismiss (session default)'
+ */
+export function dialogDefaultText(answer: DialogAnswer): string {
+  return `${answer} (session default)`;
+}
+
+/**
+ * A dialog answered while a command ran, as its result lists it (actions,
+ * `bdg <url>`, `page navigate|reload|back|forward`).
+ *
+ * @param dialog - Dialog type, text and answer
+ * @returns e.g. 'Dialog: confirm() dismissed: "Sure?"'
+ */
+export function dialogResultText(dialog: DialogInfo): string {
+  return `Dialog: ${dialogConsoleText(dialog, { labelled: true })}`;
 }
 
 /**

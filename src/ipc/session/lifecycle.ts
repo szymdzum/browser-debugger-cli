@@ -7,7 +7,7 @@
 import type { IPCErrorCode } from './errors.js';
 
 import type { PageLoadingState } from '@/ipc/protocol/commands.js';
-import type { DialogAnswer } from '@/ipc/protocol/domTypes.js';
+import type { DialogAnswer, DialogInfo } from '@/ipc/protocol/domTypes.js';
 import type { ColorScheme, TelemetryType, ViewportSize } from '@/types.js';
 
 /**
@@ -99,6 +99,8 @@ export interface StartSessionResponseData {
   documentStatus?: number;
   /** The page had not finished loading when the start returned. */
   loading?: PageLoadingState;
+  /** JavaScript dialogs answered while the session started (the page load included). */
+  dialogs?: DialogInfo[];
   /** True if a stale session was auto-recovered before this one started. */
   recovered?: boolean;
   /** Target URL or ws URL of the stale session that was recovered, if recorded. */
