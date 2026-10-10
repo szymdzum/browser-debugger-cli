@@ -244,7 +244,7 @@ void describe('auth state save and load', () => {
     assert.equal(start.exitCode, 0, start.stderr);
     const login = await bdg('page', ['navigate', `${fixture.a}/authenticate`]);
     assert.equal(login.exitCode, 0, login.stdout + login.stderr);
-    const ready = await bdg('dom', ['wait', '#ready', '--timeout', '10']);
+    const ready = await bdg('dom', ['wait', '#ready', '--timeout', '10000']);
     assert.equal(ready.exitCode, 0, ready.stdout + ready.stderr);
 
     const saved = await bdgJson<{ data: Summary }>('state', ['save', stateFile]);
