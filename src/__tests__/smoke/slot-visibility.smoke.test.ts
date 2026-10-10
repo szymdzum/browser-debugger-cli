@@ -1,0 +1,150 @@
+/**
+ * Smoke tests for elements with no box of their own (`<slot>`, other
+ * `display: contents` elements), against a real Chrome and the `/slots`
+ * fixture page: `dom query` and `dom layout` place them by the content they
+ * show (assigned nodes, else fallback content, text included) and call them
+ * hidden only when none of it has a box.
+ */
+
+import * as assert from 'node:assert/strict';
+import { after, before, describe, it } from 'node:test';
+
+import { runCommand } from '@/__testutils__/commandRunner.js';
+import { cleanupAllSessions } from '@/__testutils__/daemonHelpers.js';
+import {
+  getFreePort,
+  startFixtureServer,
+  type FixtureServer,
+} from '@/__testutils__/fixtureServer.js';
+
+/** Selector of every measured element on `/slots` */
+const MEASURED =
+  '#empty-slot, #none-slot, #zero-slot, #fallback-slot, #nested-slot, #inner-slot, #contents-text, #below-slot';
+
+/** Layout fields the tests read */
+interface MeasuredLayout {
+  element: string;
+  inViewport: string;
+  hiddenReason?: string;
+  bounds: { width: number; height: number };
+}
+
+/**
+ * Run a bdg command and assert its exit code.
+ *
+ * @param args - Full bdg argument list (first element is the subcommand)
+ * @param expectedExit - Expected process exit code
+ * @returns Combined stdout and stderr
+ */
+async function bdg(args: string[], expectedExit = 0): Promise<string> {
+  const [command = '', ...rest] = args;
+  const result = await runCommand(command, rest, { timeout: 60000 });
+  const output = `${result.stdout}${result.stderr}`;
+  assert.equal(result.exitCode, expectedExit, `bdg ${args.join(' ')}: ${output}`);
+  return output;
+}
+
+/**
+ * Layout of every measured element, by its description (e.g. `slot#empty-slot`).
+ *
+ * @returns Layouts by element
+ */
+async function layouts(): Promise<Map<string, MeasuredLayout>> {
+  const output = await bdg(['dom', 'layout', MEASURED, '--json']);
+  const { elements } = (JSON.parse(output) as { data: { elements: MeasuredLayout[] } }).data;
+  return new Map(elements.map((element) => [element.element, element]));
+}
+
+void describe('Elements with no box of their own', () => {
+  let fixture: FixtureServer;
+
+  before(async () => {
+    await cleanupAllSessions();
+    fixture = await startFixtureServer();
+    const port = await getFreePort();
+    await bdg([`${fixture.url}slots`, '--port', String(port), '--headless']);
+    await bdg(['dom', 'wait', '--load']);
+  });
+
+  after(async () => {
+    await cleanupAllSessions();
+    await fixture.close();
+  });
+
+  void it('places slots showing assigned or fallback content by that content', async () => {
+    const measured = await layouts();
+    for (const element of ['slot#fallback-slot', 'slot#nested-slot', 'slot#inner-slot']) {
+      const layout = measured.get(element);
+      assert.equal(layout?.inViewport, 'visible', `${element}: ${JSON.stringify(layout)}`);
+      assert.ok(layout.bounds.width > 0 && layout.bounds.height > 0, element);
+    }
+  });
+
+  void it('places a display: contents element holding only text by its text', async () => {
+    assert.equal((await layouts()).get('div#contents-text')?.inViewport, 'visible');
+  });
+
+  void it('places a slot by its content below the fold', async () => {
+    assert.equal((await layouts()).get('slot#below-slot')?.inViewport, 'below');
+  });
+
+  void it('keeps a slot hidden when nothing it shows has a box', async () => {
+    const measured = await layouts();
+    assert.equal(measured.get('slot#empty-slot')?.inViewport, 'hidden');
+    assert.equal(
+      measured.get('slot#empty-slot')?.hiddenReason,
+      'empty slot (nothing assigned, no fallback content)'
+    );
+    assert.equal(measured.get('slot#none-slot')?.hiddenReason, 'content not shown: display: none');
+    assert.equal(measured.get('slot#zero-slot')?.hiddenReason, 'content not shown: zero size');
+    assert.equal(measured.get('slot#none-slot')?.inViewport, 'hidden');
+    assert.equal(measured.get('slot#zero-slot')?.inViewport, 'hidden');
+  });
+
+  void it('keeps a slot hidden when its text is not rendered or not visible', async () => {
+    const output = await bdg([
+      'dom',
+      'layout',
+      '#det-slot, #vis-inline-slot, #vis-block-slot',
+      '--json',
+    ]);
+    const { elements } = (JSON.parse(output) as { data: { elements: MeasuredLayout[] } }).data;
+    assert.deepEqual(
+      elements.map((element) => [element.element, element.inViewport, element.hiddenReason]),
+      [
+        ['slot#det-slot', 'hidden', 'content not shown: inside a closed <details>'],
+        ['slot#vis-inline-slot', 'hidden', 'content not shown: visibility: hidden'],
+        ['slot#vis-block-slot', 'hidden', 'content not shown: visibility: hidden'],
+      ]
+    );
+    const query = await bdg(['dom', 'query', '#det-slot', '--json']);
+    const { nodes } = (JSON.parse(query) as { data: { nodes: { inViewport?: string }[] } }).data;
+    assert.equal(nodes[0]?.inViewport, 'hidden');
+  });
+
+  void it('does not show a visibility: hidden label slot as text in dom inspect', async () => {
+    const loading = await bdg(['dom', 'inspect', '#loading']);
+    assert.doesNotMatch(loading, /slot#loading-slot/);
+    assert.match(loading, /^ {4}span \S+ "Spinner"\n {4}\(\+1 not rendered\)$/m);
+    const loadingText = await bdg(['dom', 'inspect', '#loading-text']);
+    assert.doesNotMatch(loadingText, /slot#loading-text-slot/);
+    assert.match(
+      await bdg(['dom', 'inspect', '#loading-slot']),
+      /^slot#loading-slot .*\[hidden: visibility: hidden\]/
+    );
+    assert.match(
+      await bdg(['dom', 'inspect', '#loading-text-slot']),
+      /^slot#loading-text-slot \[not rendered: content not shown: visibility: hidden\]/
+    );
+  });
+
+  void it('marks the same elements hidden in dom query as in dom layout', async () => {
+    const output = await bdg(['dom', 'query', MEASURED]);
+    const hidden = output.split('\n').filter((line) => line.endsWith('(hidden)'));
+    assert.deepEqual(
+      hidden.map((line) => /id="([^"]+)"/.exec(line)?.[1]),
+      ['empty-slot', 'none-slot', 'zero-slot'],
+      output
+    );
+  });
+});

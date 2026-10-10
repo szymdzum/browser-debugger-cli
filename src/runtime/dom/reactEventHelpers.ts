@@ -22,7 +22,7 @@ import {
   ELEMENT_IDENTITY_JS,
 } from '@/runtime/dom/elementInfo.js';
 import { FIND_ELEMENTS_JS, LABEL_CONTROL_JS } from '@/runtime/dom/targetNode.js';
-import { FILL_BEFOREINPUT_CANCELLED_WARNING } from '@/ui/messages/commands.js';
+import { FILL_BEFOREINPUT_CANCELLED_WARNING, NO_BOX_CLICK_REASON } from '@/ui/messages/commands.js';
 
 /**
  * Page-side copy of a list (`select.options`, a NodeList) as an array,
@@ -570,7 +570,8 @@ export const FILL_READ_BACK_SCRIPT = `(() => {
  * topmost where its host is hit. An element that is not topmost because an
  * ancestor in the flat tree clips it away (a collapsed
  * `height: 0; overflow: hidden` accordion, {@link ANCESTOR_CLIP_JS}) is
- * reported as hidden by it, not as covered.
+ * reported as hidden by it, not as covered. A `display: contents` element
+ * (a `<slot>`) has no box to aim at and gets DOM events.
  */
 export const CLICK_ELEMENT_SCRIPT = `
 (function(selector, parts, index, action) {
@@ -721,7 +722,8 @@ export const CLICK_ELEMENT_SCRIPT = `
   };
   const style = view.getComputedStyle(el);
   let obstruction = null;
-  if (style.display === 'none' || el.getClientRects().length === 0) obstruction = 'not rendered (display: none)';
+  if (style.display === 'contents') obstruction = ${JSON.stringify(NO_BOX_CLICK_REASON)};
+  else if (style.display === 'none' || el.getClientRects().length === 0) obstruction = 'not rendered (display: none)';
   else if (style.visibility === 'hidden') obstruction = 'hidden (visibility: hidden)';
   else if (el.closest('[inert]')) obstruction = 'inert (the page made it non-interactive)';
   else if (style.pointerEvents === 'none') obstruction = 'not clickable (pointer-events: none)';

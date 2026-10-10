@@ -94,6 +94,38 @@ void describe('Text web components render themselves', () => {
     assert.match(output, /x-dialog#dialog "Dialog title Dialog body" +\d+,\d+ 240×100 +visible/);
   });
 
+  void it('places a slot by the content it shows, in dom query, --json, layout and inspect', async () => {
+    const output = await bdg(['dom', 'query', 'slot']);
+    assert.match(
+      output,
+      /\[7\] <slot> \(in shadow root of <x-button#ok "Ok, got it">\) Ok, got it\n/
+    );
+    assert.match(output, /\[0\] <slot name="title">.* Named Title\n/);
+    assert.match(output, /\[2\] <slot name="title">.* Fallback title\n/);
+    assert.match(output, /\[9\] <slot>.* Hidden \(hidden\)\n/);
+    const json = JSON.parse(await bdg(['dom', 'query', 'slot', '--json'])) as {
+      data: { nodes: { inViewport?: string }[] };
+    };
+    assert.deepEqual(
+      json.data.nodes.map((node) => node.inViewport),
+      [...Array<string>(9).fill('visible'), 'hidden']
+    );
+    assert.match(
+      await bdg(['dom', 'layout', 'slot', '--index', '7']),
+      /\[7\] slot "Ok, got it" +\d+,\d+ +\d+×\d+ +visible/
+    );
+    assert.doesNotMatch(await bdg(['dom', 'inspect', 'slot', '--index', '7']), /not rendered/);
+  });
+
+  void it('says a click on a slot found no box to aim at, not display: none', async () => {
+    const output = await bdg(['dom', 'click', 'slot', '--index', '7']);
+    assert.match(
+      output,
+      /Element is not a mouse target itself \(display: contents, no box of its own\)/
+    );
+    assert.doesNotMatch(output, /display: none/);
+  });
+
   void it('names the element an action hit by what a user sees', async () => {
     const shadowButton = await bdg(['dom', 'click', 'button.root']);
     assert.match(shadowButton, /Element: +button\.root "Ok, got it"/);

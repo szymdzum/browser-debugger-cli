@@ -205,7 +205,8 @@ export const FLAT_TREE_JS = `(view) => {
  * Text slotted into a shadow root is drawn with the slot's styles, and text
  * of an element with a shadow root that is not slotted is not drawn, nor is
  * text inside a fully transparent descendant (a measuring copy under a
- * mask). Null when there is no visible text.
+ * mask), nor text under `visibility: hidden` (a loading button's label
+ * slot). Null when there is no visible text.
  */
 const TEXT_HOLDER_JS = `(el, tree) => {
   const counts = new Map();
@@ -223,7 +224,7 @@ const TEXT_HOLDER_JS = `(el, tree) => {
       if (budget <= 0) return;
       if (c.nodeType === 3) {
         const length = c.data.replace(/\\s+/g, '').length;
-        if (length === 0) continue;
+        if (length === 0 || tree.style(n).visibility !== 'visible') continue;
         counts.set(n, (counts.get(n) || 0) + length);
         if (!parents.has(n)) parents.set(n, c.parentElement || n);
       } else if (c.nodeType === 1 && !tree.skipped.test(c.localName) && shown(c)) {
@@ -481,14 +482,17 @@ export const PAINT_RISKS_JS = `(el, tree, textParent) => {
  * display, position relative to its parent's border box (like Figma's x/y
  * in a frame), text (only for elements without block-level children), and its
  * rendered children (or their count at the depth limit) with a count of the
- * hidden ones. Stops after {@link TREE_NODE_CAP} elements and counts the
- * children it did not reach.
+ * hidden ones. A text-only slot is listed when its text shows: it is
+ * visible and the element laying it out is rendered. Stops after
+ * {@link TREE_NODE_CAP} elements and counts the children it did not reach.
  */
 const TREE_JS = `(el, tree, textOf, depth) => {
   let budget = ${TREE_NODE_CAP};
   let skipped = 0;
   const walk = (kids, level, origin) => {
-    const shown = kids.filter((k) => tree.rendered(k) || k.localName === 'slot');
+    const textSlotShows = (k) => k.localName === 'slot' && tree.style(k).display === 'contents' &&
+      tree.style(k).visibility === 'visible' && !!tree.layoutParent(k) && tree.rendered(tree.layoutParent(k));
+    const shown = kids.filter((k) => tree.rendered(k) || textSlotShows(k));
     const nodes = [];
     for (const k of shown) {
       if (budget <= 0) { skipped++; continue; }

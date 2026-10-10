@@ -79,6 +79,14 @@ export function domClickFallbackWarning(reason: string | null | undefined): stri
   return `Element is ${reason ?? 'not reachable by the mouse'}; dispatched DOM events instead of mouse events (a user could not reach it like this)`;
 }
 
+/**
+ * Why the mouse cannot reach a `display: contents` element (a `<slot>`): it
+ * has no box to aim at, completing "Element is …" in
+ * {@link domClickFallbackWarning} and the `--strict` refusal.
+ */
+export const NO_BOX_CLICK_REASON =
+  'not a mouse target itself (display: contents, no box of its own)';
+
 /** Reason of a `bdg dom form` blocker for a required field left empty */
 export const REQUIRED_FIELD_EMPTY_REASON = 'Required field is empty';
 
@@ -553,6 +561,12 @@ export function assetRequestsNote(count: number, types: string[]): string {
 export const LAYOUT_REASONS = {
   /** Hidden: an `<option>` of a closed `<select>` has no box */
   option: 'not rendered (an <option> is shown by its <select>)',
+  /** Hidden: a `display: contents` element (a slot) none of whose content has a box */
+  noBox: 'display: contents (no box of its own)',
+  /** Hidden: start of the reason for a `display: contents` element (a slot) whose content does not show, followed by why its first content does not */
+  contentNotShown: 'content not shown: ',
+  /** Hidden: a `<slot>` with nothing assigned and no fallback content */
+  emptySlot: 'empty slot (nothing assigned, no fallback content)',
   /** Hidden: start of the reason for a clipping container with no area, followed by it */
   clippedBy: 'clipped by ',
   /** Which size of that container is zero */

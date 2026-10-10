@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import type { ElementLayout } from '@/ipc/protocol/domTypes.js';
 import type { InspectTreeNode } from '@/ipc/protocol/inspectTypes.js';
 import {
   buildBox,
@@ -14,7 +15,7 @@ import {
   deriveSizing,
   type SizingInput,
 } from '@/runtime/dom/inspectLayoutModel.js';
-import { elementLabel } from '@/runtime/dom/inspectModel.js';
+import { elementLabel, visibilityOf } from '@/runtime/dom/inspectModel.js';
 import {
   buildEffects,
   buildRadius,
@@ -508,5 +509,34 @@ void describe('elementLabel', () => {
       elementLabel({ tag: 'mdn-code-example', id: '', classes: ['brush:', 'html'] }),
       'mdn-code-example.html'
     );
+  });
+});
+
+void describe('visibilityOf', () => {
+  const slot: ElementLayout = {
+    index: 0,
+    tag: 'slot',
+    element: 'slot',
+    bounds: { x: 8, y: 8, width: 60, height: 18 },
+    viewport: { x: 8, y: 8 },
+    inViewport: 'visible',
+    computed: {
+      display: 'contents',
+      visibility: 'visible',
+      position: 'static',
+      opacity: '1',
+      zIndex: 'auto',
+    },
+  };
+
+  void it('counts an element without a box of its own as rendered when its content is placed', () => {
+    assert.deepEqual(visibilityOf(slot, false), {});
+    assert.deepEqual(visibilityOf({ ...slot, inViewport: 'below' }, false), { offscreen: 'below' });
+  });
+
+  void it('keeps one without a box hidden when none of its content shows', () => {
+    const empty = { ...slot, inViewport: 'hidden' as const, hiddenReason: 'empty slot' };
+    assert.deepEqual(visibilityOf(empty, false), { notRendered: true, hidden: 'empty slot' });
+    assert.deepEqual(visibilityOf(undefined, false), { notRendered: true });
   });
 });
