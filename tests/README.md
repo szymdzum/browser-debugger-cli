@@ -84,7 +84,7 @@ tests/
 
 Every test runs in a session directory of its own, never your `~/.bdg`, so tests do not touch a session you have open, and two test runs can share a machine (two agents, a checkout and a worktree):
 
-- **Smoke and unit tests:** each test process uses `/tmp/bdg-test-XXXXXX`, removed when it exits after ending any daemon or Chrome left in it (`BDG_TEST_KEEP_DIRS=1` keeps it, for its logs; CI smoke jobs set it). `BDG_TEST_SESSION_DIR` overrides it.
+- **Smoke and unit tests:** each test process uses `/tmp/bdg-test-XXXXXX`, removed when it exits after ending any daemon or Chrome left in it (`BDG_TEST_KEEP_DIRS=1` keeps it, for its logs; CI smoke jobs set it). `BDG_TEST_SESSION_PARENT=/tmp/x` puts these directories under `/tmp/x` instead (one parent per worktree or agent; keep it short, the daemon's socket path is limited to about 100 bytes). `BDG_TEST_SESSION_DIR` replaces them with one fixed directory that every test process of the run shares and that is not removed.
 - **Shell tests:** `run-all-tests.sh` gives each test `/tmp/bdg-it-XXXXXX` through `BDG_SESSION_DIR`. A test run on its own creates one in `recovery.sh` and removes it in its cleanup.
 - **Cleanup:** `bdg cleanup --force` acts on the test's own session only. Tests never kill processes by port or by name.
 
