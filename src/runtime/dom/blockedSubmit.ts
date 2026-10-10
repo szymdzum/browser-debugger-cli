@@ -21,11 +21,29 @@ const log = createLogger('dom');
 const READ_TIMEOUT_MS = 250;
 
 /**
+ * Page-side access to a form's own members through the prototypes: a named
+ * control (`<input name="elements">`, `name="addEventListener"`) shadows
+ * the member of the same name on the form itself. `listen` and `unlisten`
+ * work for any element.
+ */
+export const FORM_MEMBERS_JS = `({
+  elements: (form) => Array.from(Object.getOwnPropertyDescriptor(HTMLFormElement.prototype, 'elements').get.call(form)),
+  noValidate: (form) => Object.getOwnPropertyDescriptor(HTMLFormElement.prototype, 'noValidate').get.call(form),
+  checkValidity: (form) => HTMLFormElement.prototype.checkValidity.call(form),
+  requestSubmit: (form, submitter) => submitter
+    ? HTMLFormElement.prototype.requestSubmit.call(form, submitter)
+    : HTMLFormElement.prototype.requestSubmit.call(form),
+  isConnected: (node) => Object.getOwnPropertyDescriptor(Node.prototype, 'isConnected').get.call(node),
+  listen: (node, type, listener) => EventTarget.prototype.addEventListener.call(node, type, listener, true),
+  unlisten: (node, type, listener) => EventTarget.prototype.removeEventListener.call(node, type, listener, true)
+})`;
+
+/**
  * Page-side list of a form's invalid fields: those the browser validates
  * that are not valid, each named by its name, id or tag, with the browser's
  * validation message. Reading `validity` fires no `invalid` events.
  */
-export const INVALID_FIELDS_JS = `(form) => Array.from(form.elements)
+export const INVALID_FIELDS_JS = `(form) => (${FORM_MEMBERS_JS}).elements(form)
   .filter((f) => f.willValidate && !f.validity.valid)
   .map((f) => ({ field: f.name || f.id || f.tagName.toLowerCase(), message: f.validationMessage }))`;
 
@@ -44,25 +62,32 @@ export const CLEAR_SUBMIT_PROBE_JS = `if (window.__bdgSubmitProbe) {
  * holding it or the one its `form` attribute names, reachable from the
  * button in a closed shadow root too) has no `novalidate` and the button no
  * `formnovalidate`. It notes the first click event that reached the button
- * and whether the form fired `submit`. Evaluates to whether it was installed.
+ * and whether the form fired `submit`. Evaluates to whether it was installed;
+ * a probe that cannot be installed (a page that broke the built-ins it calls)
+ * never fails the click, which is then reported as before.
  */
 export const SUBMIT_PROBE_JS = `(el) => {
-  const button = el.closest('button') || el;
-  const submits = (button.localName === 'button' && button.type === 'submit') ||
-    (button.localName === 'input' && (button.type === 'submit' || button.type === 'image'));
-  const form = submits ? button.form : null;
-  if (!form || form.noValidate || button.formNoValidate) return false;
-  const probe = { form: form, click: null, submitted: false };
-  const onClick = (event) => { probe.click = probe.click || event; };
-  const onSubmit = () => { probe.submitted = true; };
-  button.addEventListener('click', onClick, true);
-  form.addEventListener('submit', onSubmit, true);
-  probe.stop = () => {
-    button.removeEventListener('click', onClick, true);
-    form.removeEventListener('submit', onSubmit, true);
-  };
-  window.__bdgSubmitProbe = probe;
-  return true;
+  try {
+    const members = ${FORM_MEMBERS_JS};
+    const button = el.closest('button') || el;
+    const submits = (button.localName === 'button' && button.type === 'submit') ||
+      (button.localName === 'input' && (button.type === 'submit' || button.type === 'image'));
+    const form = submits ? button.form : null;
+    if (!form || members.noValidate(form) || button.formNoValidate) return false;
+    const probe = { form: form, click: null, submitted: false };
+    const onClick = (event) => { probe.click = probe.click || event; };
+    const onSubmit = () => { probe.submitted = true; };
+    members.listen(button, 'click', onClick);
+    members.listen(form, 'submit', onSubmit);
+    probe.stop = () => {
+      members.unlisten(button, 'click', onClick);
+      members.unlisten(form, 'submit', onSubmit);
+    };
+    window.__bdgSubmitProbe = probe;
+    return true;
+  } catch (error) {
+    return false;
+  }
 }`;
 
 /**
@@ -76,7 +101,8 @@ const READ_SUBMIT_PROBE_SCRIPT = `(() => {
   if (!probe) return null;
   probe.stop();
   delete window.__bdgSubmitProbe;
-  if (!probe.click || probe.click.defaultPrevented || probe.submitted || !probe.form.isConnected) return null;
+  if (!probe.click || probe.click.defaultPrevented || probe.submitted) return null;
+  if (!(${FORM_MEMBERS_JS}).isConnected(probe.form)) return null;
   const fields = (${INVALID_FIELDS_JS})(probe.form);
   return fields.length > 0 ? fields : null;
 })()`;

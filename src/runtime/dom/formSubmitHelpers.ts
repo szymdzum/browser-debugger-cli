@@ -13,7 +13,7 @@ import {
 } from '@/errors/messages.js';
 import type { PendingRequestInfo } from '@/ipc/protocol/commands.js';
 import type { InvalidField, SubmitResult } from '@/ipc/protocol/domTypes.js';
-import { INVALID_FIELDS_JS } from '@/runtime/dom/blockedSubmit.js';
+import { FORM_MEMBERS_JS, INVALID_FIELDS_JS } from '@/runtime/dom/blockedSubmit.js';
 import { DISABLED_CAUSE_JS, ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
 import { throwIfInvalidSelector } from '@/runtime/dom/formFillHelpers/shared.js';
 import { FIND_ELEMENTS_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
@@ -65,6 +65,7 @@ const PREPARE_SUBMIT_SCRIPT = `
       error: 'Index ' + index + ' out of range (found ' + matches.length + ' elements)'
     };
   }
+  const members = ${FORM_MEMBERS_JS};
   const isForm = el.tagName === 'FORM';
   const isButton = el.matches('button, input[type=submit], input[type=image], [role=button]');
   const isSubmitter = el.matches('button:not([type]), button[type=submit], input[type=submit], input[type=image]');
@@ -77,7 +78,7 @@ const PREPARE_SUBMIT_SCRIPT = `
     };
   }
   const submitters = isForm
-    ? Array.from(el.elements).filter((f) =>
+    ? members.elements(el).filter((f) =>
         f.matches('button:not([type]), button[type=submit], input[type=submit], input[type=image]')
       )
     : [];
@@ -86,7 +87,7 @@ const PREPARE_SUBMIT_SCRIPT = `
     // A user could not submit: Enter does nothing while the default button is disabled
     return { action: 'fail', reason: 'disabled', error: 'The form\\'s submit button is disabled' };
   }
-  if ((isForm || isSubmitter) && form && !form.noValidate && !el.formNoValidate && !form.checkValidity()) {
+  if ((isForm || isSubmitter) && form && !members.noValidate(form) && !el.formNoValidate && !members.checkValidity(form)) {
     return { action: 'fail', reason: 'invalid', invalid: (${INVALID_FIELDS_JS})(form) };
   }
   if (isForm) {
@@ -94,8 +95,7 @@ const PREPARE_SUBMIT_SCRIPT = `
     // name=value is sent too
     const submitter = submitters.find((f) => !disabled(f));
     const element = (${ELEMENT_IDENTITY_JS})(submitter || el);
-    if (submitter) el.requestSubmit(submitter);
-    else el.requestSubmit();
+    members.requestSubmit(el, submitter);
     return { action: 'submitted', clicked: Boolean(submitter), element: element };
   }
   return { action: 'click' };
