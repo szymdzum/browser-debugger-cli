@@ -353,9 +353,29 @@ void describe('preview of pages and paused requests (#554)', () => {
     };
     const note =
       /Pending requests possibly paused by Fetch interception: bdg cdp --events Fetch\.requestPaused/;
+    const oldPending = {
+      ...paused,
+      data: {
+        network: [
+          {
+            requestId: 'o',
+            url: 'https://example.com/old',
+            method: 'GET',
+            timestamp: 1,
+            navigationId: 1,
+          },
+        ],
+        console: [],
+      },
+    };
     for (const verbose of [false, true]) {
       assert.match(formatPreview(paused as never, { last: 10, verbose }), note);
       assert.doesNotMatch(formatPreview(output as never, { last: 10, verbose }), note);
+      assert.doesNotMatch(
+        formatPreview(oldPending as never, { last: 10, verbose }),
+        note,
+        "a previous page's pending request is not one interception holds"
+      );
     }
     const json = JSON.parse(formatPreview(paused as never, { last: 10, json: true })) as {
       data: { fetchInterception?: boolean };

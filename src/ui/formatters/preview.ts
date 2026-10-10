@@ -141,7 +141,8 @@ export interface PreviewJsonData {
 }
 
 /**
- * Whether an item was recorded on an earlier page load than the current one.
+ * Whether an item was recorded on an earlier page load than the current one
+ * (or on another tab before a switch, which starts a new navigation id).
  * `peek` shows the whole session (unlike `console`, which shows the current
  * page), so such items are marked rather than left out.
  *
@@ -175,16 +176,21 @@ function withPreviousPageFlag<T extends { navigationId?: number | undefined }>(
 }
 
 /**
- * Whether Fetch interception may be holding a shown request.
+ * Whether Fetch interception may be holding a shown request of the
+ * current page (earlier pages' requests are not continued by it).
  *
  * @param output - Preview output
  * @param requests - Requests shown
- * @returns True when interception is on and a shown request is pending
+ * @returns True when interception is on and a shown current-page request is pending
  */
 function mayHavePausedRequests(output: BdgOutput, requests: NetworkRequest[]): boolean {
   return (
     output.fetchInterception === true &&
-    requests.some((request) => getRequestState(request) === 'pending')
+    requests.some(
+      (request) =>
+        getRequestState(request) === 'pending' &&
+        !isPreviousPage(request, output.currentNavigationId)
+    )
   );
 }
 
