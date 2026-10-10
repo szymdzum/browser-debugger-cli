@@ -44,6 +44,8 @@ import {
   ELEMENT_STATE_JS,
   ELEMENT_TEXT_JS,
   ELEMENT_TEXT_LENGTH,
+  MASKED_OUTER_HTML_JS,
+  MASKED_VALUE,
   textPreview,
   labelClasses,
 } from '@/runtime/dom/elementInfo.js';
@@ -111,15 +113,60 @@ async function describeNode(ref: NodeRef): Promise<Protocol.DOM.Node | null> {
   return (response.data?.result as Protocol.DOM.DescribeNodeResponse | undefined)?.node ?? null;
 }
 
+/** Node types whose outer HTML is read in the page: element (1) and document (9) */
+const PAGE_READ_NODE_TYPES = new Set([1, 9]);
+
+/** What {@link MASKED_OUTER_HTML_JS} reads */
+interface MaskedOuterHTML {
+  html: string | null;
+  sensitive: boolean;
+}
+
 /**
- * Get a node's outer HTML.
+ * A node's outer HTML with the values of secret fields masked
+ * ({@link MASKED_OUTER_HTML_JS}), as `dom query` masks them. Elements and
+ * documents are read in the page; other nodes (text, comments), which hold
+ * no fields, with `DOM.getOuterHTML`. An element the page cannot read gets
+ * no HTML rather than unmasked HTML.
  *
  * @param ref - Node reference
- * @returns Outer HTML, or undefined if unavailable
+ * @param nodeType - DOM node type from `DOM.describeNode`
+ * @returns Outer HTML (undefined if unavailable) and whether the node itself is a secret field
  */
-async function getOuterHTML(ref: NodeRef): Promise<string | undefined> {
-  const response = await callCDP('DOM.getOuterHTML', ref);
-  return (response.data?.result as Protocol.DOM.GetOuterHTMLResponse | undefined)?.outerHTML;
+async function maskedOuterHTML(
+  ref: NodeRef,
+  nodeType: number
+): Promise<{ outerHTML: string | undefined; sensitive: boolean }> {
+  if (!PAGE_READ_NODE_TYPES.has(nodeType)) {
+    const response = await callCDP('DOM.getOuterHTML', ref);
+    const outerHTML = (response.data?.result as Protocol.DOM.GetOuterHTMLResponse | undefined)
+      ?.outerHTML;
+    return { outerHTML, sensitive: false };
+  }
+  const read = (await callOnNode(
+    ref,
+    `function () { return (${MASKED_OUTER_HTML_JS})(this); }`
+  )) as Partial<MaskedOuterHTML> | undefined;
+  if (typeof read?.html !== 'string') log.debug(`No masked outer HTML for ${JSON.stringify(ref)}`);
+  return {
+    outerHTML: typeof read?.html === 'string' ? read.html : undefined,
+    sensitive: read?.sensitive === true,
+  };
+}
+
+/**
+ * An element's attributes as `dom get --raw` shows them: the `value` of a
+ * secret field is {@link MASKED_VALUE}.
+ *
+ * @param attributes - Attributes from `DOM.describeNode`
+ * @param sensitive - Whether the element is a secret field
+ * @returns Attributes to show
+ */
+function maskedAttributes(
+  attributes: Record<string, string>,
+  sensitive: boolean
+): Record<string, string> {
+  return sensitive && attributes['value'] ? { ...attributes, value: MASKED_VALUE } : attributes;
 }
 
 /** Counter giving each query its own object group (queries may run concurrently) */
@@ -643,25 +690,43 @@ interface TextAndState {
  * @returns Element text and state, empty when the node cannot be read
  */
 async function elementTextAndState(ref: NodeRef, full: boolean): Promise<TextAndState> {
-  const objectGroup = `bdg-text-${process.pid}-${++queryCount}`;
+  const value = (await callOnNode(
+    ref,
+    `function (full) { return { text: (${ELEMENT_TEXT_JS})(this, full), state: (${ELEMENT_STATE_JS})(this) }; }`,
+    [full]
+  )) as Partial<TextAndState> | undefined;
+  return {
+    text: typeof value?.text === 'string' ? value.text : '',
+    state: value?.state ?? {},
+  };
+}
+
+/**
+ * Call a page-side function on a node (as `this`) and read its result by value.
+ *
+ * @param ref - Node reference
+ * @param functionDeclaration - Function source
+ * @param args - Arguments passed by value
+ * @returns The result, or undefined when the node cannot be resolved
+ */
+async function callOnNode(
+  ref: NodeRef,
+  functionDeclaration: string,
+  args: unknown[] = []
+): Promise<unknown> {
+  const objectGroup = `bdg-node-${process.pid}-${++queryCount}`;
   const resolved = await callBdgScript('DOM.resolveNode', { ...ref, objectGroup });
   const objectId = (resolved.data?.result as Protocol.DOM.ResolveNodeResponse | undefined)?.object
     .objectId;
-  if (!objectId) return { text: '', state: {} };
+  if (!objectId) return undefined;
   try {
     const response = await callCDP('Runtime.callFunctionOn', {
       objectId,
-      functionDeclaration: `function (full) { return { text: (${ELEMENT_TEXT_JS})(this, full), state: (${ELEMENT_STATE_JS})(this) }; }`,
-      arguments: [{ value: full }],
+      functionDeclaration,
+      arguments: args.map((value) => ({ value })),
       returnByValue: true,
     });
-    const value = (
-      response.data?.result as { result?: { value?: Partial<TextAndState> } } | undefined
-    )?.result?.value;
-    return {
-      text: typeof value?.text === 'string' ? value.text : '',
-      state: value?.state ?? {},
-    };
+    return (response.data?.result as { result?: { value?: unknown } } | undefined)?.result?.value;
   } finally {
     await callCDP('Runtime.releaseObjectGroup', { objectGroup });
   }
@@ -802,7 +867,8 @@ async function selectForGet(selector: string, options: DomGetOptions): Promise<N
 }
 
 /**
- * Get full details (attributes, outer HTML) for `bdg dom get --raw`.
+ * Get full details (attributes, outer HTML) for `bdg dom get --raw`, with
+ * the values of secret fields masked as `dom query` masks them.
  *
  * @param options - Selector (with nth/all) or a backend node id
  * @returns Node details; `nodeId` is the backend node id
@@ -846,9 +912,9 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
         EXIT_CODES.RESOURCE_NOT_FOUND
       );
     }
-    const attributes = unpackAttributes(desc.attributes);
+    const { outerHTML, sensitive } = await maskedOuterHTML(ref, desc.nodeType);
+    const attributes = maskedAttributes(unpackAttributes(desc.attributes), sensitive);
     const classes = elementClasses(attributes);
-    const outerHTML = await getOuterHTML(ref);
     return {
       nodeId: desc.backendNodeId,
       tag: desc.nodeName.toLowerCase(),

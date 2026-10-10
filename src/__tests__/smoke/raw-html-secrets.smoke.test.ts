@@ -149,4 +149,33 @@ void describe('Secrets in raw HTML (#583)', () => {
       ['pass', 'shown', 'masked', 'card', 'otp']
     );
   });
+
+  void it('masks a copy: the page keeps its values and no custom element is constructed', async () => {
+    const before = await bdgJson<{ result: unknown }>([
+      'dom',
+      'eval',
+      '[window.badges, document.querySelector("#pass").getAttribute("value")]',
+    ]);
+    await bdg(['dom', 'get', '#signup', '--raw']);
+    const afterRead = await bdgJson<{ result: unknown }>([
+      'dom',
+      'eval',
+      '[window.badges, document.querySelector("#pass").getAttribute("value")]',
+    ]);
+    assert.deepEqual(before.result, [1, 'TopSecret99']);
+    assert.deepEqual(afterRead.result, before.result);
+  });
+
+  void it('masks the whole document read by its node id, after its doctype', async () => {
+    const document = await bdgJson<{ result: { root: { backendNodeId: number } } }>([
+      'cdp',
+      'DOM.getDocument',
+      '--params',
+      '{"depth":0}',
+    ]);
+    const html = await bdg(['dom', 'get', '--node-id', String(document.result.root.backendNodeId)]);
+    assert.match(html, /^<!DOCTYPE html><html>/);
+    assert.doesNotMatch(html, RAW_SECRETS);
+    assert.match(html, /<input id="pass" name="pass" type="password" value="••••">/);
+  });
 });
