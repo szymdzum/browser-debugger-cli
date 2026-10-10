@@ -188,8 +188,9 @@ function failedResultFailure<Req, Res extends ResultPayload>(
  * Add what the page says to a "not found" failure (one page evaluation, on
  * this failure path only, {@link noMatchContext}): similar ids or classes, a
  * shadow host the selector tries to cross,
- * the places selectors do not search (for a page script that found nothing)
- * and the still-loading hint while the page loads.
+ * the places selectors do not search (for a page script that found nothing,
+ * and in place of the daemon's note on every such place once the page was
+ * checked) and the still-loading hint while the page loads.
  *
  * @param failure - Failed command result
  * @param selector - Selector that was looked for (the cached query's for an index)
@@ -203,12 +204,19 @@ async function withNotFoundContext(
 ): Promise<CommandResult<never>> {
   if (failure.exitCode !== EXIT_CODES.RESOURCE_NOT_FOUND) return failure;
   const context = await noMatchContext(selector);
-  const note = searched ? unreachableElementsNote(selector, context.unsearched) : '';
+  const daemonSuggestion = failure.errorContext?.suggestion;
+  const uncheckedNote = unreachableElementsNote(selector);
+  const replacesDaemonNote =
+    context.unsearched !== undefined && daemonSuggestion?.includes(uncheckedNote) === true;
+  const note =
+    searched || replacesDaemonNote ? unreachableElementsNote(selector, context.unsearched) : '';
   const suggestion = withLoadingHint(
     joinLines(
       context.similar,
       context.shadowHost && shadowBoundaryLine(context.shadowHost),
-      failure.errorContext?.suggestion,
+      replacesDaemonNote
+        ? daemonSuggestion?.replace(uncheckedNote, '').trim() || undefined
+        : daemonSuggestion,
       note ? note : undefined
     ),
     context.readyState,

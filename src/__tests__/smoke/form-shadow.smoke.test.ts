@@ -211,6 +211,7 @@ void describe('Forms in shadow roots', () => {
       ['dom', 'query', 'input[name=card-holder]'],
       ['dom', 'fill', 'input[name=card-holder]', 'x'],
       ['dom', 'click', 'x-vault button'],
+      ['dom', 'inspect', 'input[name=card-holder]'],
     ]) {
       const output = await bdg(args, 83);
       assert.match(output, closedNote, `bdg ${args.join(' ')}`);

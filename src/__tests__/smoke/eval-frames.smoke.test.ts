@@ -81,6 +81,10 @@ void describe('dom eval --frame', () => {
     const click = await runJson<never>(['dom', 'click', '#missing']);
     assert.equal(click.exitCode, EXIT_CODES.RESOURCE_NOT_FOUND);
     assert.match(click.suggestion ?? '', /The page has cross-origin iframes/);
+    const inspect = await runJson<never>(['dom', 'inspect', '#missing']);
+    assert.equal(inspect.exitCode, EXIT_CODES.RESOURCE_NOT_FOUND);
+    assert.match(inspect.suggestion ?? '', /The page has cross-origin iframes/);
+    assert.match(inspect.suggestion ?? '', /bdg dom eval --frame <n>/);
   });
 
   void it('evaluates in a same-origin iframe', async () => {
