@@ -74,11 +74,51 @@ async function nodeIdOf(selector: string): Promise<number> {
   return node.nodeId;
 }
 
+/** Secret values on `/raw-more` */
+const MORE_SECRETS = /TASECRET2|OPTSECRET3|OPTLABEL3|TPLSECRET4|SHADOWSECRET5|FRAMESECRET6/;
+
 /** A node of `DOM.describeNode --pierce` */
 interface PiercedNode {
   backendNodeId: number;
+  nodeValue?: string;
   children?: PiercedNode[];
   shadowRoots?: PiercedNode[];
+  contentDocument?: PiercedNode;
+}
+
+/**
+ * The backend node id of a text node with a value, under an element
+ * (through shadow roots and iframe documents).
+ *
+ * @param selector - Element holding it
+ * @param value - The text
+ * @returns Its backend node id
+ */
+async function textNodeId(selector: string, value: string): Promise<number> {
+  const params = JSON.stringify({
+    backendNodeId: await nodeIdOf(selector),
+    depth: -1,
+    pierce: true,
+  });
+  const data = await bdgJson<{ result: { node: PiercedNode } }>([
+    'cdp',
+    'DOM.describeNode',
+    '--params',
+    params,
+  ]);
+  const find = (node: PiercedNode): number | undefined => {
+    if (node.nodeValue === value) return node.backendNodeId;
+    const next = [...(node.children ?? []), ...(node.shadowRoots ?? [])];
+    if (node.contentDocument) next.push(node.contentDocument);
+    for (const child of next) {
+      const found = find(child);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  };
+  const id = find(data.result.node);
+  assert.ok(id !== undefined, `no text node ${value} under ${selector}`);
+  return id;
 }
 
 /**
@@ -304,6 +344,58 @@ void describe('Secrets in raw HTML (#583)', () => {
       (await bdg(['dom', 'get', '#framed', '--raw'])).split('\n')[0],
       '<div id="framed"><iframe srcdoc="&lt;input type=&quot;password&quot; value=&quot;••••&quot;&gt;&lt;input name=&quot;note&quot; value=&quot;plain&quot;&gt;"></iframe></div>'
     );
+  });
+
+  void it('masks the text node of a secret textarea read by node id, in the page, a shadow root and an iframe', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}raw-more`]);
+    for (const [selector, value] of [
+      ['#ta', 'TASECRET2'],
+      ['x-pin', 'SHADOWSECRET5'],
+      ['#child', 'FRAMESECRET6'],
+    ] as const) {
+      const id = String(await textNodeId(selector, value));
+      for (const args of [
+        ['dom', 'get', '--node-id', id],
+        ['dom', 'get', '--node-id', id, '--raw'],
+      ]) {
+        const human = await bdg(args);
+        assert.doesNotMatch(human, MORE_SECRETS, `${selector}: ${args.join(' ')}`);
+        assert.match(human, /^••••\nSecret values shown as ••••/, `${selector}: ${args.join(' ')}`);
+        const json = await bdg([...args, '--json']);
+        assert.doesNotMatch(json, MORE_SECRETS, `${selector}: ${args.join(' ')} --json`);
+      }
+    }
+  });
+
+  void it('masks the options of a secret select, read whole, by its option or its option text', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}raw-more`]);
+    const select = await bdg(['dom', 'get', '#sel', '--raw']);
+    assert.doesNotMatch(select, MORE_SECRETS);
+    assert.match(select, /<option value="••••" selected="">••••<\/option>/);
+    const json = await bdg(['dom', 'get', 'select', '--raw', '--all', '--json']);
+    assert.doesNotMatch(json, MORE_SECRETS);
+    assert.match(
+      json,
+      /<option value=\\"m\\" selected=\\"\\">Medium<\/option>/,
+      'an ordinary select stays'
+    );
+    const option = await nodeIdOf('#sel option');
+    for (const id of [option, await textNodeId('#sel', 'OPTLABEL3')]) {
+      const args = ['dom', 'get', '--node-id', String(id)];
+      assert.doesNotMatch(await bdg(args), MORE_SECRETS, args.join(' '));
+      assert.doesNotMatch(await bdg([...args, '--json']), MORE_SECRETS, `${args.join(' ')} --json`);
+    }
+    const queried = await bdgJson<
+      QueryJson & { nodes: Array<{ attributes?: { selected?: string } }> }
+    >(['dom', 'query', '#sel']);
+    assert.equal(queried.nodes[0]?.attributes?.selected, MASK, 'dom query masks it too');
+  });
+
+  void it('masks secret fields in template content', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}raw-more`]);
+    const html = await bdg(['dom', 'get', '#tpl', '--raw']);
+    assert.doesNotMatch(html, MORE_SECRETS);
+    assert.match(html, /<template id="tpl"><input type="password" value="••••"><\/template>/);
   });
 
   void it('says when a value was masked: a footer line, and masked: true in JSON', async () => {

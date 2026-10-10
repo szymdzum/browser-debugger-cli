@@ -10,7 +10,12 @@
  * `window.badges`; `/raw-frames` has iframes whose `srcdoc` holds a password
  * field and an ordinary one (`#framed`), a password two `srcdoc` levels deep
  * (`#nested`) and no field (`#plain-frame`); `/raw-legacy` has an HTML 4.01
- * doctype and a comment before `<html>`, and a password field.
+ * doctype and a comment before `<html>`, and a password field; `/raw-more`
+ * has a PIN textarea (`#ta`), a select named password (`#sel`) next to an
+ * ordinary one (`#size`), a password field in a `<template>` (`#tpl`), a PIN
+ * textarea in `<x-pin>`'s open shadow root and in a `srcdoc` iframe
+ * (`#child`), and ordinary elements with several attributes (`#link`,
+ * `#multi`).
  */
 
 import type { FixtureRoutes } from '@/__testutils__/fixtureRoutes.js';
@@ -49,9 +54,29 @@ const RAW_LEGACY_HTML = `<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http
 <html><head><title>raw legacy</title></head>
 <body><input id="legacy-pass" type="password" value="LegacySecret"></body></html>`;
 
+/** Secret text in textareas and options, a template, a shadow root and an iframe */
+const RAW_MORE_HTML = `<!doctype html><title>raw more</title>
+<textarea id="ta" name="pin">TASECRET2</textarea>
+<select id="sel" name="password"><option value="OPTSECRET3" selected>OPTLABEL3</option><option value="other">Other</option></select>
+<select id="size" name="size"><option value="m" selected>Medium</option></select>
+<template id="tpl"><input type="password" value="TPLSECRET4"></template>
+<x-pin></x-pin>
+<iframe id="child" srcdoc="<textarea name=pin>FRAMESECRET6</textarea>"></iframe>
+<a id="link" href="/x" class="a b" data-x="1" title="Go">Link</a>
+<input id="multi" name="q" type="search" placeholder="Find" required autocomplete="off" class="c" value="shoes">
+<script>
+  customElements.define('x-pin', class extends HTMLElement {
+    constructor() {
+      super();
+      this.attachShadow({ mode: 'open' }).innerHTML = '<textarea name="pin">SHADOWSECRET5</textarea>';
+    }
+  });
+</script>`;
+
 /** Raw HTML secret pages by path */
 export const ROUTES: FixtureRoutes = {
   '/raw-secrets': RAW_SECRETS_HTML,
   '/raw-frames': RAW_FRAMES_HTML,
   '/raw-legacy': RAW_LEGACY_HTML,
+  '/raw-more': RAW_MORE_HTML,
 };

@@ -265,11 +265,16 @@ export const ELEMENT_STATE_JS = `(el) => {
  * Page-side outer HTML of a node as `dom get --raw` shows it, with secrets
  * masked as {@link MASKED_VALUE} (an empty value stays empty):
  *
- * - the `value` attribute of each sensitive input ({@link SENSITIVE_FIELD_JS})
- *   and the text of each sensitive textarea, the node itself or inside it;
- * - all text of a node inside a sensitive field: the nodes Chrome keeps in
- *   a field's user-agent shadow root to show its value (reachable by node
- *   id), and that shadow root itself;
+ * - the `value` attribute of each sensitive input ({@link SENSITIVE_FIELD_JS}),
+ *   the text of each sensitive textarea, and the `value` and `label`
+ *   attributes and text of each option of a sensitive select (`dom query`
+ *   masks its selected option), the node itself or inside it, also in
+ *   `<template>` content (judged on the inert elements, without the CSS
+ *   check);
+ * - all text (and option values) of a node inside a sensitive field, through
+ *   its ancestors and shadow hosts: a textarea's or option's text node, the
+ *   nodes Chrome keeps in a field's user-agent shadow root to show its value
+ *   (reachable by node id), and that shadow root itself;
  * - the fields of an iframe's `srcdoc`, which is HTML text: it is parsed into
  *   an inert document (nested `srcdoc` too) and judged by the same rule on
  *   the parsed elements (all of it but the CSS check, which needs a rendered
@@ -289,7 +294,7 @@ export const ELEMENT_STATE_JS = `(el) => {
  */
 export const MASKED_OUTER_HTML_JS = `(node) => {
   const isSensitive = ${SENSITIVE_FIELD_JS};
-  const isField = (el) => el.nodeType === 1 && /^(input|textarea)$/.test(el.localName);
+  const isSecretField = (el) => el.nodeType === 1 && /^(input|textarea|select)$/.test(el.localName) && isSensitive(el);
   let masked = false;
   const within = (el, selector) => {
     const found = el.nodeType === 1 && el.matches(selector) ? [el] : [];
@@ -297,7 +302,23 @@ export const MASKED_OUTER_HTML_JS = `(node) => {
     for (let i = 0; i < inside.length; i++) found[found.length] = inside[i];
     return found;
   };
+  const maskOptions = (container) => {
+    let changed = false;
+    const options = within(container, 'option');
+    for (let i = 0; i < options.length; i++) {
+      for (const name of ['value', 'label']) {
+        if (!options[i].getAttribute(name)) continue;
+        options[i].setAttribute(name, '${MASKED_VALUE}');
+        changed = true;
+      }
+      if (!options[i].textContent) continue;
+      options[i].textContent = '${MASKED_VALUE}';
+      changed = true;
+    }
+    return changed;
+  };
   const maskValue = (field) => {
+    if (field.localName === 'select') return maskOptions(field);
     if (field.localName === 'textarea') {
       if (!field.textContent) return false;
       field.textContent = '${MASKED_VALUE}';
@@ -316,11 +337,8 @@ export const MASKED_OUTER_HTML_JS = `(node) => {
     }
   };
   const insideSecret = (target) => {
-    let root = target.nodeType === 11 ? target : target.getRootNode();
-    while (root && root.nodeType === 11 && root.host) {
-      if (isField(root.host) && isSensitive(root.host)) return true;
-      root = root.host.getRootNode();
-    }
+    const up = (n) => (n.nodeType === 11 ? n.host : n.parentNode);
+    for (let n = up(target); n; n = up(n)) if (isSecretField(n)) return true;
     return false;
   };
   const serializeDocument = (doc, htmlOf) => {
@@ -334,10 +352,14 @@ export const MASKED_OUTER_HTML_JS = `(node) => {
   };
   const maskTree = (live, copy) => {
     let changed = false;
-    const liveFields = within(live, 'input, textarea');
-    const copyFields = within(copy, 'input, textarea');
+    const liveFields = within(live, 'input, textarea, select');
+    const copyFields = within(copy, 'input, textarea, select');
     for (let i = 0; i < liveFields.length; i++) {
-      if (copyFields[i] && isSensitive(liveFields[i]) && maskValue(copyFields[i])) changed = true;
+      if (copyFields[i] && isSecretField(liveFields[i]) && maskValue(copyFields[i])) changed = true;
+    }
+    const templates = within(copy, 'template');
+    for (let i = 0; i < templates.length; i++) {
+      if (maskTree(templates[i].content, templates[i].content)) changed = true;
     }
     const frames = within(copy, 'iframe[srcdoc]');
     for (let i = 0; i < frames.length; i++) {
@@ -364,6 +386,7 @@ export const MASKED_OUTER_HTML_JS = `(node) => {
   const secret = node.nodeType === 1 || node.nodeType === 3 || node.nodeType === 11 ? insideSecret(node) : false;
   if (node.nodeType === 1) {
     const copy = copyOf(node);
+    if (secret && maskOptions(copy)) masked = true;
     if (secret) maskText(copy);
     const attributes = [];
     for (let i = 0; i < copy.attributes.length; i++) attributes.push(copy.attributes[i].name, copy.attributes[i].value);
