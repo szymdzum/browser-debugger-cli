@@ -110,7 +110,7 @@ bdg dom click "#rename" --prompt-text "Ada"    # prompt() returns "Ada"
 bdg <url> --dialog dismiss                     # Cancel by default, page loads included
 ```
 
-Selectors search open shadow roots and same-origin iframes, and accept `:has-text("...")` and `:visible`. `dom fill` on a file input takes local paths and uploads those files.
+Selectors search open shadow roots and same-origin iframes, and accept `:has-text("...")` and `:visible`. A closed shadow root is out of reach of selectors and `dom inspect`: find its elements with `bdg dom a11y query role=textbox` (or `role=button`) and pass the index to `dom fill`, `dom click` or `dom get`. `dom fill` on a file input takes local paths and uploads those files.
 
 ## Untrusted Page Content
 
