@@ -120,4 +120,30 @@ void describe('Console sources', () => {
 
     assert.match(await statusUrlOnceChanged(/\/pushed$/), /\/pushed$/);
   });
+
+  void it("marks the previous page's messages in peek after a navigation (#554)", async () => {
+    await listMessages();
+    const navigated = await runCommand('page', ['navigate', `${fixture.url}issues/clean`], {
+      timeout: 60000,
+    });
+    assert.equal(navigated.exitCode, 0, navigated.stderr);
+
+    const peek = await runCommand('peek', ['--console', '--last', '0'], { timeout: 30000 });
+    assert.match(peek.stdout, /^ {2}ERROR (\(previous page\)) Failed to load resource: .*404/m);
+    const json = await runCommand('peek', ['--last', '0', '--json'], { timeout: 30000 });
+    const data = (
+      JSON.parse(json.stdout) as {
+        data: {
+          currentNavigationId: number;
+          console: Array<{ text: string; previousPage?: boolean; navigationId?: number }>;
+          network: Array<{ url: string; previousPage?: boolean }>;
+        };
+      }
+    ).data;
+    const failed = data.console.find((m) => m.text.startsWith('Failed to load resource'));
+    assert.equal(failed?.previousPage, true);
+    assert.ok((failed?.navigationId ?? Infinity) < data.currentNavigationId);
+    const current = data.network.find((r) => r.url.endsWith('/issues/clean'));
+    assert.equal(current?.previousPage, undefined, "the current page's document is not marked");
+  });
 });

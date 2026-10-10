@@ -158,6 +158,35 @@ void describe('createInteractionRunner', () => {
     assert.equal('work' in plain, false, 'the page work stays internal');
   });
 
+  void it('notes Fetch interception when requests it triggered were still pending (#554)', async () => {
+    const pendingRequest = (store: TelemetryStore): Promise<{ success: boolean }> => {
+      const timestamp = Date.now();
+      store.pendingNetworkRequests.set('paused', {
+        request: { requestId: 'paused', url: 'http://shop.test/api', method: 'GET', timestamp },
+        timestamp,
+      });
+      return Promise.resolve({ success: true });
+    };
+    const intercepted = new TelemetryStore();
+    intercepted.activeTelemetry = ['network'];
+    intercepted.fetchInterceptionEnabled = true;
+    const result = await createInteractionRunner(intercepted)(fakeCdp(), () =>
+      pendingRequest(intercepted)
+    );
+    assert.equal(result.fetchInterception, true);
+
+    const plain = new TelemetryStore();
+    plain.activeTelemetry = ['network'];
+    const without = await createInteractionRunner(plain)(fakeCdp(), () => pendingRequest(plain));
+    assert.equal(without.fetchInterception, undefined);
+
+    intercepted.pendingNetworkRequests.clear();
+    const settled = await createInteractionRunner(intercepted)(fakeCdp(), () =>
+      Promise.resolve({ success: true })
+    );
+    assert.equal(settled.fetchInterception, undefined, 'no pending request, no note');
+  });
+
   void it('adds the console errors logged during the interaction', async () => {
     const store = new TelemetryStore();
     const onLoad = { type: 'error' as const, text: 'on load', timestamp: Date.now() };

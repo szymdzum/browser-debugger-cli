@@ -276,3 +276,90 @@ void describe('preview totals', () => {
     }
   });
 });
+
+void describe('preview of pages and paused requests (#554)', () => {
+  const output = {
+    version: '0.0.0',
+    success: true,
+    timestamp: new Date().toISOString(),
+    duration: 0,
+    target: { url: 'test', title: 'test' },
+    currentNavigationId: 2,
+    data: {
+      network: [
+        {
+          requestId: 'r1',
+          url: 'https://example.com/old.css',
+          method: 'GET',
+          timestamp: 1,
+          status: 404,
+          navigationId: 1,
+        },
+        {
+          requestId: 'r2',
+          url: 'https://example.com/new',
+          method: 'GET',
+          timestamp: 2,
+          status: 200,
+          navigationId: 2,
+        },
+      ],
+      console: [
+        { type: 'error', text: 'old 404', timestamp: 1, index: 0, navigationId: 1 },
+        { type: 'error', text: 'current error', timestamp: 2, index: 1, navigationId: 2 },
+      ],
+    },
+    totals: { network: 2, console: 2 },
+  };
+
+  void test('marks console messages and requests of earlier page loads, compact and verbose', () => {
+    for (const verbose of [false, true]) {
+      const text = formatPreview(output as never, { last: 10, verbose });
+      assert.match(text, /\(previous page\) old 404$/m);
+      assert.match(text, /current error$/m);
+      assert.doesNotMatch(text, /\(previous page\) current error/);
+      assert.match(text, /old\.css \(previous page\)$/m);
+      assert.doesNotMatch(text, /new \(previous page\)/);
+    }
+  });
+
+  void test('flags them previousPage in JSON, with the current navigation id', () => {
+    const json = JSON.parse(formatPreview(output as never, { last: 10, json: true })) as {
+      data: {
+        currentNavigationId: number;
+        console: Array<{ previousPage?: boolean }>;
+        network: Array<{ previousPage?: boolean }>;
+      };
+    };
+    assert.equal(json.data.currentNavigationId, 2);
+    assert.deepEqual(
+      json.data.console.map((message) => message.previousPage),
+      [true, undefined]
+    );
+    assert.deepEqual(
+      json.data.network.map((request) => request.previousPage),
+      [true, undefined]
+    );
+  });
+
+  void test('says pending requests may be paused while Fetch interception is on', () => {
+    const paused = {
+      ...output,
+      fetchInterception: true,
+      data: {
+        network: [{ requestId: 'p', url: 'https://example.com/api', method: 'GET', timestamp: 3 }],
+        console: [],
+      },
+    };
+    const note =
+      /Pending requests possibly paused by Fetch interception: bdg cdp --events Fetch\.requestPaused/;
+    for (const verbose of [false, true]) {
+      assert.match(formatPreview(paused as never, { last: 10, verbose }), note);
+      assert.doesNotMatch(formatPreview(output as never, { last: 10, verbose }), note);
+    }
+    const json = JSON.parse(formatPreview(paused as never, { last: 10, json: true })) as {
+      data: { fetchInterception?: boolean };
+    };
+    assert.equal(json.data.fetchInterception, true);
+  });
+});

@@ -162,7 +162,8 @@ function consoleMessagesLogged(store: TelemetryStore): number {
  * that began meanwhile (as they stand when it returns) are added to its
  * result,
  * and, when asked, what the page was still working on (see
- * {@link pendingChanges}). They are attributed by time: a dialog or request
+ * {@link pendingChanges}); with Fetch interception on and requests still
+ * pending, `fetchInterception` (they may be paused). They are attributed by time: a dialog or request
  * started by a page timer or a navigation started earlier is reported by
  * whichever interaction is running then. Dialogs opened while it runs (its
  * effect wait included) are answered as it chose (`dialogs`); because
@@ -228,6 +229,10 @@ export function createInteractionRunner(
           ...changes,
           ...collectErrors?.(),
           ...(pending && { settled: false as const, pending }),
+          ...(store.fetchInterceptionEnabled &&
+            requests?.triggeredRequests.some((request) => request.pending) && {
+              fetchInterception: true as const,
+            }),
           ...(downloads.length > 0 && { downloads }),
           ...tabReport(tabs, firstOpened),
           ...requests,

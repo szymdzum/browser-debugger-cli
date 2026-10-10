@@ -13,6 +13,11 @@ export interface PatternDefinition {
   name: string;
   /** CDP methods that trigger this pattern */
   cdpMethods: string[];
+  /**
+   * Only calls whose `expression` param matches count (absent: every call of
+   * the methods). A pattern with one is more specific than one without
+   */
+  expressionPattern?: RegExp;
   /** Number of occurrences before showing hint */
   threshold: number;
   /** Suggested high-level alternative command */
@@ -29,8 +34,15 @@ export const PATTERNS: PatternDefinition[] = [
   {
     name: 'dom_query_with_evaluate',
     cdpMethods: ['Runtime.evaluate'],
+    expressionPattern: /querySelector|getElementsBy|getElementById/,
     threshold: 2,
     alternative: 'bdg dom query <selector>',
+  },
+  {
+    name: 'runtime_evaluate',
+    cdpMethods: ['Runtime.evaluate'],
+    threshold: 2,
+    alternative: 'bdg dom eval <javascript>',
   },
   {
     name: 'screenshot_with_cdp',
@@ -45,12 +57,6 @@ export const PATTERNS: PatternDefinition[] = [
     alternative: 'bdg network getCookies',
   },
   {
-    name: 'multiple_runtime_evaluations',
-    cdpMethods: ['Runtime.evaluate'],
-    threshold: 4,
-    alternative: 'bdg dom eval <javascript>',
-  },
-  {
     name: 'network_body_fetching',
     cdpMethods: ['Network.getResponseBody'],
     threshold: 3,
@@ -59,12 +65,21 @@ export const PATTERNS: PatternDefinition[] = [
 ];
 
 /**
- * Find patterns matching a CDP method.
+ * Find patterns matching a CDP call.
  *
  * @param method - CDP method name, matched case-insensitively (e.g., "Runtime.evaluate")
+ * @param params - The call's params, matched against a pattern's `expressionPattern`
  * @returns Matching pattern definitions
  */
-export function findPatternsForMethod(method: string): PatternDefinition[] {
+export function findPatternsForMethod(
+  method: string,
+  params: Record<string, unknown> = {}
+): PatternDefinition[] {
   const normalized = method.toLowerCase();
-  return PATTERNS.filter((p) => p.cdpMethods.some((m) => m.toLowerCase() === normalized));
+  const expression = typeof params['expression'] === 'string' ? params['expression'] : '';
+  return PATTERNS.filter(
+    (p) =>
+      p.cdpMethods.some((m) => m.toLowerCase() === normalized) &&
+      (!p.expressionPattern || p.expressionPattern.test(expression))
+  );
 }

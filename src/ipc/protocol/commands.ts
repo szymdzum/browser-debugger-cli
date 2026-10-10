@@ -99,6 +99,8 @@ export interface SessionPeekData {
   }>;
   /** Navigation id of the page currently loaded. */
   currentNavigationId: number;
+  /** Fetch interception is on: pending requests may be paused by it (absent when off) */
+  fetchInterception?: true;
   /** When the page's renderer crashed (epoch ms), while it is not loaded again */
   pageCrashedAt?: number;
   /** Total number of network requests (for pagination). */

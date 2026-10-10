@@ -181,6 +181,12 @@ void describe('calculateSummary readiness', () => {
     assert.equal(calculateSummary([], [submit]).readyToSubmit, true);
   });
 
+  void it('says a form whose fields are all hidden has no visible fields, not READY (#554)', () => {
+    const onlyHidden = calculateSummary([field('Token', { hidden: true })], [submit]);
+    assert.equal(formReadinessMessage(onlyHidden), 'no visible fields to fill');
+    assert.equal(formReadinessMessage(calculateSummary([], [submit])), 'no visible fields to fill');
+  });
+
   void it('says when it is ready only because no field is marked required', () => {
     const summary = calculateSummary(
       [field('First Name', { state: 'filled', value: 'Ada' }), field('Last Name')],

@@ -32,7 +32,7 @@ describe('PatternDetector', () => {
 
       assert.strictEqual(result2.shouldShow, true);
       assert.ok(result2.pattern);
-      assert.ok(result2.pattern.alternative.includes('bdg dom query'));
+      assert.ok(result2.pattern.alternative.includes('bdg dom eval'));
     });
 
     test('continues showing hint after threshold until max shows', () => {
@@ -79,17 +79,26 @@ describe('PatternDetector', () => {
       assert.ok(result3.pattern?.alternative.includes('bdg details network'));
     });
 
-    test('respects threshold of 4 for multiple runtime evaluations', () => {
+    test('suggests dom eval for a plain Runtime.evaluate, not dom query', () => {
       const detector = new PatternDetector();
+      const params = { expression: 'document.title' };
 
-      detector.trackCommand('Runtime.evaluate');
-      detector.trackCommand('Runtime.evaluate');
-      detector.trackCommand('Runtime.evaluate');
+      detector.trackCommand('Runtime.evaluate', params);
+      const result = detector.trackCommand('Runtime.evaluate', params);
 
-      const result4 = detector.trackCommand('Runtime.evaluate');
+      assert.strictEqual(result.shouldShow, true);
+      assert.strictEqual(result.pattern?.alternative, 'bdg dom eval <javascript>');
+    });
 
-      assert.strictEqual(result4.shouldShow, true);
-      assert.ok(result4.pattern?.alternative.includes('bdg dom eval'));
+    test('suggests dom query for a Runtime.evaluate that queries elements', () => {
+      const detector = new PatternDetector();
+      const params = { expression: 'document.querySelectorAll("a").length' };
+
+      detector.trackCommand('Runtime.evaluate', params);
+      const result = detector.trackCommand('Runtime.evaluate', params);
+
+      assert.strictEqual(result.shouldShow, true);
+      assert.strictEqual(result.pattern?.alternative, 'bdg dom query <selector>');
     });
   });
 
@@ -151,7 +160,7 @@ describe('PatternDetector', () => {
       const result = detector.trackCommand('RUNTIME.EVALUATE');
 
       assert.strictEqual(result.shouldShow, true);
-      assert.ok(result.pattern?.alternative.includes('bdg dom query'));
+      assert.ok(result.pattern?.alternative.includes('bdg dom eval'));
     });
   });
 

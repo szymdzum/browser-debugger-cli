@@ -43,6 +43,7 @@ import {
   formatTriggeredRequestsTitle,
 } from '@/ui/formatters/triggeredRequests.js';
 import { OutputFormatter } from '@/ui/formatting.js';
+import { pendingRequestsPausedNote } from '@/ui/messages/cdpEvents.js';
 import {
   CLICK_RESULT_WAIT_HELP,
   HOVER_OFF_DONE,
@@ -527,8 +528,14 @@ function formatActionOutput(
     })
   );
   if (result.warning) fmt.text(`⚠ Warning: ${result.warning}`);
+  const pausedNoted = stillChanging && result.pending?.requests !== undefined;
   if (stillChanging && result.pending) {
-    fmt.text(`⚠ ${stillChangingNote(options.action ?? 'action', result.pending)}`);
+    const note = stillChangingNote(
+      options.action ?? 'action',
+      result.pending,
+      result.fetchInterception === true
+    );
+    fmt.text(`⚠ ${note}`);
   }
   fmt.blank();
   fmt.keyValueList(details, keyWidth);
@@ -560,6 +567,7 @@ function formatActionOutput(
       .blank()
       .section(formatTriggeredRequestsTitle(result.triggeredRequests ?? [], omitted), requests);
   }
+  if (result.fetchInterception && !pausedNoted) fmt.text(`⚠ ${pendingRequestsPausedNote()}`);
   if (result.downloads?.length) fmt.blank();
   for (const download of result.downloads ?? []) fmt.text(downloadText(download));
   if (result.opened?.length || result.tabClosed) fmt.blank();

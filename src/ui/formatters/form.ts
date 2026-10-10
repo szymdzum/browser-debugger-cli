@@ -222,12 +222,18 @@ function formatTableHeader(): string {
 /**
  * Format summary line, e.g. "Summary: 1/3 fields filled | 2 required fields
  * empty: Last Name, Zip | NOT ready" (a radio or checkbox group counts as one
- * field).
+ * field), or "Summary: no visible fields to fill (1 hidden)" for a form
+ * without visible, editable fields.
  *
  * @param summary - Form summary
+ * @param hiddenFields - Fields of the form not shown on the page
  * @returns Summary string
  */
-function formatSummaryLine(summary: FormSummary): string {
+function formatSummaryLine(summary: FormSummary, hiddenFields: number): string {
+  if (summary.totalFields === 0) {
+    const hidden = hiddenFields > 0 ? ` (${hiddenFields} hidden)` : '';
+    return `Summary: ${formReadinessMessage(summary)}${hidden}`;
+  }
   const parts: string[] = [];
 
   parts.push(`${summary.filledFields}/${summary.totalFields} fields filled`);
@@ -291,7 +297,7 @@ function formatSingleForm(form: DiscoveredForm, fmt: OutputFormatter, brief = fa
   }
 
   fmt.text('═'.repeat(70));
-  fmt.text(formatSummaryLine(form.summary));
+  fmt.text(formatSummaryLine(form.summary, form.fields.filter((field) => field.hidden).length));
 
   const remaining = formatRemainingActions(form.summary);
   if (remaining.length > 0) {

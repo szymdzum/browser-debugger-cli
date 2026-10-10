@@ -346,6 +346,7 @@ export class SessionController {
               ...(data.evictedNetworkBodies && { networkBodiesEvicted: data.evictedNetworkBodies }),
             },
             currentNavigationId: data.currentNavigationId,
+            ...(data.fetchInterception && { fetchInterception: data.fetchInterception }),
             ...(data.pageCrashedAt !== undefined && { pageCrashedAt: data.pageCrashedAt }),
             ...(data.downloads && { downloads: data.downloads }),
             ...(data.tabSwitch && { tabSwitch: data.tabSwitch }),

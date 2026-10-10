@@ -13,6 +13,9 @@ export const PREVIEW_EMPTY_STATES = {
   NO_CONSOLE_MESSAGES: 'No console messages yet',
 } as const;
 
+/** Marks a request or console message of an earlier page load in `bdg peek` */
+export const PREVIOUS_PAGE_MARKER = '(previous page)';
+
 export const PREVIEW_HEADERS = {
   LIVE_PREVIEW: 'Live Preview (Partial Data)',
 } as const;
