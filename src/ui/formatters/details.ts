@@ -4,7 +4,12 @@ import { formatFramePosition, formatTimestamp } from '@/ui/formatters/console/sh
 import { headerValueLines } from '@/ui/formatters/networkHeaders.js';
 import { formatRequestStatus } from '@/ui/formatters/requestStatus.js';
 import { OutputFormatter, formatBytes } from '@/ui/formatting.js';
-import { localProxyNote } from '@/ui/messages/networkMessages.js';
+import {
+  blockedCookieName,
+  blockedCookieReason,
+  blockedCookiesOmittedNote,
+  localProxyNote,
+} from '@/ui/messages/networkMessages.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { truncateByLength } from '@/utils/strings.js';
 import { safeParseUrl } from '@/utils/url.js';
@@ -201,6 +206,28 @@ function addHeaders(fmt: OutputFormatter, title: string, headers: Record<string,
 }
 
 /**
+ * Add the cookies Chrome blocked on the request (names and reasons, no
+ * values); nothing when none were.
+ *
+ * @param fmt - Formatter
+ * @param request - Captured request
+ */
+function addBlockedCookies(fmt: OutputFormatter, request: NetworkRequest): void {
+  const cookies = request.blockedCookies ?? [];
+  if (cookies.length === 0) return;
+  const names = cookies.map((cookie) => blockedCookieName(cookie.name));
+  const width = Math.max(...names.map((name) => name.length));
+  fmt.text('Blocked Cookies:').separator('━', 70);
+  cookies.forEach((cookie, i) =>
+    fmt.text(`  ${(names[i] ?? '').padEnd(width)}  ${blockedCookieReason(cookie)}`)
+  );
+  if (request.blockedCookiesOmitted) {
+    fmt.text(`  ${blockedCookiesOmittedNote(request.blockedCookiesOmitted)}`);
+  }
+  fmt.blank();
+}
+
+/**
  * Describe a response body for humans: binary and skipped bodies are
  * summarized, long text is cut (the JSON output has everything).
  *
@@ -242,6 +269,7 @@ export function formatNetworkDetails(request: NetworkRequest): string {
     fmt.blank();
   }
   if (request.responseHeaders) addHeaders(fmt, 'Response Headers:', request.responseHeaders);
+  addBlockedCookies(fmt, request);
   if (request.bodyNotCaptured) {
     fmt.text('Response Body:').separator('━', 70);
     fmt.text(`(not captured: ${request.bodyNotCaptured})`);

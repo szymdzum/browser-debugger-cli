@@ -4,7 +4,8 @@
  * User-facing messages for the network list command output and formatting.
  */
 
-import { MAX_NETWORK_REQUESTS, MAX_TOTAL_BODY_BYTES } from '@/constants.js';
+import { MAX_BLOCKED_COOKIES, MAX_NETWORK_REQUESTS, MAX_TOTAL_BODY_BYTES } from '@/constants.js';
+import type { BlockedCookie } from '@/types.js';
 import { pluralize } from '@/ui/formatting.js';
 
 /**
@@ -116,6 +117,45 @@ export function stoppedFollowingNetworkMessage(): string {
  */
 export function headerRepeatedNote(count: number): string {
   return `(sent ${count} times)`;
+}
+
+/** Mark after the URL of a `network list` row whose request had cookies blocked */
+export const COOKIE_BLOCKED_MARK = '⚠ cookie blocked';
+
+/** What each kind of blocked cookie means, as `details network` says it */
+const BLOCKED_COOKIE_KINDS: Record<BlockedCookie['kind'], string> = {
+  'set-rejected': 'set rejected',
+  'not-sent': 'not sent',
+};
+
+/**
+ * Why a cookie was blocked, for the `Blocked Cookies` block of `details network`.
+ *
+ * @param cookie - Blocked cookie
+ * @returns e.g. `not sent: SchemefulSameSiteLax`, `set rejected: SyntaxError, UnknownError`
+ */
+export function blockedCookieReason(cookie: BlockedCookie): string {
+  return `${BLOCKED_COOKIE_KINDS[cookie.kind]}: ${cookie.reasons.join(', ')}`;
+}
+
+/**
+ * A blocked cookie's name as `details network` shows it.
+ *
+ * @param name - Cookie name
+ * @returns The name, or `(no name)` for a Set-Cookie line without `=`
+ */
+export function blockedCookieName(name: string): string {
+  return name === '' ? '(no name)' : name;
+}
+
+/**
+ * Note under the `Blocked Cookies` block when some were not kept.
+ *
+ * @param omitted - Blocked cookies not kept
+ * @returns e.g. `(+3 more not kept: bdg keeps 50 per request)`
+ */
+export function blockedCookiesOmittedNote(omitted: number): string {
+  return `(+${omitted} more not kept: bdg keeps ${MAX_BLOCKED_COOKIES} per request)`;
 }
 
 /**

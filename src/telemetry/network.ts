@@ -22,6 +22,7 @@ import { bodyFetchFailedReason, bodyGoneReason } from '@/ui/messages/networkMess
 import { getErrorMessage } from '@/utils/errors.js';
 import { filterDefined } from '@/utils/objects.js';
 
+import { blockedAssociatedCookies, blockedSetCookies } from './blockedCookies.js';
 import { shouldExcludeDomain, shouldExcludeUrl, shouldFetchBodyWithReason } from './filters.js';
 import { ExtraInfoTracker } from './networkExtraInfo.js';
 import {
@@ -529,11 +530,20 @@ export async function startNetworkCollection(
   });
 
   registry.registerTyped(typed, 'Network.requestWillBeSentExtraInfo', (params) => {
-    extraInfo.onRequestExtraInfo(params.requestId, params.headers);
+    extraInfo.onRequestExtraInfo(
+      params.requestId,
+      params.headers,
+      blockedAssociatedCookies(params.associatedCookies)
+    );
   });
 
   registry.registerTyped(typed, 'Network.responseReceivedExtraInfo', (params) => {
-    extraInfo.onResponseExtraInfo(params.requestId, params.headers, params.statusCode);
+    extraInfo.onResponseExtraInfo(
+      params.requestId,
+      params.headers,
+      params.statusCode,
+      blockedSetCookies(params.blockedCookies)
+    );
   });
 
   registry.registerTyped(typed, 'Network.requestServedFromCache', (params) => {

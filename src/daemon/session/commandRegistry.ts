@@ -50,9 +50,10 @@ import { emulatePage, pageAppearance, type SessionEmulation } from '@/runtime/pa
 import { readDocumentReadyState } from '@/runtime/page/loadingState.js';
 import { navigatePage } from '@/runtime/page/navigation.js';
 import { takeScreenshot } from '@/runtime/page/screenshot.js';
+import { summarizeBlockedCookies } from '@/telemetry/blockedCookies.js';
 import { toDownloadInfo } from '@/telemetry/downloads.js';
 import { skippedBodyReason } from '@/telemetry/networkRetention.js';
-import type { NetworkRequest, WebSocketConnection } from '@/types.js';
+import type { BlockedCookieSummary, NetworkRequest, WebSocketConnection } from '@/types.js';
 import { tabsNotTrackedWarning } from '@/ui/messages/commands.js';
 import { consoleMessageDroppedError } from '@/ui/messages/consoleMessages.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
@@ -122,6 +123,8 @@ interface NetworkPreview {
   errorText?: string;
   fromCache?: boolean;
   duration?: number;
+  /** Cookies Chrome blocked, in short (`details network` has them all) */
+  blockedCookieSummary?: BlockedCookieSummary;
   requestHeaders?: Record<string, string>;
   responseHeaders?: Record<string, string>;
 }
@@ -134,7 +137,7 @@ interface NetworkPreview {
  * @returns Filtered request with only preview fields
  */
 function mapNetworkRequestToPreview(
-  req: NetworkPreview,
+  req: NetworkRequest,
   withHeaders = false
 ): Partial<NetworkPreview> {
   return filterDefined({
@@ -151,6 +154,7 @@ function mapNetworkRequestToPreview(
     errorText: req.errorText,
     fromCache: req.fromCache,
     duration: req.duration,
+    blockedCookieSummary: summarizeBlockedCookies(req),
     ...(withHeaders && {
       requestHeaders: req.requestHeaders,
       responseHeaders: req.responseHeaders,

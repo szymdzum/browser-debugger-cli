@@ -215,3 +215,44 @@ void describe('formatNetworkFollowRows eviction note', () => {
     assert.equal(formatNetworkFollowRows([]), '');
   });
 });
+
+void describe('blocked cookie mark', () => {
+  const blocked: NetworkRequest = {
+    requestId: '1.2',
+    url: 'http://localhost:8802/api',
+    method: 'GET',
+    timestamp: 0,
+    status: 200,
+    blockedCookies: [{ name: 'tp_lax', kind: 'not-sent', reasons: ['SchemefulSameSiteLax'] }],
+  };
+  const clean: NetworkRequest = { ...blocked, requestId: '1.3', blockedCookies: [] };
+
+  void it('marks rows of requests with blocked cookies, in the list and the stream', () => {
+    const rows = formatNetworkList([blocked, clean], {}).split('\n');
+    assert.match(
+      rows.find((row) => row.startsWith('[1.2]')) ?? '',
+      /localhost:8802\/api {2}⚠ cookie blocked$/
+    );
+    assert.doesNotMatch(rows.find((row) => row.startsWith('[1.3]')) ?? '', /cookie blocked/);
+    assert.match(formatNetworkFollowRows([blocked]), /⚠ cookie blocked$/m);
+  });
+});
+
+void describe('blocked cookie mark on list previews', () => {
+  void it('marks a row from its summary', () => {
+    const preview: NetworkRequest = {
+      requestId: '2.1',
+      url: 'http://localhost:8802/api',
+      method: 'GET',
+      timestamp: 0,
+      status: 200,
+      blockedCookieSummary: {
+        count: 1,
+        kinds: ['not-sent'],
+        reasons: ['SameSiteLax'],
+        names: ['a'],
+      },
+    };
+    assert.match(formatNetworkList([preview], {}), /⚠ cookie blocked$/m);
+  });
+});

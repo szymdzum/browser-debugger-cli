@@ -6,9 +6,12 @@
  * responses. Chrome reports the raw headers separately in
  * `requestWillBeSentExtraInfo` / `responseReceivedExtraInfo`, which may arrive
  * before or after the main events (and occasionally after the request
- * finished). This tracker buffers them and applies them to the right request.
+ * finished). This tracker buffers them and applies them to the right request,
+ * with the cookies Chrome blocked on it (blockedCookies.ts), which travel
+ * with the headers of the same event.
  */
 
+import { addBlockedCookies, type BlockedCookieBatch } from '@/telemetry/blockedCookies.js';
 import type { NetworkRequest } from '@/types.js';
 
 /** Recently finished requests kept for late ExtraInfo events. */
@@ -16,9 +19,45 @@ const MAX_RECENT_REQUESTS = 500;
 
 interface PendingHeaders {
   requestHeaders?: Record<string, string>;
+  /** Cookies not sent, from the event of the buffered request headers */
+  requestBlockedCookies?: BlockedCookieBatch | undefined;
   responseHeaders?: Record<string, string>;
+  /** Set-Cookies rejected, from the event of the buffered response headers */
+  responseBlockedCookies?: BlockedCookieBatch | undefined;
   /** HTTP status the buffered response headers belong to */
   responseStatus?: number;
+}
+
+/**
+ * Give a request its full request headers and the cookies not sent with it.
+ *
+ * @param request - Request to update
+ * @param headers - Raw request headers
+ * @param blocked - Cookies not sent
+ */
+function setRequestInfo(
+  request: NetworkRequest,
+  headers: Record<string, string>,
+  blocked?: BlockedCookieBatch
+): void {
+  request.requestHeaders = headers;
+  if (blocked) addBlockedCookies(request, blocked);
+}
+
+/**
+ * Give a request its full response headers and the Set-Cookies rejected.
+ *
+ * @param request - Request (or redirect hop) to update
+ * @param headers - Raw response headers
+ * @param blocked - Set-Cookies rejected
+ */
+function setResponseInfo(
+  request: NetworkRequest,
+  headers: Record<string, string>,
+  blocked?: BlockedCookieBatch
+): void {
+  request.responseHeaders = headers;
+  if (blocked) addBlockedCookies(request, blocked);
 }
 
 /**
@@ -84,6 +123,8 @@ export class ExtraInfoTracker {
   private readonly recent = new Map<string, NetworkRequest>();
   /** Completed redirect hops per request id (their headers can arrive late) */
   private readonly redirectHops = new Map<string, NetworkRequest[]>();
+  /** Requests that got their request ExtraInfo (more for the same id is the next hop's) */
+  private readonly requestInfoApplied = new WeakSet<NetworkRequest>();
 
   /**
    * @param findActive - Look up an in-flight request by CDP requestId
@@ -91,15 +132,50 @@ export class ExtraInfoTracker {
   constructor(private readonly findActive: (requestId: string) => NetworkRequest | undefined) {}
 
   /**
-   * Record full request headers (including `Cookie`).
+   * Record full request headers (including `Cookie`) and the cookies not sent.
    *
    * @param requestId - CDP request id
    * @param headers - Raw request headers
+   * @param blocked - Cookies Chrome left out of the request
    */
-  onRequestExtraInfo(requestId: string, headers: Record<string, string>): void {
+  onRequestExtraInfo(
+    requestId: string,
+    headers: Record<string, string>,
+    blocked?: BlockedCookieBatch
+  ): void {
     const request = this.find(requestId);
-    if (request) request.requestHeaders = headers;
-    else this.buffer(requestId, { requestHeaders: headers });
+    if (request && !this.isNextHop(requestId, request))
+      this.applyRequestInfo(request, headers, blocked);
+    else this.buffer(requestId, { requestHeaders: headers, requestBlockedCookies: blocked });
+  }
+
+  /**
+   * Whether request ExtraInfo belongs to a redirect hop not created yet: the
+   * in-flight request already has its own (the next hop's `requestWillBeSent`
+   * may come after its ExtraInfo).
+   *
+   * @param requestId - CDP request id
+   * @param request - Request found for it
+   * @returns True when the ExtraInfo must wait for the next hop
+   */
+  private isNextHop(requestId: string, request: NetworkRequest): boolean {
+    return this.findActive(requestId) === request && this.requestInfoApplied.has(request);
+  }
+
+  /**
+   * Give a request its request ExtraInfo and remember that it has it.
+   *
+   * @param request - Request to update
+   * @param headers - Raw request headers
+   * @param blocked - Cookies not sent
+   */
+  private applyRequestInfo(
+    request: NetworkRequest,
+    headers: Record<string, string>,
+    blocked: BlockedCookieBatch | undefined
+  ): void {
+    setRequestInfo(request, headers, blocked);
+    this.requestInfoApplied.add(request);
   }
 
   /**
@@ -112,21 +188,24 @@ export class ExtraInfoTracker {
    * @param requestId - CDP request id
    * @param headers - Raw response headers
    * @param statusCode - HTTP status the headers belong to
+   * @param blocked - Set-Cookies of the response Chrome rejected
    */
   onResponseExtraInfo(
     requestId: string,
     headers: Record<string, string>,
-    statusCode?: number
+    statusCode?: number,
+    blocked?: BlockedCookieBatch
   ): void {
-    if (this.applyToRedirectHop(requestId, headers, statusCode)) return;
+    if (this.applyToRedirectHop(requestId, headers, statusCode, blocked)) return;
     const request = this.find(requestId);
     if (request?.status === undefined) {
       this.buffer(requestId, {
         responseHeaders: headers,
+        responseBlockedCookies: blocked,
         ...(statusCode !== undefined && { responseStatus: statusCode }),
       });
     } else if (sameResponse(statusCode, request.status)) {
-      request.responseHeaders = headers;
+      setResponseInfo(request, headers, blocked);
     }
   }
 
@@ -139,7 +218,7 @@ export class ExtraInfoTracker {
   applyRequest(requestId: string, request: NetworkRequest): void {
     const pending = this.pending.get(requestId);
     if (!pending?.requestHeaders) return;
-    request.requestHeaders = pending.requestHeaders;
+    this.applyRequestInfo(request, pending.requestHeaders, pending.requestBlockedCookies);
     this.clear(requestId, 'requestHeaders');
   }
 
@@ -154,7 +233,7 @@ export class ExtraInfoTracker {
     const pending = this.pending.get(requestId);
     if (!pending?.responseHeaders) return;
     if (sameResponse(pending.responseStatus, request.status)) {
-      request.responseHeaders = pending.responseHeaders;
+      setResponseInfo(request, pending.responseHeaders, pending.responseBlockedCookies);
     }
     this.clear(requestId, 'responseHeaders');
   }
@@ -183,12 +262,14 @@ export class ExtraInfoTracker {
    * @param requestId - CDP request id
    * @param headers - Raw response headers
    * @param statusCode - Status the headers belong to
+   * @param blocked - Set-Cookies of the response Chrome rejected
    * @returns True if a completed hop took the headers
    */
   private applyToRedirectHop(
     requestId: string,
     headers: Record<string, string>,
-    statusCode: number | undefined
+    statusCode: number | undefined,
+    blocked: BlockedCookieBatch | undefined
   ): boolean {
     const location = headerValue(headers, 'location');
     if (!isRedirect(statusCode) || !location) return false;
@@ -196,7 +277,7 @@ export class ExtraInfoTracker {
       .get(requestId)
       ?.find((candidate) => candidate.status === statusCode && redirectsTo(candidate, location));
     if (!hop) return false;
-    hop.responseHeaders = headers;
+    setResponseInfo(hop, headers, blocked);
     return true;
   }
 
@@ -246,13 +327,17 @@ export class ExtraInfoTracker {
    * Drop one kind of buffered headers.
    *
    * @param requestId - CDP request id
-   * @param key - Which headers were applied
+   * @param key - Which headers were applied (their status and blocked cookies go with them)
    */
-  private clear(requestId: string, key: keyof PendingHeaders): void {
+  private clear(requestId: string, key: 'requestHeaders' | 'responseHeaders'): void {
     const pending = this.pending.get(requestId);
     if (!pending) return;
     delete pending[key];
-    if (key === 'responseHeaders') delete pending.responseStatus;
+    if (key === 'requestHeaders') delete pending.requestBlockedCookies;
+    if (key === 'responseHeaders') {
+      delete pending.responseStatus;
+      delete pending.responseBlockedCookies;
+    }
     if (!pending.requestHeaders && !pending.responseHeaders) this.pending.delete(requestId);
   }
 }

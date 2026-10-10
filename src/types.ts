@@ -206,6 +206,47 @@ export interface NetworkRequest {
    * Reason for blocking (e.g., 'cors', 'mixed-content', 'inspector').
    */
   blockedReason?: string;
+  /**
+   * Cookies Chrome blocked on this request (from ExtraInfo events): rejected
+   * `Set-Cookie`s of the response and stored cookies not sent with it. Names
+   * and reasons only, never values; at most `MAX_BLOCKED_COOKIES`
+   */
+  blockedCookies?: BlockedCookie[];
+  /** Blocked cookies of this request not kept past `MAX_BLOCKED_COOKIES` */
+  blockedCookiesOmitted?: number;
+  /**
+   * What `network list` and `peek` carry instead of `blockedCookies` (which
+   * only `details network` has)
+   */
+  blockedCookieSummary?: BlockedCookieSummary;
+}
+
+/**
+ * The cookies Chrome blocked on a request, in short.
+ */
+export interface BlockedCookieSummary {
+  /** Blocked cookies, kept and omitted */
+  count: number;
+  /** Every kind among them */
+  kinds: BlockedCookie['kind'][];
+  /** Every reason among them */
+  reasons: string[];
+  /** The first names (`BLOCKED_COOKIE_PREVIEW_NAMES`) */
+  names: string[];
+}
+
+/**
+ * A cookie Chrome blocked on a request. Cookies that do not apply to the
+ * request's URL (`DomainMismatch`, `PathMismatch`, `NotOnPath`) are not blocked
+ * ones and are left out.
+ */
+export interface BlockedCookie {
+  /** Cookie name (empty for a `Set-Cookie` line without `=`) */
+  name: string;
+  /** `set-rejected`: a `Set-Cookie` of the response was not stored; `not-sent`: a stored cookie was left out of the request */
+  kind: 'set-rejected' | 'not-sent';
+  /** Chrome's reasons, e.g. `SameSiteNoneInsecure`, `InvalidDomain`, `SchemefulSameSiteLax` */
+  reasons: string[];
 }
 
 /**
