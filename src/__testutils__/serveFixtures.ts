@@ -1,6 +1,6 @@
 /**
  * Serves the smoke test fixture pages outside the tests, for manual and
- * fresh-agent test rounds (.claude/skills/ship/SKILL.md, "Fresh-agent test scenarios"):
+ * fresh-agent test rounds (.claude/skills/ship/scenarios.md):
  *
  * ```bash
  * npx tsx src/__testutils__/serveFixtures.ts
