@@ -381,6 +381,8 @@ export interface InspectResult {
   pseudoOf?: '::before' | '::after';
   /** `tag#id.c1.c2(+N)` */
   element: string;
+  /** The element hosts a closed shadow root: `tree` cannot show its children */
+  shadowRootMode?: 'closed';
   /** Its text (innerText) or form value, at most 30 characters; not for containers */
   content?: string;
   /** Placeholder of an empty field */

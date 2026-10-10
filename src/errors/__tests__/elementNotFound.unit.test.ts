@@ -57,6 +57,51 @@ void describe('elementNotFoundError', () => {
     );
   });
 
+  void it('names closed shadow hosts and points to dom a11y query for their elements', () => {
+    const help =
+      'For an element in a closed shadow root: bdg dom a11y query role=textbox (or another role), then use its index with dom fill, dom click or dom get';
+    assert.equal(
+      unreachableElementsNote('#x', {
+        crossOriginFrames: false,
+        embeds: false,
+        closedShadowHosts: ['x-vault'],
+      }),
+      `The page has closed shadow roots (in <x-vault>), which are not searched.\n${help}`
+    );
+    const many = unreachableElementsNote('#x', {
+      crossOriginFrames: true,
+      embeds: true,
+      closedShadowHosts: ['a-b', 'c-d#pay', 'e-f', 'g-h'],
+    });
+    assert.match(
+      many,
+      /^The page has closed shadow roots \(in <a-b>, <c-d#pay>, <e-f>, \+1 more\), cross-origin iframes and <object>\/<embed> documents, which are not searched\./
+    );
+    assert.ok(many.includes(help));
+    assert.match(many, /bdg dom eval --frame <n>/);
+    assert.ok(unreachableElementsNote('#x').includes(help), 'an unchecked page names the path too');
+  });
+
+  void it('says when the closed host check stopped before the end of the page', () => {
+    const stopped = unreachableElementsNote('#x', {
+      crossOriginFrames: false,
+      embeds: false,
+      closedShadowHostsChecked: 20,
+    });
+    assert.match(
+      stopped,
+      /^Closed shadow roots were looked for in the first 20 custom elements only \(none there\); selectors do not search them\.\nFor an element in a closed shadow root: bdg dom a11y query/
+    );
+    const found = unreachableElementsNote('#x', {
+      crossOriginFrames: false,
+      embeds: false,
+      closedShadowHosts: ['x-vault'],
+      closedShadowHostsChecked: 20,
+    });
+    assert.match(found, /^The page has closed shadow roots \(in <x-vault>\)/);
+    assert.doesNotMatch(found, /first 20 custom elements/);
+  });
+
   void it('puts similar ids or classes first', () => {
     const similar = similarSelectorsLine('id', ['remove-backpack', 'add-to-cart-bike']);
     assert.equal(

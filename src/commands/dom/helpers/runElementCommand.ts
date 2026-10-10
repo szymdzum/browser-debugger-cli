@@ -8,6 +8,7 @@
 import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
 import { noMatchContext } from '@/commands/dom/helpers/query.js';
 import {
+  type NoMatchContext,
   otherIndexSourceNote,
   staleNodeError,
   shadowBoundaryLine,
@@ -188,8 +189,9 @@ function failedResultFailure<Req, Res extends ResultPayload>(
  * Add what the page says to a "not found" failure (one page evaluation, on
  * this failure path only, {@link noMatchContext}): similar ids or classes, a
  * shadow host the selector tries to cross,
- * the places selectors do not search (for a page script that found nothing)
- * and the still-loading hint while the page loads.
+ * the places selectors do not search (for a page script that found nothing,
+ * and in place of the daemon's note on every such place once the page was
+ * checked) and the still-loading hint while the page loads.
  *
  * @param failure - Failed command result
  * @param selector - Selector that was looked for (the cached query's for an index)
@@ -203,16 +205,49 @@ async function withNotFoundContext(
 ): Promise<CommandResult<never>> {
   if (failure.exitCode !== EXIT_CODES.RESOURCE_NOT_FOUND) return failure;
   const context = await noMatchContext(selector);
-  const note = searched ? unreachableElementsNote(selector, context.unsearched) : '';
-  const suggestion = withLoadingHint(
+  const suggestion = notFoundSuggestion(
+    failure.errorContext?.suggestion,
+    selector,
+    searched,
+    context
+  );
+  return suggestion ? { ...failure, errorContext: { suggestion } } : failure;
+}
+
+/**
+ * The suggestion of a "not found" failure with what the page says about the
+ * selector. Once the page was checked (`context.unsearched`), the daemon's
+ * note on every place selectors do not search ({@link unreachableElementsNote}
+ * for an unchecked page) gives way to the note on what the page has; when it
+ * was not checked, the daemon's suggestion stays as it is.
+ *
+ * @param daemonSuggestion - The daemon's suggestion
+ * @param selector - Selector that was looked for
+ * @param searched - The page script searched the page (the daemon did not fail first)
+ * @param context - What the page says ({@link noMatchContext}; empty when it did not answer)
+ * @returns Suggestion (empty when there is nothing to say)
+ */
+export function notFoundSuggestion(
+  daemonSuggestion: string | undefined,
+  selector: string,
+  searched: boolean,
+  context: NoMatchContext
+): string {
+  const uncheckedNote = unreachableElementsNote(selector);
+  const replacesDaemonNote =
+    context.unsearched !== undefined && daemonSuggestion?.includes(uncheckedNote) === true;
+  const note =
+    searched || replacesDaemonNote ? unreachableElementsNote(selector, context.unsearched) : '';
+  return withLoadingHint(
     joinLines(
       context.similar,
       context.shadowHost && shadowBoundaryLine(context.shadowHost),
-      failure.errorContext?.suggestion,
+      replacesDaemonNote
+        ? daemonSuggestion?.replace(uncheckedNote, '').trim() || undefined
+        : daemonSuggestion,
       note ? note : undefined
     ),
     context.readyState,
     selector
   );
-  return suggestion ? { ...failure, errorContext: { suggestion } } : failure;
 }

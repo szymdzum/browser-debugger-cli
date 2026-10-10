@@ -10,6 +10,11 @@
  * roots and same-origin iframes, like a user sees the page.
  */
 
+import {
+  closedShadowHostNames,
+  CLOSED_HOST_CANDIDATES_JS,
+  CLOSED_HOST_LIMIT,
+} from '@/commands/dom/helpers/closedShadowHosts.js';
 import { elementClasses } from '@/commands/dom/helpers/elementClasses.js';
 import { keyAttributes } from '@/commands/dom/helpers/keyAttributes.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
@@ -210,6 +215,7 @@ interface NoMatchPageValue {
   unsearched?: { crossOriginFrames?: unknown; embeds?: unknown };
   names?: unknown;
   shadowHost?: unknown;
+  closedCandidates?: unknown;
 }
 
 /**
@@ -217,7 +223,9 @@ interface NoMatchPageValue {
  * evaluation: whether it is still loading, how many elements match with the
  * selector's `:visible` filters removed, whether it has cross-origin iframes
  * or embeds (which selectors do not search), and for a selector that is a
- * single id or class, the similar ids or classes on the page.
+ * single id or class, the similar ids or classes on the page. When it has
+ * custom elements that may host a closed shadow root, CDP tells which do
+ * ({@link closedShadowHostNames}).
  *
  * @param selector - Selector as given
  * @returns Context for {@link noNodesFoundError} (empty when the page did not answer)
@@ -234,7 +242,7 @@ export async function noMatchContext(selector: string): Promise<NoMatchContext> 
   const shadowHost = compounds.length > 0 ? shadowHostJS(compounds) : '-1';
   try {
     const evaluated = await callBdgScript('Runtime.evaluate', {
-      expression: `({ hidden: ${hidden}, readyState: document.readyState, unsearched: ${UNSEARCHED_CONTENT_JS}, names: ${names}, shadowHost: ${shadowHost} })`,
+      expression: `({ hidden: ${hidden}, readyState: document.readyState, unsearched: ${UNSEARCHED_CONTENT_JS}, names: ${names}, shadowHost: ${shadowHost}, closedCandidates: (() => { try { return ${CLOSED_HOST_CANDIDATES_JS}.length; } catch (e) { return 0; } })() })`,
       returnByValue: true,
     });
     const { result } = (evaluated.data?.result ?? {}) as Partial<Protocol.Runtime.EvaluateResponse>;
@@ -249,6 +257,10 @@ export async function noMatchContext(selector: string): Promise<NoMatchContext> 
             )
           )
         : '';
+    const closed =
+      typeof value.closedCandidates === 'number' && value.closedCandidates > 0
+        ? await closedShadowHostNames()
+        : { hosts: [], capped: false };
     return {
       hidden: typeof value.hidden === 'number' ? value.hidden : 0,
       ...(typeof value.readyState === 'string' && { readyState: value.readyState }),
@@ -256,6 +268,8 @@ export async function noMatchContext(selector: string): Promise<NoMatchContext> 
         unsearched: {
           crossOriginFrames: value.unsearched.crossOriginFrames === true,
           embeds: value.unsearched.embeds === true,
+          ...(closed.hosts.length > 0 && { closedShadowHosts: closed.hosts }),
+          ...(closed.capped && { closedShadowHostsChecked: CLOSED_HOST_LIMIT }),
         },
       }),
       ...(similar && { similar }),
@@ -704,11 +718,11 @@ const UNSHOWN_CHILD = /^(SCRIPT|STYLE|LINK|TEMPLATE)$/;
  * there); scripts, styles and templates are left out.
  *
  * @param ref - Node reference
- * @returns The first {@link CHILDREN_LISTED} as `tag#id.class "label"`, how many there are, and whether they are in its shadow root
+ * @returns The first {@link CHILDREN_LISTED} as `tag#id.class "label"`, how many there are, and whether they are in its shadow root (and its mode)
  */
 async function childElements(
   ref: NodeRef
-): Promise<Pick<DomContext, 'children' | 'childCount' | 'shadowChildren'>> {
+): Promise<Pick<DomContext, 'children' | 'childCount' | 'shadowChildren' | 'shadowRootMode'>> {
   const response = await callCDP('DOM.describeNode', { ...ref, depth: 2, pierce: true });
   const node = (response.data?.result as Protocol.DOM.DescribeNodeResponse | undefined)?.node;
   const shadowRoot = node?.shadowRoots?.find((root) => root.shadowRootType !== 'user-agent');
@@ -718,7 +732,10 @@ async function childElements(
   return {
     children: elements.slice(0, CHILDREN_LISTED).map(childLabel),
     childCount: elements.length,
-    ...(shadowRoot && { shadowChildren: true }),
+    ...(shadowRoot && {
+      shadowChildren: true,
+      shadowRootMode: shadowRoot.shadowRootType === 'closed' ? 'closed' : 'open',
+    }),
   };
 }
 

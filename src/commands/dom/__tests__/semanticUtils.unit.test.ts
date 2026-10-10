@@ -79,6 +79,24 @@ void describe('formatSemanticNodeWithContext', () => {
       '[Generic] <x-icon-button>\nNo text; its shadow root holds 1 element: button.icon "Close" (see it with bdg dom inspect)'
     );
   });
+
+  void it('does not point to dom inspect for a closed shadow root, which it cannot show (#574)', () => {
+    const output = formatSemanticNodeWithContext({
+      node: NODE,
+      domContext: {
+        tag: 'x-vault',
+        classes: [],
+        children: ['form'],
+        childCount: 1,
+        shadowChildren: true,
+        shadowRootMode: 'closed',
+      },
+    });
+    assert.equal(
+      output,
+      '[Generic] <x-vault>\nNo text; its closed shadow root holds 1 element: form (selectors and dom inspect cannot reach it; bdg dom a11y query, e.g. role=textbox, lists its elements by index for dom fill, dom click and dom get)'
+    );
+  });
 });
 
 void describe('formatSemanticNodeWithContext key attributes', () => {

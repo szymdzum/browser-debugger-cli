@@ -5,8 +5,11 @@
  * open shadow roots (nested ones included), with labels resolved inside the
  * root, secret values masked and indices that `dom fill` / `dom submit`
  * accept; a component whose closed shadow root holds fields is named as not
- * inspectable. The search form a component renders when it opens is listed
- * once it is open (like MDN's search modal).
+ * inspectable, with the way to reach them (`dom a11y query`, then
+ * `dom fill <index>`), which works; `dom get` on that component says its
+ * root is closed instead of pointing to `dom inspect`. The search form a
+ * component renders when it opens is listed once it is open (like MDN's
+ * search modal).
  */
 
 import * as assert from 'node:assert/strict';
@@ -197,6 +200,67 @@ void describe('Forms in shadow roots', () => {
     );
     const output = await bdg(['dom', 'form', '--all']);
     assert.match(output, /<x-vault> has a closed shadow root/);
+    assert.match(output, /reach them with bdg dom a11y query role=textbox, then bdg dom fill/);
+  });
+
+  void it('points selectors that miss to the closed shadow host and dom a11y query', async () => {
+    const closedNote =
+      /The page has closed shadow roots \(in <x-vault>\), which are not searched\.\nFor an element in a closed shadow root: bdg dom a11y query role=textbox/;
+    for (const args of [
+      ['dom', 'query', 'x-vault input'],
+      ['dom', 'query', 'input[name=card-holder]'],
+      ['dom', 'fill', 'input[name=card-holder]', 'x'],
+      ['dom', 'click', 'x-vault button'],
+      ['dom', 'inspect', 'input[name=card-holder]'],
+    ]) {
+      const output = await bdg(args, 83);
+      assert.match(output, closedNote, `bdg ${args.join(' ')}`);
+      assert.doesNotMatch(output, /eval --frame/, `bdg ${args.join(' ')}: no iframe on the page`);
+    }
+  });
+
+  void it('dom inspect on a closed shadow host says where its children are', async () => {
+    assert.match(
+      await bdg(['dom', 'inspect', 'x-vault']),
+      /^shadow closed root, not shown: bdg dom a11y query, e\.g\. role=textbox, lists its elements by index/m
+    );
+    const json = JSON.parse(await bdg(['dom', 'inspect', 'x-vault', '--json'])) as {
+      data: { shadowRootMode?: string };
+    };
+    assert.equal(json.data.shadowRootMode, 'closed');
+    const open = await bdg(['dom', 'inspect', 'x-login']);
+    assert.match(open, /\(shadow root\)/);
+    assert.doesNotMatch(open, /closed root/);
+  });
+
+  void it('reaches a closed shadow root field the way the notes say: a11y query, then fill by index', async () => {
+    const query = JSON.parse(await bdg(['dom', 'a11y', 'query', 'role=textbox', '--json'])) as {
+      data: { nodes: Array<{ index: number; backendDOMNodeId: number }> };
+    };
+    let cardHolder: { index: number } | undefined;
+    for (const node of query.data.nodes) {
+      const html = await bdg(['dom', 'get', '--node-id', String(node.backendDOMNodeId)]);
+      if (html.includes('name="card-holder"')) cardHolder = node;
+    }
+    assert.ok(cardHolder, 'dom a11y query lists the field in the closed root');
+    await bdg(['dom', 'get', String(cardHolder.index)]);
+    await bdg(['dom', 'fill', String(cardHolder.index), 'Ada Lovelace']);
+    const after = JSON.parse(await bdg(['dom', 'a11y', 'query', 'role=textbox', '--json'])) as {
+      data: { nodes: Array<{ index: number; value?: string }> };
+    };
+    assert.equal(after.data.nodes[cardHolder.index]?.value, 'Ada Lovelace');
+  });
+
+  void it('dom get on a closed shadow host names the root closed, not dom inspect (#574)', async () => {
+    const output = await bdg(['dom', 'get', 'x-vault']);
+    assert.match(output, /^No text; its closed shadow root holds 1 element: form \(/m);
+    assert.match(output, /bdg dom a11y query/);
+    assert.doesNotMatch(output, /dom inspect\)/, 'dom inspect shows nothing of a closed root');
+    const json = JSON.parse(await bdg(['dom', 'get', 'x-vault', '--json'])) as {
+      data: { domContext: { shadowChildren?: boolean; shadowRootMode?: string } };
+    };
+    assert.equal(json.data.domContext.shadowChildren, true);
+    assert.equal(json.data.domContext.shadowRootMode, 'closed');
   });
 
   void it('lists the search form a component renders once it is opened', async () => {
@@ -219,6 +283,16 @@ void describe('Forms in shadow roots', () => {
       await bdg(['dom', 'form', '--brief']),
       /Form: "Search" \(in dialog\) \(in shadow root of <x-search-modal>\)/
     );
+  });
+
+  void it('says when the closed shadow host check stopped before the end of the page', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}closed-shadow-late`]);
+    const output = await bdg(['dom', 'query', '#nope'], 83);
+    assert.match(
+      output,
+      /Closed shadow roots were looked for in the first 20 custom elements only \(none there\); selectors do not search them\./
+    );
+    assert.match(output, /For an element in a closed shadow root: bdg dom a11y query role=textbox/);
   });
 
   void it('lists form-less fields in an open shadow root', async () => {
