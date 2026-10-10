@@ -33,7 +33,7 @@ Copy one per issue into your notes and tick it off:
 - [ ] Second review, only if the fix commit is large or risky
 - [ ] Fresh-agent test on the branch (briefs.md → Tester), findings fixed in the PR
 - [ ] Gates 1–8 hold on the final head SHA
-- [ ] Merged, main CI green, worktree and branch removed, issue and roadmap updated
+- [ ] Merged, main CI green, worktree and branch removed, issue updated
 - [ ] Every finding fixed or filed
 ```
 
@@ -68,7 +68,7 @@ The highest-yield step. Run it for every behaviour change (tier 2 and 3 below). 
 | 3 high risk | session lifecycle, Chrome launch, files on disk, concurrency, security, contracts | fresh reviewer + second review of the fix commit | yes, plus the interrupt scenario (S08) when relevant | yes, plus repeat=10 for timing |
 
 - Findings **about this change** go back to the implementer and are fixed **in the same PR**.
-- Findings about **older code** are collected for the whole round. Then **one verifier agent** (verifier brief in `briefs.md`) reproduces them all on current `main` in one pass; you group what survived into issues (one per root cause, with the command and output) in the right milestone. Don't verify 15 findings by hand, and don't file unverified ones.
+- Findings about **older code** are collected for the whole round. Then **one verifier agent** (verifier brief in `briefs.md`) reproduces them all on current `main` in one pass; you group what survived into issues (one per root cause, with the command and output) in the right milestone. Don't verify 15 findings by hand, and don't file unverified ones. The verifier runs no git commands, so you prepare its checkout: `git worktree add ../bdg-verify --detach origin/main && ln -s <main checkout>/node_modules ../bdg-verify/node_modules && npm --prefix ../bdg-verify run build`, and remove it after the report (`git worktree remove ../bdg-verify`).
 - **Start the fixtures from the worktree of the branch under test** (`npx tsx src/__testutils__/serveFixtures.ts` in `../bdg-<N>`), never from another worktree or the main checkout: a tester once got a page the branch had added from a server that didn't have it.
 
 ### Merge
@@ -141,14 +141,15 @@ Merge only when **all** hold. If one fails, fix it; don't negotiate it.
 - Smoke, one file: `npx tsx --test --test-concurrency=1 src/__tests__/smoke/<file>.smoke.test.ts`. Integration: `./tests/run-all-tests.sh --integration`.
 - CI repeat (Linux and macOS): `gh workflow run ci.yml --repo szymdzum/browser-debugger-cli --ref <branch> -f smoke_files='<space-separated paths>' -f repeat=10 -f node=22`. `node` picks the one Node version of the smoke jobs (22, 24 or 26; push and nightly run all three). No brace globs, no `debug=true` (#510).
 - You (not subagents) run long suites in the background with a one-line status and a timeout; never block silently for minutes.
-- Wait for CI, the one way (background, `timeout` ≥ 1800000 ms):
+- Wait for CI, the one way (background, `timeout` ≥ 1800000 ms). Wait for each expected **workflow by name**, because the PR workflows (`CI`, `Security`) are created at different moments and a loop over "all runs of the commit" can end when the first is done and the second doesn't exist yet:
   ```bash
   R=szymdzum/browser-debugger-cli; sha=<full sha>            # PR head or merge commit
-  until gh run list --repo $R --commit $sha --json status -q '.[].status' | rg -q . \
-     && ! gh run list --repo $R --commit $sha --json status -q '.[].status' | rg -q 'queued|in_progress|waiting|pending|requested'; do sleep 60; done
+  for wf in CI Security; do
+    until [ "$(gh run list --repo $R --commit $sha --workflow $wf --json status -q '.[0].status')" = completed ]; do sleep 60; done
+  done
   gh run list --repo $R --commit $sha --json name,conclusion -q '.[]|"\(.name) \(.conclusion)"'
   ```
-  For a PR also run `gh pr checks <n>` once at the end (it lists the jobs, not just the workflows). A loop that waits on "no pending line" alone can end before the runs have even been created.
+  For a PR also run `gh pr checks <n>` once at the end (it lists the jobs; it doesn't wait).
 
 ### Forbidden
 - `git stash`; `git commit --no-verify` or any other hook bypass; broad `pkill`/`killall`/`pkill -P` (kill only PIDs you started).
