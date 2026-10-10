@@ -392,7 +392,7 @@ function roundPage(page: PageLayout): PageLayout {
 
 /**
  * Layout of one element. A `display: contents` element (no box of its own)
- * is placed by the box around its shown children.
+ * (a `<slot>`) is placed by the box around the content it shows (elements and text).
  *
  * @param raw - Element measurements
  * @param page - Page layout (viewport size and scroll position)

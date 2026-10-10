@@ -553,6 +553,10 @@ export function assetRequestsNote(count: number, types: string[]): string {
 export const LAYOUT_REASONS = {
   /** Hidden: an `<option>` of a closed `<select>` has no box */
   option: 'not rendered (an <option> is shown by its <select>)',
+  /** Hidden: a `display: contents` element (a slot) none of whose content has a box */
+  noBox: 'display: contents (no box of its own)',
+  /** Hidden: a `<slot>` with nothing assigned and no fallback content */
+  emptySlot: 'empty slot (nothing assigned, no fallback content)',
   /** Hidden: start of the reason for a clipping container with no area, followed by it */
   clippedBy: 'clipped by ',
   /** Which size of that container is zero */

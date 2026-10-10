@@ -19,10 +19,11 @@ export interface ElementGeometry {
   /** Border box in top-level viewport coordinates */
   rect: LayoutBox;
   /**
-   * For a zero-size element whose children show (an inline list around
+   * For a zero-size element whose content shows (an inline list around
    * floated items, a `display: contents` web component whose shadow root
-   * shows a dialog): the box around those children in the flat tree, which
-   * is what can be seen of it
+   * shows a dialog, a `<slot>` showing assigned text): the box around that
+   * content in the flat tree (elements and text), which is what can be seen
+   * of it; its position in the viewport and clipping are judged by this box
    */
   content?: LayoutBox | null;
   /** Area its iframes and overflow-clipping ancestors leave visible, in the same coordinates */
@@ -405,7 +406,9 @@ const MASKED_BY_JS = `(el, describe) => {
  * ({@link ANCESTOR_CLIP_JS}) and by the viewports of its iframes, why it
  * cannot be seen at all (not rendered, or inside a clipping container
  * collapsed to zero size; a `display: contents` element is measured by
- * its children in the flat tree and is hidden only when none shows), why a rendered one is still invisible
+ * its content in the flat tree, elements and text (a slot's assigned nodes,
+ * else its fallback content), and is hidden only when none of it shows),
+ * why a rendered one is still invisible
  * ({@link INVISIBLE_REASON_JS}), whether it is inert (an `inert` element
  * around it, through shadow roots) or fixed to the top-level viewport, and how
  * far the top-level page can scroll ({@link SCROLL_RANGE_JS}) or what locks
@@ -444,18 +447,26 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
     }
     return 'not rendered';
   };
-  const flatChildren = (node) =>
-    Array.from((node.shadowRoot || node).children).flatMap((c) => {
-      const shown = c.localName === 'slot' ? c.assignedElements({ flatten: true }) : [c];
-      return shown.flatMap((s) => (styleOf(s).display === 'contents' ? flatChildren(s) : [s]));
-    });
+  const slotted = (node) => node.localName === 'slot' && !!node.getRootNode().host;
+  const flatContent = (node) => {
+    const nodes = slotted(node) ? node.assignedNodes({ flatten: true }) : Array.from((node.shadowRoot || node).childNodes);
+    return nodes.flatMap((c) => (c.nodeType === 3 ? [c] : c.nodeType !== 1 ? [] : styleOf(c).display === 'contents' ? flatContent(c) : [c]));
+  };
+  const isEmptySlot = (node) =>
+    slotted(node) && node.assignedNodes({ flatten: true }).every((c) => c.nodeType !== 1 && !(c.nodeType === 3 && c.data.trim()));
+  const measure = (n) => {
+    if (n.nodeType === 1) return { r: n.getBoundingClientRect(), style: styleOf(n) };
+    const range = n.ownerDocument.createRange();
+    range.selectNodeContents(n);
+    return { r: range.getBoundingClientRect(), style: styleOf(n.assignedSlot || n.parentElement || n.parentNode.host) };
+  };
   const shownChildren = (node) => {
     const s = styleOf(node);
     if (s.overflowX !== 'visible' || s.overflowY !== 'visible') return null;
     let union = null;
-    for (const c of flatChildren(node).slice(0, 50)) {
-      const r = c.getBoundingClientRect();
-      if (r.width <= 0 || r.height <= 0 || styleOf(c).visibility !== 'visible') continue;
+    for (const c of flatContent(node).slice(0, 50)) {
+      const { r, style } = measure(c);
+      if (r.width <= 0 || r.height <= 0 || style.visibility !== 'visible') continue;
       union = union
         ? { left: Math.min(union.left, r.left), top: Math.min(union.top, r.top), right: Math.max(union.right, r.right), bottom: Math.max(union.bottom, r.bottom) }
         : { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
@@ -464,7 +475,7 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
   };
   const hiddenReason = (style, box, content) => {
     if (style.display === 'none') return 'display: none';
-    if (style.display === 'contents') return content ? null : 'display: contents (no box of its own)';
+    if (style.display === 'contents') return content ? null : isEmptySlot(el) ? reasons.emptySlot : reasons.noBox;
     if (el.getClientRects().length === 0) {
       return el.tagName === 'OPTION' ? reasons.option : 'not rendered (an ancestor has display: none)';
     }
@@ -488,13 +499,13 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
   };
   const box = el.getBoundingClientRect();
   let rect = { left: box.left, top: box.top, right: box.right, bottom: box.bottom };
-  const own = ancestorClip(el, rect, describe);
+  let content = box.width === 0 || box.height === 0 ? shownChildren(el) : null;
+  const own = ancestorClip(el, content || rect, describe);
   let clip = own.clip;
   let overlay = own.overlay;
   let clipper = own.clipper;
   let fixed = own.fixed;
   let fixedBy = own.fixedBy;
-  let content = box.width === 0 || box.height === 0 ? shownChildren(el) : null;
   let hidden = hiddenReason(styleOf(el), box, content) || own.collapsed;
   let x = 0;
   let y = 0;
