@@ -6,7 +6,8 @@
  * (`Submit blocked: email: Please include an '@' …`, JSON `submitBlocked`),
  * from the first click on, and still exits 0: on `/shadow-forms` (a form in
  * an open shadow root) and on `/submit-blocked`, for a form in a closed
- * shadow root and a submit button outside its form (`form` attribute).
+ * shadow root, a submit button outside its form (`form` attribute), an
+ * image input, and two invalid fields joined with `; `.
  * Unchanged: a click that submits (also one that navigates, and one whose
  * submit handler empties a required field), a click on a `type=button`, on
  * a `formnovalidate` button, in a `novalidate` form, and a click the page
@@ -158,6 +159,22 @@ void describe('which clicks report a blocked submit', () => {
   void it('reports a blocked submit of a light form', async () => {
     const data = await clickJson('#light-go');
     assert.deepEqual(data.submitBlocked, [{ field: 'city', message: requiredMessage }]);
+  });
+
+  void it('names two invalid fields, separated by "; "', async () => {
+    const mailMessage = await evaluate("document.querySelector('[name=mail]').validationMessage");
+    const output = await bdg(['dom', 'click', '#pair-go']);
+    assert.ok(
+      output.includes(
+        `Submit blocked: first: ${String(requiredMessage)}; mail: ${String(mailMessage)}`
+      ),
+      `no blocked line naming both fields: ${output}`
+    );
+  });
+
+  void it('reports a submit by an image input', async () => {
+    const data = await clickJson('#pictured-go');
+    assert.deepEqual(data.submitBlocked, [{ field: 'term', message: requiredMessage }]);
   });
 
   void it('reports a submit button outside its form (form attribute)', async () => {

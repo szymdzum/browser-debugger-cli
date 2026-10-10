@@ -5,7 +5,9 @@
  * `type=button` one and a `formnovalidate` one), a `novalidate` form, a
  * form submitted by an `<input type=submit>` outside it through its `form`
  * attribute, a chat form whose submit handler clears its required field, a
- * submit button whose click handler cancels the click, a valid GET form that
+ * submit button whose click handler cancels the click, a form with two
+ * invalid fields (`#pair`), one submitted by an `<input type=image>`
+ * (`#pictured`), a valid GET form that
  * navigates to `/submit-blocked-done?q=ada` (routes match the whole URL),
  * and `<x-pay>`, whose closed shadow root holds a form with a required
  * field. Every form's `submit` is noted in `window.submitted` (the GET
@@ -37,6 +39,11 @@ const SUBMIT_BLOCKED_HTML = `<!doctype html><title>submit blocked</title>
 <form id="chat" onsubmit="this.msg.value = ''"><input name="msg" required><button id="chat-send">Send</button></form>
 <form id="guarded"><input name="nick" required><button id="guarded-go" onclick="event.preventDefault()">Join</button></form>
 <form id="search" method="get" action="/submit-blocked-done"><input name="q" required value="ada"><button id="search-go">Search</button></form>
+<form id="pair"><input name="first" required><input name="mail" type="email" value="ada">
+  <button id="pair-go">Go</button></form>
+<form id="pictured"><input name="term" required>
+  <input type="image" id="pictured-go" alt="Search" width="40" height="20"
+    src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"></form>
 <x-pay></x-pay>
 <script>
   customElements.define('x-pay', class extends HTMLElement {
