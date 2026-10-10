@@ -81,8 +81,8 @@ async function waitForBlockedCookies(
     const ready =
       page?.duration !== undefined &&
       api?.duration !== undefined &&
-      (page.blockedCookies?.length ?? 0) >= 2 &&
-      (api.blockedCookies?.length ?? 0) >= 1;
+      (page.blockedCookieSummary?.count ?? 0) >= 2 &&
+      (api.blockedCookieSummary?.count ?? 0) >= 1;
     if (ready || Date.now() > deadline) {
       assert.ok(page && api, `requests not captured: ${JSON.stringify(requests)}`);
       return { page, api };
@@ -169,8 +169,21 @@ void describe('Blocked cookies', () => {
   });
 
   void it('leaves out cookies of other sites (DomainMismatch)', () => {
-    const notSent = (page.blockedCookies ?? []).filter((c) => c.kind === 'not-sent');
-    assert.deepEqual(notSent, [], 'tp_lax belongs to localhost, the page is on 127.0.0.1');
+    assert.deepEqual(
+      page.blockedCookieSummary?.kinds,
+      ['set-rejected'],
+      'tp_lax belongs to localhost, the page is on 127.0.0.1: not counted as not sent'
+    );
+  });
+
+  void it('summarizes them in network list --json', () => {
+    assert.deepEqual(page.blockedCookieSummary, {
+      count: 2,
+      kinds: ['set-rejected'],
+      reasons: ['SameSiteNoneInsecure', 'InvalidDomain'],
+      names: ['nosecure', 'wrongdomain'],
+    });
+    assert.equal(page.blockedCookies, undefined, 'the full list is in details only');
   });
 
   void it('marks and filters the requests in network list', async () => {

@@ -237,3 +237,22 @@ void describe('blocked cookie mark', () => {
     assert.match(formatNetworkFollowRows([blocked]), /⚠ cookie blocked$/m);
   });
 });
+
+void describe('blocked cookie mark on list previews', () => {
+  void it('marks a row from its summary', () => {
+    const preview: NetworkRequest = {
+      requestId: '2.1',
+      url: 'http://localhost:8802/api',
+      method: 'GET',
+      timestamp: 0,
+      status: 200,
+      blockedCookieSummary: {
+        count: 1,
+        kinds: ['not-sent'],
+        reasons: ['SameSiteLax'],
+        names: ['a'],
+      },
+    };
+    assert.match(formatNetworkList([preview], {}), /⚠ cookie blocked$/m);
+  });
+});

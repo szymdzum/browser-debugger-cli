@@ -1063,7 +1063,8 @@ bdg network list --filter "has-response-header:content-security-policy"
 # Filter by blocked cookies (see "Blocked cookies" under Get full details)
 bdg network list --filter "has-blocked-cookies:*"              # Any cookie blocked
 bdg network list --filter "has-blocked-cookies:not-sent"       # A stored cookie was not sent
-bdg network list --filter "has-blocked-cookies:*SameSite*"     # By reason (or cookie name)
+bdg network list --filter "has-blocked-cookies:*SameSite*"     # By reason
+bdg network list --filter "has-blocked-cookies:session*"       # By name (the first 5 per request)
 
 # Filter by state
 bdg network list --filter "is:from-cache"          # Cached responses
@@ -1116,7 +1117,7 @@ bdg network list --json
 
 So a request's START in ms is `(sentTime - pageStart.sentTime) * 1000`, or `timestamp - pageStart.timestamp` without `sentTime`.
 
-A request on which Chrome blocked a cookie ends with `⚠ cookie blocked` (`bdg details network <id>` says which and why; `network list --json` has the `blockedCookies` entries).
+A request on which Chrome blocked a cookie ends with `⚠ cookie blocked` (`bdg details network <id>` says which and why). To keep the list small, `network list --json` and `peek --json` carry a summary instead of the full list: `blockedCookieSummary: { count, kinds, reasons, names }`, with the number of blocked cookies (omitted ones included), every kind and reason among them, and the first 5 names; `details network --json` has all of them (`blockedCookies`).
 
 ```text
 [ID]         START STS METH    TYP     SIZE   TIME  URL
@@ -1136,7 +1137,7 @@ A request on which Chrome blocked a cookie ends with `⚠ cookie blocked` (`bdg 
 | `resource-type:<types>` | CDP resource type(s) | `resource-type:XHR,Fetch` |
 | `larger-than:<size>` | Response size threshold | `larger-than:1MB`, `larger-than:100KB` |
 | `has-response-header:<name>` | Has specific header | `has-response-header:set-cookie` |
-| `has-blocked-cookies:<pattern>` | Chrome blocked a cookie whose name, reason or kind (`set-rejected`, `not-sent`) matches; `*` for any | `has-blocked-cookies:*`, `has-blocked-cookies:InvalidDomain`, `has-blocked-cookies:session*` |
+| `has-blocked-cookies:<pattern>` | Chrome blocked a cookie whose kind (`set-rejected`, `not-sent`) or reason matches, or one of the first 5 names of the request's blocked cookies; `*` for any. Without a value it is an error suggesting `has-blocked-cookies:*` | `has-blocked-cookies:*`, `has-blocked-cookies:InvalidDomain`, `has-blocked-cookies:session*` |
 | `is:from-cache` | Cached responses | |
 | `is:running` | In-progress requests | |
 | `is:failed` | Requests that got no response (DNS, refused, aborted, blocked) | |

@@ -7,6 +7,7 @@
  */
 
 import { RESOURCE_TYPE_ABBREVIATIONS, resourceTypeFromName } from '@/constants.js';
+import { summarizeBlockedCookies } from '@/telemetry/blockedCookies.js';
 import { matchesWildcard } from '@/telemetry/filters.js';
 import type { NetworkRequest } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
@@ -238,6 +239,22 @@ function validateStatusCode(value: string): FilterTokenResult | null {
   return createError(`Invalid status code: "${value}"`, 'Status codes must be between 100 and 599');
 }
 
+/** Filters often written without a value, and the value meaning "any" */
+const ANY_VALUE_FILTERS: Partial<Record<FilterType, string>> = {
+  'has-blocked-cookies': '*',
+};
+
+/**
+ * Suggestion for a filter written without a value whose "any" value is known.
+ *
+ * @param type - Filter type as written
+ * @returns e.g. `Did you mean: has-blocked-cookies:*?`, or undefined
+ */
+function keyOnlySuggestion(type: string): string | undefined {
+  const any = ANY_VALUE_FILTERS[type.toLowerCase() as FilterType];
+  return any === undefined ? undefined : `Did you mean: ${type.toLowerCase()}:${any}?`;
+}
+
 function parseFilterToken(token: string): FilterTokenResult {
   const trimmed = token.trim();
   if (!trimmed) return createError('Empty filter token');
@@ -249,7 +266,7 @@ function parseFilterToken(token: string): FilterTokenResult {
   if (colonIndex === -1) {
     return createError(
       `Invalid filter format: "${token}". Expected "type:value" format`,
-      'Use format like "status-code:404" or "domain:api.*"'
+      keyOnlySuggestion(withoutPrefix) ?? 'Use format like "status-code:404" or "domain:api.*"'
     );
   }
 
@@ -257,7 +274,10 @@ function parseFilterToken(token: string): FilterTokenResult {
   const rawValue = withoutPrefix.slice(colonIndex + 1);
 
   if (!rawValue) {
-    return createError(`Missing value for filter "${type}"`, `Provide a value after the colon`);
+    return createError(
+      `Missing value for filter "${type}"`,
+      keyOnlySuggestion(type) ?? 'Provide a value after the colon'
+    );
   }
 
   const typeError = validateFilterType(type);
@@ -402,12 +422,13 @@ function matchesFilter(request: NetworkRequest, filter: ParsedFilter): boolean {
       return Object.keys(request.responseHeaders).some((h) => h.toLowerCase() === headerName);
     }
 
-    case 'has-blocked-cookies':
-      return (request.blockedCookies ?? []).some((cookie) =>
-        [cookie.name, cookie.kind, ...cookie.reasons].some((text) =>
-          matchesWildcard(text, filter.value)
-        )
+    case 'has-blocked-cookies': {
+      const summary = request.blockedCookieSummary ?? summarizeBlockedCookies(request);
+      if (!summary) return false;
+      return [...summary.kinds, ...summary.reasons, ...summary.names].some((text) =>
+        matchesWildcard(text, filter.value)
       );
+    }
 
     case 'is':
       if (filter.value === 'from-cache') {
@@ -453,7 +474,8 @@ Filter syntax:
   larger-than:100KB       Size threshold (B, KB, MB, GB)
   duration:>1s            Request time (ms or s; supports =, >=, <=, >, <; a bare value means at least)
   has-response-header:set-cookie
-  has-blocked-cookies:*   Chrome blocked a cookie (name, reason, set-rejected or not-sent)
+  has-blocked-cookies:*   Chrome blocked a cookie; a value matches its kind (set-rejected,
+                          not-sent), a reason, or a name among the first 5 per request
   is:from-cache           Served from browser cache (or a CDN cache hit)
   is:running              In-progress requests
   is:failed               Requests that got no response (DNS, refused, aborted, blocked)

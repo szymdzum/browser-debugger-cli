@@ -214,6 +214,25 @@ export interface NetworkRequest {
   blockedCookies?: BlockedCookie[];
   /** Blocked cookies of this request not kept past `MAX_BLOCKED_COOKIES` */
   blockedCookiesOmitted?: number;
+  /**
+   * What `network list` and `peek` carry instead of `blockedCookies` (which
+   * only `details network` has)
+   */
+  blockedCookieSummary?: BlockedCookieSummary;
+}
+
+/**
+ * The cookies Chrome blocked on a request, in short.
+ */
+export interface BlockedCookieSummary {
+  /** Blocked cookies, kept and omitted */
+  count: number;
+  /** Every kind among them */
+  kinds: BlockedCookie['kind'][];
+  /** Every reason among them */
+  reasons: string[];
+  /** The first names (`BLOCKED_COOKIE_PREVIEW_NAMES`) */
+  names: string[];
 }
 
 /**

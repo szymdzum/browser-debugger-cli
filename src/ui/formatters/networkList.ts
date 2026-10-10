@@ -5,6 +5,7 @@
  * with support for filtering results display.
  */
 
+import { summarizeBlockedCookies } from '@/telemetry/blockedCookies.js';
 import type { NetworkRequest } from '@/types.js';
 import { getResourceTypeAbbr } from '@/ui/formatters/preview.js';
 import { getRequestState } from '@/ui/formatters/requestStatus.js';
@@ -172,7 +173,8 @@ function formatRequestLine(
   const size = formatSize(request.encodedDataLength).padStart(8);
   const time = formatDuration(request.duration).padStart(6);
   const url = options.verbose ? request.url : truncateUrl(request.url, 50);
-  const mark = request.blockedCookies?.length ? `  ${COOKIE_BLOCKED_MARK}` : '';
+  const blocked = request.blockedCookieSummary ?? summarizeBlockedCookies(request);
+  const mark = blocked ? `  ${COOKIE_BLOCKED_MARK}` : '';
 
   return `${id} ${start} ${status} ${method} ${type} ${size} ${time}  ${url}${mark}`;
 }

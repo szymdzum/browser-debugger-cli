@@ -8,11 +8,12 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { Protocol } from '@/connection/typed-cdp.js';
-import { MAX_BLOCKED_COOKIES } from '@/constants.js';
+import { MAX_BLOCKED_COOKIES, MAX_OMITTED_COOKIE_KEYS } from '@/constants.js';
 import {
   addBlockedCookies,
   blockedAssociatedCookies,
   blockedSetCookies,
+  summarizeBlockedCookies,
 } from '@/telemetry/blockedCookies.js';
 import type { NetworkRequest } from '@/types.js';
 
@@ -61,7 +62,7 @@ function makeRequest(): NetworkRequest {
 
 void describe('blockedSetCookies', () => {
   void it('keeps the name and reasons of each rejected Set-Cookie, never the value', () => {
-    const blocked = blockedSetCookies([
+    const { cookies: blocked } = blockedSetCookies([
       {
         cookieLine: 'nosecure=secret-value; SameSite=None',
         blockedReasons: ['SameSiteNoneInsecure'],
@@ -77,28 +78,28 @@ void describe('blockedSetCookies', () => {
   });
 
   void it('takes a line without "=" as a cookie without a name', () => {
-    const blocked = blockedSetCookies([
+    const { cookies: blocked } = blockedSetCookies([
       { cookieLine: 'secret-value; Path=/', blockedReasons: ['SyntaxError'] },
     ]);
     assert.deepEqual(blocked, [{ name: '', kind: 'set-rejected', reasons: ['SyntaxError'] }]);
   });
 
   void it('leaves out entries without reasons and accepts a missing list', () => {
-    assert.deepEqual(blockedSetCookies([{ cookieLine: 'a=1', blockedReasons: [] }]), []);
-    assert.deepEqual(blockedSetCookies(undefined), []);
+    assert.deepEqual(blockedSetCookies([{ cookieLine: 'a=1', blockedReasons: [] }]).cookies, []);
+    assert.deepEqual(blockedSetCookies(undefined).cookies, []);
   });
 
   void it('cuts very long names', () => {
     const [entry] = blockedSetCookies([
       { cookieLine: `${'n'.repeat(5000)}=v`, blockedReasons: ['NameValuePairExceedsMaxSize'] },
-    ]);
+    ]).cookies;
     assert.ok(entry !== undefined && entry.name.length <= 200);
   });
 });
 
 void describe('blockedAssociatedCookies', () => {
   void it('keeps cookies not sent with their reasons, never the value', () => {
-    const blocked = blockedAssociatedCookies([
+    const { cookies: blocked } = blockedAssociatedCookies([
       associated('tp_lax', ['SchemefulSameSiteLax']),
       associated('tp_strict', ['SchemefulSameSiteStrict']),
       associated('sent', []),
@@ -111,7 +112,7 @@ void describe('blockedAssociatedCookies', () => {
   });
 
   void it('leaves out cookies that do not apply to the URL', () => {
-    const blocked = blockedAssociatedCookies([
+    const { cookies: blocked } = blockedAssociatedCookies([
       associated('other_site', ['DomainMismatch']),
       associated('other_path', ['NotOnPath']),
       associated('other_path_2', ['PathMismatch' as Protocol.Network.CookieBlockedReason]),
@@ -121,7 +122,7 @@ void describe('blockedAssociatedCookies', () => {
   });
 
   void it('accepts a missing list', () => {
-    assert.deepEqual(blockedAssociatedCookies(undefined), []);
+    assert.deepEqual(blockedAssociatedCookies(undefined).cookies, []);
   });
 });
 
@@ -138,7 +139,7 @@ void describe('addBlockedCookies', () => {
 
   void it('leaves the request without the field when nothing was blocked', () => {
     const request = makeRequest();
-    addBlockedCookies(request, []);
+    addBlockedCookies(request, blockedSetCookies([]));
     assert.equal('blockedCookies' in request, false);
   });
 
@@ -154,5 +155,73 @@ void describe('addBlockedCookies', () => {
     );
     assert.equal(request.blockedCookies?.length, MAX_BLOCKED_COOKIES);
     assert.equal(request.blockedCookiesOmitted, 8);
+  });
+});
+
+void describe('blocked cookie batches', () => {
+  /**
+   * Many distinct cookies not sent.
+   *
+   * @param count - How many
+   * @returns Associated cookies
+   */
+  function many(count: number): Protocol.Network.AssociatedCookie[] {
+    return Array.from({ length: count }, (_, i) => associated(`c${i}`, ['SameSiteStrict']));
+  }
+
+  void it(`hold at most ${MAX_BLOCKED_COOKIES} entries, whatever the event's size`, () => {
+    const batch = blockedAssociatedCookies(many(5000));
+    assert.equal(batch.cookies.length, MAX_BLOCKED_COOKIES);
+    assert.ok(batch.omittedKeys.length <= MAX_OMITTED_COOKIE_KEYS);
+
+    const request = makeRequest();
+    addBlockedCookies(request, batch);
+    assert.equal(request.blockedCookies?.length, MAX_BLOCKED_COOKIES);
+    assert.equal(request.blockedCookiesOmitted, 5000 - MAX_BLOCKED_COOKIES);
+  });
+
+  void it('do not count the cookies left out again when Chrome repeats an event', () => {
+    const request = makeRequest();
+    const event = many(MAX_BLOCKED_COOKIES + 7);
+    addBlockedCookies(request, blockedAssociatedCookies(event));
+    addBlockedCookies(request, blockedAssociatedCookies(event));
+    assert.equal(request.blockedCookies?.length, MAX_BLOCKED_COOKIES);
+    assert.equal(request.blockedCookiesOmitted, 7);
+  });
+
+  void it('drop repeats within one event', () => {
+    const batch = blockedAssociatedCookies([
+      associated('a', ['SameSiteLax']),
+      associated('a', ['SameSiteLax']),
+    ]);
+    assert.equal(batch.cookies.length, 1);
+  });
+});
+
+void describe('summarizeBlockedCookies', () => {
+  void it('counts all, lists every kind and reason (kept or not), and the first 5 names', () => {
+    const request = makeRequest();
+    addBlockedCookies(
+      request,
+      blockedAssociatedCookies(
+        Array.from({ length: MAX_BLOCKED_COOKIES + 3 }, (_, i) =>
+          associated(`c${i}`, [i % 2 ? 'SameSiteStrict' : 'SchemefulSameSiteLax'])
+        )
+      )
+    );
+    addBlockedCookies(
+      request,
+      blockedSetCookies([{ cookieLine: 'late=1', blockedReasons: ['InvalidDomain'] }])
+    );
+    assert.deepEqual(summarizeBlockedCookies(request), {
+      count: MAX_BLOCKED_COOKIES + 4,
+      kinds: ['not-sent', 'set-rejected'],
+      reasons: ['SchemefulSameSiteLax', 'SameSiteStrict', 'InvalidDomain'],
+      names: ['c0', 'c1', 'c2', 'c3', 'c4'],
+    });
+  });
+
+  void it('is undefined when nothing was blocked', () => {
+    assert.equal(summarizeBlockedCookies(makeRequest()), undefined);
   });
 });

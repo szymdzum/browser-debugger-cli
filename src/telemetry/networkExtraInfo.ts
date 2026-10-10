@@ -11,8 +11,8 @@
  * with the headers of the same event.
  */
 
-import { addBlockedCookies } from '@/telemetry/blockedCookies.js';
-import type { BlockedCookie, NetworkRequest } from '@/types.js';
+import { addBlockedCookies, type BlockedCookieBatch } from '@/telemetry/blockedCookies.js';
+import type { NetworkRequest } from '@/types.js';
 
 /** Recently finished requests kept for late ExtraInfo events. */
 const MAX_RECENT_REQUESTS = 500;
@@ -20,10 +20,10 @@ const MAX_RECENT_REQUESTS = 500;
 interface PendingHeaders {
   requestHeaders?: Record<string, string>;
   /** Cookies not sent, from the event of the buffered request headers */
-  requestBlockedCookies?: BlockedCookie[];
+  requestBlockedCookies?: BlockedCookieBatch | undefined;
   responseHeaders?: Record<string, string>;
   /** Set-Cookies rejected, from the event of the buffered response headers */
-  responseBlockedCookies?: BlockedCookie[];
+  responseBlockedCookies?: BlockedCookieBatch | undefined;
   /** HTTP status the buffered response headers belong to */
   responseStatus?: number;
 }
@@ -38,10 +38,10 @@ interface PendingHeaders {
 function setRequestInfo(
   request: NetworkRequest,
   headers: Record<string, string>,
-  blocked: BlockedCookie[] = []
+  blocked?: BlockedCookieBatch
 ): void {
   request.requestHeaders = headers;
-  addBlockedCookies(request, blocked);
+  if (blocked) addBlockedCookies(request, blocked);
 }
 
 /**
@@ -54,10 +54,10 @@ function setRequestInfo(
 function setResponseInfo(
   request: NetworkRequest,
   headers: Record<string, string>,
-  blocked: BlockedCookie[] = []
+  blocked?: BlockedCookieBatch
 ): void {
   request.responseHeaders = headers;
-  addBlockedCookies(request, blocked);
+  if (blocked) addBlockedCookies(request, blocked);
 }
 
 /**
@@ -123,6 +123,8 @@ export class ExtraInfoTracker {
   private readonly recent = new Map<string, NetworkRequest>();
   /** Completed redirect hops per request id (their headers can arrive late) */
   private readonly redirectHops = new Map<string, NetworkRequest[]>();
+  /** Requests that got their request ExtraInfo (more for the same id is the next hop's) */
+  private readonly requestInfoApplied = new WeakSet<NetworkRequest>();
 
   /**
    * @param findActive - Look up an in-flight request by CDP requestId
@@ -139,11 +141,41 @@ export class ExtraInfoTracker {
   onRequestExtraInfo(
     requestId: string,
     headers: Record<string, string>,
-    blocked: BlockedCookie[] = []
+    blocked?: BlockedCookieBatch
   ): void {
     const request = this.find(requestId);
-    if (request) setRequestInfo(request, headers, blocked);
+    if (request && !this.isNextHop(requestId, request))
+      this.applyRequestInfo(request, headers, blocked);
     else this.buffer(requestId, { requestHeaders: headers, requestBlockedCookies: blocked });
+  }
+
+  /**
+   * Whether request ExtraInfo belongs to a redirect hop not created yet: the
+   * in-flight request already has its own (the next hop's `requestWillBeSent`
+   * may come after its ExtraInfo).
+   *
+   * @param requestId - CDP request id
+   * @param request - Request found for it
+   * @returns True when the ExtraInfo must wait for the next hop
+   */
+  private isNextHop(requestId: string, request: NetworkRequest): boolean {
+    return this.findActive(requestId) === request && this.requestInfoApplied.has(request);
+  }
+
+  /**
+   * Give a request its request ExtraInfo and remember that it has it.
+   *
+   * @param request - Request to update
+   * @param headers - Raw request headers
+   * @param blocked - Cookies not sent
+   */
+  private applyRequestInfo(
+    request: NetworkRequest,
+    headers: Record<string, string>,
+    blocked: BlockedCookieBatch | undefined
+  ): void {
+    setRequestInfo(request, headers, blocked);
+    this.requestInfoApplied.add(request);
   }
 
   /**
@@ -162,7 +194,7 @@ export class ExtraInfoTracker {
     requestId: string,
     headers: Record<string, string>,
     statusCode?: number,
-    blocked: BlockedCookie[] = []
+    blocked?: BlockedCookieBatch
   ): void {
     if (this.applyToRedirectHop(requestId, headers, statusCode, blocked)) return;
     const request = this.find(requestId);
@@ -186,7 +218,7 @@ export class ExtraInfoTracker {
   applyRequest(requestId: string, request: NetworkRequest): void {
     const pending = this.pending.get(requestId);
     if (!pending?.requestHeaders) return;
-    setRequestInfo(request, pending.requestHeaders, pending.requestBlockedCookies);
+    this.applyRequestInfo(request, pending.requestHeaders, pending.requestBlockedCookies);
     this.clear(requestId, 'requestHeaders');
   }
 
@@ -237,7 +269,7 @@ export class ExtraInfoTracker {
     requestId: string,
     headers: Record<string, string>,
     statusCode: number | undefined,
-    blocked: BlockedCookie[]
+    blocked: BlockedCookieBatch | undefined
   ): boolean {
     const location = headerValue(headers, 'location');
     if (!isRedirect(statusCode) || !location) return false;

@@ -137,6 +137,19 @@ export const MAX_ISSUE_TEXT_LENGTH = 300;
 export const MAX_BLOCKED_COOKIES = 50;
 
 /**
+ * Blocked cookies past {@link MAX_BLOCKED_COOKIES} remembered per request (as
+ * short keys) so a repeated ExtraInfo event does not count them again; past
+ * this they are counted without that check
+ */
+export const MAX_OMITTED_COOKIE_KEYS = 200;
+
+/**
+ * Blocked cookie names `network list` and `peek` carry per request (their
+ * JSON and the `has-blocked-cookies` filter); `details network` has them all
+ */
+export const BLOCKED_COOKIE_PREVIEW_NAMES = 5;
+
+/**
  * Characters of a blocked cookie's name
  */
 export const MAX_BLOCKED_COOKIE_NAME_LENGTH = 200;

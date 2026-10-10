@@ -6,16 +6,20 @@
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it } from 'node:test';
 
+import { MAX_BLOCKED_COOKIES } from '@/constants.js';
+import { limitBlockedCookies } from '@/telemetry/blockedCookies.js';
 import { ExtraInfoTracker } from '@/telemetry/networkExtraInfo.js';
 import type { BlockedCookie, NetworkRequest } from '@/types.js';
 
 const COOKIE = { cookie: 'session=abc' };
-const NOT_SENT: BlockedCookie[] = [
+const NOT_SENT_COOKIES: BlockedCookie[] = [
   { name: 'tp_lax', kind: 'not-sent', reasons: ['SchemefulSameSiteLax'] },
 ];
-const SET_REJECTED: BlockedCookie[] = [
+const SET_REJECTED_COOKIES: BlockedCookie[] = [
   { name: 'nosecure', kind: 'set-rejected', reasons: ['SameSiteNoneInsecure'] },
 ];
+const NOT_SENT = limitBlockedCookies(NOT_SENT_COOKIES);
+const SET_REJECTED = limitBlockedCookies(SET_REJECTED_COOKIES);
 const SET_COOKIE = { 'set-cookie': 'a=1\nb=2', 'content-type': 'text/html' };
 
 function makeRequest(requestId: string): NetworkRequest {
@@ -132,14 +136,14 @@ void describe('ExtraInfoTracker', () => {
       tracker.onRequestExtraInfo('r1', COOKIE, NOT_SENT);
       const request = makeRequest('r1');
       tracker.applyRequest('r1', request);
-      assert.deepEqual(request.blockedCookies, NOT_SENT);
+      assert.deepEqual(request.blockedCookies, NOT_SENT_COOKIES);
     });
 
     void it('reach a request whose ExtraInfo arrived after it', () => {
       const request = makeRequest('r1');
       active.set('r1', request);
       tracker.onRequestExtraInfo('r1', COOKIE, NOT_SENT);
-      assert.deepEqual(request.blockedCookies, NOT_SENT);
+      assert.deepEqual(request.blockedCookies, NOT_SENT_COOKIES);
     });
 
     void it('rejected Set-Cookies arriving early wait for the response', () => {
@@ -150,7 +154,7 @@ void describe('ExtraInfoTracker', () => {
 
       request.status = 200;
       tracker.applyResponse('r1', request);
-      assert.deepEqual(request.blockedCookies, SET_REJECTED);
+      assert.deepEqual(request.blockedCookies, SET_REJECTED_COOKIES);
     });
 
     void it('rejected Set-Cookies arriving after the response or the end', () => {
@@ -158,12 +162,12 @@ void describe('ExtraInfoTracker', () => {
       active.set('r1', request);
       tracker.onRequestExtraInfo('r1', COOKIE, NOT_SENT);
       tracker.onResponseExtraInfo('r1', SET_COOKIE, 200, SET_REJECTED);
-      assert.deepEqual(request.blockedCookies, [...NOT_SENT, ...SET_REJECTED]);
+      assert.deepEqual(request.blockedCookies, [...NOT_SENT_COOKIES, ...SET_REJECTED_COOKIES]);
 
       const finished = { ...makeRequest('r2'), status: 200 };
       tracker.complete('r2', finished);
       tracker.onResponseExtraInfo('r2', SET_COOKIE, 200, SET_REJECTED);
-      assert.deepEqual(finished.blockedCookies, SET_REJECTED);
+      assert.deepEqual(finished.blockedCookies, SET_REJECTED_COOKIES);
     });
 
     void it('rejected Set-Cookies of a redirect stay on its hop', () => {
@@ -179,8 +183,37 @@ void describe('ExtraInfoTracker', () => {
 
       tracker.onResponseExtraInfo('r1', { location: '/b' }, 302, SET_REJECTED);
 
-      assert.deepEqual(hop1.blockedCookies, SET_REJECTED);
+      assert.deepEqual(hop1.blockedCookies, SET_REJECTED_COOKIES);
       assert.equal(final.blockedCookies, undefined);
     });
+
+    void it('a large event waits in the buffer cut to the bound', () => {
+      const cookies = Array.from({ length: 300 }, (_, i): BlockedCookie => ({
+        name: `c${i}`,
+        kind: 'not-sent',
+        reasons: ['SameSiteStrict'],
+      }));
+      tracker.onRequestExtraInfo('r1', COOKIE, limitBlockedCookies(cookies));
+      const request = makeRequest('r1');
+      tracker.applyRequest('r1', request);
+      assert.equal(request.blockedCookies?.length, MAX_BLOCKED_COOKIES);
+      assert.equal(request.blockedCookiesOmitted, 300 - MAX_BLOCKED_COOKIES);
+    });
+  });
+
+  void it('keeps request ExtraInfo of the next redirect hop off the current hop', () => {
+    const hop1 = makeRequest('r1');
+    active.set('r1', hop1);
+    tracker.onRequestExtraInfo('r1', { cookie: 'hop=1' });
+
+    tracker.onRequestExtraInfo('r1', { cookie: 'hop=2' }, NOT_SENT);
+    assert.deepEqual(hop1.requestHeaders, { cookie: 'hop=1' }, 'hop 1 keeps its own headers');
+    assert.equal(hop1.blockedCookies, undefined, 'hop 1 gets no cookies of hop 2');
+
+    const hop2 = makeRequest('r1');
+    active.set('r1', hop2);
+    tracker.applyRequest('r1', hop2);
+    assert.deepEqual(hop2.requestHeaders, { cookie: 'hop=2' });
+    assert.deepEqual(hop2.blockedCookies, NOT_SENT_COOKIES);
   });
 });
