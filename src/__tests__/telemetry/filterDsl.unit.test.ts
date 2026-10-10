@@ -528,3 +528,32 @@ void describe('resource type abbreviations', () => {
     assert.equal(resourceTypeFromName('Nope'), undefined);
   });
 });
+
+void describe('has-blocked-cookies filter', () => {
+  const blocked = createRequest({
+    requestId: 'blocked',
+    blockedCookies: [
+      { name: 'tp_lax', kind: 'not-sent', reasons: ['SchemefulSameSiteLax'] },
+      { name: 'nosecure', kind: 'set-rejected', reasons: ['SameSiteNoneInsecure'] },
+    ],
+  });
+  const clean = createRequest({ requestId: 'clean' });
+  const ids = (filter: string): string[] =>
+    applyFilters([blocked, clean], parseFilterString(filter)).map((r) => r.requestId);
+
+  void it('matches requests with any blocked cookie', () => {
+    assert.deepEqual(ids('has-blocked-cookies:*'), ['blocked']);
+    assert.deepEqual(ids('!has-blocked-cookies:*'), ['clean']);
+  });
+
+  void it('matches a cookie name, a reason or a kind, with wildcards', () => {
+    assert.deepEqual(ids('has-blocked-cookies:tp_lax'), ['blocked']);
+    assert.deepEqual(ids('has-blocked-cookies:*samesitelax'), ['blocked']);
+    assert.deepEqual(ids('has-blocked-cookies:set-rejected'), ['blocked']);
+    assert.deepEqual(ids('has-blocked-cookies:other'), []);
+  });
+
+  void it('is in the help text', () => {
+    assert.match(getFilterHelpText(), /has-blocked-cookies:\*/);
+  });
+});

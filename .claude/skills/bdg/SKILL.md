@@ -146,7 +146,8 @@ Exit 91 means the script threw. Prefer `dom query` / `dom get` / `dom inspect` w
 ```bash
 bdg network list                              # Requests (DevTools-style)
 bdg network list --filter "status-code:>=400 domain:api.*"   # DevTools DSL: status-code:, domain:, method:, mime-type:, ! negates; space = AND
-bdg details network <id>                      # Headers, timing, body of one request
+bdg details network <id>                      # Headers, timing, body; Blocked Cookies: set rejected / not sent + reason
+bdg network list --filter "has-blocked-cookies:*"   # "Logged out after this request?" Rows end ⚠ cookie blocked
 bdg network getCookies
 bdg console --level error                     # Errors on the current page
 bdg console                                   # Summary + Issues block: quirks mode, broken labels/duplicate ids, failed @import, eval blocked by CSP

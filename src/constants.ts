@@ -131,6 +131,17 @@ export const MAX_ISSUE_SEEN_REPORTS = 10_000;
 export const MAX_ISSUE_TEXT_LENGTH = 300;
 
 /**
+ * Blocked cookies kept per network request (rejected `Set-Cookie`s and
+ * cookies not sent); later ones are counted as omitted
+ */
+export const MAX_BLOCKED_COOKIES = 50;
+
+/**
+ * Characters of a blocked cookie's name
+ */
+export const MAX_BLOCKED_COOKIE_NAME_LENGTH = 200;
+
+/**
  * Chrome Issues the `bdg console` Issues block lists (JSON lists all kept)
  */
 export const ISSUES_SHOWN = 8;

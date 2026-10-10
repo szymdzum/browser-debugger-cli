@@ -229,3 +229,34 @@ void describe('repeated headers', () => {
     assert.match(output, /Response Headers:/);
   });
 });
+
+void describe('formatNetworkDetails blocked cookies', () => {
+  const request: NetworkRequest = {
+    requestId: '1',
+    url: 'http://localhost:8802/api',
+    method: 'GET',
+    timestamp: 0,
+    status: 200,
+    responseHeaders: { 'set-cookie': 'nosecure=1; SameSite=None' },
+    blockedCookies: [
+      { name: 'tp_lax', kind: 'not-sent', reasons: ['SchemefulSameSiteLax'] },
+      { name: 'nosecure', kind: 'set-rejected', reasons: ['SameSiteNoneInsecure'] },
+      { name: '', kind: 'set-rejected', reasons: ['SyntaxError', 'UnknownError'] },
+    ],
+    blockedCookiesOmitted: 3,
+  };
+
+  void it('lists each blocked cookie with why, after the response headers', () => {
+    const output = formatNetworkDetails(request);
+    assert.match(output, /Response Headers:[\s\S]*Blocked Cookies:/);
+    assert.match(output, /^ {2}tp_lax +not sent: SchemefulSameSiteLax$/m);
+    assert.match(output, /^ {2}nosecure +set rejected: SameSiteNoneInsecure$/m);
+    assert.match(output, /^ {2}\(no name\) +set rejected: SyntaxError, UnknownError$/m);
+    assert.match(output, /\+3 more not kept: bdg keeps 50 per request/);
+  });
+
+  void it('has no block when no cookie was blocked', () => {
+    const { blockedCookies: _b, blockedCookiesOmitted: _o, ...clean } = request;
+    assert.doesNotMatch(formatNetworkDetails(clean), /Blocked Cookies/);
+  });
+});

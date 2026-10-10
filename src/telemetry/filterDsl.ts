@@ -24,6 +24,7 @@ export type FilterType =
   | 'larger-than'
   | 'duration'
   | 'has-response-header'
+  | 'has-blocked-cookies'
   | 'is'
   | 'scheme';
 
@@ -57,6 +58,7 @@ const VALID_FILTER_TYPES: FilterType[] = [
   'larger-than',
   'duration',
   'has-response-header',
+  'has-blocked-cookies',
   'is',
   'scheme',
 ];
@@ -400,6 +402,13 @@ function matchesFilter(request: NetworkRequest, filter: ParsedFilter): boolean {
       return Object.keys(request.responseHeaders).some((h) => h.toLowerCase() === headerName);
     }
 
+    case 'has-blocked-cookies':
+      return (request.blockedCookies ?? []).some((cookie) =>
+        [cookie.name, cookie.kind, ...cookie.reasons].some((text) =>
+          matchesWildcard(text, filter.value)
+        )
+      );
+
     case 'is':
       if (filter.value === 'from-cache') {
         return request.fromCache === true || matchesCacheHeaders(request.responseHeaders);
@@ -444,6 +453,7 @@ Filter syntax:
   larger-than:100KB       Size threshold (B, KB, MB, GB)
   duration:>1s            Request time (ms or s; supports =, >=, <=, >, <; a bare value means at least)
   has-response-header:set-cookie
+  has-blocked-cookies:*   Chrome blocked a cookie (name, reason, set-rejected or not-sent)
   is:from-cache           Served from browser cache (or a CDN cache hit)
   is:running              In-progress requests
   is:failed               Requests that got no response (DNS, refused, aborted, blocked)

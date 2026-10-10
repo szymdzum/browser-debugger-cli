@@ -9,7 +9,11 @@ import type { NetworkRequest } from '@/types.js';
 import { getResourceTypeAbbr } from '@/ui/formatters/preview.js';
 import { getRequestState } from '@/ui/formatters/requestStatus.js';
 import { OutputFormatter, truncateUrl } from '@/ui/formatting.js';
-import { networkEvictedNote, type NetworkEvictionCounts } from '@/ui/messages/networkMessages.js';
+import {
+  COOKIE_BLOCKED_MARK,
+  networkEvictedNote,
+  type NetworkEvictionCounts,
+} from '@/ui/messages/networkMessages.js';
 
 export interface NetworkListOptions {
   verbose?: boolean;
@@ -168,8 +172,9 @@ function formatRequestLine(
   const size = formatSize(request.encodedDataLength).padStart(8);
   const time = formatDuration(request.duration).padStart(6);
   const url = options.verbose ? request.url : truncateUrl(request.url, 50);
+  const mark = request.blockedCookies?.length ? `  ${COOKIE_BLOCKED_MARK}` : '';
 
-  return `${id} ${start} ${status} ${method} ${type} ${size} ${time}  ${url}`;
+  return `${id} ${start} ${status} ${method} ${type} ${size} ${time}  ${url}${mark}`;
 }
 
 /**

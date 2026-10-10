@@ -52,7 +52,7 @@ import { navigatePage } from '@/runtime/page/navigation.js';
 import { takeScreenshot } from '@/runtime/page/screenshot.js';
 import { toDownloadInfo } from '@/telemetry/downloads.js';
 import { skippedBodyReason } from '@/telemetry/networkRetention.js';
-import type { NetworkRequest, WebSocketConnection } from '@/types.js';
+import type { BlockedCookie, NetworkRequest, WebSocketConnection } from '@/types.js';
 import { tabsNotTrackedWarning } from '@/ui/messages/commands.js';
 import { consoleMessageDroppedError } from '@/ui/messages/consoleMessages.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
@@ -122,6 +122,9 @@ interface NetworkPreview {
   errorText?: string;
   fromCache?: boolean;
   duration?: number;
+  /** Cookies Chrome blocked (names and reasons; `network list` marks and filters them) */
+  blockedCookies?: BlockedCookie[];
+  blockedCookiesOmitted?: number;
   requestHeaders?: Record<string, string>;
   responseHeaders?: Record<string, string>;
 }
@@ -151,6 +154,8 @@ function mapNetworkRequestToPreview(
     errorText: req.errorText,
     fromCache: req.fromCache,
     duration: req.duration,
+    blockedCookies: req.blockedCookies,
+    blockedCookiesOmitted: req.blockedCookiesOmitted,
     ...(withHeaders && {
       requestHeaders: req.requestHeaders,
       responseHeaders: req.responseHeaders,

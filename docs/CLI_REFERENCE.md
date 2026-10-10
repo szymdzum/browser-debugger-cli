@@ -175,6 +175,18 @@ A response body bdg did not capture is reported with the reason instead (`bodyNo
 
 `details network` shows the address Chrome connected to with its port (`Remote Address: 93.184.215.14:443`; `serverIPAddress` and `serverPort` in JSON). Behind a proxy that is the proxy's address. CDP has no proxy flag, so bdg guesses: a loopback address on another port than the URL's (its explicit port, else 80/443) for a host that is not this machine is labelled `127.0.0.1:9000 (loopback; likely a local proxy)`. A host mapped to loopback in `/etc/hosts` (`myapp.test`) is connected to on the URL's port and gets no label; a proxy on another machine cannot be told apart from the server. A header the server sent several times (CDP joins the values with newlines) is listed one value per line, and a value repeated verbatim once, with how often it was sent: `Strict-Transport-Security: max-age=63072000 (sent 2 times)`. `Set-Cookie` lines are all listed, repeated ones too. `--json` keeps the header as CDP reported it.
 
+**Blocked cookies.** A `Set-Cookie` in the response headers is not proof the cookie was stored, and a missing `Cookie` header has no explanation of its own. When Chrome blocked a cookie on the request, `details network` has a `Blocked Cookies` block after the response headers, one line per cookie with what happened and Chrome's reasons:
+
+```text
+Blocked Cookies:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  nosecure     set rejected: SameSiteNoneInsecure
+  wrongdomain  set rejected: InvalidDomain
+  tp_lax       not sent: SchemefulSameSiteLax
+```
+
+`set rejected` is a `Set-Cookie` of the response that Chrome did not store (`SameSiteNoneInsecure`: `SameSite=None` without `Secure`; `InvalidDomain`: a `Domain` the response's host cannot set; `SchemefulSameSiteLax` on a cross-site response; `SyntaxError`, ...); `not sent` is a stored cookie left out of the request (`SameSiteLax`/`SchemefulSameSiteLax`, `SameSiteStrict`, `SameSiteUnspecifiedTreatedAsLax` on a cross-site request, `SecureOnly` over http, `ThirdPartyPhaseout`, ...). JSON has `blockedCookies: [{ name, kind: "set-rejected" | "not-sent", reasons }]`. Cookies that do not apply to the URL (`DomainMismatch`, `PathMismatch`, `NotOnPath`) are left out: a page has dozens of those for its other domains and paths. Only names and reasons are kept, never values (the `Set-Cookie` and `Cookie` headers above still show what the server sent). A request keeps at most 50 blocked cookies; the rest are counted (`(+3 more not kept: bdg keeps 50 per request)`, JSON `blockedCookiesOmitted`). They come from Chrome's `requestWillBeSentExtraInfo.associatedCookies` and `responseReceivedExtraInfo.blockedCookies`. Cookies `document.cookie` could not set involve no request; `bdg console` lists those as Chrome Issues.
+
 ## DOM Commands
 
 ### Pages that replace built-ins
@@ -1048,6 +1060,11 @@ bdg network list --filter "duration:<=200ms"
 bdg network list --filter "has-response-header:set-cookie"
 bdg network list --filter "has-response-header:content-security-policy"
 
+# Filter by blocked cookies (see "Blocked cookies" under Get full details)
+bdg network list --filter "has-blocked-cookies:*"              # Any cookie blocked
+bdg network list --filter "has-blocked-cookies:not-sent"       # A stored cookie was not sent
+bdg network list --filter "has-blocked-cookies:*SameSite*"     # By reason (or cookie name)
+
 # Filter by state
 bdg network list --filter "is:from-cache"          # Cached responses
 bdg network list --filter "is:running"             # In-progress requests
@@ -1099,6 +1116,8 @@ bdg network list --json
 
 So a request's START in ms is `(sentTime - pageStart.sentTime) * 1000`, or `timestamp - pageStart.timestamp` without `sentTime`.
 
+A request on which Chrome blocked a cookie ends with `⚠ cookie blocked` (`bdg details network <id>` says which and why; `network list --json` has the `blockedCookies` entries).
+
 ```text
 [ID]         START STS METH    TYP     SIZE   TIME  URL
 [17380.1]    +0.0s 200 GET     DOC   1.4 KB  345ms  www.saucedemo.com
@@ -1117,6 +1136,7 @@ So a request's START in ms is `(sentTime - pageStart.sentTime) * 1000`, or `time
 | `resource-type:<types>` | CDP resource type(s) | `resource-type:XHR,Fetch` |
 | `larger-than:<size>` | Response size threshold | `larger-than:1MB`, `larger-than:100KB` |
 | `has-response-header:<name>` | Has specific header | `has-response-header:set-cookie` |
+| `has-blocked-cookies:<pattern>` | Chrome blocked a cookie whose name, reason or kind (`set-rejected`, `not-sent`) matches; `*` for any | `has-blocked-cookies:*`, `has-blocked-cookies:InvalidDomain`, `has-blocked-cookies:session*` |
 | `is:from-cache` | Cached responses | |
 | `is:running` | In-progress requests | |
 | `is:failed` | Requests that got no response (DNS, refused, aborted, blocked) | |
