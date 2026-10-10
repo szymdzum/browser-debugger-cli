@@ -18,7 +18,8 @@ type Mismatch = FillValueMismatch | undefined;
 
 const pageCheck = vm.runInNewContext(`(${FILL_VALUE_MISMATCH_JS})`) as (
   field: Record<string, unknown>,
-  expected: string
+  expected: string,
+  secret?: boolean
 ) => Mismatch;
 
 /**
@@ -26,10 +27,15 @@ const pageCheck = vm.runInNewContext(`(${FILL_VALUE_MISMATCH_JS})`) as (
  *
  * @param field - Field-like object
  * @param expected - Value given to fill
+ * @param secret - Whether `dom query` masks the field
  * @returns Mismatch, or undefined when the value matches
  */
-function valueMismatch(field: Record<string, unknown>, expected: string): Mismatch {
-  const result = pageCheck(field, expected);
+function valueMismatch(
+  field: Record<string, unknown>,
+  expected: string,
+  secret?: boolean
+): Mismatch {
+  const result = pageCheck(field, expected, secret);
   return result && { ...result };
 }
 
@@ -51,19 +57,28 @@ void describe('FILL_VALUE_MISMATCH_JS', () => {
       'secret_sauce'
     );
     assert.deepEqual(mismatch, {
-      expected: '********',
-      actual: '********',
+      expected: '••••',
+      actual: '••••',
       expectedLength: 12,
       actualLength: 6,
     });
     assert.equal(
       valueMismatchWarning(mismatch as FillValueMismatch),
-      "The password field's value differs from the one filled (length 6, expected 12); the page may have rejected or changed the input"
+      "The field's value differs from the one filled (masked: length 6, expected 12); the page may have rejected or changed the input"
     );
     assert.equal(
       valueMismatch({ localName: 'input', type: 'password', value: '' }, 'x')?.actual,
       ''
     );
+  });
+
+  void it('masks any field dom query masks (#592)', () => {
+    assert.deepEqual(valueMismatch({ localName: 'input', type: 'text', value: '12' }, 'ab12', true), {
+      expected: '••••',
+      actual: '••••',
+      expectedLength: 4,
+      actualLength: 2,
+    });
   });
 
   void it('compares checkboxes by state and contenteditable text without extra spaces', () => {
