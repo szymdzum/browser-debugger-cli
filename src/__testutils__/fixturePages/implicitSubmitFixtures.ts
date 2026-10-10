@@ -7,7 +7,9 @@
  * `<textarea>` and a submit button (`#notes`), a sign-up form with a
  * required email, a required `minlength=8` password and a required checkbox
  * (`#signup`, the issue's page), a form whose submit button is disabled
- * (`#off`, which Enter does not submit), and `<x-card>`, whose closed
+ * (`#off`, which Enter does not submit), a form with two text fields
+ * whose only submit button is an `<input type=image>` (`#pics`; image
+ * inputs are not in `form.elements`), and `<x-card>`, whose closed
  * shadow root holds a form with a required field labelled "Card" and a
  * submit button. Every form's `submit` is noted in `window.submitted` and
  * canceled. The other cases (a submit button outside the form, a
@@ -35,6 +37,9 @@ const IMPLICIT_SUBMIT_HTML = `<!doctype html><title>implicit submit</title>
   <label><input name="terms" type="checkbox" required> I agree</label>
   <button id="signup-go">Sign up</button></form>
 <form id="off"><input name="pin" required><button id="off-go" disabled>Go</button></form>
+<form id="pics"><input name="t1" required><input name="t2">
+  <input type="image" id="pics-go" alt="Go" width="40" height="20"
+    src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"></form>
 <x-card></x-card>
 <script>
   customElements.define('x-card', class extends HTMLElement {

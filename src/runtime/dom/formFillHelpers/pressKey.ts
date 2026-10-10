@@ -14,7 +14,7 @@ import {
   unknownKeyError,
 } from '@/errors/messages.js';
 import type { PressKeyResult } from '@/ipc/protocol/domTypes.js';
-import { CLEAR_SUBMIT_PROBE_JS, IMPLICIT_SUBMIT_PROBE_JS } from '@/runtime/dom/blockedSubmit.js';
+import { CLEAR_SUBMIT_PROBE_JS, KEY_SUBMIT_PROBE_JS } from '@/runtime/dom/blockedSubmit.js';
 import { DISABLED_CAUSE_JS, ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
 import {
   throwIfInvalidSelector,
@@ -44,20 +44,23 @@ export interface PressKeyOptions {
 
 export type { PressKeyResult } from '@/ipc/protocol/domTypes.js';
 
+/** Keys (by code) that can submit a form: Enter, and Space on a submit button */
+const SUBMIT_KEYS = ['Enter', 'Space'];
+
 /**
  * A key press's result, with whether its script left a probe for the submit
- * Enter starts (`readBlockedSubmit` reads it; not part of the CLI result)
+ * the key starts (`readBlockedSubmit` reads it; not part of the CLI result)
  */
 export type PressKeyOutcome = PressKeyResult & { submitProbe?: true };
 
 /**
- * Page-side focus of the target, which reports the element. With
- * `probeSubmit` (Enter) it installs a probe for the submit Enter starts
- * ({@link IMPLICIT_SUBMIT_PROBE_JS}) on the focused element, after removing
- * any probe an earlier action left.
+ * Page-side focus of the target, which reports the element. For
+ * `submitKey` (Enter or Space, else null) it installs a probe for the
+ * submit the key starts ({@link KEY_SUBMIT_PROBE_JS}) on the focused
+ * element, after removing any probe an earlier action left.
  */
 const FOCUS_ELEMENT_SCRIPT = `
-(function(selector, parts, index, probeSubmit) {
+(function(selector, parts, index, submitKey) {
   ${CLEAR_SUBMIT_PROBE_JS}
   const allMatches = (${FIND_ELEMENTS_JS})(selector, parts);
   if (allMatches.length === 0) {
@@ -112,7 +115,7 @@ const FOCUS_ELEMENT_SCRIPT = `
     }
   }
 
-  const submitProbe = probeSubmit && !pageLevel && (${IMPLICIT_SUBMIT_PROBE_JS})(el);
+  const submitProbe = submitKey !== null && !pageLevel && (${KEY_SUBMIT_PROBE_JS})(el, submitKey);
 
   return {
     success: true,
@@ -149,8 +152,8 @@ const FOCUS_FAILURES: Record<string, { exitCode: number; suggestion: string }> =
  * browser performs the key's default action exactly like a physical key:
  * the character is inserted (with trusted keypress/input events), Enter adds
  * a newline in a textarea or submits the form once from an input, and Tab
- * moves focus. No synthetic events are fired. Before Enter, a probe is left
- * on the form Enter would submit (`submitProbe` in the result), so the
+ * moves focus. No synthetic events are fired. Before Enter (or Space on a
+ * submit button), a probe is left on the form the key would submit (`submitProbe` in the result), so the
  * result can say when validation blocked the submit.
  */
 export async function pressKeyElement(
@@ -174,8 +177,8 @@ export async function pressKeyElement(
   const implicitShift = impliesShift(keyName) ? MODIFIER_FLAGS.shift : 0;
   const modifierFlags = parseModifiers(options.modifiers) | implicitShift;
   const indexArg = options.index ?? 'null';
-  const probeSubmit = keyDef.key === 'Enter';
-  const focusExpression = `(${FOCUS_ELEMENT_SCRIPT})(${selectorArgsJS(selector)}, ${indexArg}, ${probeSubmit})`;
+  const submitKey = SUBMIT_KEYS.includes(keyDef.code) ? keyDef.code : null;
+  const focusExpression = `(${FOCUS_ELEMENT_SCRIPT})(${selectorArgsJS(selector)}, ${indexArg}, ${JSON.stringify(submitKey)})`;
 
   try {
     const focusResponse = await cdp.send('Runtime.evaluate', {

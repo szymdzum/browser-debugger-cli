@@ -1,19 +1,22 @@
 /**
  * Enter blocked by validation smoke test (#591).
  *
- * `dom pressKey <field> Enter` in a form the browser submits implicitly
- * (it has a submit button, or a single text field) and whose constraint
+ * `dom pressKey <field> Enter` (or Space on a submit button) in a form
+ * the browser submits implicitly (it has a submit button, or a single text
+ * field) and whose constraint
  * validation blocks the submit is reported like such a `dom click`:
  * `⚠ Key Pressed (submit blocked)`, `Submit blocked: <field>: <message>`,
  * JSON `submitBlocked`, exit 0. On `/submit-blocked`: a light form, a
  * submit button outside its form (`form` attribute), an image input, two
- * invalid fields, Enter on the submit button itself and `--times 2`. On
- * `/implicit-submit`: a single field without a button, the sign-up form of
+ * invalid fields, Enter or Space on the submit button itself and
+ * `--times 2`. On `/implicit-submit`: a single field without a button, two
+ * fields with an image input as the default button, the sign-up form of
  * the issue (three invalid fields) and a form in a closed shadow root.
  * Unchanged: a valid form, a `novalidate` form, a default button whose
  * click the page cancels, a submit whose handler empties its field, a
  * `<textarea>`, a form with two text fields and no button, a disabled
- * submit button, other keys, a `type=button` and the body.
+ * submit button, other keys (Space in a text field too), a `type=button`
+ * and the body.
  *
  * Each test loads its page again (`page navigate`, which waits for the
  * load). The checks read the page's own record of submissions
@@ -158,6 +161,25 @@ void describe('dom pressKey Enter in a form with a submit button', () => {
     assert.deepEqual(data.submitBlocked, [{ field: 'city', message: requiredMessage }]);
   });
 
+  void it('reports Space on a submit button, which clicks it on keyup', async () => {
+    const output = await bdg(['dom', 'pressKey', '#light-go', 'Space']);
+    assert.match(output, /^⚠ Key Pressed \(submit blocked\)/);
+    assert.ok(
+      output.includes(`Submit blocked: city: ${String(requiredMessage)}`),
+      `no blocked line naming city: ${output}`
+    );
+    const data = await pressKeyJson('#pictured-go', 'Space');
+    assert.deepEqual(data.submitBlocked, [{ field: 'term', message: requiredMessage }]);
+    assert.deepEqual(await evaluate('window.submitted'), []);
+  });
+
+  void it('leaves Space in a text field and on a type=button unchanged', async () => {
+    assert.equal((await pressKeyJson('[name=city]', 'Space')).submitBlocked, undefined);
+    assert.equal(await evaluate("document.querySelector('[name=city]').value"), ' ');
+    assert.equal((await pressKeyJson('#light-plain', 'Space')).submitBlocked, undefined);
+    assert.deepEqual(await evaluate('window.submitted'), []);
+  });
+
   void it('reports a blocked submit once for --times 2', async () => {
     const output = await bdg(['dom', 'pressKey', '[name=city]', 'Enter', '--times', '2']);
     assert.match(output, /^⚠ Key Pressed \(submit blocked\)/);
@@ -209,6 +231,12 @@ void describe('dom pressKey Enter in forms without a usable submit button', () =
       output.includes(`Submit blocked: nick: ${String(requiredMessage)}`),
       `no blocked line naming nick: ${output}`
     );
+    assert.deepEqual(await evaluate('window.submitted'), []);
+  });
+
+  void it('reports a form whose default button is an image input, with two text fields', async () => {
+    const data = await pressKeyJson('[name=t1]', 'Enter');
+    assert.deepEqual(data.submitBlocked, [{ field: 't1', message: requiredMessage }]);
     assert.deepEqual(await evaluate('window.submitted'), []);
   });
 

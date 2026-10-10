@@ -1,9 +1,10 @@
 /**
- * Whether a click on a submit button, or Enter in a form field, was blocked
+ * Whether a click on a submit button, or Enter in a form field (or Space on
+ * a submit button), was blocked
  * by the browser's constraint validation, and by which fields: the click
  * script installs a probe on the button's form ({@link SUBMIT_PROBE_JS}),
  * the key press script one for the submit Enter starts
- * ({@link IMPLICIT_SUBMIT_PROBE_JS}), and the action's result reads it
+ * ({@link KEY_SUBMIT_PROBE_JS}), and the action's result reads it
  * ({@link readBlockedSubmit}). The fields are listed the way
  * `dom submit` lists them ({@link INVALID_FIELDS_JS}).
  */
@@ -139,34 +140,38 @@ export const SUBMIT_PROBE_JS = `(el) => {
 const IMPLICIT_SUBMIT_TYPES = ['text', 'search', 'url', 'tel', 'email', 'password', 'number'];
 
 /**
- * Page-side probe installed before Enter is pressed on the focused `el`,
- * when Enter submits a form the browser validates, as Chrome submits
- * implicitly:
- * - on a submit button, Enter clicks it: the click probe
- *   ({@link SUBMIT_PROBE_JS}) on it;
- * - in a field of a form with a submit button, Enter clicks the form's
- *   first one (its default button; a disabled one gets no click): the
- *   click probe on that button;
- * - in a text field ({@link IMPLICIT_SUBMIT_TYPES}) of a form without a
- *   submit button and with no other text field, Enter submits the form:
- *   a probe noting the Enter `keypress` on the field (a canceled one
- *   submits nothing), when the form has no `novalidate`.
- * A `<textarea>` (Enter adds a line), a form with several text fields and
- * no button, and elements outside a form get no probe. Evaluates to whether
- * it was installed; like the click probe it never fails the key press.
+ * Page-side probe installed before a key press on the focused `el`, when
+ * the key submits a form the browser validates, as Chrome submits:
+ * - on a submit button, Enter and Space click it (Space on keyup): the
+ *   click probe ({@link SUBMIT_PROBE_JS}) on it;
+ * - for Enter in a field of a form with a submit button, Chrome clicks the
+ *   form's first one in tree order (its default button, an image input
+ *   too, which `form.elements` leaves out; a disabled one gets no click):
+ *   the click probe on that button;
+ * - for Enter in a text field ({@link IMPLICIT_SUBMIT_TYPES}) of a form
+ *   without a submit button and with no other text field, the form is
+ *   submitted: a probe noting the Enter `keypress` on the field (a
+ *   canceled one submits nothing), when the form has no `novalidate`.
+ * Other keys, a `<textarea>` (Enter adds a line), a form with several text
+ * fields and no button, and elements outside a form get no probe.
+ * Evaluates to whether it was installed; like the click probe it never
+ * fails the key press.
  */
-export const IMPLICIT_SUBMIT_PROBE_JS = `(el) => {
+export const KEY_SUBMIT_PROBE_JS = `(el, key) => {
   try {
     const members = ${FORM_MEMBERS_JS};
     const isSubmitButton = ${IS_SUBMIT_BUTTON_JS};
     if (isSubmitButton(el)) return (${SUBMIT_PROBE_JS})(el);
-    const form = el.localName === 'input' ? el.form : null;
+    const form = key === 'Enter' && el.localName === 'input' ? el.form : null;
     if (!form) return false;
-    const controls = members.elements(form);
-    const defaultButton = controls.find(isSubmitButton);
+    const root = el.getRootNode();
+    const query = (root.nodeType === 9 ? Document : DocumentFragment).prototype.querySelectorAll;
+    const defaultButton = Array.from(query.call(root, 'button, input[type=submit], input[type=image]'))
+      .find((c) => c.form === form && isSubmitButton(c));
     if (defaultButton) return (${SUBMIT_PROBE_JS})(defaultButton);
     const triggers = ${JSON.stringify(IMPLICIT_SUBMIT_TYPES)};
-    const triggerCount = controls.filter((c) => c.localName === 'input' && triggers.includes(c.type)).length;
+    const triggerCount = members.elements(form)
+      .filter((c) => c.localName === 'input' && triggers.includes(c.type)).length;
     if (!triggers.includes(el.type) || triggerCount !== 1 || members.noValidate(form)) return false;
     return (${INSTALL_SUBMIT_PROBE_JS})(members, el, 'keypress', form);
   } catch (error) {
@@ -176,7 +181,7 @@ export const IMPLICIT_SUBMIT_PROBE_JS = `(el) => {
 
 /**
  * Reads and removes the probe {@link SUBMIT_PROBE_JS} or
- * {@link IMPLICIT_SUBMIT_PROBE_JS} left: the form's invalid fields when its
+ * {@link KEY_SUBMIT_PROBE_JS} left: the form's invalid fields when its
  * trigger (a click on the button, an Enter keypress on the field) reached
  * it, the page did not cancel it, the form fired no `submit` and it still
  * has invalid fields; null otherwise (no probe, a submit, a canceled
@@ -232,7 +237,7 @@ export function boundInvalidFields(fields: InvalidField[]): BoundedInvalidFields
 }
 
 /**
- * The fields that blocked the submit a click or Enter started, read from
+ * The fields that blocked the submit a click or key press started, read from
  * the probe the action left ({@link READ_SUBMIT_PROBE_SCRIPT}) within {@link READ_TIMEOUT_MS},
  * bounded ({@link boundInvalidFields}).
  *
