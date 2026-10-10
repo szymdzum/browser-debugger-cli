@@ -1205,7 +1205,7 @@ function submitWaitDetail(waitNavigation: boolean, blockers: SubmitBlockers): st
  * @param fields - Invalid fields with the browser's messages
  * @returns e.g. "Form has invalid fields - email: Please fill out this field."
  */
-export function invalidFormMessage(fields: InvalidField[]): string {
+export function invalidFormMessage(fields: InvalidField[], _omitted = 0): string {
   return `Form has invalid fields - ${invalidFieldsText(fields)}`;
 }
 

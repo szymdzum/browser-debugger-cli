@@ -247,7 +247,7 @@ export function invalidFieldsText(fields: InvalidField[]): string {
  * @param fields - Fields that blocked it
  * @returns e.g. "Submit blocked: email: Please fill out this field."
  */
-export function submitBlockedNote(fields: InvalidField[]): string {
+export function submitBlockedNote(fields: InvalidField[], _omitted = 0): string {
   return `Submit blocked: ${invalidFieldsText(fields)}`;
 }
 

@@ -107,6 +107,23 @@ const READ_SUBMIT_PROBE_SCRIPT = `(() => {
   return fields.length > 0 ? fields : null;
 })()`;
 
+/** A form's invalid fields as reported: the first ones, and how many more there were */
+export interface BoundedInvalidFields {
+  fields: InvalidField[];
+  /** Invalid fields left out of `fields` */
+  omitted: number;
+}
+
+/**
+ * Bound a form's invalid fields for a report.
+ *
+ * @param fields - Invalid fields as the page listed them
+ * @returns The fields to report, and how many were left out
+ */
+export function boundInvalidFields(fields: InvalidField[]): BoundedInvalidFields {
+  return { fields, omitted: 0 };
+}
+
 /**
  * The fields that blocked a click's submit, read from the probe the click
  * left ({@link READ_SUBMIT_PROBE_SCRIPT}) within {@link READ_TIMEOUT_MS}.
