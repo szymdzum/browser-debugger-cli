@@ -2037,6 +2037,26 @@ export function pressNotReceivedError(
 }
 
 /**
+ * `dom fill` typed the text, but the page had moved the focus and it went
+ * to another field (named, never with the text).
+ *
+ * @param target - The field filled: its selector, and its description
+ *   (e.g. `input#password "Password"`) when known
+ * @param receiver - The field that got the text instead
+ * @returns Error with suggestion
+ */
+export function textTypedElsewhereError(
+  target: { selector: string; element?: string | undefined },
+  receiver: string
+): ErrorWithSuggestion {
+  const field = target.element ?? target.selector;
+  return {
+    message: `Did not fill ${field}: the page moved the focus to ${receiver} as bdg typed the text, so ${receiver} got it instead`,
+    suggestion: `Clear ${receiver} if it should not keep the text, and see what moves the focus (focus, beforeinput) with ${sessionCommand(`bdg dom listeners ${shellQuote(target.selector)}`)}`,
+  };
+}
+
+/**
  * Key press failed.
  */
 export function keyPressFailedError(details: string): ErrorWithSuggestion {

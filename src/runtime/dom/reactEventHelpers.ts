@@ -253,6 +253,74 @@ const FILL_DONE_JS = `(el, state) => {
 }`;
 
 /**
+ * Page-side: the documents a field's typed text can be seen in, from its
+ * own up through the same-origin frames that hold it (a cross-origin parent
+ * ends the list).
+ */
+const FIELD_DOCUMENTS_JS = `(el) => {
+  const documents = [el.ownerDocument];
+  for (;;) {
+    let frame = null;
+    try {
+      frame = documents[documents.length - 1].defaultView.frameElement;
+    } catch (error) {
+      frame = null;
+    }
+    if (!frame) return documents;
+    documents.push(frame.ownerDocument);
+  }
+}`;
+
+/**
+ * Page-side: whether an element has the focus all the way up, so typed
+ * text goes to it: it is the active element of its shadow root or document,
+ * each shadow host above it is the active element of its own root, and each
+ * same-origin frame holding it is the active element of its parent
+ * document (a cross-origin parent cannot be checked and is trusted).
+ */
+export const DEEP_FOCUSED_JS = `(el) => {
+  let node = el;
+  for (;;) {
+    const root = node.getRootNode();
+    if (root.activeElement !== node) return false;
+    if (root.host) {
+      node = root.host;
+      continue;
+    }
+    let frame = null;
+    try {
+      frame = root.defaultView && root.defaultView.frameElement;
+    } catch (error) {
+      frame = null;
+    }
+    if (!frame) return true;
+    node = frame;
+  }
+}`;
+
+/**
+ * Page-side: the field typed text would go to, from the topmost document
+ * {@link FIELD_DOCUMENTS_JS} reaches down through open shadow roots and
+ * same-origin frames, when it is an editable element; else null.
+ */
+const FOCUSED_FIELD_JS = `(documents) => {
+  let active = documents[documents.length - 1].activeElement;
+  for (;;) {
+    let inner = active && active.shadowRoot ? active.shadowRoot.activeElement : null;
+    if (!inner && active && active.localName === 'iframe') {
+      try {
+        inner = active.contentDocument && active.contentDocument.activeElement;
+      } catch (error) {
+        inner = null;
+      }
+    }
+    if (!inner) break;
+    active = inner;
+  }
+  return active && (/^(input|textarea)$/.test(active.localName) || active.isContentEditable) ? active : null;
+}`;
+
+/**
  * Text field types whose value `dom fill` enters as a user edit
  * ({@link REACT_FILL_SCRIPT}): those `minlength` and `maxlength` apply to.
  */
@@ -277,7 +345,7 @@ const USER_EDIT_TYPES = ['text', 'search', 'url', 'tel', 'email', 'password'];
  * leaves it in `window.__bdgFillPending`, and evaluates to a result with
  * `insertText: true`. The caller then types the value with CDP
  * `Input.insertText` (Chrome fires the trusted `beforeinput` and `input`
- * events, and `change` on blur) and runs {@link FILL_INSERTED_SCRIPT}.
+ * events, and `change` on blur) and runs {@link FILL_INSERTED_FUNCTION}.
  * A value over `maxlength` is refused before that (a user could not type
  * it). Other fields (number, date, select, checkbox, contenteditable) get
  * the value through the native setter and events, as below.
@@ -544,21 +612,34 @@ export const REACT_FILL_SCRIPT = `
       };
     }
 
-    const userEdit = value !== '' && el.getRootNode().activeElement === el &&
+    const userEdit = value !== '' && (${DEEP_FOCUSED_JS})(el) &&
       (tagName === 'textarea' || ${JSON.stringify(USER_EDIT_TYPES)}.includes(inputType));
     if (userEdit) {
       if (previous !== '') setValue('');
       const pending = {
         el: el, value: value, expected: expected, before: fieldsBefore, warnings: warnings,
-        blur: options.blur, multiple: multiple, sawBeforeinput: false, sawInput: false
+        blur: options.blur, multiple: multiple, sawBeforeinput: false, sawInput: false,
+        documents: (${FIELD_DOCUMENTS_JS})(el), elsewhere: null
       };
       const sawBeforeinput = () => { pending.sawBeforeinput = true; };
       const sawInput = () => { pending.sawInput = true; };
+      // Trusted input in another field: the page moved the focus and the
+      // text went there (seen from outside, a field in a shadow root is its host)
+      const ours = (node) => {
+        for (let n = el; n; n = n.getRootNode().host) if (n === node) return true;
+        return false;
+      };
+      const sawElsewhere = (event) => {
+        const target = event.composedPath()[0];
+        if (event.isTrusted && !pending.elsewhere && !ours(target)) pending.elsewhere = target;
+      };
       el.addEventListener('beforeinput', sawBeforeinput, true);
       el.addEventListener('input', sawInput, true);
+      pending.documents.forEach((d) => d.addEventListener('input', sawElsewhere, true));
       pending.stop = () => {
         el.removeEventListener('beforeinput', sawBeforeinput, true);
         el.removeEventListener('input', sawInput, true);
+        pending.documents.forEach((d) => d.removeEventListener('input', sawElsewhere, true));
       };
       window.__bdgFillPending = pending;
       const secret = (${FILL_SECRET_JS})(el);
@@ -594,23 +675,43 @@ export const REACT_FILL_SCRIPT = `
 `;
 
 /**
- * Page script finishing a fill whose text was typed with `Input.insertText`
- * ({@link REACT_FILL_SCRIPT}, `window.__bdgFillPending`). When the field got
- * neither the `input` event nor any text (the page cancelled `beforeinput`,
- * or the text never reached it) the value is set as for other fields: the
- * native setter, `input` (after a `beforeinput` when the field got none)
- * and `change`, with the cancelled-`beforeinput` warning when it was
- * cancelled. `change` is also fired when the field is not blurred (a blur
- * fires it for typed text). Evaluates to {@link FILL_DONE_JS}'s result, or
- * null when nothing was pending (the page navigated).
+ * Page script evaluating to whether the field a fill left for typing
+ * (`window.__bdgFillPending`) still has the focus ({@link DEEP_FOCUSED_JS}),
+ * checked right before the text is typed.
  */
-export const FILL_INSERTED_SCRIPT = `(() => {
+export const FILL_FOCUS_CHECK_SCRIPT = `(() => {
+  const pending = window.__bdgFillPending;
+  return Boolean(pending) && (${DEEP_FOCUSED_JS})(pending.el);
+})()`;
+
+/**
+ * Page function finishing a fill whose text was to be typed with
+ * `Input.insertText` ({@link REACT_FILL_SCRIPT}, `window.__bdgFillPending`),
+ * called with why it was not typed (`unfocused`: the field lost the focus
+ * before; `failed`: typing failed) or null. When the text went to another
+ * field (a trusted `input` there, or another field has the focus and this
+ * one got nothing) it evaluates to `{ typedInto }` naming that field, and
+ * nothing else is done. When it was not typed, or the field got neither the
+ * `input` event nor any text (the page cancelled `beforeinput`, or the text
+ * never reached it), the value is set as for other fields: the native
+ * setter, `input` (after a `beforeinput` when the field got none) and
+ * `change`, with the cancelled-`beforeinput` warning when it was cancelled.
+ * `change` is also fired when the field is not blurred (a blur fires it for
+ * typed text). Evaluates to {@link FILL_DONE_JS}'s result, or null when
+ * nothing was pending (the page navigated).
+ */
+export const FILL_INSERTED_FUNCTION = `(reason) => {
   const pending = window.__bdgFillPending;
   delete window.__bdgFillPending;
   if (!pending) return null;
   pending.stop();
   const el = pending.el;
-  const inserted = pending.sawInput || String(el.value) !== '';
+  const inserted = !reason && (pending.sawInput || String(el.value) !== '');
+  if (!reason && !inserted) {
+    const focused = (${FOCUSED_FIELD_JS})(pending.documents);
+    const receiver = pending.elsewhere || (focused !== el ? focused : null);
+    if (receiver) return { typedInto: (${ELEMENT_IDENTITY_JS})(receiver) };
+  }
   if (!inserted) {
     const cancelled = pending.sawBeforeinput || !(${FIRE_INPUT_EVENT_JS})(el, 'beforeinput', pending.value);
     if (cancelled) pending.warnings.push(${JSON.stringify(FILL_BEFOREINPUT_CANCELLED_WARNING)});
@@ -619,7 +720,7 @@ export const FILL_INSERTED_SCRIPT = `(() => {
   }
   if (!inserted || pending.blur === false) (${FIRE_EVENT_JS})(el, 'change');
   return (${FILL_DONE_JS})(el, pending);
-})()`;
+}`;
 
 /**
  * Page-side search for the field a moved value went to: one of the fields

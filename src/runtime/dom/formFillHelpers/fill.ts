@@ -18,6 +18,7 @@ import {
   unexpectedResponseFormatError,
   operationFailedError,
   pressNotReceivedError,
+  textTypedElsewhereError,
   unreachableElementError,
 } from '@/errors/messages.js';
 import type { FillValueMismatch } from '@/ipc/protocol/domTypes.js';
@@ -30,7 +31,8 @@ import {
   withValueMismatchWarning,
 } from '@/runtime/dom/formFillHelpers/shared.js';
 import {
-  FILL_INSERTED_SCRIPT,
+  FILL_FOCUS_CHECK_SCRIPT,
+  FILL_INSERTED_FUNCTION,
   FILL_READ_BACK_SCRIPT,
   FIRE_EVENT_JS,
   REACT_FILL_SCRIPT,
@@ -120,24 +122,28 @@ export async function fillElement(
   }
 }
 
-/** What {@link FILL_INSERTED_SCRIPT} evaluates to */
-interface FilledField {
-  value: string;
-  sensitive?: true;
-  warning?: string;
-}
+/** What {@link FILL_INSERTED_FUNCTION} evaluates to */
+type FilledField =
+  | { value: string; sensitive?: true; warning?: string; typedInto?: undefined }
+  | { typedInto: string };
+
+/** Why a fill's text was set by script instead of typed */
+type NotTypedReason = 'unfocused' | 'failed';
 
 /**
- * Type the value into the field the fill script focused and emptied, with
- * CDP `Input.insertText`, then finish the fill ({@link FILL_INSERTED_SCRIPT}):
- * Chrome takes typed text as a user edit, so `minlength` applies. When
- * nothing was pending any more (the page navigated) the fill script's
- * result stands.
+ * Type the value with CDP `Input.insertText`, unless the field the fill
+ * script focused and emptied lost the focus meanwhile
+ * ({@link FILL_FOCUS_CHECK_SCRIPT}); then finish the fill
+ * ({@link FILL_INSERTED_FUNCTION}). Chrome takes typed text as a user edit,
+ * so `minlength` applies. When nothing was pending any more (the page
+ * navigated) the fill script's result stands.
  *
  * @param cdp - CDP connection
  * @param value - Text to type
  * @param pending - Result of the fill script, with `insertText`
  * @returns Fill result
+ * @throws CommandError (exit 90) when the page moved the focus and the text
+ *   went to another field
  */
 async function insertAsUser(
   cdp: CDPConnection,
@@ -145,18 +151,25 @@ async function insertAsUser(
   pending: FillOutcome
 ): Promise<FillResult> {
   const { insertText: _typed, ...result } = pending;
-  try {
-    await cdp.send('Input.insertText', { text: value });
-  } catch (error) {
-    log.debug(`Text not typed: ${getErrorMessage(error)}`);
-  }
+  const reason = await typeText(cdp, value);
   const response = (await cdp.send('Runtime.evaluate', {
-    expression: FILL_INSERTED_SCRIPT,
+    expression: `(${FILL_INSERTED_FUNCTION})(${JSON.stringify(reason)})`,
     returnByValue: true,
     userGesture: true,
   })) as { result?: { value?: unknown } };
   const done = response.result?.value as FilledField | null | undefined;
   if (!done) return result;
+  if (done.typedInto !== undefined) {
+    const err = textTypedElsewhereError(
+      { selector: result.selector ?? '', element: result.element },
+      done.typedInto
+    );
+    throw new CommandError(
+      err.message,
+      { suggestion: err.suggestion },
+      EXIT_CODES.RESOURCE_CONFLICT
+    );
+  }
   const { sensitive: _sensitive, warning: _warning, ...field } = result;
   return {
     ...field,
@@ -164,6 +177,28 @@ async function insertAsUser(
     ...(done.sensitive && { sensitive: true }),
     ...(done.warning && { warning: done.warning }),
   };
+}
+
+/**
+ * Type the text into the pending field when it still has the focus.
+ *
+ * @param cdp - CDP connection
+ * @param value - Text to type
+ * @returns Null when typed, else why not
+ */
+async function typeText(cdp: CDPConnection, value: string): Promise<NotTypedReason | null> {
+  const check = (await cdp.send('Runtime.evaluate', {
+    expression: FILL_FOCUS_CHECK_SCRIPT,
+    returnByValue: true,
+  })) as { result?: { value?: unknown } };
+  if (check.result?.value !== true) return 'unfocused';
+  try {
+    await cdp.send('Input.insertText', { text: value });
+    return null;
+  } catch (error) {
+    log.debug(`Text not typed: ${getErrorMessage(error)}`);
+    return 'failed';
+  }
 }
 
 /** How long reading a filled value back may take before it is skipped */

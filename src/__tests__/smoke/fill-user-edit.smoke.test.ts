@@ -241,3 +241,76 @@ void describe('dom fill echoes secret fields masked, as dom query does (#592)', 
     assert.match(await bdg(['dom', 'fill', '#pw', 'secret99']), /^Value: +••••$/m);
   });
 });
+
+void describe('dom fill when the page moves the focus as it types (#592)', () => {
+  /** Value of a field on the page, by id */
+  const valueOf = async (id: string): Promise<unknown> =>
+    evaluate(`document.getElementById('${id}').value`);
+
+  /**
+   * Fill and return the exit code and output.
+   *
+   * @param selector - Field to fill
+   * @param value - Value
+   * @returns Exit code and combined output
+   */
+  const fill = async (
+    selector: string,
+    value: string
+  ): Promise<{ exit: number; output: string }> => {
+    const result = await runCommand('dom', ['fill', selector, value], { timeout: 60000 });
+    return { exit: result.exitCode, output: `${result.stdout}${result.stderr}` };
+  };
+
+  beforeEach(async () => {
+    await bdg(['page', 'navigate', `${fixture.url}fill-focus-steal`]);
+  });
+
+  void it('fails (exit 90) naming the field that got the text, never echoing it', async () => {
+    for (const id of ['bi', 'bip']) {
+      const { exit, output } = await fill(`#${id}`, 'SECRET99');
+      assert.equal(exit, 90, output);
+      assert.match(output, new RegExp(`Did not fill input#${id} .*moved the focus to input#vis`));
+      assert.ok(!output.includes('SECRET99'), `the text is echoed: ${output}`);
+      assert.equal(await valueOf(id), '', 'no value is set in the field asked for');
+      assert.equal(await valueOf('vis'), 'SECRET99', 'the page put the text in #vis');
+      await evaluate("document.getElementById('vis').value = ''");
+    }
+  });
+
+  void it('never reports success while the text sits in another field (focus moved 30 ms later)', async () => {
+    for (const id of ['ta', 'tp']) {
+      const { exit, output } = await fill(`#${id}`, 'SECRET99');
+      if (id === 'tp') assert.ok(!output.includes('SECRET99'), `the password is echoed: ${output}`);
+      if (exit === 0) {
+        assert.equal(await valueOf(id), 'SECRET99');
+        assert.equal(await valueOf('vis'), '', `success, but #vis got the text: ${output}`);
+      } else {
+        assert.equal(exit, 90, output);
+        assert.match(output, /moved the focus to input#vis/);
+      }
+      await bdg(['page', 'navigate', `${fixture.url}fill-focus-steal`]);
+    }
+  });
+
+  void it('sets the value without typing when the field lost the focus before', async () => {
+    const { exit, output } = await fill('#mt', 'Ada');
+    assert.equal(exit, 0, output);
+    assert.equal(await valueOf('mt'), 'Ada');
+    assert.equal(await valueOf('vis'), '');
+  });
+
+  void it('fills one-digit code fields whose input moves the focus to the next', async () => {
+    for (const [index, digit] of ['4', '2', '7', '1'].entries()) {
+      const { exit, output } = await fill(`#otp-${index + 1}`, digit);
+      assert.equal(exit, 0, output);
+      assert.match(output, /^✓ Element Filled/);
+    }
+    assert.deepEqual(
+      await evaluate(
+        "['otp-1', 'otp-2', 'otp-3', 'otp-4', 'vis'].map((id) => document.getElementById(id).value)"
+      ),
+      ['4', '2', '7', '1', '']
+    );
+  });
+});
