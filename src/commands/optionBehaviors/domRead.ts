@@ -11,7 +11,7 @@ export const DOM_READ_BEHAVIORS: BehaviorTable = {
       'Returns semantic accessibility structure: [Role] "Name" (properties) - 70-99% token reduction',
     whenEnabled: 'Returns full HTML with all attributes and classes',
     automaticBehavior:
-      'Secret values are masked as in dom query: in the HTML (also with --node-id) the value attribute of a sensitive input and the text of a sensitive textarea are "••••", for the element and for fields inside it (a form), and JSON attributes.value too. Sensitive: password fields, CSS-masked fields, cc-*/one-time-code/password autocomplete, names like password, PIN, OTP, SSN or card data. No opt-out; bdg dom eval reads a value',
+      'Secret values are masked as in dom query: in the HTML (also with --node-id) the value attribute of a sensitive input and the text of a sensitive textarea are "••••", for the element and for fields inside it (a form, an iframe srcdoc), and JSON attributes too; nodes inside a secret field (its user-agent shadow root, by --node-id) show •••• as text. A footer line (JSON masked: true) says when a value was masked. Sensitive: password fields, CSS-masked fields, cc-*/one-time-code/password autocomplete, names like password, PIN, OTP, SSN or card data. No opt-out; bdg dom eval reads a value',
     tokenImpact:
       'Semantic output uses 70-99% fewer tokens than raw HTML. Use --raw only when you need exact HTML structure.',
   },

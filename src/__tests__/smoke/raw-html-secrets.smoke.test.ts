@@ -305,4 +305,25 @@ void describe('Secrets in raw HTML (#583)', () => {
       '<div id="framed"><iframe srcdoc="&lt;input type=&quot;password&quot; value=&quot;••••&quot;&gt;&lt;input name=&quot;note&quot; value=&quot;plain&quot;&gt;"></iframe></div>'
     );
   });
+
+  void it('says when a value was masked: a footer line, and masked: true in JSON', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}raw-secrets`]);
+    const lines = (await bdg(['dom', 'get', '#pass', '--raw'])).trimEnd().split('\n');
+    assert.equal(lines.at(-1), 'Secret values shown as •••• (read them with bdg dom eval)');
+    const masked = await bdgJson<{ nodes: Array<{ masked?: boolean }> }>([
+      'dom',
+      'get',
+      '#pass',
+      '--raw',
+    ]);
+    assert.equal(masked.nodes[0]?.masked, true);
+    assert.doesNotMatch(await bdg(['dom', 'get', '#user', '--raw']), /Secret values/);
+    const plain = await bdgJson<{ nodes: Array<{ masked?: boolean }> }>([
+      'dom',
+      'get',
+      '#user',
+      '--raw',
+    ]);
+    assert.equal(plain.nodes[0]?.masked, undefined);
+  });
 });
