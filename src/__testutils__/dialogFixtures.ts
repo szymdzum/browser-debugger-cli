@@ -1,10 +1,12 @@
 /**
  * Fixture pages for JavaScript dialogs, served by the fixture server:
  * `/dialogs` has buttons that open a confirm, a prompt, a prompt with a
- * default value (`Paris`) and an alert and keep what the page got (`window.confirmed`, `window.answered`), a field whose
- * key presses open a confirm (`window.keyConfirmed`), and a link to
- * `/dialogs-load` that a beforeunload handler guards while `window.guard` is
- * set; `/dialogs-load` opens a confirm while it loads (`window.loaded`).
+ * default value (`Paris`) and an alert and keep what the page got
+ * (`window.confirmed`, `window.answered`), a field whose key presses open a
+ * confirm (`window.keyConfirmed`), and a link to `/dialogs-load` that a
+ * beforeunload handler guards while `window.guard` is set; `/dialogs-load`
+ * (and `/dialogs-load-2`, a second history entry) opens a confirm while it
+ * loads (`window.loaded`).
  */
 
 /** Buttons that open dialogs, and a link guarded by beforeunload */
@@ -32,4 +34,5 @@ const DIALOGS_LOAD_HTML = `<!doctype html><title>dialogs on load</title>
 export const DIALOG_ROUTES: Record<string, string> = {
   '/dialogs': DIALOGS_HTML,
   '/dialogs-load': DIALOGS_LOAD_HTML,
+  '/dialogs-load-2': DIALOGS_LOAD_HTML,
 };

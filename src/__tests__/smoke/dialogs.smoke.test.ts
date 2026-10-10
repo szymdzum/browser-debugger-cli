@@ -4,7 +4,10 @@
  * The session starts (after a mistyped `--dialog` and the synonym `cancel`
  * are refused with 81) with `--dialog Dismiss` on `/dialogs-load`, whose
  * confirm while loading is dismissed and listed in the start output, as it
- * is by `page navigate` and `page reload`; `bdg status` shows the default.
+ * is by `page navigate`, `reload`, `back` and `forward`; `bdg status` shows
+ * the default. The back/forward cache is off for the session, so going back
+ * or forward loads the page (and runs its confirm) again rather than
+ * restoring it.
  * The `/dialogs` actions then answer with `--dialog` and `--prompt-text`,
  * which reset after the action, an accepted prompt without text gets its
  * default value, and a beforeunload dialog is accepted unless the action
@@ -90,7 +93,14 @@ void describe('JavaScript dialogs', () => {
     await cleanupAllSessions();
     fixture = await startFixtureServer();
     const port = await getFreePort();
-    const start = [`${fixture.url}dialogs-load`, '--port', String(port), '--headless', '--dialog'];
+    const start = [
+      `${fixture.url}dialogs-load`,
+      '--port',
+      String(port),
+      '--headless',
+      '--chrome-flags=--disable-back-forward-cache',
+      '--dialog',
+    ];
     assert.match(await bdg([...start, 'dismis'], 81), /Did you mean: dismiss\?/);
     assert.match(await bdg([...start, 'cancel'], 81), /Did you mean: dismiss\?/);
     startOutput = await bdg([...start, 'Dismiss']);
@@ -115,6 +125,18 @@ void describe('JavaScript dialogs', () => {
 
     const plain = await bdg(['page', 'navigate', `${fixture.url}dialogs`]);
     assert.doesNotMatch(plain, /Dialog:/, 'a page without dialogs lists none');
+  });
+
+  void it('reports a page-load dialog on page back and forward', async () => {
+    assert.match(await bdg(['page', 'back']), LOAD_CONFIRM_LINE, 'page back lists it');
+    await bdg(['page', 'navigate', `${fixture.url}dialogs-load-2`]);
+    await bdg(['page', 'back']);
+    const forward = JSON.parse(await bdg(['page', 'forward', '--json'])) as {
+      data: { dialogs?: DialogJson[] };
+    };
+    assert.deepEqual(forward.data.dialogs, [LOAD_CONFIRM], 'page forward lists it');
+    assert.equal(await evaluate('location.pathname'), '/dialogs-load-2');
+    await bdg(['page', 'navigate', `${fixture.url}dialogs`]);
   });
 
   void it('shows the session default in bdg status', async () => {
