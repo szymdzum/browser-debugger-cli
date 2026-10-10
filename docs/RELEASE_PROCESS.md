@@ -51,7 +51,7 @@ On a branch from an up-to-date `main`:
    gh pr list --repo szymdzum/browser-debugger-cli --state merged --base main \
      --search "merged:>=$(git log -1 --format=%cs v0.PREV)" --limit 200 --json number,title,body
    ```
-   Move anything under `## [Unreleased]` into `## [0.X.Y] - YYYY-MM-DD`, add one user-facing entry per change (with the PR or issue number), in the order Breaking, Added, Changed, Fixed, Security, Internal, and leave an empty `## [Unreleased]` above it. Changed defaults or contracts go under Changed; breaking entries say what to do. Skip PRs users won't notice (docs-only, test-only) unless they matter to contributors (Internal).
+   Move anything under `## [Unreleased]` into `## [0.X.Y] - YYYY-MM-DD`, add one user-facing entry per change (with the PR or issue number), in the order Breaking, Added, Changed, Fixed, Security, Internal, and leave an empty `## [Unreleased]` above it. Changed defaults or contracts go under Changed; breaking entries say what to do. Skip PRs users won't notice (docs-only, test-only) unless they matter to contributors (Internal). Skip PRs that already have an entry under `## [Unreleased]` (up to #569, PRs wrote their own), and PRs merged on the tag's day before the tag (`merged:>=` matches the whole day).
 2. **Version**: set `"version": "0.X.Y"` in `package.json` and in the two root entries of `package-lock.json` (or `npm version 0.X.Y --no-git-tag-version`).
 3. **README.md**: update if commands, requirements or install instructions changed.
 4. Check locally:

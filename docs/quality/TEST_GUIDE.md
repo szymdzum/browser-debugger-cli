@@ -304,6 +304,6 @@ bdg status --verbose  # Check Chrome diagnostics
 ## Related Documentation
 
 - [TESTING_PHILOSOPHY.md](./TESTING_PHILOSOPHY.md) - Test design principles
-- [Ship skill](../../.claude/skills/ship/SKILL.md) - Shipping workflow, fresh-agent test scenarios and the exploratory sweep
+- [Fresh-agent test scenarios](../../.claude/skills/ship/scenarios.md) - Fresh-agent test rounds, scenarios and the exploratory sweep (part of the ship skill)
 - [SHELL_TEST_HARDENING.md](./SHELL_TEST_HARDENING.md) - Shell test reliability
 - [tests/README.md](../../tests/README.md) - Shell test details
