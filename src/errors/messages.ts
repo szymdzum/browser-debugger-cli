@@ -1265,6 +1265,20 @@ export function nodeIdNotFoundError(nodeId: number): ErrorWithSuggestion {
 }
 
 /**
+ * An element in the page whose presence check failed in Chrome.
+ *
+ * @param nodeId - Backend node id of the element
+ * @param cause - Chrome's error, if it gave one
+ * @returns Message and suggestion
+ */
+export function nodeCheckFailedError(nodeId: number, cause?: string): ErrorWithSuggestion {
+  return {
+    message: `Could not check element ${nodeId} in the page${cause ? `: ${cause}` : ''}`,
+    suggestion: 'Retry the command; if it keeps failing, run "bdg status --verbose"',
+  };
+}
+
+/**
  * The list an index refers to, in words.
  *
  * @param source - Where the index comes from
