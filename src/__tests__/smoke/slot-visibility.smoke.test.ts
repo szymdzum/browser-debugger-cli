@@ -105,6 +105,27 @@ void describe('Elements with no box of their own', () => {
     }
   });
 
+  void it('keeps a slot hidden when its text is not rendered or not visible', async () => {
+    const output = await bdg([
+      'dom',
+      'layout',
+      '#det-slot, #vis-inline-slot, #vis-block-slot',
+      '--json',
+    ]);
+    const { elements } = (JSON.parse(output) as { data: { elements: MeasuredLayout[] } }).data;
+    assert.deepEqual(
+      elements.map((element) => [element.element, element.inViewport]),
+      [
+        ['slot#det-slot', 'hidden'],
+        ['slot#vis-inline-slot', 'hidden'],
+        ['slot#vis-block-slot', 'hidden'],
+      ]
+    );
+    const query = await bdg(['dom', 'query', '#det-slot', '--json']);
+    const { nodes } = (JSON.parse(query) as { data: { nodes: { inViewport?: string }[] } }).data;
+    assert.equal(nodes[0]?.inViewport, 'hidden');
+  });
+
   void it('marks the same elements hidden in dom query as in dom layout', async () => {
     const output = await bdg(['dom', 'query', MEASURED]);
     const hidden = output.split('\n').filter((line) => line.endsWith('(hidden)'));

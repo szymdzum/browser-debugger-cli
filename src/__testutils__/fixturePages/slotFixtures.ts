@@ -5,7 +5,9 @@
  * assigned element is `display: none` or zero size, a slot showing element
  * fallback content, a slot passed on into another component's slot (both
  * show the text assigned to the outer one), a `display: contents` div
- * holding only text, and a slot showing text below the fold. Each slot's id
+ * holding only text, slots showing text inside a closed `<details>` and
+ * under `visibility: hidden` ancestors (inline and inline-block), and a slot
+ * showing text below the fold. Each slot's id
  * is its host's id plus `-slot`.
  */
 
@@ -19,6 +21,9 @@ const SLOTS_HTML = `<!doctype html><meta charset="utf-8"><title>slots</title>
 <x-fallback id="fallback"></x-fallback>
 <x-outer id="nested">Nested text</x-outer>
 <div id="contents-text" style="display:contents">Only text</div>
+<details><summary>Summary</summary><x-box id="det">Inside closed</x-box></details>
+<span style="visibility:hidden"><x-box id="vis-inline">Hidden inline</x-box></span>
+<span style="visibility:hidden;display:inline-block"><x-box id="vis-block">Hidden block</x-box></span>
 <div style="height:3000px"></div>
 <x-box id="below">Below the fold</x-box>
 <script>

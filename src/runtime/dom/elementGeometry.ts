@@ -407,7 +407,9 @@ const MASKED_BY_JS = `(el, describe) => {
  * cannot be seen at all (not rendered, or inside a clipping container
  * collapsed to zero size; a `display: contents` element is measured by
  * its content in the flat tree, elements and text (a slot's assigned nodes,
- * else its fallback content), and is hidden only when none of it shows),
+ * else its fallback content), and is hidden only when none of it shows;
+ * text counts only when the element laying it out is rendered, as a Range
+ * around skipped text, e.g. in a closed `<details>`, still has a box),
  * why a rendered one is still invisible
  * ({@link INVISIBLE_REASON_JS}), whether it is inert (an `inert` element
  * around it, through shadow roots) or fixed to the top-level viewport, and how
@@ -454,18 +456,28 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
   };
   const isEmptySlot = (node) =>
     slotted(node) && node.assignedNodes({ flatten: true }).every((c) => c.nodeType !== 1 && !(c.nodeType === 3 && c.data.trim()));
+  const flatParent = ${FLAT_PARENT_JS};
+  const rendered = (n) => {
+    let boxed = n;
+    while (boxed && styleOf(boxed).display === 'contents') boxed = flatParent(boxed);
+    return !boxed || typeof boxed.checkVisibility !== 'function' || boxed.checkVisibility();
+  };
   const measure = (n) => {
-    if (n.nodeType === 1) return { r: n.getBoundingClientRect(), style: styleOf(n) };
+    if (n.nodeType === 1) return rendered(n) ? { r: n.getBoundingClientRect(), style: styleOf(n) } : null;
+    const holder = n.assignedSlot || n.parentElement || n.parentNode.host;
+    if (!rendered(holder)) return null;
     const range = n.ownerDocument.createRange();
     range.selectNodeContents(n);
-    return { r: range.getBoundingClientRect(), style: styleOf(n.assignedSlot || n.parentElement || n.parentNode.host) };
+    return { r: range.getBoundingClientRect(), style: styleOf(holder) };
   };
   const shownChildren = (node) => {
     const s = styleOf(node);
     if (s.overflowX !== 'visible' || s.overflowY !== 'visible') return null;
     let union = null;
     for (const c of flatContent(node).slice(0, 50)) {
-      const { r, style } = measure(c);
+      const measured = measure(c);
+      if (!measured) continue;
+      const { r, style } = measured;
       if (r.width <= 0 || r.height <= 0 || style.visibility !== 'visible') continue;
       union = union
         ? { left: Math.min(union.left, r.left), top: Math.min(union.top, r.top), right: Math.max(union.right, r.right), bottom: Math.max(union.bottom, r.bottom) }
