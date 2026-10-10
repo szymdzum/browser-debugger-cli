@@ -2,12 +2,15 @@
  * Page emulation a screenshot changes for its capture, and puts back.
  *
  * A capture at a pixel ratio of 1 on a high-DPI page, and one beyond the
- * viewport, override the device metrics (and hide the scrollbars). Each
- * change is recorded before it is sent, so {@link CaptureEmulation.restore}
- * (called once the capture ended, however it ended) undoes exactly what may
- * have been changed: the session's emulation is put back from the daemon's
- * own record of it as it is then (a `page emulate` during the capture
- * counts), not from a file.
+ * viewport, override the device metrics (and hide the scrollbars). Chrome
+ * itself lays the page out at the captured size for a capture beyond the
+ * viewport and, putting the size back, keeps the page laid out without its
+ * scrollbar (#514); only a change of the viewport's size lays it out again.
+ * Each change is recorded before it is sent, so
+ * {@link CaptureEmulation.restore} (called once the capture ended, however it
+ * ended) undoes exactly what may have been changed: the session's emulation
+ * is put back from the daemon's own record of it as it is then (a
+ * `page emulate` during the capture counts), not from a file.
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
@@ -78,6 +81,7 @@ export class CaptureEmulation {
   private readonly cdp: TypedCDPConnection;
   private metricsChanged = false;
   private scrollbarsHidden = false;
+  private beyondViewport: Size | undefined;
   private scrolledFrom: ScrollPosition | undefined;
 
   /**
@@ -124,8 +128,18 @@ export class CaptureEmulation {
     this.metricsChanged = true;
     await this.cdp.send(
       'Emulation.setDeviceMetricsOverride',
-      viewportOverride({ ...view, ...(phone && { mobile: true }) }, 1)
+      viewportOverride({ ...roundSize(view), ...(phone && { mobile: true }) }, 1)
     );
+  }
+
+  /**
+   * Record a capture beyond the viewport: Chrome lays the page out at the
+   * captured size, so the restore lays it out again at the session's size.
+   *
+   * @param view - Visible viewport size, used when the page does not answer
+   */
+  capturesBeyondViewport(view: Size): void {
+    this.beyondViewport = view;
   }
 
   /**
@@ -172,7 +186,8 @@ export class CaptureEmulation {
         () => this.cdp.send('Emulation.setScrollbarsHidden', { hidden: false }),
       ]);
     }
-    if (this.metricsChanged) steps.push(['device metrics', () => this.restoreSessionMetrics()]);
+    if (this.metricsChanged || this.beyondViewport)
+      steps.push(['device metrics', () => this.restoreSessionMetrics()]);
     const scrolledFrom = this.scrolledFrom;
     if (scrolledFrom) {
       const { x, y } = scrolledFrom;
@@ -182,10 +197,12 @@ export class CaptureEmulation {
   }
 
   /**
-   * Put back the session's device metrics, or clear the override.
+   * Put back the session's device metrics, or clear the override; after a
+   * capture beyond the viewport, lay the page out at another size first.
    */
   private async restoreSessionMetrics(): Promise<void> {
     const viewport = this.sessionViewport();
+    if (this.beyondViewport) await this.layOutAgain(viewport, this.beyondViewport);
     if (!viewport) {
       await this.cdp.send('Emulation.clearDeviceMetricsOverride', {});
       return;
@@ -197,6 +214,23 @@ export class CaptureEmulation {
         maxTouchPoints: 5,
       });
     }
+  }
+
+  /**
+   * Override the viewport one CSS px taller than the size it is put back at
+   * (the session's viewport, else the window's): Chrome lays the page out
+   * again, with its scrollbars, only when the viewport's size changes, and a
+   * capture beyond the viewport left it laid out without them (#514).
+   *
+   * @param viewport - Session's viewport, if any
+   * @param view - Visible viewport size, used when the page does not answer
+   */
+  private async layOutAgain(viewport: ViewportSize | undefined, view: Size): Promise<void> {
+    const size = viewport ?? (await this.windowSize(view));
+    await this.cdp.send(
+      'Emulation.setDeviceMetricsOverride',
+      viewportOverride({ ...size, height: size.height + 1 })
+    );
   }
 
   /**
@@ -217,4 +251,15 @@ export class CaptureEmulation {
       height: Math.round(height ?? viewport.height),
     };
   }
+}
+
+/**
+ * A size in whole CSS px, as `Emulation.setDeviceMetricsOverride` takes it
+ * (a phone's visible viewport is fractional).
+ *
+ * @param size - Size
+ * @returns Rounded size
+ */
+function roundSize(size: Size): Size {
+  return { width: Math.round(size.width), height: Math.round(size.height) };
 }

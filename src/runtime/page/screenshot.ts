@@ -251,6 +251,7 @@ async function capturePage(
   await emulation.useUnitPixelRatio(devicePixelRatio, viewport);
   if (devicePixelRatio !== 1 && params.scroll) await scrollIntoViewAgain(cdp, params.scroll);
   const origin = plan.fullPage ? { x: 0, y: 0 } : await visibleAreaOrigin(cdp);
+  if (plan.fullPage) emulation.capturesBeyondViewport(viewport);
   const quality = jpegQuality(params);
   const { image, size } = await captureImage(
     cdp,
@@ -445,11 +446,10 @@ async function captureElement(
 ): Promise<DomScreenshotData> {
   const devicePixelRatio = await pixelRatio(cdp);
   const { visualViewport } = await layoutMetrics(cdp);
-  await emulation.useUnitPixelRatio(devicePixelRatio, {
-    width: visualViewport.clientWidth,
-    height: visualViewport.clientHeight,
-  });
+  const view = { width: visualViewport.clientWidth, height: visualViewport.clientHeight };
+  await emulation.useUnitPixelRatio(devicePixelRatio, view);
   const measured = await measureInView(cdp, ref, params.padding ?? 0, emulation);
+  if (!measured.inView) emulation.capturesBeyondViewport(view);
   const { cssLayoutViewport } = await layoutMetrics(cdp);
   const onPage = (area: ElementBounds): ElementBounds => ({
     ...area,

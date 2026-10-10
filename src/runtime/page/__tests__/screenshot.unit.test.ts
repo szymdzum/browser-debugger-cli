@@ -18,6 +18,9 @@ const VIEW = { clientWidth: 1905, clientHeight: 1000, pageX: 0, pageY: 0 };
 /** Element of the fake page: 400×3000 at (750, 100), taller than the viewport */
 const TALL_BORDER = [750, 100, 1150, 100, 1150, 3100, 750, 3100];
 
+/** Window size of the fake page (`innerWidth`, `innerHeight`), in CSS px */
+const WINDOW = [1920, 1000];
+
 /** A one-pixel PNG header, base64 */
 const IMAGE = 'iVBORw0KGgo=';
 
@@ -43,19 +46,23 @@ const TERMINATED = new CDPProtocolError('Execution was terminated', -32000, unde
  * @param options - How the page behaves
  * @returns Connection and the commands sent (method, and `hidden` or `deviceScaleFactor`)
  */
-function fakePage(options: FakePageOptions = {}): { cdp: CDPConnection; sent: string[] } {
+function fakePage(options: FakePageOptions = {}): {
+  cdp: CDPConnection;
+  sent: string[];
+  overrides: Array<Record<string, unknown>>;
+} {
   const sent: string[] = [];
+  const overrides: Array<Record<string, unknown>> = [];
   let terminate: () => void = () => undefined;
   const terminated = new Promise<void>((resolve) => (terminate = resolve));
   const answers: Record<string, (params: Record<string, unknown>) => unknown> = {
     'Runtime.evaluate': (params) => {
       const expression = String(params['expression']);
       if (expression === '1' && options.busy) return new Promise(() => undefined);
-      return {
-        result: {
-          value: expression.includes('devicePixelRatio') ? (options.pixelRatio ?? 1) : [0, 0],
-        },
-      };
+      if (expression.includes('devicePixelRatio')) {
+        return { result: { value: options.pixelRatio ?? 1 } };
+      }
+      return { result: { value: expression.includes('innerWidth') ? WINDOW : [0, 0] } };
     },
     'Runtime.terminateExecution': () => terminate(),
     'Page.getLayoutMetrics': () => ({
@@ -76,13 +83,14 @@ function fakePage(options: FakePageOptions = {}): { cdp: CDPConnection; sent: st
     send: (method: string, params: Record<string, unknown> = {}): Promise<unknown> => {
       const label = describeCall(method, params);
       if (label) sent.push(label);
+      if (method === 'Emulation.setDeviceMetricsOverride') overrides.push(params);
       if (label !== undefined && label === options.refuse) {
         return Promise.reject(new CDPProtocolError(`${method} refused`, -32000, undefined));
       }
       return Promise.resolve().then(() => answers[method]?.(params) ?? {});
     },
   } as unknown as CDPConnection;
-  return { cdp, sent };
+  return { cdp, sent, overrides };
 }
 
 /**
@@ -123,6 +131,7 @@ void describe('takeScreenshot', () => {
       'Emulation.setDeviceMetricsOverride 1',
       'Page.captureScreenshot',
       'Emulation.setScrollbarsHidden false',
+      'Emulation.setDeviceMetricsOverride 0',
       'Emulation.clearDeviceMetricsOverride',
     ]);
   });
@@ -134,8 +143,9 @@ void describe('takeScreenshot', () => {
       takeScreenshot(cdp, { format: 'png', backendNodeId: 7 }, noViewport),
       (error) => error === refused
     );
-    assert.deepEqual(sent.slice(-2), [
+    assert.deepEqual(sent.slice(-3), [
       'Emulation.setScrollbarsHidden false',
+      'Emulation.setDeviceMetricsOverride 0',
       'Emulation.clearDeviceMetricsOverride',
     ]);
   });
@@ -152,13 +162,44 @@ void describe('takeScreenshot', () => {
     ]);
   });
 
-  void it('changes nothing for a page capture at pixel ratio 1', async () => {
+  void it('changes nothing for a viewport capture at pixel ratio 1', async () => {
     const { cdp, sent } = fakePage();
-    const shot = await takeScreenshot(cdp, { format: 'jpeg' }, noViewport);
+    const shot = await takeScreenshot(cdp, { format: 'jpeg', fullPage: false }, noViewport);
     assert.deepEqual(sent, ['Page.captureScreenshot']);
-    assert.equal(shot.screenshot.captureMode, 'full_page');
+    assert.equal(shot.screenshot.captureMode, 'viewport');
     assert.equal(shot.screenshot.quality, 90);
     assert.equal(shot.screenshot.size, 8);
+  });
+
+  void it('lays the page out again after a full-page capture: one px taller, then no override (#514)', async () => {
+    const { cdp, sent, overrides } = fakePage();
+    const shot = await takeScreenshot(cdp, { format: 'png' }, noViewport);
+    assert.equal(shot.screenshot.captureMode, 'full_page');
+    assert.deepEqual(sent, [
+      'Page.captureScreenshot',
+      'Emulation.setDeviceMetricsOverride 0',
+      'Emulation.clearDeviceMetricsOverride',
+    ]);
+    assert.deepEqual(overrides, [
+      { width: 1920, height: 1001, deviceScaleFactor: 0, mobile: false },
+    ]);
+  });
+
+  void it('lays the page out again after a full-page capture at the session’s viewport, then puts it back (#514)', async () => {
+    const { cdp, sent, overrides } = fakePage();
+    await takeScreenshot(cdp, { format: 'png' }, () => ({ width: 1600, height: 900 }));
+    assert.deepEqual(sent, [
+      'Page.captureScreenshot',
+      'Emulation.setDeviceMetricsOverride 0',
+      'Emulation.setDeviceMetricsOverride 0',
+    ]);
+    assert.deepEqual(
+      overrides.map(({ width, height }) => [width, height]),
+      [
+        [1600, 901],
+        [1600, 900],
+      ]
+    );
   });
 
   void it('reports the capture’s error and runs every restore step when one of them fails', async () => {
@@ -171,8 +212,9 @@ void describe('takeScreenshot', () => {
       takeScreenshot(cdp, { format: 'png', backendNodeId: 7 }, noViewport),
       (error) => error === refused
     );
-    assert.deepEqual(sent.slice(-2), [
+    assert.deepEqual(sent.slice(-3), [
       'Emulation.setScrollbarsHidden false',
+      'Emulation.setDeviceMetricsOverride 0',
       'Emulation.clearDeviceMetricsOverride',
     ]);
   });
@@ -215,9 +257,10 @@ void describe('takeScreenshot', () => {
       }),
       (error) => error instanceof CommandError && error.exitCode === 102
     );
-    assert.deepEqual(sent.slice(-3), [
+    assert.deepEqual(sent.slice(-4), [
       'Runtime.terminateExecution',
       'Emulation.setScrollbarsHidden false',
+      'Emulation.setDeviceMetricsOverride 0',
       'Emulation.clearDeviceMetricsOverride',
     ]);
   });
