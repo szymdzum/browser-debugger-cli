@@ -95,14 +95,10 @@ void describe('Elements with no box of their own', () => {
       measured.get('slot#empty-slot')?.hiddenReason,
       'empty slot (nothing assigned, no fallback content)'
     );
-    for (const element of ['slot#none-slot', 'slot#zero-slot']) {
-      assert.equal(measured.get(element)?.inViewport, 'hidden', element);
-      assert.equal(
-        measured.get(element)?.hiddenReason,
-        'display: contents (no box of its own)',
-        element
-      );
-    }
+    assert.equal(measured.get('slot#none-slot')?.hiddenReason, 'content not shown: display: none');
+    assert.equal(measured.get('slot#zero-slot')?.hiddenReason, 'content not shown: zero size');
+    assert.equal(measured.get('slot#none-slot')?.inViewport, 'hidden');
+    assert.equal(measured.get('slot#zero-slot')?.inViewport, 'hidden');
   });
 
   void it('keeps a slot hidden when its text is not rendered or not visible', async () => {
@@ -114,11 +110,11 @@ void describe('Elements with no box of their own', () => {
     ]);
     const { elements } = (JSON.parse(output) as { data: { elements: MeasuredLayout[] } }).data;
     assert.deepEqual(
-      elements.map((element) => [element.element, element.inViewport]),
+      elements.map((element) => [element.element, element.inViewport, element.hiddenReason]),
       [
-        ['slot#det-slot', 'hidden'],
-        ['slot#vis-inline-slot', 'hidden'],
-        ['slot#vis-block-slot', 'hidden'],
+        ['slot#det-slot', 'hidden', 'content not shown: inside a closed <details>'],
+        ['slot#vis-inline-slot', 'hidden', 'content not shown: visibility: hidden'],
+        ['slot#vis-block-slot', 'hidden', 'content not shown: visibility: hidden'],
       ]
     );
     const query = await bdg(['dom', 'query', '#det-slot', '--json']);

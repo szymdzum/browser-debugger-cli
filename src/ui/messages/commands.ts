@@ -563,6 +563,8 @@ export const LAYOUT_REASONS = {
   option: 'not rendered (an <option> is shown by its <select>)',
   /** Hidden: a `display: contents` element (a slot) none of whose content has a box */
   noBox: 'display: contents (no box of its own)',
+  /** Hidden: start of the reason for a `display: contents` element (a slot) whose content does not show, followed by why its first content does not */
+  contentNotShown: 'content not shown: ',
   /** Hidden: a `<slot>` with nothing assigned and no fallback content */
   emptySlot: 'empty slot (nothing assigned, no fallback content)',
   /** Hidden: start of the reason for a clipping container with no area, followed by it */

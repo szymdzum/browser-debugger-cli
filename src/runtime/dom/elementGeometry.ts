@@ -407,7 +407,8 @@ const MASKED_BY_JS = `(el, describe) => {
  * cannot be seen at all (not rendered, or inside a clipping container
  * collapsed to zero size; a `display: contents` element is measured by
  * its content in the flat tree, elements and text (a slot's assigned nodes,
- * else its fallback content), and is hidden only when none of it shows;
+ * else its fallback content), and is hidden only when none of it shows,
+ * with why the first of it does not (`content not shown: display: none`);
  * text counts only when the element laying it out is rendered, as a Range
  * around skipped text, e.g. in a closed `<details>`, still has a box),
  * why a rendered one is still invisible
@@ -457,37 +458,46 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
   const isEmptySlot = (node) =>
     slotted(node) && node.assignedNodes({ flatten: true }).every((c) => c.nodeType !== 1 && !(c.nodeType === 3 && c.data.trim()));
   const flatParent = ${FLAT_PARENT_JS};
-  const rendered = (n) => {
+  const notRendered = (n) => {
     let boxed = n;
     while (boxed && styleOf(boxed).display === 'contents') boxed = flatParent(boxed);
-    return !boxed || typeof boxed.checkVisibility !== 'function' || boxed.checkVisibility();
+    if (!boxed) return null;
+    return styleOf(boxed).display === 'none' ? 'display: none' : skippedReason(boxed);
   };
   const measure = (n) => {
-    if (n.nodeType === 1) return rendered(n) ? { r: n.getBoundingClientRect(), style: styleOf(n) } : null;
-    const holder = n.assignedSlot || n.parentElement || n.parentNode.host;
-    if (!rendered(holder)) return null;
-    const range = n.ownerDocument.createRange();
-    range.selectNodeContents(n);
-    return { r: range.getBoundingClientRect(), style: styleOf(holder) };
+    const holder = n.nodeType === 1 ? n : n.assignedSlot || n.parentElement || n.parentNode.host;
+    const skipped = notRendered(holder);
+    if (skipped) return { why: skipped };
+    const range = n.nodeType === 1 ? null : n.ownerDocument.createRange();
+    if (range) range.selectNodeContents(n);
+    const r = range ? range.getBoundingClientRect() : n.getBoundingClientRect();
+    const style = styleOf(holder);
+    if (style.visibility !== 'visible') return { why: 'visibility: ' + style.visibility };
+    return r.width <= 0 || r.height <= 0 ? { why: 'zero size' } : { r: r };
   };
-  const shownChildren = (node) => {
+  const shownContent = (node) => {
     const s = styleOf(node);
     if (s.overflowX !== 'visible' || s.overflowY !== 'visible') return null;
     let union = null;
-    for (const c of flatContent(node).slice(0, 50)) {
-      const measured = measure(c);
-      if (!measured) continue;
-      const { r, style } = measured;
-      if (r.width <= 0 || r.height <= 0 || style.visibility !== 'visible') continue;
+    let why = null;
+    for (const c of flatContent(node).filter((c) => c.nodeType === 1 || c.data.trim()).slice(0, 50)) {
+      const { r, why: unshown } = measure(c);
+      if (!r) {
+        why = why || unshown;
+        continue;
+      }
       union = union
         ? { left: Math.min(union.left, r.left), top: Math.min(union.top, r.top), right: Math.max(union.right, r.right), bottom: Math.max(union.bottom, r.bottom) }
         : { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
     }
-    return union;
+    return { box: union, why: why };
   };
-  const hiddenReason = (style, box, content) => {
+  const hiddenReason = (style, box, content, unshown) => {
     if (style.display === 'none') return 'display: none';
-    if (style.display === 'contents') return content ? null : isEmptySlot(el) ? reasons.emptySlot : reasons.noBox;
+    if (style.display === 'contents') {
+      if (content) return null;
+      return isEmptySlot(el) ? reasons.emptySlot : unshown ? reasons.contentNotShown + unshown : reasons.noBox;
+    }
     if (el.getClientRects().length === 0) {
       return el.tagName === 'OPTION' ? reasons.option : 'not rendered (an ancestor has display: none)';
     }
@@ -511,14 +521,15 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
   };
   const box = el.getBoundingClientRect();
   let rect = { left: box.left, top: box.top, right: box.right, bottom: box.bottom };
-  let content = box.width === 0 || box.height === 0 ? shownChildren(el) : null;
+  const shown = box.width === 0 || box.height === 0 ? shownContent(el) : null;
+  let content = shown && shown.box;
   const own = ancestorClip(el, content || rect, describe);
   let clip = own.clip;
   let overlay = own.overlay;
   let clipper = own.clipper;
   let fixed = own.fixed;
   let fixedBy = own.fixedBy;
-  let hidden = hiddenReason(styleOf(el), box, content) || own.collapsed;
+  let hidden = hiddenReason(styleOf(el), box, content, shown && shown.why) || own.collapsed;
   let x = 0;
   let y = 0;
   for (let view = el.ownerDocument.defaultView; view && view.frameElement; view = view.parent) {
