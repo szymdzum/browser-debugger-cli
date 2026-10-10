@@ -39,7 +39,7 @@ Build only in your worktree. If another branch you depend on hasn't merged yet, 
 - Environment, at the start of every shell call: `export PATH="$HOME/.nvm/versions/node/v22.15.0/bin:$PATH"`, `BDG_TEST_SESSION_DIR` and `BDG_TEST_HOME_DIR` under `/tmp` (short paths), `BDG_SESSION_DIR=/tmp/...` for manual runs.
 - Run `npm run check`, `npm test`, `npm run build`, and the affected smoke files (`npx tsx --test --test-concurrency=1 src/__tests__/smoke/<file>.smoke.test.ts`). CI runs the full smoke suite. Run every suite in the **foreground** (a background run is lost when your turn ends; the report must contain its exit line).
 - Push over SSH: `git push -u git@github.com:szymdzum/browser-debugger-cli.git <branch>`.
-- Open a **draft PR** with a full body: what changed for users, before/after, verification with run IDs, decisions you made, and known limits. Link the issue (`Closes #N`).
+- Open a **draft PR** (`gh pr create --draft --head <branch> --repo szymdzum/browser-debugger-cli`; `--head` is needed after a push to the SSH URL) with a full body: what changed for users, before/after, verification with run IDs, decisions you made, and known limits. Link the issue (`Closes #N`).
 - **Don't return before the draft PR is open.** An interim report ("waiting for tests", "waiting for CI") is not a result; finish the checks first.
 - No AI attribution in commits or the PR.
 

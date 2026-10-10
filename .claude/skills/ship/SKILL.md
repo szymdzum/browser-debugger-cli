@@ -105,7 +105,7 @@ Merge only when **all** hold. If one fails, fix it; don't negotiate it.
 ### Repo
 - `gh --repo szymdzum/browser-debugger-cli`, default branch `main`.
 - Merge commits, subject `<PR title> (#N)`. Required check: `CI OK`.
-- Push over SSH: `git push -u git@github.com:szymdzum/browser-debugger-cli.git <branch>`.
+- Push over SSH: `git push -u git@github.com:szymdzum/browser-debugger-cli.git <branch>`. After a push to the URL, `gh pr create` needs `--head <branch>` (the branch isn't tracked under the `origin` name).
 - The implementer opens a draft PR with the full body; you add the review summary and mark it ready.
 - Roadmap: #466. Milestones: "Next: hardening", "Next: agent gaps", "1.0".
 
