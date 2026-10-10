@@ -23,6 +23,29 @@ void describe('formatDomQuery', () => {
     assert.doesNotMatch(output, /undefined/);
   });
 
+  void it('shows the first class and how many more there are', () => {
+    const output = formatDomQuery({
+      selector: 'a',
+      count: 3,
+      nodes: [
+        {
+          index: 0,
+          nodeId: 1,
+          tag: 'a',
+          classes: ['px-2', 'py-4', 'text-sm', 'hover:underline', 'md:flex'],
+          preview: 'Home',
+        },
+        { index: 1, nodeId: 2, tag: 'a', classes: ['nav', 'active'] },
+        { index: 2, nodeId: 3, tag: 'a', classes: ['brush:', 'html'] },
+      ],
+    });
+
+    assert.match(output, /\[0\] <a class="px-2 \+4"> Home$/m);
+    assert.match(output, /\[1\] <a class="nav \+1">$/m);
+    assert.match(output, /\[2\] <a class="html">$/m);
+    assert.doesNotMatch(output, /py-4|active/);
+  });
+
   void it('lists the matches given and says how many more there are, and how many are indexed', () => {
     const nodes = Array.from({ length: 50 }, (_, index) => ({ index, nodeId: index, tag: 'li' }));
     const output = formatDomQuery({

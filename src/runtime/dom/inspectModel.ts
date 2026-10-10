@@ -8,7 +8,7 @@
 
 import type { ElementLayout } from '@/ipc/protocol/domTypes.js';
 import type { InspectRect, InspectResult, InspectVisibility } from '@/ipc/protocol/inspectTypes.js';
-import { isLabelClass } from '@/runtime/dom/elementInfo.js';
+import { labelClasses } from '@/runtime/dom/elementInfo.js';
 import { allStyles } from '@/runtime/dom/inspectAllStyles.js';
 import { buildBox, buildLayout, type StyleMap } from '@/runtime/dom/inspectLayoutModel.js';
 import {
@@ -82,13 +82,9 @@ export interface InspectRequest {
  * @returns e.g. `a.z-1.max-sm:hidden(+11)`, `input#user-name`
  */
 export function elementLabel(raw: Pick<RawInspect, 'tag' | 'id' | 'classes'>): string {
-  const classes = raw.classes.filter(isLabelClass);
-  const shown = classes
-    .slice(0, LABEL_CLASSES)
-    .map((name) => `.${name}`)
-    .join('');
-  const more = classes.length - LABEL_CLASSES;
-  return `${raw.tag}${raw.id ? `#${raw.id}` : ''}${shown}${more > 0 ? `(+${more})` : ''}`;
+  const { shown, more } = labelClasses(raw.classes, LABEL_CLASSES);
+  const classes = shown.map((name) => `.${name}`).join('');
+  return `${raw.tag}${raw.id ? `#${raw.id}` : ''}${classes}${more > 0 ? `(+${more})` : ''}`;
 }
 
 /**

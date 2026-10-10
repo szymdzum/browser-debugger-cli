@@ -39,7 +39,7 @@ import {
   ELEMENT_TEXT_JS,
   ELEMENT_TEXT_LENGTH,
   textPreview,
-  isLabelClass,
+  labelClasses,
 } from '@/runtime/dom/elementInfo.js';
 import {
   DEEP_QUERY_JS,
@@ -727,9 +727,9 @@ async function childElements(
 function childLabel(node: Protocol.DOM.Node): string {
   const attributes = unpackAttributes(node.attributes);
   const id = attributes['id'] ? `#${attributes['id']}` : '';
-  const classes = (attributes['class'] ?? '').split(/\s+/).filter(isLabelClass).slice(0, 2);
+  const { shown } = labelClasses((attributes['class'] ?? '').split(/\s+/), 2);
   const label = attributes['aria-label']?.trim();
-  return `${node.nodeName.toLowerCase()}${id}${classes.map((name) => `.${name}`).join('')}${label ? ` "${label}"` : ''}`;
+  return `${node.nodeName.toLowerCase()}${id}${shown.map((name) => `.${name}`).join('')}${label ? ` "${label}"` : ''}`;
 }
 
 /**
