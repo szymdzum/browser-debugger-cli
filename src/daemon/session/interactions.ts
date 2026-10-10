@@ -23,6 +23,7 @@ import {
 import type { BoundedInvalidFields } from '@/runtime/dom/blockedSubmit.js';
 import { UNBIND_TARGET_SCRIPT } from '@/runtime/dom/targetNode.js';
 import { toDownloadInfo } from '@/telemetry/downloads.js';
+import { mayCarrySubmit } from '@/telemetry/requestKinds.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
@@ -70,8 +71,9 @@ export interface InteractionOptions {
   detectUnsettled?: boolean;
   /**
    * Read which fields blocked the submit it started (`submitBlocked`): for
-   * clicks, whose script left a probe on the submit button's form. Read
-   * only when it neither navigated nor triggered a request (see
+   * clicks and Enter or Space, whose script left a probe on the form they
+   * submit (and, for keys, a watch for `invalid` events). Read only when it
+   * neither navigated nor triggered a request other than assets (see
    * {@link blockedSubmit}).
    */
   readBlockedSubmit?: () => Promise<BoundedInvalidFields | undefined>;
@@ -154,7 +156,9 @@ async function closedTabReport(
 /**
  * The fields that blocked the submit an interaction started: read when it
  * did not navigate (nor was a new page still loading) and triggered no
- * request, since a request or navigation means something was sent.
+ * request that may carry a form's data ({@link mayCarrySubmit}), since such
+ * a request or a navigation means something was sent. Assets the page
+ * loaded meanwhile (an image, a font) don't count.
  *
  * @param read - Reads the fields (from {@link InteractionOptions})
  * @param changes - What collecting saw, with the page's work
@@ -168,7 +172,7 @@ async function blockedSubmit(
 ): Promise<Pick<InteractionReport, 'submitBlocked' | 'submitBlockedOmitted'>> {
   if (!read || changes?.navigation || changes?.work?.navigating) return {};
   if (
-    (requests?.triggeredRequests.length ?? 0) > 0 ||
+    requests?.triggeredRequests.some(mayCarrySubmit) === true ||
     (requests?.triggeredRequestsOmitted ?? 0) > 0
   )
     return {};

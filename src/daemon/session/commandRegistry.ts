@@ -877,15 +877,18 @@ export function createCommandRegistry(
         )
       ),
 
-    dom_press_key: async (cdp, params) =>
-      interact(
+    dom_press_key: async (cdp, params) => {
+      let scriptCdp = cdp;
+      let probed = false;
+      return interact(
         cdp,
         async () =>
-          onScriptTarget(cdp, params, (target) =>
-            withActionStability(
+          onScriptTarget(cdp, params, (target) => {
+            scriptCdp = target.cdp;
+            return withActionStability(
               cdp,
-              () =>
-                pressKeyElement(
+              async () => {
+                const { submitProbe, ...press } = await pressKeyElement(
                   target.cdp,
                   target.selector,
                   params.key,
@@ -894,12 +897,21 @@ export function createCommandRegistry(
                     times: params.times,
                     modifiers: params.modifiers,
                   })
-                ),
+                );
+                probed = submitProbe === true;
+                return press;
+              },
               params.wait !== false
-            )
-          ),
-        { reportShown: true, detectUnsettled: params.wait !== false, dialogs: params }
-      ),
+            );
+          }),
+        {
+          reportShown: true,
+          detectUnsettled: params.wait !== false,
+          readBlockedSubmit: async () => (probed ? readBlockedSubmit(scriptCdp) : undefined),
+          dialogs: params,
+        }
+      );
+    },
 
     dom_scroll: async (cdp, params) =>
       interact(

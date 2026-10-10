@@ -14,6 +14,11 @@ import {
   unknownKeyError,
 } from '@/errors/messages.js';
 import type { PressKeyResult } from '@/ipc/protocol/domTypes.js';
+import {
+  CLEAR_SUBMIT_PROBE_JS,
+  KEY_SUBMIT_PROBE_JS,
+  WATCH_INVALID_JS,
+} from '@/runtime/dom/blockedSubmit.js';
 import { DISABLED_CAUSE_JS, ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
 import {
   throwIfInvalidSelector,
@@ -43,8 +48,26 @@ export interface PressKeyOptions {
 
 export type { PressKeyResult } from '@/ipc/protocol/domTypes.js';
 
+/** Keys (by code) that can submit a form: Enter, and Space on a submit button */
+const SUBMIT_KEYS = ['Enter', 'Space'];
+
+/**
+ * A key press's result, with whether its script left a probe for the submit
+ * the key starts (`readBlockedSubmit` reads it; not part of the CLI result)
+ */
+export type PressKeyOutcome = PressKeyResult & { submitProbe?: true };
+
+/**
+ * Page-side focus of the target, which reports the element. For
+ * `submitKey` (Enter or Space, else null) it installs, after focusing, a
+ * probe for the submit the key starts ({@link KEY_SUBMIT_PROBE_JS}) and,
+ * only when that applies (the key starts a submit), a watch for `invalid`
+ * events ({@link WATCH_INVALID_JS}), after removing any an earlier action
+ * left.
+ */
 const FOCUS_ELEMENT_SCRIPT = `
-(function(selector, parts, index) {
+(function(selector, parts, index, submitKey) {
+  ${CLEAR_SUBMIT_PROBE_JS}
   const allMatches = (${FIND_ELEMENTS_JS})(selector, parts);
   if (allMatches.length === 0) {
     return { success: false, reason: 'not-found', error: 'Element not found: ' + selector };
@@ -98,12 +121,16 @@ const FOCUS_ELEMENT_SCRIPT = `
     }
   }
 
+  const probed = submitKey !== null && !pageLevel && (${KEY_SUBMIT_PROBE_JS})(el, submitKey);
+  const submitProbe = probed && (${WATCH_INVALID_JS})(el);
+
   return {
     success: true,
     selector: selector,
     element: (${ELEMENT_IDENTITY_JS})(el),
     elementType: el.tagName.toLowerCase() + viaLabel,
-    matchCount: allMatches.length
+    matchCount: allMatches.length,
+    submitProbe: submitProbe || undefined
   };
 })`;
 
@@ -132,14 +159,18 @@ const FOCUS_FAILURES: Record<string, { exitCode: number; suggestion: string }> =
  * browser performs the key's default action exactly like a physical key:
  * the character is inserted (with trusted keypress/input events), Enter adds
  * a newline in a textarea or submits the form once from an input, and Tab
- * moves focus. No synthetic events are fired.
+ * moves focus. No synthetic events are fired. When the key starts a submit
+ * (Enter or Space on a submit button, Enter in a field the browser submits
+ * implicitly from), a probe on the form and a watch for `invalid` events
+ * are left in the page (`submitProbe` in the result), so the result can
+ * say when validation blocked the submit; other keys and fields get none.
  */
 export async function pressKeyElement(
   cdp: CDPConnection,
   selector: string,
   keyName: string,
   options: PressKeyOptions = {}
-): Promise<PressKeyResult> {
+): Promise<PressKeyOutcome> {
   const keyDef = getKeyDefinition(keyName);
   if (!keyDef) {
     const err = unknownKeyError(keyName, similarKeyNames(keyName));
@@ -155,7 +186,8 @@ export async function pressKeyElement(
   const implicitShift = impliesShift(keyName) ? MODIFIER_FLAGS.shift : 0;
   const modifierFlags = parseModifiers(options.modifiers) | implicitShift;
   const indexArg = options.index ?? 'null';
-  const focusExpression = `(${FOCUS_ELEMENT_SCRIPT})(${selectorArgsJS(selector)}, ${indexArg})`;
+  const submitKey = SUBMIT_KEYS.includes(keyDef.code) ? keyDef.code : null;
+  const focusExpression = `(${FOCUS_ELEMENT_SCRIPT})(${selectorArgsJS(selector)}, ${indexArg}, ${JSON.stringify(submitKey)})`;
 
   try {
     const focusResponse = await cdp.send('Runtime.evaluate', {
@@ -185,6 +217,7 @@ export async function pressKeyElement(
       element?: string;
       elementType?: string;
       matchCount?: number;
+      submitProbe?: true;
     };
 
     if (!focusResult?.success) {
@@ -212,6 +245,7 @@ export async function pressKeyElement(
         ...(focusResult.element !== undefined && { element: focusResult.element }),
         elementType: focusResult.elementType,
         ...(focusResult.matchCount !== undefined && { matchCount: focusResult.matchCount }),
+        ...(focusResult.submitProbe && { submitProbe: true as const }),
       },
       options.index,
       'pressed the key on the first'
