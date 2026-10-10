@@ -29,7 +29,11 @@ import { auditPage } from '@/runtime/dom/audit.js';
 import { readBlockedSubmit } from '@/runtime/dom/blockedSubmit.js';
 import { evaluateScript, withBusyPageRecovery } from '@/runtime/dom/evalHelpers.js';
 import { inspectEventListeners } from '@/runtime/dom/eventListeners.js';
-import { evaluateFormDiscovery, readFormDiscovery } from '@/runtime/dom/formDiscoveryNodes.js';
+import {
+  evaluateFormDiscovery,
+  formDiscoveryGroup,
+  readFormDiscovery,
+} from '@/runtime/dom/formDiscoveryNodes.js';
 import {
   fillElement,
   clickElement,
@@ -998,7 +1002,8 @@ export function createCommandRegistry(
     },
 
     dom_form_discover: async (cdp): Promise<RawFormData> => {
-      const response = await withBusyPageRecovery(cdp, evaluateFormDiscovery(cdp));
+      const objectGroup = formDiscoveryGroup();
+      const response = await withBusyPageRecovery(cdp, evaluateFormDiscovery(cdp, objectGroup));
       if (response.exceptionDetails) {
         const readyState = await readDocumentReadyState(cdp);
         const loading = readyState !== undefined && readyState !== 'complete';
@@ -1012,7 +1017,7 @@ export function createCommandRegistry(
           loading ? EXIT_CODES.RESOURCE_NOT_FOUND : EXIT_CODES.SOFTWARE_ERROR
         );
       }
-      const forms = await readFormDiscovery(cdp, response.result.objectId);
+      const forms = await readFormDiscovery(cdp, response.result.objectId, objectGroup);
       const errors = formErrors(store.pageIssues.issues);
       const nodes = errors.flatMap((issue) => issue.nodes?.map((node) => node.backendNodeId) ?? []);
       return withFormIssues(forms, errors, await connectedNodes(cdp, nodes));

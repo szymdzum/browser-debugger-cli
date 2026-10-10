@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { FakeObjectPage } from '@/__testutils__/fakeObjectPage.js';
 import type { RawField, RawFormData } from '@/ipc/protocol/domTypes.js';
 import { connectedNodes, withFormIssues } from '@/runtime/dom/formIssues.js';
 import type { PageIssue } from '@/types.js';
@@ -135,6 +136,19 @@ void describe('connectedNodes', () => {
     const connected = await connectedNodes(cdp, [1, 2, 3]);
     assert.deepEqual([...connected], [2]);
     assert.equal(cdp.sent.at(-1), 'Runtime.releaseObjectGroup');
+  });
+
+  void it('keeps nodes of concurrent lookups when one releases its objects first (#584)', async () => {
+    const page = new FakeObjectPage({
+      lookupsFirst: 2,
+      hold: (method, params) => method === 'DOM.resolveNode' && params['backendNodeId'] === 2,
+    });
+    const lookups = await Promise.all([connectedNodes(page, [1]), connectedNodes(page, [2])]);
+    assert.deepEqual(
+      lookups.map((connected) => [...connected]),
+      [[1], [2]]
+    );
+    assert.deepEqual(page.releasedUses, []);
   });
 
   void it('sends nothing without nodes', async () => {

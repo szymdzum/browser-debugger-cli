@@ -20,8 +20,8 @@ const log = createLogger('dom');
 /** Chrome's code of the form errors (the only generic issues bdg keeps) */
 const FORM_ISSUE_CODE = 'GenericIssue';
 
-/** Object group of the nodes looked up */
-const NODE_GROUP = 'bdg-issue-nodes';
+/** Counter giving each lookup its own object group (commands run concurrently) */
+let nodeLookups = 0;
 
 /**
  * The form errors among the page's issues.
@@ -38,13 +38,18 @@ export function formErrors(issues: readonly PageIssue[]): PageIssue[] {
  *
  * @param cdp - Connection to the page
  * @param backendNodeId - Element
+ * @param objectGroup - Object group of the lookup
  * @returns False when it is gone or detached
  */
-async function isConnected(cdp: CDPSender, backendNodeId: number): Promise<boolean> {
+async function isConnected(
+  cdp: CDPSender,
+  backendNodeId: number,
+  objectGroup: string
+): Promise<boolean> {
   try {
     const { object } = (await cdp.send('DOM.resolveNode', {
       backendNodeId,
-      objectGroup: NODE_GROUP,
+      objectGroup,
     })) as { object: { objectId?: string } };
     if (!object.objectId) return false;
     const { result } = (await cdp.send('Runtime.callFunctionOn', {
@@ -61,6 +66,8 @@ async function isConnected(cdp: CDPSender, backendNodeId: number): Promise<boole
 
 /**
  * The elements still in the document (looked up together, then released).
+ * The lookup has an object group of its own, so a concurrent command's
+ * release does not free its elements before they are read.
  *
  * @param cdp - Connection to the page
  * @param backendNodeIds - Elements
@@ -71,9 +78,10 @@ export async function connectedNodes(
   backendNodeIds: readonly number[]
 ): Promise<Set<number>> {
   if (backendNodeIds.length === 0) return new Set();
-  const results = await Promise.all(backendNodeIds.map((id) => isConnected(cdp, id)));
+  const objectGroup = `bdg-issue-nodes-${++nodeLookups}`;
+  const results = await Promise.all(backendNodeIds.map((id) => isConnected(cdp, id, objectGroup)));
   await cdp
-    .send('Runtime.releaseObjectGroup', { objectGroup: NODE_GROUP })
+    .send('Runtime.releaseObjectGroup', { objectGroup })
     .catch((error: unknown) => log.debug(`Issue nodes not released: ${getErrorMessage(error)}`));
   return new Set(backendNodeIds.filter((_id, i) => results[i]));
 }

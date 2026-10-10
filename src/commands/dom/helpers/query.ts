@@ -24,6 +24,7 @@ import {
   indexOutOfRangeError,
   eitherArgumentRequiredError,
   invalidSelectorError,
+  nodeCheckFailedError,
   nodeIdNotFoundError,
   operationFailedError,
   similarSelectorsLine,
@@ -867,7 +868,10 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
   let refs: NodeRef[];
   if (options.nodeId !== undefined) {
     await callCDP('DOM.enable', {});
-    await assertNodeAttached(options.nodeId).catch(() => {
+    await assertNodeAttached(options.nodeId).catch((error: unknown) => {
+      if (!(error instanceof CommandError) || error.exitCode !== EXIT_CODES.STALE_CACHE) {
+        throw error;
+      }
       const err = nodeIdNotFoundError(options.nodeId ?? 0);
       throw new CommandError(
         err.message,
@@ -956,32 +960,55 @@ export async function resolveBackendNodeIds(selectors: string[]): Promise<(numbe
  *
  * @param backendNodeId - Backend node id from the query cache
  * @param source - Index the user gave and the list it refers to, for the error message
- * @throws CommandError (87) when the element is gone
+ * @throws CommandError (87) when the element is gone, (110) when the check failed
  */
 export async function assertNodeAttached(
   backendNodeId: number,
   source?: IndexSource
 ): Promise<void> {
-  const resolved = await callBdgScript('DOM.resolveNode', {
-    backendNodeId,
-    objectGroup: 'bdg-check',
-  });
-  const objectId = (resolved.data?.result as Protocol.DOM.ResolveNodeResponse | undefined)?.object
-    .objectId;
-  let attached = false;
-  if (resolved.status !== 'error' && objectId) {
+  if (await nodeAttached(backendNodeId)) return;
+  const err = staleNodeError(source?.index, source);
+  throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.STALE_CACHE);
+}
+
+/**
+ * Whether an element is in the current page. Its page object gets an object
+ * group of its own: concurrent commands share the page connection, and the
+ * release of a shared group would free another check's object before it is
+ * read (#584).
+ *
+ * @param backendNodeId - The element
+ * @returns False when it is gone
+ * @throws CommandError (110) when it is in the page but could not be checked
+ */
+async function nodeAttached(backendNodeId: number): Promise<boolean> {
+  const objectGroup = `bdg-check-${process.pid}-${++queryCount}`;
+  const resolve = (): ReturnType<typeof callBdgScript> =>
+    callBdgScript('DOM.resolveNode', { backendNodeId, objectGroup });
+  try {
+    const resolved = await resolve();
+    const objectId = (resolved.data?.result as Protocol.DOM.ResolveNodeResponse | undefined)?.object
+      .objectId;
+    if (resolved.status === 'error' || !objectId) return false;
     const check = await callCDP('Runtime.callFunctionOn', {
       objectId,
       functionDeclaration: 'function () { return this.isConnected; }',
       returnByValue: true,
     });
-    attached =
-      (check.data?.result as { result?: { value?: unknown } } | undefined)?.result?.value === true;
-    await callCDP('Runtime.releaseObjectGroup', { objectGroup: 'bdg-check' });
-  }
-  if (!attached) {
-    const err = staleNodeError(source?.index, source);
-    throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.STALE_CACHE);
+    if (check.status === 'error') {
+      if ((await resolve()).status === 'error') return false;
+      const err = nodeCheckFailedError(backendNodeId, check.error);
+      throw new CommandError(
+        err.message,
+        { suggestion: err.suggestion },
+        EXIT_CODES.SOFTWARE_ERROR
+      );
+    }
+    return (
+      (check.data?.result as { result?: { value?: unknown } } | undefined)?.result?.value === true
+    );
+  } finally {
+    await callCDP('Runtime.releaseObjectGroup', { objectGroup });
   }
 }
 

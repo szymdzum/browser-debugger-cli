@@ -227,15 +227,21 @@ async function sensitiveNodeIds(tree: A11yTree): Promise<Set<string>> {
   return new Set(checked.filter((id): id is string => id !== null));
 }
 
+/** Counter giving each secret field check its own object group */
+let secretChecks = 0;
+
 /**
  * Whether an element is a sensitive field. An element that cannot be read
- * counts as one, so a value is never shown by mistake.
+ * counts as one, so a value is never shown by mistake. Each check has an
+ * object group of its own: checks run concurrently (and so do commands), and
+ * the release of a shared group would free another check's element before it
+ * is read, masking a plain value.
  *
  * @param backendNodeId - The element
  * @returns True for secret fields (and unreadable elements)
  */
 async function isSensitiveField(backendNodeId: number): Promise<boolean> {
-  const objectGroup = 'bdg-a11y-secret';
+  const objectGroup = `bdg-a11y-secret-${process.pid}-${++secretChecks}`;
   const resolved = await callBdgScript('DOM.resolveNode', { backendNodeId, objectGroup });
   const objectId = (resolved.data?.result as Protocol.DOM.ResolveNodeResponse | undefined)?.object
     ?.objectId;
