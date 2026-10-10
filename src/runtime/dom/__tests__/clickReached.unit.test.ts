@@ -78,6 +78,17 @@ void describe('clickElement press check', () => {
     assert.equal(result.warning, CLICK_NOT_RECEIVED_WARNING);
   });
 
+  void it('names where the press landed when the page saw it elsewhere', async () => {
+    const result = await clickElement(
+      fakeCdp({ reached: false, landedOn: 'div#overlay' }).cdp,
+      'a'
+    );
+    assert.equal(
+      result.warning,
+      'The click may not have reached the element: the press landed on div#overlay'
+    );
+  });
+
   void it('adds no warning when the press arrived', async () => {
     const result = await clickElement(fakeCdp(true).cdp, 'a');
     assert.equal(result.warning, undefined);

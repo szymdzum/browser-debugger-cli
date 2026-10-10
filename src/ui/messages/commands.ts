@@ -456,6 +456,17 @@ export const CLICK_NOT_RECEIVED_WARNING =
   'The click may not have reached the element: the page saw no mouse press (the browser may be showing a dialog or bubble that captures input)';
 
 /**
+ * Warning shown when a mouse press was dispatched but landed on another
+ * element (e.g. an overlay that appeared as the mouse moved onto the target).
+ *
+ * @param landedOn - The element the press landed on, e.g. `div#overlay`
+ * @returns Warning text
+ */
+export function clickLandedElsewhereWarning(landedOn: string): string {
+  return `The click may not have reached the element: the press landed on ${landedOn}`;
+}
+
+/**
  * Note under a shortened human list whose JSON output lists more, up to a cap.
  *
  * @param hidden - Items not listed

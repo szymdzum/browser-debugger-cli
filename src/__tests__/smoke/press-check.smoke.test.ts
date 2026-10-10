@@ -7,7 +7,8 @@
  * stops the press in a capture listener on `document`; an open root stays
  * unchanged. A press that lands on a shield covering the element (appearing
  * as the mouse moves onto it, so the element was topmost when bdg aimed)
- * still warns, also when the shield reacts to the press: for a shield inside the element's closed root, one in an outer
+ * still warns, naming the shield, also when the shield reacts to the
+ * press: for a shield inside the element's closed root, one in an outer
  * closed root over an element in a nested one, one in the document over a
  * closed root element, and one over a light element; `--strict` refuses
  * it, naming the shield.
@@ -136,6 +137,7 @@ void describe('Press check', () => {
       const data = await clickJson(index);
       assert.equal(data.method, 'mouse');
       assert.match(data.warning ?? '', NOT_REACHED, JSON.stringify(data));
+      assert.match(data.warning ?? '', new RegExp(`the press landed on ${shield}$`));
       assert.equal(data.effect, undefined, 'the shield reacted: the click had an effect');
       assert.equal(await evaluate('window.shieldPresses'), 1);
       assert.deepEqual(await evaluate('window.clicks'), []);

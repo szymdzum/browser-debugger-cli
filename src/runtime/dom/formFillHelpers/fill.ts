@@ -45,6 +45,7 @@ import { FIND_ELEMENTS_JS, LABEL_CONTROL_JS, selectorArgsJS } from '@/runtime/do
 import { createLogger } from '@/ui/logging/index.js';
 import {
   CLICK_NOT_RECEIVED_WARNING,
+  clickLandedElsewhereWarning,
   POINTER_ACTION_DONE,
   POINTER_ACTION_NOUN,
   domClickFallbackWarning,
@@ -511,7 +512,12 @@ async function performClick(
         ...result,
         action,
         method: 'mouse',
-        ...(!press.reached && { warning: CLICK_NOT_RECEIVED_WARNING }),
+        ...(!press.reached && {
+          warning:
+            press.landedOn === undefined
+              ? CLICK_NOT_RECEIVED_WARNING
+              : clickLandedElsewhereWarning(press.landedOn),
+        }),
       },
       result.selectedIndex,
       `${POINTER_ACTION_DONE[action].toLowerCase()} the first visible one`
