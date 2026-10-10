@@ -302,6 +302,13 @@ export interface PressKeyResult extends ActionEffects {
   triggeredRequests?: TriggeredRequest[];
   /** Requests left out of `triggeredRequests` (it lists the first 50) */
   triggeredRequestsOmitted?: number;
+  /**
+   * The fields whose constraint validation blocked the submit Enter started
+   * (absent when it submitted, or did not submit a form)
+   */
+  submitBlocked?: InvalidField[];
+  /** Fields that blocked it, left out of `submitBlocked` (it lists the first 5) */
+  submitBlockedOmitted?: number;
 }
 
 /**

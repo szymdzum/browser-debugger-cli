@@ -70,7 +70,7 @@ export interface InteractionOptions {
   detectUnsettled?: boolean;
   /**
    * Read which fields blocked the submit it started (`submitBlocked`): for
-   * clicks, whose script left a probe on the submit button's form. Read
+   * clicks and Enter, whose script left a probe on the form they submit. Read
    * only when it neither navigated nor triggered a request (see
    * {@link blockedSubmit}).
    */

@@ -14,6 +14,7 @@ import {
   unknownKeyError,
 } from '@/errors/messages.js';
 import type { PressKeyResult } from '@/ipc/protocol/domTypes.js';
+import { CLEAR_SUBMIT_PROBE_JS, IMPLICIT_SUBMIT_PROBE_JS } from '@/runtime/dom/blockedSubmit.js';
 import { DISABLED_CAUSE_JS, ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
 import {
   throwIfInvalidSelector,
@@ -43,8 +44,21 @@ export interface PressKeyOptions {
 
 export type { PressKeyResult } from '@/ipc/protocol/domTypes.js';
 
+/**
+ * A key press's result, with whether its script left a probe for the submit
+ * Enter starts (`readBlockedSubmit` reads it; not part of the CLI result)
+ */
+export type PressKeyOutcome = PressKeyResult & { submitProbe?: true };
+
+/**
+ * Page-side focus of the target, which reports the element. With
+ * `probeSubmit` (Enter) it installs a probe for the submit Enter starts
+ * ({@link IMPLICIT_SUBMIT_PROBE_JS}) on the focused element, after removing
+ * any probe an earlier action left.
+ */
 const FOCUS_ELEMENT_SCRIPT = `
-(function(selector, parts, index) {
+(function(selector, parts, index, probeSubmit) {
+  ${CLEAR_SUBMIT_PROBE_JS}
   const allMatches = (${FIND_ELEMENTS_JS})(selector, parts);
   if (allMatches.length === 0) {
     return { success: false, reason: 'not-found', error: 'Element not found: ' + selector };
@@ -98,12 +112,15 @@ const FOCUS_ELEMENT_SCRIPT = `
     }
   }
 
+  const submitProbe = probeSubmit && !pageLevel && (${IMPLICIT_SUBMIT_PROBE_JS})(el);
+
   return {
     success: true,
     selector: selector,
     element: (${ELEMENT_IDENTITY_JS})(el),
     elementType: el.tagName.toLowerCase() + viaLabel,
-    matchCount: allMatches.length
+    matchCount: allMatches.length,
+    submitProbe: submitProbe || undefined
   };
 })`;
 
@@ -132,14 +149,16 @@ const FOCUS_FAILURES: Record<string, { exitCode: number; suggestion: string }> =
  * browser performs the key's default action exactly like a physical key:
  * the character is inserted (with trusted keypress/input events), Enter adds
  * a newline in a textarea or submits the form once from an input, and Tab
- * moves focus. No synthetic events are fired.
+ * moves focus. No synthetic events are fired. Before Enter, a probe is left
+ * on the form Enter would submit (`submitProbe` in the result), so the
+ * result can say when validation blocked the submit.
  */
 export async function pressKeyElement(
   cdp: CDPConnection,
   selector: string,
   keyName: string,
   options: PressKeyOptions = {}
-): Promise<PressKeyResult> {
+): Promise<PressKeyOutcome> {
   const keyDef = getKeyDefinition(keyName);
   if (!keyDef) {
     const err = unknownKeyError(keyName, similarKeyNames(keyName));
@@ -155,7 +174,8 @@ export async function pressKeyElement(
   const implicitShift = impliesShift(keyName) ? MODIFIER_FLAGS.shift : 0;
   const modifierFlags = parseModifiers(options.modifiers) | implicitShift;
   const indexArg = options.index ?? 'null';
-  const focusExpression = `(${FOCUS_ELEMENT_SCRIPT})(${selectorArgsJS(selector)}, ${indexArg})`;
+  const probeSubmit = keyDef.key === 'Enter';
+  const focusExpression = `(${FOCUS_ELEMENT_SCRIPT})(${selectorArgsJS(selector)}, ${indexArg}, ${probeSubmit})`;
 
   try {
     const focusResponse = await cdp.send('Runtime.evaluate', {
@@ -185,6 +205,7 @@ export async function pressKeyElement(
       element?: string;
       elementType?: string;
       matchCount?: number;
+      submitProbe?: true;
     };
 
     if (!focusResult?.success) {
@@ -212,6 +233,7 @@ export async function pressKeyElement(
         ...(focusResult.element !== undefined && { element: focusResult.element }),
         elementType: focusResult.elementType,
         ...(focusResult.matchCount !== undefined && { matchCount: focusResult.matchCount }),
+        ...(focusResult.submitProbe && { submitProbe: true as const }),
       },
       options.index,
       'pressed the key on the first'
