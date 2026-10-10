@@ -263,32 +263,36 @@ export const ELEMENT_STATE_JS = `(el) => {
 
 /**
  * Page-side outer HTML of a node as `dom get --raw` shows it, with secrets
- * masked: the light DOM HTML `DOM.getOuterHTML` gives, in which the `value`
- * attribute of each sensitive input ({@link SENSITIVE_FIELD_JS}) and the text
- * of each sensitive textarea, the node itself or inside it, is
- * {@link MASKED_VALUE} (an empty one stays empty). Fields are judged on the
- * live page (a field masked by CSS only counts) and masked in a copy
- * imported into an inert document, so the page is not changed and no custom
- * element constructor runs.
+ * masked as {@link MASKED_VALUE} (an empty value stays empty):
  *
- * The `srcdoc` of an iframe in it is HTML text: it is parsed into an inert
- * document (nested `srcdoc` too) and its fields are judged by the same rule
- * on the parsed elements (all of it but the CSS check, which needs a
- * rendered page); a `srcdoc` with a masked field is replaced by the parsed
- * document serialised, one without stays as written. The text is judged
- * rather than the live frame because the attribute is what is printed, and
- * the frame's scripts may have changed its document since.
+ * - the `value` attribute of each sensitive input ({@link SENSITIVE_FIELD_JS})
+ *   and the text of each sensitive textarea, the node itself or inside it;
+ * - all text of a node inside a sensitive field: the nodes Chrome keeps in
+ *   a field's user-agent shadow root to show its value (reachable by node
+ *   id), and that shadow root itself;
+ * - the fields of an iframe's `srcdoc`, which is HTML text: it is parsed into
+ *   an inert document (nested `srcdoc` too) and judged by the same rule on
+ *   the parsed elements (all of it but the CSS check, which needs a rendered
+ *   page). A `srcdoc` with a masked field is replaced by the parsed markup
+ *   serialised (its body's, unless it had its own doctype, html, head or
+ *   body tags); one without stays as written. The text is judged rather
+ *   than the live frame because the attribute is what is printed.
  *
- * A document is serialised child by child: its doctype in full (public and
- * system ids), comments before and after the root element, and the root
- * element masked. `html` is null for other nodes (text, comments), which
- * hold no fields; `sensitive` says whether the node itself is a sensitive field.
+ * Fields are judged on the live page (a field masked by CSS only counts) and
+ * masked in a copy imported into an inert document, so the page is not
+ * changed and no custom element constructor runs. A document is serialised
+ * child by child (its doctype in full, comments around the root element),
+ * a shadow root or text node from its copy. `html` is null for other nodes
+ * (comments, doctypes), which hold no fields; `attributes` are an element's
+ * attributes as printed (`[name, value, ...]`, masked), and `masked` says
+ * whether a value was replaced.
  */
 export const MASKED_OUTER_HTML_JS = `(node) => {
   const isSensitive = ${SENSITIVE_FIELD_JS};
-  const isField = (el) => /^(input|textarea)$/.test(el.localName);
+  const isField = (el) => el.nodeType === 1 && /^(input|textarea)$/.test(el.localName);
+  let masked = false;
   const within = (el, selector) => {
-    const found = el.matches(selector) ? [el] : [];
+    const found = el.nodeType === 1 && el.matches(selector) ? [el] : [];
     const inside = el.querySelectorAll(selector);
     for (let i = 0; i < inside.length; i++) found[found.length] = inside[i];
     return found;
@@ -303,6 +307,22 @@ export const MASKED_OUTER_HTML_JS = `(node) => {
     field.setAttribute('value', '${MASKED_VALUE}');
     return true;
   };
+  const maskText = (copy) => {
+    const walker = copy.ownerDocument.createTreeWalker(copy, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      if (!walker.currentNode.data) continue;
+      walker.currentNode.data = '${MASKED_VALUE}';
+      masked = true;
+    }
+  };
+  const insideSecret = (target) => {
+    let root = target.nodeType === 11 ? target : target.getRootNode();
+    while (root && root.nodeType === 11 && root.host) {
+      if (isField(root.host) && isSensitive(root.host)) return true;
+      root = root.host.getRootNode();
+    }
+    return false;
+  };
   const serializeDocument = (doc, htmlOf) => {
     let html = '';
     for (let child = doc.firstChild; child; child = child.nextSibling) {
@@ -313,30 +333,49 @@ export const MASKED_OUTER_HTML_JS = `(node) => {
     return html;
   };
   const maskTree = (live, copy) => {
-    let masked = false;
+    let changed = false;
     const liveFields = within(live, 'input, textarea');
     const copyFields = within(copy, 'input, textarea');
     for (let i = 0; i < liveFields.length; i++) {
-      if (copyFields[i] && isSensitive(liveFields[i]) && maskValue(copyFields[i])) masked = true;
+      if (copyFields[i] && isSensitive(liveFields[i]) && maskValue(copyFields[i])) changed = true;
     }
     const frames = within(copy, 'iframe[srcdoc]');
     for (let i = 0; i < frames.length; i++) {
-      const doc = new DOMParser().parseFromString(frames[i].getAttribute('srcdoc'), 'text/html');
+      const source = frames[i].getAttribute('srcdoc');
+      const doc = new DOMParser().parseFromString(source, 'text/html');
       if (!doc.documentElement || !maskTree(doc.documentElement, doc.documentElement)) continue;
-      frames[i].setAttribute('srcdoc', serializeDocument(doc, (el) => el.outerHTML));
-      masked = true;
+      const whole = /<(!doctype|html|head|body)[\\s>\\/]/i.test(source);
+      frames[i].setAttribute('srcdoc', whole ? serializeDocument(doc, (el) => el.outerHTML) : doc.head.innerHTML + doc.body.innerHTML);
+      changed = true;
     }
-    return masked;
+    if (changed) masked = true;
+    return changed;
   };
   const inert = (node.ownerDocument || node).implementation.createHTMLDocument('');
-  const maskedHTML = (el) => {
-    const copy = inert.importNode(el, true);
-    maskTree(el, copy);
-    return copy.outerHTML;
+  const copyOf = (live) => {
+    const copy = inert.importNode(live, true);
+    maskTree(live, copy);
+    return copy;
   };
-  if (node.nodeType === 9) return { html: serializeDocument(node, maskedHTML), sensitive: false };
-  if (node.nodeType !== 1) return { html: null, sensitive: false };
-  return { html: maskedHTML(node), sensitive: isField(node) && isSensitive(node) };
+  if (node.nodeType === 9) {
+    const html = serializeDocument(node, (el) => copyOf(el).outerHTML);
+    return { html: html, attributes: null, masked: masked };
+  }
+  const secret = node.nodeType === 1 || node.nodeType === 3 || node.nodeType === 11 ? insideSecret(node) : false;
+  if (node.nodeType === 1) {
+    const copy = copyOf(node);
+    if (secret) maskText(copy);
+    const attributes = [];
+    for (let i = 0; i < copy.attributes.length; i++) attributes.push(copy.attributes[i].name, copy.attributes[i].value);
+    return { html: copy.outerHTML, attributes: attributes, masked: masked };
+  }
+  if (node.nodeType !== 3 && node.nodeType !== 11) return { html: null, attributes: null, masked: false };
+  const holder = inert.createElement('div');
+  const children = node.nodeType === 3 ? [node] : node.childNodes;
+  for (let i = 0; i < children.length; i++) holder.appendChild(inert.importNode(children[i], true));
+  if (node.nodeType === 11) maskTree(node, holder);
+  if (secret) maskText(holder);
+  return { html: holder.innerHTML, attributes: null, masked: masked };
 }`;
 
 /**

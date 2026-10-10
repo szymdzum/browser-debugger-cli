@@ -74,6 +74,37 @@ async function nodeIdOf(selector: string): Promise<number> {
   return node.nodeId;
 }
 
+/** A node of `DOM.describeNode --pierce` */
+interface PiercedNode {
+  backendNodeId: number;
+  children?: PiercedNode[];
+  shadowRoots?: PiercedNode[];
+}
+
+/**
+ * The backend node ids of an element's shadow roots and everything in them,
+ * the user-agent shadow root Chrome gives a field included.
+ *
+ * @param backendNodeId - Host element
+ * @returns Shadow roots and their descendants, roots first
+ */
+async function shadowNodeIds(backendNodeId: number): Promise<number[]> {
+  const params = JSON.stringify({ backendNodeId, depth: -1, pierce: true });
+  const data = await bdgJson<{ result: { node: PiercedNode } }>([
+    'cdp',
+    'DOM.describeNode',
+    '--params',
+    params,
+  ]);
+  const ids: number[] = [];
+  const walk = (node: PiercedNode): void => {
+    ids.push(node.backendNodeId);
+    node.children?.forEach(walk);
+  };
+  data.result.node.shadowRoots?.forEach(walk);
+  return ids;
+}
+
 void describe('Secrets in raw HTML (#583)', () => {
   let fixture: FixtureServer;
 
@@ -216,5 +247,62 @@ void describe('Secrets in raw HTML (#583)', () => {
     );
     assert.doesNotMatch(html, /LegacySecret/);
     assert.match(html, /<input id="legacy-pass" type="password" value="••••">/);
+  });
+
+  void it('masks the text of nodes inside a secret field, read by node id (its user-agent shadow root)', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}raw-secrets`]);
+    for (const id of ['pass', 'shown', 'masked', 'card', 'otp']) {
+      const internals = await shadowNodeIds(await nodeIdOf(`#${id}`));
+      assert.ok(internals.length >= 3, `#${id} has a shadow root with a div and its text`);
+      let shown = 0;
+      for (const internal of internals) {
+        const args = ['dom', 'get', '--node-id', String(internal)];
+        const human = await bdg(args);
+        assert.doesNotMatch(human, RAW_SECRETS, `#${id} node ${internal}`);
+        if (human.includes(MASK)) shown++;
+        assert.doesNotMatch(await bdg([...args, '--json']), RAW_SECRETS, `#${id} node ${internal}`);
+      }
+      assert.ok(shown >= 3, `#${id}: the root, the div and the text show the mask`);
+    }
+    const ordinary = await shadowNodeIds(await nodeIdOf('#user'));
+    assert.match(await bdg(['dom', 'get', '--node-id', String(ordinary.at(-1))]), /^ada$/m);
+    const result = await runCommand('dom', ['get', 'div', '--raw', '--all'], { timeout: 60000 });
+    assert.doesNotMatch(
+      `${result.stdout}${result.stderr}`,
+      RAW_SECRETS,
+      'selectors do not reach them'
+    );
+  });
+
+  void it('masks the fields of a shadow root read by node id', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}shadow-forms`]);
+    const [root] = await shadowNodeIds(await nodeIdOf('x-login'));
+    assert.ok(root);
+    const html = await bdg(['dom', 'get', '--node-id', String(root)]);
+    assert.doesNotMatch(html, SHADOW_SECRETS);
+    assert.match(
+      html,
+      /^<form id="login">.*<input id="pw" name="password" type="password" value="••••">/
+    );
+  });
+
+  void it('masks srcdoc in the JSON attributes too', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}raw-frames`]);
+    const json = await bdg(['dom', 'get', 'iframe', '--raw', '--all', '--json']);
+    assert.doesNotMatch(json, /FRAMESECRET|DEEPSECRET/);
+    const nodes = (JSON.parse(json) as { data: GetJson }).data.nodes;
+    assert.equal(
+      nodes[0]?.attributes?.['srcdoc'],
+      '<input type="password" value="••••"><input name="note" value="plain">'
+    );
+    assert.equal(nodes[2]?.attributes?.['srcdoc'], '<p>hello</p>');
+  });
+
+  void it('rewrites a masked srcdoc as its own markup, without a document around it', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}raw-frames`]);
+    assert.equal(
+      (await bdg(['dom', 'get', '#framed', '--raw'])).split('\n')[0],
+      '<div id="framed"><iframe srcdoc="&lt;input type=&quot;password&quot; value=&quot;••••&quot;&gt;&lt;input name=&quot;note&quot; value=&quot;plain&quot;&gt;"></iframe></div>'
+    );
   });
 });

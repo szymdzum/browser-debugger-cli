@@ -630,6 +630,8 @@ export interface DomGetResult {
     outerHTML?: string;
     /** Original length of `outerHTML` when JSON output cut it (`--full` keeps it whole) */
     truncatedFrom?: number;
+    /** Set when a secret value in `outerHTML` or `attributes` is shown as `••••` */
+    masked?: true;
   }>;
 }
 

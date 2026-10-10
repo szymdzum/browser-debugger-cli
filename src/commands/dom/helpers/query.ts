@@ -45,7 +45,6 @@ import {
   ELEMENT_TEXT_JS,
   ELEMENT_TEXT_LENGTH,
   MASKED_OUTER_HTML_JS,
-  MASKED_VALUE,
   textPreview,
   labelClasses,
 } from '@/runtime/dom/elementInfo.js';
@@ -113,60 +112,50 @@ async function describeNode(ref: NodeRef): Promise<Protocol.DOM.Node | null> {
   return (response.data?.result as Protocol.DOM.DescribeNodeResponse | undefined)?.node ?? null;
 }
 
-/** Node types whose outer HTML is read in the page: element (1) and document (9) */
-const PAGE_READ_NODE_TYPES = new Set([1, 9]);
-
 /** What {@link MASKED_OUTER_HTML_JS} reads */
 interface MaskedOuterHTML {
   html: string | null;
-  sensitive: boolean;
+  attributes: string[] | null;
+  masked: boolean;
+}
+
+/** A node as `dom get --raw` shows it */
+interface MaskedNode {
+  outerHTML: string | undefined;
+  attributes: Record<string, string>;
+  masked: boolean;
 }
 
 /**
- * A node's outer HTML with the values of secret fields masked
- * ({@link MASKED_OUTER_HTML_JS}), as `dom query` masks them. Elements and
- * documents are read in the page; other nodes (text, comments), which hold
- * no fields, with `DOM.getOuterHTML`. An element the page cannot read gets
- * no HTML rather than unmasked HTML.
+ * A node's outer HTML and attributes with secrets masked
+ * ({@link MASKED_OUTER_HTML_JS}), as `dom query` masks them. Elements,
+ * documents, shadow roots and text are read in the page; comments and
+ * doctypes, which hold no fields, with `DOM.getOuterHTML`. A node the page
+ * cannot read gets no HTML and no attributes rather than unmasked ones.
  *
  * @param ref - Node reference
- * @param nodeType - DOM node type from `DOM.describeNode`
- * @returns Outer HTML (undefined if unavailable) and whether the node itself is a secret field
+ * @returns Outer HTML (undefined if unavailable), attributes, and whether a value was masked
  */
-async function maskedOuterHTML(
-  ref: NodeRef,
-  nodeType: number
-): Promise<{ outerHTML: string | undefined; sensitive: boolean }> {
-  if (!PAGE_READ_NODE_TYPES.has(nodeType)) {
-    const response = await callCDP('DOM.getOuterHTML', ref);
-    const outerHTML = (response.data?.result as Protocol.DOM.GetOuterHTMLResponse | undefined)
-      ?.outerHTML;
-    return { outerHTML, sensitive: false };
-  }
+async function maskedNode(ref: NodeRef): Promise<MaskedNode> {
   const read = (await callOnNode(
     ref,
     `function () { return (${MASKED_OUTER_HTML_JS})(this); }`
   )) as Partial<MaskedOuterHTML> | undefined;
-  if (typeof read?.html !== 'string') log.debug(`No masked outer HTML for ${JSON.stringify(ref)}`);
-  return {
-    outerHTML: typeof read?.html === 'string' ? read.html : undefined,
-    sensitive: read?.sensitive === true,
-  };
-}
-
-/**
- * An element's attributes as `dom get --raw` shows them: the `value` of a
- * secret field is {@link MASKED_VALUE}.
- *
- * @param attributes - Attributes from `DOM.describeNode`
- * @param sensitive - Whether the element is a secret field
- * @returns Attributes to show
- */
-function maskedAttributes(
-  attributes: Record<string, string>,
-  sensitive: boolean
-): Record<string, string> {
-  return sensitive && attributes['value'] ? { ...attributes, value: MASKED_VALUE } : attributes;
+  if (!read) {
+    log.debug(`No masked outer HTML for ${JSON.stringify(ref)}`);
+    return { outerHTML: undefined, attributes: {}, masked: false };
+  }
+  if (typeof read.html === 'string') {
+    return {
+      outerHTML: read.html,
+      attributes: unpackAttributes(read.attributes ?? undefined),
+      masked: read.masked === true,
+    };
+  }
+  const response = await callCDP('DOM.getOuterHTML', ref);
+  const outerHTML = (response.data?.result as Protocol.DOM.GetOuterHTMLResponse | undefined)
+    ?.outerHTML;
+  return { outerHTML, attributes: {}, masked: false };
 }
 
 /** Counter giving each query its own object group (queries may run concurrently) */
@@ -912,8 +901,7 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
         EXIT_CODES.RESOURCE_NOT_FOUND
       );
     }
-    const { outerHTML, sensitive } = await maskedOuterHTML(ref, desc.nodeType);
-    const attributes = maskedAttributes(unpackAttributes(desc.attributes), sensitive);
+    const { outerHTML, attributes, masked } = await maskedNode(ref);
     const classes = elementClasses(attributes);
     return {
       nodeId: desc.backendNodeId,
@@ -921,6 +909,7 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
       ...(Object.keys(attributes).length > 0 && { attributes }),
       classes,
       ...(outerHTML && { outerHTML }),
+      ...(masked && { masked: true as const }),
     };
   });
 
