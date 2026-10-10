@@ -3,8 +3,9 @@
  * a submit button), was blocked
  * by the browser's constraint validation, and by which fields: the click
  * script installs a probe on the button's form ({@link SUBMIT_PROBE_JS}),
- * the key press script one for the submit Enter starts
- * ({@link KEY_SUBMIT_PROBE_JS}), and the action's result reads it
+ * the key press script one for the submit the key starts
+ * ({@link KEY_SUBMIT_PROBE_JS}) and a watch for `invalid` events
+ * ({@link WATCH_INVALID_JS}), and the action's result reads them
  * ({@link readBlockedSubmit}). The fields are listed the way
  * `dom submit` lists them ({@link INVALID_FIELDS_JS}).
  */
@@ -65,19 +66,35 @@ export const FORM_MEMBERS_JS = `({
   unlisten: (node, type, listener) => EventTarget.prototype.removeEventListener.call(node, type, listener, true)
 })`;
 
+/** Page-side test of whether a field the browser validates is invalid now */
+const IS_INVALID_JS = `(f) => f.willValidate && !f.validity.valid`;
+
+/**
+ * Page-side entry naming an invalid field by its name, id or tag, with the
+ * browser's validation message
+ */
+const FIELD_ENTRY_JS = `(f) => ({ field: f.name || f.id || f.tagName.toLowerCase(), message: f.validationMessage })`;
+
 /**
  * Page-side list of a form's invalid fields: those the browser validates
  * that are not valid, each named by its name, id or tag, with the browser's
  * validation message. Reading `validity` fires no `invalid` events.
  */
 export const INVALID_FIELDS_JS = `(form) => (${FORM_MEMBERS_JS}).elements(form)
-  .filter((f) => f.willValidate && !f.validity.valid)
-  .map((f) => ({ field: f.name || f.id || f.tagName.toLowerCase(), message: f.validationMessage }))`;
+  .filter(${IS_INVALID_JS})
+  .map(${FIELD_ENTRY_JS})`;
 
-/** Page-side statement removing the probe {@link SUBMIT_PROBE_JS} left */
+/**
+ * Page-side statement removing the probe ({@link SUBMIT_PROBE_JS}) and the
+ * `invalid` watch ({@link WATCH_INVALID_JS}) an earlier action left
+ */
 export const CLEAR_SUBMIT_PROBE_JS = `if (window.__bdgSubmitProbe) {
     window.__bdgSubmitProbe.stop();
     delete window.__bdgSubmitProbe;
+  }
+  if (window.__bdgInvalidWatch) {
+    window.__bdgInvalidWatch.stop();
+    delete window.__bdgInvalidWatch;
   }`;
 
 /**
@@ -180,21 +197,76 @@ export const KEY_SUBMIT_PROBE_JS = `(el, key) => {
 }`;
 
 /**
- * Reads and removes the probe {@link SUBMIT_PROBE_JS} or
- * {@link KEY_SUBMIT_PROBE_JS} left: the form's invalid fields when its
- * trigger (a click on the button, an Enter keypress on the field) reached
- * it, the page did not cancel it, the form fired no `submit` and it still
- * has invalid fields; null otherwise (no probe, a submit, a canceled
- * trigger, a form removed).
+ * Page-side watch installed right before a key press (after focusing
+ * `el`, so a validity check the page runs on blur is left out), left in
+ * `window.__bdgInvalidWatch`: it notes the fields that fired `invalid`
+ * and whether any form fired `submit`, in the capture phase on the window
+ * and on `el`'s shadow root (open or closed; neither event leaves a shadow
+ * root). It sees a submit the page's own Enter handler blocks
+ * (`requestSubmit()` on an invalid form, a site's own validation), which
+ * no button click or `keypress` shows. Evaluates to whether it was
+ * installed; it never fails the key press.
+ */
+export const WATCH_INVALID_JS = `(el) => {
+  try {
+    const members = ${FORM_MEMBERS_JS};
+    const watch = { fields: [], submitted: false };
+    const onInvalid = (event) => {
+      if (!watch.fields.includes(event.target)) watch.fields.push(event.target);
+    };
+    const onSubmit = () => { watch.submitted = true; };
+    const root = el.getRootNode();
+    const scopes = root.nodeType === 11 ? [window, root] : [window];
+    scopes.forEach((scope) => {
+      members.listen(scope, 'invalid', onInvalid);
+      members.listen(scope, 'submit', onSubmit);
+    });
+    watch.stop = () => scopes.forEach((scope) => {
+      members.unlisten(scope, 'invalid', onInvalid);
+      members.unlisten(scope, 'submit', onSubmit);
+    });
+    window.__bdgInvalidWatch = watch;
+    return true;
+  } catch (error) {
+    return false;
+  }
+}`;
+
+/**
+ * Reads and removes the probe ({@link SUBMIT_PROBE_JS},
+ * {@link KEY_SUBMIT_PROBE_JS}) and the `invalid` watch
+ * ({@link WATCH_INVALID_JS}) the action left, and lists the fields that
+ * blocked its submit, each once, those of the probe's form first:
+ * - the probe's form's invalid fields, when its trigger (a click on the
+ *   button, an Enter keypress on the field) reached it, the page did not
+ *   cancel it, the form fired no `submit` and it still has invalid fields;
+ * - the fields that fired `invalid` and are still invalid, when no form
+ *   fired `submit`.
+ * Null when there are none (no probe, a submit, a canceled trigger, a form
+ * removed).
  */
 const READ_SUBMIT_PROBE_SCRIPT = `(() => {
+  const members = ${FORM_MEMBERS_JS};
+  const isInvalid = ${IS_INVALID_JS};
   const probe = window.__bdgSubmitProbe;
-  if (!probe) return null;
-  probe.stop();
-  delete window.__bdgSubmitProbe;
-  if (!probe.trigger || probe.trigger.defaultPrevented || probe.submitted) return null;
-  if (!(${FORM_MEMBERS_JS}).isConnected(probe.form)) return null;
-  const fields = (${INVALID_FIELDS_JS})(probe.form);
+  const watch = window.__bdgInvalidWatch;
+  if (probe) {
+    probe.stop();
+    delete window.__bdgSubmitProbe;
+  }
+  if (watch) {
+    watch.stop();
+    delete window.__bdgInvalidWatch;
+  }
+  const blocked = [];
+  if (probe && probe.trigger && !probe.trigger.defaultPrevented && !probe.submitted &&
+      members.isConnected(probe.form)) {
+    blocked.push(...members.elements(probe.form).filter(isInvalid));
+  }
+  if (watch && !watch.submitted) {
+    blocked.push(...watch.fields.filter((f) => members.isConnected(f) && isInvalid(f)));
+  }
+  const fields = Array.from(new Set(blocked)).map(${FIELD_ENTRY_JS});
   return fields.length > 0 ? fields : null;
 })()`;
 

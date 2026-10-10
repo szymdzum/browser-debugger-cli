@@ -10,8 +10,12 @@
  * submit button outside its form (`form` attribute), an image input, two
  * invalid fields, Enter or Space on the submit button itself and
  * `--times 2`. On `/implicit-submit`: a single field without a button, two
- * fields with an image input as the default button, the sign-up form of
- * the issue (three invalid fields) and a form in a closed shadow root.
+ * fields with an image input as the default button, forms whose own Enter
+ * handler calls `requestSubmit()` (with and without `preventDefault()`,
+ * each field named once), Enter while the page loads an image, the sign-up
+ * form of the issue (three invalid fields) and a form in a closed shadow
+ * root. Validity checks the page runs before the key press (on input and
+ * blur) are not reported.
  * Unchanged: a valid form, a `novalidate` form, a default button whose
  * click the page cancels, a submit whose handler empties its field, a
  * `<textarea>`, a form with two text fields and no button, a disabled
@@ -237,6 +241,36 @@ void describe('dom pressKey Enter in forms without a usable submit button', () =
   void it('reports a form whose default button is an image input, with two text fields', async () => {
     const data = await pressKeyJson('[name=t1]', 'Enter');
     assert.deepEqual(data.submitBlocked, [{ field: 't1', message: requiredMessage }]);
+    assert.deepEqual(await evaluate('window.submitted'), []);
+  });
+
+  void it('reports a submit the page blocks in its own Enter handler (preventDefault, requestSubmit)', async () => {
+    const output = await bdg(['dom', 'pressKey', '[name=handle]', 'Enter']);
+    assert.match(output, /^⚠ Key Pressed \(submit blocked\)/);
+    assert.ok(
+      output.includes(`Submit blocked: handle: ${String(requiredMessage)}`),
+      `no blocked line naming handle: ${output}`
+    );
+    assert.deepEqual(await evaluate('window.submitted'), []);
+  });
+
+  void it('names a field once when the page and Enter both try to submit', async () => {
+    const output = await bdg(['dom', 'pressKey', '[name=alias]', 'Enter']);
+    assert.equal(output.split('alias: ').length - 1, 1, output);
+    const data = await pressKeyJson('[name=alias]', 'Enter');
+    assert.deepEqual(data.submitBlocked, [{ field: 'alias', message: requiredMessage }]);
+  });
+
+  void it('reports a blocked submit while the page loads an asset', async () => {
+    const data = await pressKeyJson('[name=code5]', 'Enter');
+    assert.deepEqual(data.submitBlocked, [{ field: 'code5', message: requiredMessage }]);
+  });
+
+  void it('leaves out validity checks the page ran before the key press', async () => {
+    await bdg(['dom', 'fill', '[name=zip5]', 'abc']);
+    await evaluate("document.querySelector('[name=zip5]').focus(), true");
+    const data = await pressKeyJson('[name=other]', 'Enter');
+    assert.equal(data.submitBlocked, undefined);
     assert.deepEqual(await evaluate('window.submitted'), []);
   });
 

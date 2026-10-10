@@ -9,7 +9,12 @@
  * (`#signup`, the issue's page), a form whose submit button is disabled
  * (`#off`, which Enter does not submit), a form with two text fields
  * whose only submit button is an `<input type=image>` (`#pics`; image
- * inputs are not in `form.elements`), and `<x-card>`, whose closed
+ * inputs are not in `form.elements`), forms whose own Enter handler
+ * submits: `#hand` (`preventDefault()` then `requestSubmit()`, two text
+ * fields) and `#both` (`requestSubmit()` only, with a submit button), a
+ * form whose field checks its validity on input and blur (`#live`, two
+ * text fields and no button), a form whose Enter handler loads an image
+ * (`#busy`, a request during the key press), and `<x-card>`, whose closed
  * shadow root holds a form with a required field labelled "Card" and a
  * submit button. Every form's `submit` is noted in `window.submitted` and
  * canceled. The other cases (a submit button outside the form, a
@@ -40,6 +45,20 @@ const IMPLICIT_SUBMIT_HTML = `<!doctype html><title>implicit submit</title>
 <form id="pics"><input name="t1" required><input name="t2">
   <input type="image" id="pics-go" alt="Go" width="40" height="20"
     src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"></form>
+<form id="hand"><input name="handle" required><input name="bio"></form>
+<form id="both"><input name="alias" required><button id="both-go">Go</button></form>
+<form id="live"><input name="zip5" pattern="[0-9]{5}"><input name="other"></form>
+<form id="busy"><input name="code5" required><button id="busy-go">Go</button></form>
+<script>
+  const onEnter = (name, handler) => document.querySelector('[name=' + name + ']')
+    .addEventListener('keydown', (event) => { if (event.key === 'Enter') handler(event); });
+  onEnter('handle', (event) => { event.preventDefault(); event.target.form.requestSubmit(); });
+  onEnter('alias', (event) => event.target.form.requestSubmit());
+  onEnter('code5', () => { new Image().src = '/implicit-submit-pixel?' + Date.now(); });
+  const zip = document.querySelector('[name=zip5]');
+  zip.addEventListener('input', () => zip.checkValidity());
+  zip.addEventListener('blur', () => zip.checkValidity());
+</script>
 <x-card></x-card>
 <script>
   customElements.define('x-card', class extends HTMLElement {

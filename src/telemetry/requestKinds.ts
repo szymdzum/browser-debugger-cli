@@ -55,6 +55,22 @@ export function isNotableRequest(request: ClassifiedRequest): boolean {
 }
 
 /**
+ * Whether a request may carry a form's data: one of the
+ * {@link ACTIVITY_RESOURCE_TYPES}, one of unknown type, or any request that
+ * is not a GET. An asset fetched with GET (a stylesheet, an image, also one
+ * that failed) never does.
+ *
+ * @param request - Request with its method and CDP resource type
+ * @returns False for assets fetched with GET
+ */
+export function mayCarrySubmit(request: ClassifiedRequest): boolean {
+  if (request.resourceType === undefined || ACTIVITY_RESOURCE_TYPES.has(request.resourceType)) {
+    return true;
+  }
+  return request.method !== undefined && request.method.toUpperCase() !== 'GET';
+}
+
+/**
  * Short names of the asset types among requests, e.g. `["css", "js", "images"]`
  * (types without a short name are lowercased, after the known ones).
  *

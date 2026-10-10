@@ -14,7 +14,11 @@ import {
   unknownKeyError,
 } from '@/errors/messages.js';
 import type { PressKeyResult } from '@/ipc/protocol/domTypes.js';
-import { CLEAR_SUBMIT_PROBE_JS, KEY_SUBMIT_PROBE_JS } from '@/runtime/dom/blockedSubmit.js';
+import {
+  CLEAR_SUBMIT_PROBE_JS,
+  KEY_SUBMIT_PROBE_JS,
+  WATCH_INVALID_JS,
+} from '@/runtime/dom/blockedSubmit.js';
 import { DISABLED_CAUSE_JS, ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
 import {
   throwIfInvalidSelector,
@@ -55,9 +59,10 @@ export type PressKeyOutcome = PressKeyResult & { submitProbe?: true };
 
 /**
  * Page-side focus of the target, which reports the element. For
- * `submitKey` (Enter or Space, else null) it installs a probe for the
- * submit the key starts ({@link KEY_SUBMIT_PROBE_JS}) on the focused
- * element, after removing any probe an earlier action left.
+ * `submitKey` (Enter or Space, else null) it installs, after focusing, a
+ * probe for the submit the key starts ({@link KEY_SUBMIT_PROBE_JS}) and a
+ * watch for `invalid` events ({@link WATCH_INVALID_JS}), after removing
+ * any an earlier action left.
  */
 const FOCUS_ELEMENT_SCRIPT = `
 (function(selector, parts, index, submitKey) {
@@ -115,7 +120,9 @@ const FOCUS_ELEMENT_SCRIPT = `
     }
   }
 
-  const submitProbe = submitKey !== null && !pageLevel && (${KEY_SUBMIT_PROBE_JS})(el, submitKey);
+  const probed = submitKey !== null && !pageLevel && (${KEY_SUBMIT_PROBE_JS})(el, submitKey);
+  const watched = submitKey !== null && (${WATCH_INVALID_JS})(el);
+  const submitProbe = probed || watched;
 
   return {
     success: true,
