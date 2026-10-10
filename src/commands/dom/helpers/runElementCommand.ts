@@ -8,6 +8,7 @@
 import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
 import { noMatchContext } from '@/commands/dom/helpers/query.js';
 import {
+  type NoMatchContext,
   otherIndexSourceNote,
   staleNodeError,
   shadowBoundaryLine,
@@ -204,13 +205,40 @@ async function withNotFoundContext(
 ): Promise<CommandResult<never>> {
   if (failure.exitCode !== EXIT_CODES.RESOURCE_NOT_FOUND) return failure;
   const context = await noMatchContext(selector);
-  const daemonSuggestion = failure.errorContext?.suggestion;
+  const suggestion = notFoundSuggestion(
+    failure.errorContext?.suggestion,
+    selector,
+    searched,
+    context
+  );
+  return suggestion ? { ...failure, errorContext: { suggestion } } : failure;
+}
+
+/**
+ * The suggestion of a "not found" failure with what the page says about the
+ * selector. Once the page was checked (`context.unsearched`), the daemon's
+ * note on every place selectors do not search ({@link unreachableElementsNote}
+ * for an unchecked page) gives way to the note on what the page has; when it
+ * was not checked, the daemon's suggestion stays as it is.
+ *
+ * @param daemonSuggestion - The daemon's suggestion
+ * @param selector - Selector that was looked for
+ * @param searched - The page script searched the page (the daemon did not fail first)
+ * @param context - What the page says ({@link noMatchContext}; empty when it did not answer)
+ * @returns Suggestion (empty when there is nothing to say)
+ */
+export function notFoundSuggestion(
+  daemonSuggestion: string | undefined,
+  selector: string,
+  searched: boolean,
+  context: NoMatchContext
+): string {
   const uncheckedNote = unreachableElementsNote(selector);
   const replacesDaemonNote =
     context.unsearched !== undefined && daemonSuggestion?.includes(uncheckedNote) === true;
   const note =
     searched || replacesDaemonNote ? unreachableElementsNote(selector, context.unsearched) : '';
-  const suggestion = withLoadingHint(
+  return withLoadingHint(
     joinLines(
       context.similar,
       context.shadowHost && shadowBoundaryLine(context.shadowHost),
@@ -222,5 +250,4 @@ async function withNotFoundContext(
     context.readyState,
     selector
   );
-  return suggestion ? { ...failure, errorContext: { suggestion } } : failure;
 }
