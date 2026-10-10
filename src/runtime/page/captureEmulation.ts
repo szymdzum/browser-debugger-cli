@@ -202,7 +202,44 @@ export class CaptureEmulation {
    */
   private async restoreSessionMetrics(): Promise<void> {
     const viewport = this.sessionViewport();
-    if (this.beyondViewport) await this.layOutAgain(viewport, this.beyondViewport);
+    if (this.beyondViewport) {
+      await this.layOutAgain(viewport, this.beyondViewport);
+      return;
+    }
+    await this.applySessionMetrics(viewport);
+  }
+
+  /**
+   * Override the viewport one CSS px taller than the size it is put back at
+   * (the session's viewport, else the window's), then put that size back:
+   * Chrome lays the page out again, with its scrollbars, only when the
+   * viewport's size changes, and a capture beyond the viewport left it laid
+   * out without them (#514). Each change is waited for in the page, so the
+   * next command reads the size put back, not the taller one.
+   *
+   * @param viewport - Session's viewport, if any
+   * @param view - Visible viewport size, used when the page does not answer
+   */
+  private async layOutAgain(viewport: ViewportSize | undefined, view: Size): Promise<void> {
+    const before = await this.windowSize(view);
+    const size = viewport ?? before;
+    await this.cdp.send(
+      'Emulation.setDeviceMetricsOverride',
+      viewportOverride({ ...size, height: size.height + 1 })
+    );
+    const taller = await windowResizedFrom(this.connection, before);
+    await this.applySessionMetrics(viewport);
+    if (taller) await windowResizedFrom(this.connection, taller);
+  }
+
+  /**
+   * Put back the session's device metrics (its viewport and a phone's touch
+   * input, which a capture beyond the viewport turns off), else clear the
+   * override.
+   *
+   * @param viewport - Session's viewport, if any
+   */
+  private async applySessionMetrics(viewport: ViewportSize | undefined): Promise<void> {
     if (!viewport) {
       await this.cdp.send('Emulation.clearDeviceMetricsOverride', {});
       return;
@@ -214,23 +251,6 @@ export class CaptureEmulation {
         maxTouchPoints: 5,
       });
     }
-  }
-
-  /**
-   * Override the viewport one CSS px taller than the size it is put back at
-   * (the session's viewport, else the window's): Chrome lays the page out
-   * again, with its scrollbars, only when the viewport's size changes, and a
-   * capture beyond the viewport left it laid out without them (#514).
-   *
-   * @param viewport - Session's viewport, if any
-   * @param view - Visible viewport size, used when the page does not answer
-   */
-  private async layOutAgain(viewport: ViewportSize | undefined, view: Size): Promise<void> {
-    const size = viewport ?? (await this.windowSize(view));
-    await this.cdp.send(
-      'Emulation.setDeviceMetricsOverride',
-      viewportOverride({ ...size, height: size.height + 1 })
-    );
   }
 
   /**
@@ -262,4 +282,41 @@ export class CaptureEmulation {
  */
 function roundSize(size: Size): Size {
   return { width: Math.round(size.width), height: Math.round(size.height) };
+}
+
+/** How long the page is watched for a metrics change to reach it */
+const RESIZE_WAIT_MS = 1000;
+
+/**
+ * Wait until the page's window (`innerWidth`/`innerHeight`) is no longer the
+ * given size: Chrome answers a metrics change before the page has it, and on
+ * Linux a command right after could still read the old size.
+ *
+ * @param cdp - Session connection
+ * @param size - Size the window had
+ * @returns The new size, undefined when it did not change within
+ *   {@link RESIZE_WAIT_MS} or the page did not answer
+ */
+async function windowResizedFrom(cdp: CDPConnection, size: Size): Promise<Size | undefined> {
+  const expression = `new Promise((resolve) => {
+    const end = Date.now() + ${RESIZE_WAIT_MS};
+    const check = () => {
+      if (innerWidth !== ${size.width} || innerHeight !== ${size.height}) resolve([innerWidth, innerHeight]);
+      else if (Date.now() > end) resolve(null);
+      else setTimeout(check, 10);
+    };
+    check();
+  })`;
+  const response = await evaluateInBdgWorld(cdp, {
+    expression,
+    returnByValue: true,
+    awaitPromise: true,
+  });
+  const value = response.result.value as unknown;
+  if (!Array.isArray(value)) {
+    log.debug(`Screenshot restore: the window stayed ${size.width}x${size.height}`);
+    return undefined;
+  }
+  const [width, height] = value as number[];
+  return { width: width ?? size.width, height: height ?? size.height };
 }
