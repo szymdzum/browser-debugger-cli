@@ -6,8 +6,9 @@
  * (`Submit blocked: email: Please include an '@' …`, JSON `submitBlocked`),
  * from the first click on, and still exits 0: on `/shadow-forms` (a form in
  * an open shadow root) and on `/submit-blocked`, for a form in a closed
- * shadow root, a submit button outside its form (`form` attribute), an
- * image input, and two invalid fields joined with `; `.
+ * shadow root (the press reaching its button, #582), a submit button
+ * outside its form (`form` attribute), an image input, and two invalid
+ * fields joined with `; `.
  * Unchanged: a click that submits (also one that navigates, and one whose
  * submit handler empties a required field), a click on a `type=button`, on
  * a `formnovalidate` button, in a `novalidate` form, and a click the page
@@ -194,6 +195,7 @@ void describe('which clicks report a blocked submit', () => {
       output.includes(`Submit blocked: card: ${String(requiredMessage)}`),
       `no blocked line naming card: ${output}`
     );
+    assert.doesNotMatch(output, /may not have reached/, 'the press reached the button (#582)');
   });
 
   void it('leaves clicks that do not submit, or skip validation, unchanged', async () => {
