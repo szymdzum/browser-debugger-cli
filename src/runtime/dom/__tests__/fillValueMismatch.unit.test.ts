@@ -73,12 +73,15 @@ void describe('FILL_VALUE_MISMATCH_JS', () => {
   });
 
   void it('masks any field dom query masks (#592)', () => {
-    assert.deepEqual(valueMismatch({ localName: 'input', type: 'text', value: '12' }, 'ab12', true), {
-      expected: '••••',
-      actual: '••••',
-      expectedLength: 4,
-      actualLength: 2,
-    });
+    assert.deepEqual(
+      valueMismatch({ localName: 'input', type: 'text', value: '12' }, 'ab12', true),
+      {
+        expected: '••••',
+        actual: '••••',
+        expectedLength: 4,
+        actualLength: 2,
+      }
+    );
   });
 
   void it('compares checkboxes by state and contenteditable text without extra spaces', () => {

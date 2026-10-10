@@ -94,6 +94,7 @@ Opened: popup https://idp.test/authorize (bdg page switch 1)          # a tab or
 bdg dom form --brief                           # Fields: index, type, label, required
 bdg dom fill "input[name='user']" "myuser"     # By selector (React-compatible)
 bdg dom fill 0 "value"                         # By index from the last query/form
+bdg dom fill "#password" "short"               # Typed like a user: minlength applies (warning, submitBlocked); secret fields echo ••••
 bdg dom click "button.submit" --index 1        # Second match
 bdg dom submit "form" --wait-navigation        # Traditional form post
 bdg dom pressKey "input" Enter

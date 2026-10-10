@@ -201,7 +201,7 @@ void describe('dom fill echoes secret fields masked, as dom query does (#592)', 
 
   void it('masks a password, a one-time code, a CSS-masked field and a card code', async () => {
     for (const [selector, value] of [
-      ['#mlp', 'short'],
+      ['#mlp', 'hunter2'],
       ['#otp', '123456'],
       ['#dots', 'my hint'],
       ['#cvv', '987'],

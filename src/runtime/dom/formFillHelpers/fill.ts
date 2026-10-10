@@ -30,6 +30,7 @@ import {
   withValueMismatchWarning,
 } from '@/runtime/dom/formFillHelpers/shared.js';
 import {
+  FILL_INSERTED_SCRIPT,
   FILL_READ_BACK_SCRIPT,
   FIRE_EVENT_JS,
   REACT_FILL_SCRIPT,
@@ -55,7 +56,15 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 const log = createLogger('dom');
 
 /**
- * Fill a form element with a value in a React-compatible way.
+ * A fill result, plus whether the page script left the text for
+ * {@link insertAsUser} to type (not part of the CLI result)
+ */
+type FillOutcome = FillResult & { insertText?: true };
+
+/**
+ * Fill a form element with a value in a React-compatible way. A text field
+ * gets the value as a user edit ({@link insertAsUser}), so the browser
+ * applies `minlength` to it.
  */
 export async function fillElement(
   cdp: CDPConnection,
@@ -88,8 +97,11 @@ export async function fillElement(
     }
 
     if (cdpResponse.result?.value && isFillResult(cdpResponse.result.value)) {
-      const result = cdpResponse.result.value;
-      if (!result.fileInput) return withValueMismatchWarning(await withReadBack(cdp, result));
+      const result: FillOutcome = cdpResponse.result.value;
+      if (!result.fileInput) {
+        const filled = result.insertText ? await insertAsUser(cdp, value, result) : result;
+        return withValueMismatchWarning(await withReadBack(cdp, filled));
+      }
       const uploaded = await setFileInput(cdp, selector, value, options);
       return uploaded.success && result.elementType
         ? { ...uploaded, elementType: result.elementType }
@@ -106,6 +118,52 @@ export async function fillElement(
     const err = operationFailedError('fill element', errorMessage);
     throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SOFTWARE_ERROR);
   }
+}
+
+/** What {@link FILL_INSERTED_SCRIPT} evaluates to */
+interface FilledField {
+  value: string;
+  sensitive?: true;
+  warning?: string;
+}
+
+/**
+ * Type the value into the field the fill script focused and emptied, with
+ * CDP `Input.insertText`, then finish the fill ({@link FILL_INSERTED_SCRIPT}):
+ * Chrome takes typed text as a user edit, so `minlength` applies. When
+ * nothing was pending any more (the page navigated) the fill script's
+ * result stands.
+ *
+ * @param cdp - CDP connection
+ * @param value - Text to type
+ * @param pending - Result of the fill script, with `insertText`
+ * @returns Fill result
+ */
+async function insertAsUser(
+  cdp: CDPConnection,
+  value: string,
+  pending: FillOutcome
+): Promise<FillResult> {
+  const { insertText: _typed, ...result } = pending;
+  try {
+    await cdp.send('Input.insertText', { text: value });
+  } catch (error) {
+    log.debug(`Text not typed: ${getErrorMessage(error)}`);
+  }
+  const response = (await cdp.send('Runtime.evaluate', {
+    expression: FILL_INSERTED_SCRIPT,
+    returnByValue: true,
+    userGesture: true,
+  })) as { result?: { value?: unknown } };
+  const done = response.result?.value as FilledField | null | undefined;
+  if (!done) return result;
+  const { sensitive: _sensitive, warning: _warning, ...field } = result;
+  return {
+    ...field,
+    value: done.value,
+    ...(done.sensitive && { sensitive: true }),
+    ...(done.warning && { warning: done.warning }),
+  };
 }
 
 /** How long reading a filled value back may take before it is skipped */

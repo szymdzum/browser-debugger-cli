@@ -421,10 +421,11 @@ export function newMessageText(message: NewMessage): string {
 
 /**
  * Warning shown when a filled field's value read back is not the one given:
- * cut to its maxlength, a password of another length (values never shown),
- * or another value (naming the field the value went to, when one has it).
+ * cut to its maxlength, a secret field (one `dom query` masks) whose value
+ * has another length (values never shown), or another value (naming the
+ * field the value went to, when one has it).
  *
- * @param mismatch - Value given and value found (masked for passwords)
+ * @param mismatch - Value given and value found (masked for secret fields)
  * @returns Warning text
  */
 export function valueMismatchWarning(mismatch: FillValueMismatch): string {
@@ -432,7 +433,7 @@ export function valueMismatchWarning(mismatch: FillValueMismatch): string {
     return `The value was cut to ${mismatch.truncatedTo} characters by maxlength`;
   }
   if (mismatch.expectedLength !== undefined) {
-    return `The password field's value differs from the one filled (length ${mismatch.actualLength ?? 0}, expected ${mismatch.expectedLength}); the page may have rejected or changed the input`;
+    return `The field's value differs from the one filled (masked: length ${mismatch.actualLength ?? 0}, expected ${mismatch.expectedLength}); the page may have rejected or changed the input`;
   }
   const outcome =
     mismatch.movedTo === undefined
@@ -447,6 +448,16 @@ export function valueMismatchWarning(mismatch: FillValueMismatch): string {
  */
 export const FILL_BEFOREINPUT_CANCELLED_WARNING =
   'The page cancelled beforeinput (it may reject typed text); the value was set anyway, so check the page took it';
+
+/** Stands for the field's minlength in {@link FILL_TOO_SHORT_WARNING} */
+export const MINLENGTH_PLACEHOLDER = '<minlength>';
+
+/**
+ * Warning shown when `dom fill` entered a value shorter than the field's
+ * `minlength` (the browser applies it to the value, as to typed text);
+ * {@link MINLENGTH_PLACEHOLDER} is replaced page-side.
+ */
+export const FILL_TOO_SHORT_WARNING = `The value is shorter than the field's minlength (${MINLENGTH_PLACEHOLDER}); the form will not submit until it is fixed`;
 
 /**
  * Warning shown when a mouse press was dispatched but the target never
@@ -1491,6 +1502,15 @@ export const CLICK_RESULT_WAIT_HELP = joinLines(
   'results the page shows later (timers, spinners, animations); the result says',
   '"page still changing" when it saw such work pending. Wait for those with:',
   "  bdg dom wait '#result' --visible          # or --text 'Saved', or '.spinner' --gone"
+);
+
+/** Help of `bdg dom fill` after its options: how text is entered, and what it shows */
+export const FILL_RESULT_HELP = joinLines(
+  '',
+  'Text fields get the value typed like a user (trusted input events), so the browser',
+  'applies minlength: a shorter value is filled with a warning and blocks the submit;',
+  'a value over maxlength is refused (exit 81). Secret fields (passwords, one-time',
+  'codes, card data: the fields dom query masks) show Value: ••••.'
 );
 
 /** Examples in the help of `bdg dom wait` */

@@ -109,7 +109,7 @@ void describe('page whose replaced built-ins break action scripts', () => {
 
   void it('names the replaced built-ins and the error when a page API throws', async () => {
     assert.match(
-      await bdg(['dom', 'fill', '#guarded-field', 'x'], 90),
+      await bdg(['dom', 'fill', '#guarded-field', '5'], 90),
       /The page replaced built-ins bdg's fill script uses \(.*EventTarget\.prototype\.dispatchEvent.*\), and the script failed: Error: anti-bot: dispatchEvent/
     );
     assert.match(

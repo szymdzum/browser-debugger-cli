@@ -141,11 +141,13 @@ JSON.stringify = function () { return '"replaced"'; };
  * avoid them: `Element.prototype.matches` always matches (so everything
  * would look `:disabled`), `Event` is a MooTools-1.2-like wrapper that
  * builds no event, `Object.keys` lies, and, as anti-bot scripts do,
- * `dispatchEvent` throws for `#guarded-field` and `getBoundingClientRect`
- * for `#guarded`. Input and change events on `#name` are logged in `#log`.
+ * `dispatchEvent` throws for `#guarded-field` (a number field, which
+ * `dom fill` gives its value through events; text fields get typed text,
+ * whose events the page's `dispatchEvent` does not see) and
+ * `getBoundingClientRect` for `#guarded`. Input and change events on `#name` are logged in `#log`.
  */
 const TAMPERED_ACTIONS_HTML = `<!doctype html><html><head><title>Tampered actions</title></head><body>
-<input id="name"> <input id="guarded-field">
+<input id="name"> <input id="guarded-field" type="number">
 <button type="button" id="go" onclick="this.textContent = 'Clicked'">Go</button>
 <button type="button" id="guarded">Guarded</button>
 <div id="log"></div>

@@ -51,6 +51,7 @@ import { OutputFormatter } from '@/ui/formatting.js';
 import { pendingRequestsPausedNote } from '@/ui/messages/cdpEvents.js';
 import {
   CLICK_RESULT_WAIT_HELP,
+  FILL_RESULT_HELP,
   HOVER_OFF_DONE,
   HOVER_USAGE,
   POINTER_ACTION_DONE,
@@ -149,6 +150,7 @@ export function registerFormInteractionCommands(program: Command): void {
     .addOption(dialogOption())
     .addOption(promptTextOption())
     .addOption(jsonOption())
+    .addHelpText('after', FILL_RESULT_HELP)
     .action(async (selectorOrIndex: string, value: string, options: FillCommandOptions) => {
       await runCommand(
         async () => {
