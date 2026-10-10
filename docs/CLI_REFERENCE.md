@@ -165,9 +165,14 @@ Follow modes (`peek --follow`, `console --follow`, `network list --follow`):
 
 ### Get full details
 ```bash
-bdg details network <requestId>     # Full request/response with bodies
+bdg details network <requestId>     # Full request/response; response body cut at 20000 characters
+bdg details network <id> --body     # Only the response body, whole and raw (pipe it: | jq .)
+bdg details network <id> --no-body  # Headers and timing, no response body
+bdg details network <id> --body-max 2000   # Cut the body at 2000 characters (0 = whole)
 bdg details console <index>         # Full console message with args
 ```
+
+The response body is cut at 20000 characters by default, in text (`… 594000 more characters (full body: bdg details network <id> --body)`) and in `--json` (`bodyTruncated: true` and `bodyLength`, the whole length, on the item), so a large HTML document stays near 25 KB instead of hundreds. `--body-max <chars>` changes the cap (0 keeps the whole body); base64 bodies are cut on a whole 4-character group. `--no-body` leaves the response body out of both outputs (the request body and `bodyNotCaptured` stay). `--body` prints only the response body, whole, for piping: no newline is added, and control characters are escaped only when stdout is a terminal; a binary body comes base64-encoded (`base64 -d` decodes it; a hint on stderr says so), and `--json` gives `data: { type: "network-body", requestId, body, bodyLength, base64Encoded?, bodyTruncated?, mimeType? }`. A request with no body to print exits 83 with the reason: not captured (skipped or evicted, see below), still loading, a WebSocket (it has messages), the response has no body (HEAD, 204, 205, 304), or none captured (redirects, failed requests). `--body --body-max N` prints the first N characters and says so on stderr (`body cut at N of M characters (--body-max 0 for all)`), so stdout stays clean for piping. These options apply to `details network` only (exit 81 for `details console`), and `--no-body` with `--body-max` exits 81.
 
 Binary response bodies (images, fonts) are only captured in sessions started with `--all`; in `--json` output they are base64 with `responseBodyBase64: true`.
 
@@ -1089,9 +1094,21 @@ bdg network list --preset media                    # resource-type:Image,Media
 bdg network list --preset scripts                  # resource-type:Script
 bdg network list --preset pending                  # is:running
 bdg network list --preset failed                   # is:failed
+bdg network list --preset slow                     # duration:>=1s
 
 # Combine preset with additional filters
 bdg network list --preset api --filter "status-code:>=400"
+
+# Requests of the current page only, or of every page
+bdg network list --page current                    # Default for --preset errors, failed, slow
+bdg network list --preset errors --page all        # Include earlier pages' errors
+bdg network list --filter "page:current"           # Same, inside the DSL
+bdg network list --filter "!page:current"          # Only earlier pages
+
+# Order: largest or slowest first, or by start time
+bdg network list --sort size --last 5              # The 5 heaviest requests
+bdg network list --sort duration --last 10         # The 10 slowest
+bdg network list --sort start
 
 # Filter by resource type (alternative to --filter)
 bdg network list --type XHR,Fetch
@@ -1107,6 +1124,10 @@ bdg network list --verbose
 # JSON output
 bdg network list --json
 ```
+
+**Current page or all pages.** The list keeps the session's requests across navigations, so after leaving a page its 404s are still there (START negative). `--page current` lists only the requests of the page currently loaded (its navigation; requests of another tab before `bdg page switch` count as earlier pages), and `--page all` every request. `--preset errors`, `failed` and `slow` default to `current`, since an earlier page's error read as the current page's; other presets, `--filter` alone and no filter default to `all`. When requests are left out the list ends with `3 requests from earlier pages hidden (--page all)`, and `--json` has `page: "current"` and `hiddenEarlierPages: 3` (`filteredCount` counts the current page). The DSL key `page:current` filters the same way inside `--filter`; `!page:current` keeps only earlier pages. An unknown value exits 81 with a suggestion (`Use current or all (did you mean current?)`).
+
+**Sorting.** `--sort size` (bytes transferred) and `--sort duration` list the largest or slowest first (pending requests last), and `--last n` then keeps the top n: `--sort size --last 5` is the 5 heaviest. `--sort start` orders by start time, with `--last n` keeping the latest n as without `--sort`. The header says the order (`NETWORK REQUESTS (5 largest of 42)`, `(42, slowest first)`), and `--json` has `sort` with `requests` in that order. Sorting comes after the filters, `--type` and `--page`; it does not apply to `--follow` (exit 81). `--follow` streams the requests of every page in capture order: a preset's `current` default does not apply there, and `--page` with `--follow` exits 81.
 
 **Columns:** `START` is when the request started, counted from the start of the current page (its document request, the latest main-frame navigation): `+0.0s` for the document, `+1.2s` for a request 1.2 s later, whole seconds from 100 s (`+250s`) and minutes from 1000 s (`+17m`); requests of earlier pages are negative (`-35.2s`). It uses Chrome's own timestamps, so it is exact to the millisecond. `TIME` is how long the request took (`-` while pending). The method column widens for `OPTIONS`. JSON fields behind the column (`bdg network list --json`):
 

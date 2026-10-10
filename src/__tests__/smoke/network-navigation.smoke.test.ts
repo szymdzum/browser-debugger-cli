@@ -14,6 +14,7 @@ import * as path from 'path';
 import { runCommand } from '@/__testutils__/commandRunner.js';
 import { cleanupAllSessions } from '@/__testutils__/daemonHelpers.js';
 import {
+  LARGE_BODY,
   getFreePort,
   startFixtureServer,
   type FixtureServer,
@@ -421,5 +422,181 @@ void describe('WebSocket connections', () => {
         ['receive', 'hello'],
       ]
     );
+  });
+});
+
+interface ScopedList {
+  requests: Array<ListedRequest & { encodedDataLength?: number }>;
+  filteredCount: number;
+  page?: string;
+  hiddenEarlierPages?: number;
+  sort?: string;
+}
+
+/**
+ * Wait until the session has fetched the body of a request (it does so
+ * right after the response).
+ *
+ * @param requestId - Request id
+ * @returns True once the body is there
+ */
+async function bodyFetched(requestId: string): Promise<boolean> {
+  const deadline = Date.now() + 20000;
+  while (Date.now() < deadline) {
+    const details = await runJson<{ item: { responseBody?: string } }>('details', [
+      'network',
+      requestId,
+    ]);
+    if (details.item.responseBody) return true;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return false;
+}
+
+void describe('Network list by page and size, details body options (#451)', () => {
+  let fixture: FixtureServer;
+  let largeId = '';
+
+  before(async () => {
+    await cleanupAllSessions();
+    fixture = await startFixtureServer();
+    const port = await getFreePort();
+    const result = await runCommand(fixture.url, ['--port', String(port), '--headless'], {
+      timeout: 60000,
+    });
+    assert.equal(result.exitCode, 0, `Start failed: ${result.stderr}`);
+    await runJson('dom', ['eval', 'fetch("/not-found.png").then((r) => r.status)']);
+    const navigated = await runCommand('page', ['navigate', `${fixture.url}?second`], {
+      timeout: 30000,
+    });
+    assert.equal(navigated.exitCode, 0, navigated.stderr);
+    await runJson('dom', [
+      'eval',
+      'fetch("/large-body").then((r) => r.text()).then((t) => t.length)',
+    ]);
+    const list = await runJson<ScopedList>('network', ['list', '--last', '0']);
+    largeId = list.requests.find((r) => r.url.endsWith('/large-body'))?.requestId ?? '';
+    assert.ok(largeId, `Requests: ${JSON.stringify(list.requests)}`);
+    assert.ok(await bodyFetched(largeId), 'the large body was never fetched');
+  });
+
+  after(async () => {
+    await cleanupAllSessions();
+    await fixture.close();
+  });
+
+  const has404 = (data: ScopedList): boolean =>
+    data.requests.some((r) => r.url.endsWith('/not-found.png'));
+
+  void it("--preset errors leaves the previous page's 404 out by default, and says so", async () => {
+    const byDefault = await runJson<ScopedList>('network', ['list', '--preset', 'errors']);
+    assert.ok(!has404(byDefault), JSON.stringify(byDefault.requests));
+    assert.equal(byDefault.page, 'current');
+    assert.equal(byDefault.hiddenEarlierPages, 1);
+
+    const current = await runJson<ScopedList>('network', [
+      'list',
+      '--preset',
+      'errors',
+      '--page',
+      'current',
+    ]);
+    assert.deepEqual(current, byDefault);
+
+    const all = await runJson<ScopedList>('network', [
+      'list',
+      '--preset',
+      'errors',
+      '--page',
+      'all',
+    ]);
+    assert.ok(has404(all), JSON.stringify(all.requests));
+    assert.ok(!('hiddenEarlierPages' in all));
+
+    const human = await runCommand('network', ['list', '--preset', 'errors'], { timeout: 30000 });
+    assert.equal(human.exitCode, 0, human.stderr);
+    assert.match(human.stdout, /^1 request from earlier pages hidden \(--page all\)$/m);
+    assert.doesNotMatch(human.stdout, /not-found\.png/);
+  });
+
+  void it('filters by page:current in the DSL, !page:current for earlier pages', async () => {
+    const earlier = await runJson<ScopedList>('network', [
+      'list',
+      '--filter',
+      '!page:current status-code:>=400',
+    ]);
+    assert.ok(has404(earlier), JSON.stringify(earlier.requests));
+    const current = await runJson<ScopedList>('network', ['list', '--filter', 'page:current']);
+    assert.ok(!has404(current));
+    assert.ok(current.requests.some((r) => r.requestId === largeId));
+  });
+
+  void it('--sort size --last 5 lists the 5 largest, largest first', async () => {
+    const all = await runJson<ScopedList>('network', ['list', '--last', '0']);
+    const sizes = all.requests.map((r) => r.encodedDataLength ?? -1).sort((a, b) => b - a);
+    const top = await runJson<ScopedList>('network', ['list', '--sort', 'size', '--last', '5']);
+    assert.equal(top.sort, 'size');
+    assert.equal(top.requests[0]?.requestId, largeId);
+    assert.deepEqual(
+      top.requests.map((r) => r.encodedDataLength ?? -1),
+      sizes.slice(0, 5)
+    );
+  });
+
+  void it('caps the body in details --json, prints it whole with --body', async () => {
+    const json = await runCommand('details', ['network', largeId, '--json'], { timeout: 30000 });
+    assert.equal(json.exitCode, 0, json.stderr);
+    assert.ok(json.stdout.length < 30000, `details --json is ${json.stdout.length} characters`);
+    const { item } = (
+      JSON.parse(json.stdout) as {
+        data: { item: { responseBody?: string; bodyTruncated?: boolean; bodyLength?: number } };
+      }
+    ).data;
+    assert.equal(item.bodyTruncated, true);
+    assert.equal(item.bodyLength, LARGE_BODY.length);
+    assert.equal(item.responseBody, LARGE_BODY.slice(0, 20000));
+
+    const raw = await runCommand('details', ['network', largeId, '--body'], { timeout: 30000 });
+    assert.equal(raw.exitCode, 0, raw.stderr);
+    assert.equal(raw.stdout, LARGE_BODY);
+    const cut = await runCommand('details', ['network', largeId, '--body', '--body-max', '100'], {
+      timeout: 30000,
+    });
+    assert.equal(cut.exitCode, 0, cut.stderr);
+    assert.equal(cut.stdout, LARGE_BODY.slice(0, 100));
+    assert.match(
+      cut.stderr,
+      new RegExp(`body cut at 100 of ${LARGE_BODY.length} characters \\(--body-max 0 for all\\)`)
+    );
+  });
+
+  void it('--no-body drops the body in human and JSON output', async () => {
+    const { item } = await runJson<{ item: Record<string, unknown> }>('details', [
+      'network',
+      largeId,
+      '--no-body',
+    ]);
+    assert.ok(!('responseBody' in item), Object.keys(item).join(', '));
+    assert.equal(item['url'], `${fixture.url}large-body`);
+    const human = await runCommand('details', ['network', largeId, '--no-body'], {
+      timeout: 30000,
+    });
+    assert.equal(human.exitCode, 0, human.stderr);
+    assert.match(human.stdout, /Network Request Details/);
+    assert.doesNotMatch(human.stdout, /Response Body|xxxx/);
+  });
+
+  void it('rejects unknown --page and --sort values with a suggestion (exit 81)', async () => {
+    const page = await runCommand('network', ['list', '--page', 'curent'], { timeout: 30000 });
+    assert.equal(page.exitCode, 81);
+    assert.match(page.stderr, /did you mean current\?/);
+    const sort = await runCommand('network', ['list', '--sort', 'sise'], { timeout: 30000 });
+    assert.equal(sort.exitCode, 81);
+    assert.match(sort.stderr, /did you mean size\?/);
+    const follow = await runCommand('network', ['list', '--follow', '--page', 'current'], {
+      timeout: 30000,
+    });
+    assert.equal(follow.exitCode, 81);
+    assert.match(follow.stderr, /--page cannot be combined with --follow/);
   });
 });

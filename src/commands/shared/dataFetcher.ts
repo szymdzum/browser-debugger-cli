@@ -137,7 +137,8 @@ export async function fetchPreviewData(
  *
  * @param withHeaders - Include request/response headers (needed by header filters)
  * @param tabMove - Take a move to another tab no command reported yet (see {@link PreviewQuery})
- * @returns Requests, when the page crashed (while it is not loaded again),
+ * @returns Requests, the navigation id of the page currently loaded, when
+ *   the page crashed (while it is not loaded again),
  *   the session's latest move to another tab and what the session let go at
  *   its capture limits, or a fetch error
  */
@@ -147,6 +148,7 @@ export async function fetchNetworkRequests(
 ): Promise<
   FetchResult<{
     requests: NetworkRequest[];
+    currentNavigationId: number | undefined;
     pageCrashedAt: number | undefined;
     tabSwitch: TabSwitchInfo | undefined;
     evictions: NetworkEvictionCounts;
@@ -154,11 +156,12 @@ export async function fetchNetworkRequests(
 > {
   const result = await fetchPreviewData({ lastN: 0, only: 'network', withHeaders, tabMove });
   if (!result.success) return result;
-  const { totals, pageCrashedAt, tabSwitch } = result.data.output;
+  const { totals, pageCrashedAt, tabSwitch, currentNavigationId } = result.data.output;
   return {
     success: true,
     data: {
       requests: result.data.network,
+      currentNavigationId,
       pageCrashedAt,
       tabSwitch,
       evictions: {

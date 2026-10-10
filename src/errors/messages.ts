@@ -2846,3 +2846,30 @@ export function tabsUnavailableError(reason: string): ErrorWithSuggestion {
     suggestion: `List the targets with: ${sessionCommand('bdg cdp Target.getTargets')}`,
   };
 }
+
+/**
+ * `details network <id> --body` on a request without a response body to print.
+ *
+ * @param requestId - Request id
+ * @param reason - Why there is none (from missingBodyReason)
+ * @returns Error with what to do instead
+ */
+export function responseBodyMissingError(requestId: string, reason: string): ErrorWithSuggestion {
+  return {
+    message: `No response body for request ${requestId}: ${reason}`,
+    suggestion: `Repeat the request (reload the page) to capture it again; ${sessionCommand(`bdg details network ${requestId}`)} shows the rest`,
+  };
+}
+
+/**
+ * A `details` option that applies to network requests only.
+ *
+ * @param flag - The option
+ * @returns Error with the usage
+ */
+export function networkOnlyDetailsOptionError(flag: string): ErrorWithSuggestion {
+  return {
+    message: `${flag} applies to network requests only`,
+    suggestion: `Usage: bdg details network <requestId> ${flag}`,
+  };
+}

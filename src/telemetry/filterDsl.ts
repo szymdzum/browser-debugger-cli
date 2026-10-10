@@ -9,6 +9,7 @@
 import { RESOURCE_TYPE_ABBREVIATIONS, resourceTypeFromName } from '@/constants.js';
 import { summarizeBlockedCookies } from '@/telemetry/blockedCookies.js';
 import { matchesWildcard } from '@/telemetry/filters.js';
+import { currentNavigationOf, isPreviousPage } from '@/telemetry/pageScope.js';
 import type { NetworkRequest } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { findSimilar } from '@/utils/suggestions.js';
@@ -27,7 +28,8 @@ export type FilterType =
   | 'has-response-header'
   | 'has-blocked-cookies'
   | 'is'
-  | 'scheme';
+  | 'scheme'
+  | 'page';
 
 export type ComparisonOperator = '=' | '>=' | '<=' | '>' | '<';
 
@@ -62,6 +64,7 @@ const VALID_FILTER_TYPES: FilterType[] = [
   'has-blocked-cookies',
   'is',
   'scheme',
+  'page',
 ];
 
 /** CDP resource types (the keys of the TYP abbreviations) */
@@ -84,6 +87,8 @@ export function parseDuration(value: string): number {
 }
 
 const VALID_IS_VALUES = ['from-cache', 'running', 'failed'] as const;
+
+const VALID_PAGE_VALUES = ['current'] as const;
 
 const SIZE_PATTERN = /^(\d+(?:\.\d+)?)\s*(b|kb|mb|gb)?$/i;
 const QUOTED_TOKEN_PATTERN = /(?:[^\s"]+|"[^"]*")+/g;
@@ -135,6 +140,8 @@ function validateFilterValue(type: string, value: string): FilterTokenResult | n
       return validateDuration(value);
     case 'resource-type':
       return validateResourceTypes(value);
+    case 'page':
+      return validatePageValue(value);
     default:
       return null;
   }
@@ -217,6 +224,24 @@ function validateIsValue(value: string): FilterTokenResult | null {
   );
 }
 
+/**
+ * Check a `page:` value.
+ *
+ * @param value - Value as written
+ * @returns An error with a did-you-mean, or null for `current`
+ */
+function validatePageValue(value: string): FilterTokenResult | null {
+  const lowerValue = value.toLowerCase();
+  if (VALID_PAGE_VALUES.includes(lowerValue as (typeof VALID_PAGE_VALUES)[number])) return null;
+  const similar = findSimilar(lowerValue, [...VALID_PAGE_VALUES]);
+  return createError(
+    `Invalid "page" filter value: "${value}"`,
+    similar.length > 0
+      ? `Did you mean: ${similar[0]}? (!page:current lists earlier pages)`
+      : `Valid values: ${VALID_PAGE_VALUES.join(', ')} (!page:current lists earlier pages)`
+  );
+}
+
 function validateSizeValue(value: string): FilterTokenResult | null {
   try {
     parseSize(value);
@@ -288,7 +313,7 @@ function parseFilterToken(token: string): FilterTokenResult {
     : (['=', rawValue] as [ComparisonOperator, string]);
   const valueError = validateFilterValue(type, operand);
   if (valueError) return valueError;
-  const value = type === 'is' ? operand.toLowerCase() : operand;
+  const value = type === 'is' || type === 'page' ? operand.toLowerCase() : operand;
 
   return { type: type as FilterType, value, negated, operator };
 }
@@ -374,7 +399,17 @@ function matchesCacheHeaders(headers: Record<string, string> | undefined): boole
   return cacheHeader.includes('hit') || cfCacheStatus === 'hit';
 }
 
-function matchesFilter(request: NetworkRequest, filter: ParsedFilter): boolean {
+/** What filters need beyond the request itself */
+export interface FilterContext {
+  /** Navigation id of the page currently loaded (`page:`); default: the latest among the requests */
+  currentNavigationId?: number | undefined;
+}
+
+function matchesFilter(
+  request: NetworkRequest,
+  filter: ParsedFilter,
+  context: FilterContext
+): boolean {
   switch (filter.type) {
     case 'domain':
       return matchesWildcard(extractHostname(request.url), filter.value);
@@ -440,21 +475,33 @@ function matchesFilter(request: NetworkRequest, filter: ParsedFilter): boolean {
 
     case 'scheme':
       return extractScheme(request.url).toLowerCase() === filter.value.toLowerCase();
+
+    case 'page':
+      return !isPreviousPage(request, context.currentNavigationId);
   }
 }
 
 /**
  * Apply parsed filters to an array of network requests.
+ *
+ * @param requests - Requests to filter
+ * @param filters - Parsed filters (AND)
+ * @param context - The session's current navigation id, for `page:`
+ * @returns Matching requests
  */
 export function applyFilters(
   requests: NetworkRequest[],
-  filters: ParsedFilter[]
+  filters: ParsedFilter[],
+  context: FilterContext = {}
 ): NetworkRequest[] {
   if (filters.length === 0) return requests;
+  const resolved: FilterContext = {
+    currentNavigationId: currentNavigationOf(requests, context.currentNavigationId),
+  };
 
   return requests.filter((request) =>
     filters.every((filter) => {
-      const matches = matchesFilter(request, filter);
+      const matches = matchesFilter(request, filter, resolved);
       return filter.negated ? !matches : matches;
     })
   );
@@ -480,6 +527,8 @@ Filter syntax:
   is:running              In-progress requests
   is:failed               Requests that got no response (DNS, refused, aborted, blocked)
   scheme:https            URL scheme
+  page:current            Requests of the page currently loaded (!page:current: earlier pages,
+                          and another tab's before bdg page switch)
 
 Negation (use ! to avoid CLI conflicts with -):
   !domain:cdn.*           Exclude matching requests

@@ -4,6 +4,7 @@ import {
   MIME_TYPE_RULES,
   RESOURCE_TYPE_ABBREVIATIONS,
 } from '@/constants.js';
+import { isPreviousPage } from '@/telemetry/pageScope.js';
 import type { BdgOutput, ConsoleMessage, NetworkRequest } from '@/types.js';
 import { buildSuccessResponse, stringifyEnvelope } from '@/ui/OutputBuilder.js';
 import { capMessageText, formatTimestamp } from '@/ui/formatters/console/shared.js';
@@ -138,27 +139,6 @@ export interface PreviewJsonData {
   tabSwitch?: BdgOutput['tabSwitch'];
   network?: Array<NetworkRequest & PreviousPageFlag> | undefined;
   console?: Array<ConsoleMessage & PreviousPageFlag> | undefined;
-}
-
-/**
- * Whether an item was recorded on an earlier page load than the current one
- * (or on another tab before a switch, which starts a new navigation id).
- * `peek` shows the whole session (unlike `console`, which shows the current
- * page), so such items are marked rather than left out.
- *
- * @param item - Request or console message
- * @param currentNavigationId - Navigation id of the page currently loaded
- * @returns True for an item of a previous page
- */
-function isPreviousPage(
-  item: { navigationId?: number | undefined },
-  currentNavigationId: number | undefined
-): boolean {
-  return (
-    currentNavigationId !== undefined &&
-    item.navigationId !== undefined &&
-    item.navigationId < currentNavigationId
-  );
 }
 
 /**

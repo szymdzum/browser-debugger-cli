@@ -18,7 +18,7 @@ bdg dom inspect "button.primary"        # Box, layout, font, colors + contrast, 
 bdg dom fill "input[name='email']" "a@b.co"
 bdg dom click "button[type='submit']"   # Prints what changed: navigation, new text, or no effect
 bdg console --level error               # Anything thrown?
-bdg network list --preset errors        # 4xx/5xx responses
+bdg network list --preset errors        # 4xx/5xx of the current page (--page all: earlier pages too)
 bdg stop                                # Only when completely done
 ```
 
@@ -146,7 +146,9 @@ Exit 91 means the script threw. Prefer `dom query` / `dom get` / `dom inspect` w
 ```bash
 bdg network list                              # Requests (DevTools-style)
 bdg network list --filter "status-code:>=400 domain:api.*"   # DevTools DSL: status-code:, domain:, method:, mime-type:, ! negates; space = AND
-bdg details network <id>                      # Headers, timing, body; Blocked Cookies: set rejected / not sent + reason
+bdg network list --sort size --last 5         # 5 heaviest requests (--sort duration: slowest; --page current|all; DSL page:current)
+bdg details network <id>                      # Headers, timing, body (cut at 20000 chars; --json bodyTruncated/bodyLength); Blocked Cookies: set rejected / not sent + reason
+bdg details network <id> --no-body            # Metadata only; --body prints just the whole raw body (pipe to jq); --body-max <chars>
 bdg network list --filter "has-blocked-cookies:*"   # "Logged out after this request?" Rows end ⚠ cookie blocked; value = kind, reason, or one of the first 5 names
 bdg network getCookies
 bdg console --level error                     # Errors on the current page

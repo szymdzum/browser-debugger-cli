@@ -99,6 +99,11 @@ export interface CommandResult<T = unknown> {
   /** Optional hint message to display on stderr (for successful commands with guidance) */
   hint?: string;
   /**
+   * Print the formatter's text as it is, for piping: no newline added, and
+   * control characters escaped only when stdout is a terminal
+   */
+  raw?: boolean;
+  /**
    * Warning about how the command ran (success or failure): top-level
    * `warning` in the JSON envelope, `Warning: …` on stderr otherwise
    */
@@ -267,7 +272,13 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
       );
     } else if (formatter) {
       const formattedOutput = formatter(result.data as TResult);
-      console.log(escapeControlChars(formattedOutput));
+      if (result.raw) {
+        process.stdout.write(
+          process.stdout.isTTY ? escapeControlChars(formattedOutput) : formattedOutput
+        );
+      } else {
+        console.log(escapeControlChars(formattedOutput));
+      }
     } else {
       console.log(stringifyEnvelope(withTabMove(buildSuccessResponse(result.data))));
     }
