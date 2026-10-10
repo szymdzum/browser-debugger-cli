@@ -15,8 +15,8 @@ Files in this skill:
 
 ## Session start
 
-- **Only verified issues go in:** reproduced, or confirmed in the code with file:line. Verify first or ask.
-- **Propose 4–6 issues** with one line each on why. Recommend one set; don't present a menu.
+- **Only verified issues go in.** Verified means **one command you have already run** that shows the user's exact symptom on `main`: a bdg invocation on a fixture page or real site, a test, or a script. It must be deterministic, or for timing bugs reproduce at a rate you can debug against (loop it, add load). Record the command and its output in the issue; it becomes the red commit's first test. Behaviour that can't be run (dead code, a wrong doc) may be confirmed with file:line instead. No command and no file:line: verify first or ask.
+- **Propose 4–6 issues** with one line each on why. Recommend one set; don't present a menu. A candidate you can't reproduce in a few minutes drops out of the proposal and gets a `needs repro` comment on the issue.
 - **Waves of 2–3 parallel implementers.** Issues touching the same files or output run in sequence (the second starts from the first's branch, or after it merges). Light, conflict-free changes first; docs last.
 - **Ask for merge authority:** merge on green, or the user's OK per PR. It doesn't carry over to the next session.
 - **Product decisions belong to the user:** changed defaults, contracts, exit codes. Present options with a recommendation, then wait.
@@ -77,7 +77,7 @@ Merge only when **all** hold. If one fails, fix it; don't negotiate it.
 
 1. **Review resolved.** Every blocking and should-fix finding fixed or rejected with a reason you accept; nits fixed or filed.
 2. **Fresh-agent test done** on the branch (features and behaviour changes), its findings about this change fixed in the PR.
-3. **Red commit verified.** The first commit holds only the new tests and fixtures, and the reviewer ran them on it: they fail on an assertion about the issue, not a build or import error. Exempt: docs-only, pure refactors covered by existing tests, CI/tooling (the PR says which). Review-fix commits carry their test with the fix. Self-reported "it failed before" doesn't count.
+3. **Red commit verified.** The first commit holds only the tests for the issue's reproduction and each **testable** acceptance criterion (plus fixtures and `not implemented` skeletons); the PR says which criteria are measurements or docs and how they were checked, and the reviewer ran them on it: they fail on an assertion about the issue, not a build or import error. Exempt: docs-only, pure refactors covered by existing tests, CI/tooling (the PR says which). Review-fix commits carry their test with the fix. Self-reported "it failed before" doesn't count.
 4. **Timing-sensitive tests** passed the CI repeat dispatch with repeat ≥ 10 on Linux and macOS. CI or environment changes (browser, runner, tooling): the full smoke suite with repeat ≥ 3.
 5. **`CI OK` green on the final head commit:** `gh pr checks <n>` with no `fail` or `pending` line (never `--watch`), and the head SHA matches what you checked (`gh pr view <n> --json headRefOid`). macOS smoke runs on timing-sensitive PRs; it isn't part of `CI OK` but must be green or a known, filed flake.
 6. **Mergeable on current `main`** (`gh pr view <n> --json mergeable`; `UNKNOWN` right after a push means re-check). After a rebase: typecheck and the affected tests re-run, no conflict markers.

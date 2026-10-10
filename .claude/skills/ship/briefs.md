@@ -31,7 +31,8 @@ Build only in your worktree. If another branch you depend on hasn't merged yet, 
 - New fixture pages go in a new module in `src/__testutils__/fixturePages/`; don't edit `fixtureServer.ts`.
 
 **Tests**
-- **Red commit first.** Write the failing tests and commit them alone, before any fix: `test: reproduce #<N>` (bug) or `test: specify #<N>` (feature). The commit holds only tests and fixture pages, no product code.
+- **Red commit first.** Turn the issue's reproduction (the command recorded in the issue) and each **testable** acceptance criterion into one failing test (a criterion that is a measurement or a doc change gets no test; say so and how you checked it), and commit those alone, before any fix: `test: reproduce #<N>` (bug) or `test: specify #<N>` (feature). The commit holds tests, fixture pages and empty skeletons (below), no working product code.
+- Only those tests go in the red commit. The rest of the testing is vertical: one test, then the code that passes it, in the same later commit. Don't write the whole suite up front.
 - Run them on that commit. They must fail **for the right reason**: an assertion about the issue, or the CLI's real output (unknown flag, wrong result). Not a build error or a missing import; for a new command or flag, drive the CLI or an existing entry point so the test fails on behaviour.
 - A unit test for a new module or function may import it if the red commit also adds its **empty skeleton** (the signature, throwing `not implemented`); the next commit fills it in. Otherwise drive the CLI.
 - Then fix in later commits. Don't weaken the red commit's assertions in the fix; if a test was wrong, fix it in a separate commit and say why in your report.
@@ -74,14 +75,14 @@ Review `<branch>` in the worktree `../bdg-<N>` (bdg). Diff it against `origin/ma
 - **Security:** secrets in output, logs or errors; file writes (symlinks, permissions, atomicity); injection; prototype pollution.
 - **Contracts:** is the `--json` shape additive only? Exit codes, changed defaults (does the PR description mark them as changed?), backwards compatibility.
 - **Interaction with recent work:** `<recently merged features this could break>`.
-- **Tests:** do they test the claim? Are they deterministic (no fixed sleeps)? Did a later commit weaken an assertion from the red commit?
+- **Tests:** do they test the claim? Does the red commit cover the issue's reproduction and each testable acceptance criterion (the PR names the rest)? Are they deterministic (no fixed sleeps)? Did a later commit weaken an assertion from the red commit? Any **tautological** test, whose expected value is computed the way the code computes it instead of coming from the issue, a worked example or a known-good literal?
 - **Docs and PR description:** do `docs/CLI_REFERENCE.md`, help text, the bdg skill and the PR description say exactly what the code does? `CHANGELOG.md` must not be edited.
 - **Conventions (CLAUDE.md):** CommandRunner, CommandError or `{success, error}` never both, the `BdgResponse` envelope, semantic exit codes, centralized messages, option behavior keys `<command>:--flag`, TSDoc, no inline comments, no empty catch, ~30 lines per function.
 - `<change-specific risky questions>`
 
 **Run** with `export PATH="$HOME/.nvm/versions/node/v22.15.0/bin:$PATH"` and `BDG_TEST_SESSION_DIR`/`BDG_TEST_HOME_DIR`/`BDG_SESSION_DIR` under `/tmp`: `npm run build`, `<the targeted unit tests>` and `<one targeted smoke test>`. If a claim is cheap to check by hand (`node ../bdg-<N>/dist/index.js …`), do it.
 
-**Check the red commit.** `git -C ../bdg-<N> log --oneline <base>..HEAD` (`<base>`: `origin/main`, or the unmerged branch this one builds on): the first commit of this PR is `test: …` and holds only tests and fixture pages. Run its tests on that commit, in a worktree of your own:
+**Check the red commit.** `git -C ../bdg-<N> log --oneline <base>..HEAD` (`<base>`: `origin/main`, or the unmerged branch this one builds on): the first commit of this PR is `test: …` and holds only tests, fixture pages and `not implemented` skeletons. Run its tests on that commit, in a worktree of your own:
 ```
 git -C ../bdg-<N> worktree add /tmp/red-<N> <red sha>
 ln -s <main checkout>/node_modules /tmp/red-<N>/node_modules
