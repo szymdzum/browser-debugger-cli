@@ -14,6 +14,7 @@ import {
 } from '@/errors/messages.js';
 import type { FillResult, ClickResult } from '@/ipc/protocol/domTypes.js';
 import { REVEAL_SNAPSHOT_JS } from '@/runtime/dom/actionEffectsScripts.js';
+import { CLEAR_SUBMIT_PROBE_JS, SUBMIT_PROBE_JS } from '@/runtime/dom/blockedSubmit.js';
 import { ANCESTOR_CLIP_JS } from '@/runtime/dom/elementGeometry.js';
 import {
   DISABLED_CAUSE_JS,
@@ -561,7 +562,9 @@ export const FILL_READ_BACK_SCRIPT = `(() => {
  * ({@link REVEAL_SNAPSHOT_JS}), so its result can say what it revealed. For
  * a press, a probe (`window.__bdgPressProbe`) records whether the press
  * reaches the element, and otherwise which element it landed on: a browser
- * dialog or bubble can swallow input while the page looks normal.
+ * dialog or bubble can swallow input while the page looks normal. For a
+ * click on a submit button, a probe on its form ({@link SUBMIT_PROBE_JS})
+ * lets the result say when validation blocked the submit.
  * Slotted text hit-tests as its shadow host, so an element in a shadow root
  * that shows slotted content (a button labelled through a `<slot>`) is
  * topmost where its host is hit. An element that is not topmost because an
@@ -575,6 +578,7 @@ export const CLICK_ELEMENT_SCRIPT = `
     window.__bdgPressProbe.stop();
     delete window.__bdgPressProbe;
   }
+  ${CLEAR_SUBMIT_PROBE_JS}
   const allMatches = (${FIND_ELEMENTS_JS})(selector, parts);
   
   if (allMatches.length === 0) {
@@ -728,6 +732,7 @@ export const CLICK_ELEMENT_SCRIPT = `
   }
 
   if (action === 'hover') (${REVEAL_SNAPSHOT_JS})(el);
+  const submitProbe = (action === 'click' || action === 'double') && (${SUBMIT_PROBE_JS})(el);
 
   if (hittable && action !== 'hover') {
     const probe = { reached: false, landedOn: null };
@@ -758,7 +763,8 @@ export const CLICK_ELEMENT_SCRIPT = `
     y: y,
     hittable: hittable,
     obstruction: obstruction,
-    scrolledBy: scrolledBy.x !== 0 || scrolledBy.y !== 0 ? scrolledBy : undefined
+    scrolledBy: scrolledBy.x !== 0 || scrolledBy.y !== 0 ? scrolledBy : undefined,
+    submitProbe: submitProbe || undefined
   };
 })
 `;

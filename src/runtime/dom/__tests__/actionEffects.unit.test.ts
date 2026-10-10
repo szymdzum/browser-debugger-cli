@@ -32,6 +32,7 @@ import {
   pageNavigationText,
   shownElementText,
   stillChangingNote,
+  submitBlockedNote,
   valueMismatchWarning,
 } from '@/ui/messages/commands.js';
 
@@ -233,6 +234,24 @@ void describe('effect output', () => {
       '⚠ Element Clicked (with warnings)'
     );
     assert.equal(actionStatusLine('Element Clicked', { warned: false }), '✓ Element Clicked');
+  });
+
+  void it('says a blocked submit instead of no visible effect, naming every field', () => {
+    assert.equal(
+      actionStatusLine('Element Clicked', { warned: false, noEffect: true, submitBlocked: true }),
+      '⚠ Element Clicked (submit blocked)'
+    );
+    assert.equal(
+      actionStatusLine('Element Clicked', { warned: true, submitBlocked: true }),
+      '⚠ Element Clicked (submit blocked; with warnings)'
+    );
+    assert.equal(
+      submitBlockedNote([
+        { field: 'email', message: 'Please fill out this field.' },
+        { field: 'pin', message: 'Please match the requested format.' },
+      ]),
+      'Submit blocked: email: Please fill out this field.; pin: Please match the requested format.'
+    );
   });
 
   void it('says when the page was still changing', () => {

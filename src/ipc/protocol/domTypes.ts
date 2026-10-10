@@ -259,6 +259,21 @@ export interface ClickResult extends ActionEffects {
   triggeredRequests?: TriggeredRequest[];
   /** Requests left out of `triggeredRequests` (it lists the first 50) */
   triggeredRequestsOmitted?: number;
+  /**
+   * The fields whose constraint validation blocked the submit the click
+   * started (absent when it submitted, or did not submit a form)
+   */
+  submitBlocked?: InvalidField[];
+  /** Fields that blocked it, left out of `submitBlocked` (it lists the first 5) */
+  submitBlockedOmitted?: number;
+}
+
+/** A form field that fails the browser's constraint validation */
+export interface InvalidField {
+  /** The field's name, id or tag */
+  field: string;
+  /** The browser's validation message, e.g. "Please fill out this field." */
+  message: string;
 }
 
 /**

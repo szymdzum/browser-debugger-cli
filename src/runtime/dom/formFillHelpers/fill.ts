@@ -423,8 +423,14 @@ async function dispatchMouseAction(
   return outcome ?? { reached: true };
 }
 
+/**
+ * A click's result, plus whether its script left a probe on the submit
+ * button's form (`readBlockedSubmit` reads it; not part of the CLI result)
+ */
+export type ClickOutcome = ClickResult & { submitProbe?: true };
+
 /** Click target as located by CLICK_ELEMENT_SCRIPT. */
-type LocatedClick = ClickResult & {
+type LocatedClick = ClickOutcome & {
   x?: number;
   y?: number;
   hittable?: boolean;
@@ -492,7 +498,7 @@ async function performClick(
   located: LocatedClick,
   action: PointerAction,
   strict: boolean
-): Promise<ClickResult> {
+): Promise<ClickOutcome> {
   const { x, y, hittable, obstruction, ...result } = located;
   if (!result.success) return result;
 
@@ -543,7 +549,7 @@ export async function clickElement(
   cdp: CDPConnection,
   selector: string,
   options: { index?: number; action?: PointerAction; strict?: boolean } = {}
-): Promise<ClickResult> {
+): Promise<ClickOutcome> {
   const indexArg = options.index ?? 'null';
   const action = options.action ?? 'click';
   const expression = `(${CLICK_ELEMENT_SCRIPT})(${selectorArgsJS(selector)}, ${indexArg}, '${action}')`;
