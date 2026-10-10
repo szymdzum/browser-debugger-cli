@@ -30,8 +30,12 @@ const ITERATOR_SUFFIX = '[Symbol.iterator]';
 /** Path segment the collector reads as `Symbol.iterator` */
 const ITERATOR_KEY = '@@iterator';
 
-/** Object group of the collected functions (released after each check) */
-const OBJECT_GROUP = 'bdg-builtins';
+/**
+ * Counter giving each check its own object group for the collected functions
+ * (released after it): checks of concurrent commands (an interaction and a
+ * `dom eval`) must not free each other's.
+ */
+let checks = 0;
 
 /**
  * Page-side collector: for each name, the function(s) behind it, as a flat
@@ -96,16 +100,17 @@ export async function findReplacedBuiltins(
   objectId?: string
 ): Promise<string[]> {
   const functionDeclaration = collectorFunction(names);
+  const objectGroup = `bdg-builtins-${++checks}`;
   try {
     const collected = (await (objectId
       ? cdp.send('Runtime.callFunctionOn', {
           objectId,
           functionDeclaration,
-          objectGroup: OBJECT_GROUP,
+          objectGroup,
         })
       : cdp.send('Runtime.evaluate', {
           expression: `(${functionDeclaration})()`,
-          objectGroup: OBJECT_GROUP,
+          objectGroup,
         }))) as Protocol.Runtime.EvaluateResponse;
     const listId = collected.result.objectId;
     if (collected.exceptionDetails || !listId) return [];
@@ -119,7 +124,7 @@ export async function findReplacedBuiltins(
     return [];
   } finally {
     await cdp
-      .send('Runtime.releaseObjectGroup', { objectGroup: OBJECT_GROUP })
+      .send('Runtime.releaseObjectGroup', { objectGroup })
       .catch((error: unknown) => log.debug(`Built-ins not released: ${getErrorMessage(error)}`));
   }
 }

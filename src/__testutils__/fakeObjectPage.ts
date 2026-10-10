@@ -22,6 +22,8 @@ export interface FakeObjectPageOptions {
    * objects were released.
    */
   hold?: (method: string, params: Record<string, unknown>) => boolean;
+  /** Which released object groups let held objects be used (default: any) */
+  releaseFreesHeld?: (objectGroup: string) => boolean;
   /**
    * Objects created before any is used: uses wait for them, so concurrent
    * calls all look up their objects first (default: no wait).
@@ -93,7 +95,9 @@ export class FakeObjectPage {
         for (const [id, object] of this.objects) {
           if (object.group === params['objectGroup']) this.objects.delete(id);
         }
-        this.signalRelease();
+        if (this.options.releaseFreesHeld?.(params['objectGroup'] as string) ?? true) {
+          this.signalRelease();
+        }
         return {};
       case 'Runtime.releaseObject':
         this.objects.delete(params['objectId'] as string);

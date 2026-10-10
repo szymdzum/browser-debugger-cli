@@ -178,8 +178,12 @@ const TERMINATION_GRACE_MS = 5_000;
 /** How long a `bdg dom eval` script may run before V8 terminates it. */
 const EVAL_TIMEOUT_MS = 20_000;
 
-/** Object group for remote objects created by `bdg dom eval`. */
-const EVAL_OBJECT_GROUP = 'bdg-eval';
+/**
+ * Counter giving each `bdg dom eval` its own object group for the objects it
+ * creates: evals may run concurrently, and one must not free another's
+ * result before it is copied.
+ */
+let evaluations = 0;
 
 /** Result of `bdg dom eval`: a JSON-safe value plus its JavaScript type. */
 export interface EvalResult {
@@ -687,14 +691,18 @@ async function pageContextLostError(error: unknown, cdp: CDPSender): Promise<Com
  * `Runtime.evaluate` options of a `bdg dom eval` script.
  *
  * @param target - Execution context to run in
+ * @param objectGroup - The eval's object group
  * @returns Options (REPL mode, previews, 20 s limit)
  */
-function evaluateOptions(target: EvalTarget): Omit<Protocol.Runtime.EvaluateRequest, 'expression'> {
+function evaluateOptions(
+  target: EvalTarget,
+  objectGroup: string
+): Omit<Protocol.Runtime.EvaluateRequest, 'expression'> {
   return {
     returnByValue: false,
     generatePreview: true,
     replMode: true,
-    objectGroup: EVAL_OBJECT_GROUP,
+    objectGroup,
     timeout: EVAL_TIMEOUT_MS,
     ...(target.uniqueContextId && { uniqueContextId: target.uniqueContextId }),
   };
@@ -725,9 +733,10 @@ export async function evaluateScript(
 ): Promise<EvalResult> {
   const session = senderFor(cdp, target.sessionId);
   const scope: BusyScope = target.uniqueContextId ? 'frame' : 'page';
+  const objectGroup = `bdg-eval-${++evaluations}`;
   try {
     const response = await withDeadline(
-      executeScript(session, script, evaluateOptions(target)),
+      executeScript(session, script, evaluateOptions(target, objectGroup)),
       EVAL_TIMEOUT_MS + TERMINATION_GRACE_MS,
       () => evaluationTimeoutError(target.recovery ?? session, scope)
     );
@@ -743,7 +752,7 @@ export async function evaluateScript(
       : error;
   } finally {
     void session
-      .send('Runtime.releaseObjectGroup', { objectGroup: EVAL_OBJECT_GROUP })
+      .send('Runtime.releaseObjectGroup', { objectGroup })
       .catch((error: unknown) =>
         log.debug(`Could not release eval objects: ${getErrorMessage(error)}`)
       );
