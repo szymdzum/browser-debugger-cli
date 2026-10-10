@@ -24,15 +24,7 @@ import {
   SENSITIVE_FIELD_JS,
 } from '@/runtime/dom/elementInfo.js';
 import { FIND_ELEMENTS_JS, LABEL_CONTROL_JS } from '@/runtime/dom/targetNode.js';
-import {
-  FILL_BEFOREINPUT_CANCELLED_WARNING,
-  FILL_NOT_TYPED_REASONS,
-  FILL_NOT_TYPED_WARNING,
-  FILL_TOO_SHORT_WARNING,
-  MINLENGTH_PLACEHOLDER,
-  NOT_TYPED_REASON_PLACEHOLDER,
-  NO_BOX_CLICK_REASON,
-} from '@/ui/messages/commands.js';
+import { FILL_BEFOREINPUT_CANCELLED_WARNING, NO_BOX_CLICK_REASON } from '@/ui/messages/commands.js';
 
 /**
  * Page-side copy of a list (`select.options`, a NodeList) as an array,
@@ -223,11 +215,13 @@ export const FIRE_INPUT_EVENT_JS = `(target, type, text) => {
 
 /**
  * Page-side end of a fill, once the field has its value: warns when the
- * value is outside the field's range or shorter than its `minlength`, blurs
- * the field (unless `state.blur` is false), leaves the field and the value
- * to expect in `window.__bdgFillCheck` for {@link FILL_READ_BACK_SCRIPT},
- * and evaluates to the value to show (masked for a secret field,
- * {@link FILL_SECRET_JS}, with `sensitive: true`) and the warnings joined.
+ * value is outside the field's range, notes the field's `minlength` as
+ * `tooShort` when the value is shorter (the caller words that warning),
+ * blurs the field (unless `state.blur` is false), leaves the field and the
+ * value to expect in `window.__bdgFillCheck` for
+ * {@link FILL_READ_BACK_SCRIPT}, and evaluates to the value to show (masked
+ * for a secret field, {@link FILL_SECRET_JS}, with `sensitive: true`),
+ * `tooShort` and the warnings joined.
  * `state` holds `expected`, `before` (other fields' values,
  * {@link FIELD_VALUES_JS}), `warnings` so far, `blur` and `multiple` (the
  * warning that several elements matched, or "").
@@ -239,9 +233,6 @@ const FILL_DONE_JS = `(el, state) => {
   if (validity && (validity.rangeOverflow || validity.rangeUnderflow)) {
     warnings.push('The value is outside the allowed range (' + (el.min || 'no minimum') + ' to ' + (el.max || 'no maximum') + '); the form will not submit until it is fixed');
   }
-  if (validity && validity.tooShort) {
-    warnings.push(${JSON.stringify(FILL_TOO_SHORT_WARNING)}.split(${JSON.stringify(MINLENGTH_PLACEHOLDER)}).join(String(el.minLength)));
-  }
   const secret = (${FILL_SECRET_JS})(el);
   if (state.blur !== false) el.blur();
   window.__bdgFillCheck = { el: el, expected: state.expected, before: state.before, secret: secret };
@@ -251,6 +242,7 @@ const FILL_DONE_JS = `(el, state) => {
   return {
     value: el.isContentEditable ? el.textContent : secret ? (shown ? '${MASKED_VALUE}' : '') : shown,
     sensitive: secret || undefined,
+    tooShort: validity && validity.tooShort ? el.minLength : undefined,
     warning: warnings.concat(state.multiple ? [state.multiple] : []).join('; ') || undefined
   };
 }`;
@@ -324,14 +316,6 @@ const FOCUSED_FIELD_JS = `(documents) => {
 }`;
 
 /**
- * Page-side {@link FILL_NOT_TYPED_WARNING} for a reason key of
- * {@link FILL_NOT_TYPED_REASONS}.
- */
-const NOT_TYPED_WARNING_JS = `(reason) => ${JSON.stringify(FILL_NOT_TYPED_WARNING)}
-  .split(${JSON.stringify(NOT_TYPED_REASON_PLACEHOLDER)})
-  .join(${JSON.stringify(FILL_NOT_TYPED_REASONS)}[reason])`;
-
-/**
  * Text field types whose value `dom fill` enters as a user edit
  * ({@link REACT_FILL_SCRIPT}): those `minlength` and `maxlength` apply to.
  */
@@ -386,6 +370,7 @@ export const REACT_FILL_SCRIPT = `
   const textTypes = ['text', 'email', 'search', 'url', 'tel', 'password', 'number'];
   const listOf = ${LIST_JS};
   const warnings = [];
+  let notTyped;
   let expected = value;
   // Why a user could not reach the field (the value is still set, so scripted
   // flows keep working, but the result may not be what a user would see)
@@ -626,7 +611,7 @@ export const REACT_FILL_SCRIPT = `
     const userEditType = value !== '' &&
       (tagName === 'textarea' || ${JSON.stringify(USER_EDIT_TYPES)}.includes(inputType));
     const userEdit = userEditType && (${DEEP_FOCUSED_JS})(el);
-    if (userEditType && !userEdit) warnings.push((${NOT_TYPED_WARNING_JS})('noFocus'));
+    if (userEditType && !userEdit) notTyped = 'noFocus';
     if (userEdit) {
       if (previous !== '') setValue('');
       const pending = {
@@ -682,6 +667,8 @@ export const REACT_FILL_SCRIPT = `
     value: done.value,
     sensitive: done.sensitive,
     checked: inputType === 'checkbox' || inputType === 'radio' ? el.checked : undefined,
+    tooShort: done.tooShort,
+    notTyped: notTyped,
     warning: done.warning
   });
 })
@@ -700,41 +687,45 @@ export const FILL_FOCUS_CHECK_SCRIPT = `(() => {
 /**
  * Page function finishing a fill whose text was to be typed with
  * `Input.insertText` ({@link REACT_FILL_SCRIPT}, `window.__bdgFillPending`),
- * called with why it was not typed (`unfocused`: the field lost the focus
- * before; `failed`: typing failed) or null. When the text went to another
- * field (a trusted `input` there, or another field has the focus and this
- * one got nothing) it evaluates to `{ typedInto }` naming that field, and
- * nothing else is done. When it was not typed, or the field got neither the
- * `input` event nor any text (the page cancelled `beforeinput`, or the text
- * never reached it), the value is set as for other fields: the native
- * setter, `input` (after a `beforeinput` when the field got none) and
- * `change`, with the cancelled-`beforeinput` warning when it was cancelled
- * and otherwise {@link FILL_NOT_TYPED_WARNING} saying why it was not typed.
+ * called with whether it was typed (false: the field lost the focus before,
+ * or typing failed). When the text went to another field (a trusted `input`
+ * there, or another field has the focus, holds the text, and this one got
+ * nothing) it evaluates to `{ typedInto }` naming that field (never its
+ * value), and nothing else is done. When it was not typed, or the field got
+ * neither the `input` event nor any text (the page cancelled `beforeinput`,
+ * or the text never reached it), the value is set as for other fields: the
+ * native setter, `input` (after a `beforeinput` when the field got none)
+ * and `change`, with `notTyped: 'cancelled'` when the page cancelled
+ * `beforeinput`, else `notTyped: 'lost'` for typed text that did not arrive
+ * (the caller words the warnings).
  * `change` is also fired when the field is not blurred (a blur fires it for
  * typed text). Evaluates to {@link FILL_DONE_JS}'s result, or null when
  * nothing was pending (the page navigated).
  */
-export const FILL_INSERTED_FUNCTION = `(reason) => {
+export const FILL_INSERTED_FUNCTION = `(typed) => {
   const pending = window.__bdgFillPending;
   delete window.__bdgFillPending;
   if (!pending) return null;
   pending.stop();
   const el = pending.el;
-  const inserted = !reason && (pending.sawInput || String(el.value) !== '');
-  if (!reason && !inserted) {
+  const inserted = typed && (pending.sawInput || String(el.value) !== '');
+  if (typed && !inserted) {
     const focused = (${FOCUSED_FIELD_JS})(pending.documents);
-    const receiver = pending.elsewhere || (focused !== el ? focused : null);
+    const holdsText = (field) =>
+      String(field.isContentEditable ? field.textContent : field.value).includes(pending.value);
+    const receiver = pending.elsewhere || (focused && focused !== el && holdsText(focused) ? focused : null);
     if (receiver) return { typedInto: (${ELEMENT_IDENTITY_JS})(receiver) };
   }
+  let notTyped;
   if (!inserted) {
     const cancelled = pending.sawBeforeinput || !(${FIRE_INPUT_EVENT_JS})(el, 'beforeinput', pending.value);
-    if (cancelled) pending.warnings.push(${JSON.stringify(FILL_BEFOREINPUT_CANCELLED_WARNING)});
-    if (reason || !cancelled) pending.warnings.push((${NOT_TYPED_WARNING_JS})(reason || 'lost'));
+    notTyped = cancelled ? 'cancelled' : typed ? 'lost' : undefined;
     (${SET_NATIVE_VALUE_JS})(el, pending.value);
     (${FIRE_INPUT_EVENT_JS})(el, 'input', pending.value);
   }
   if (!inserted || pending.blur === false) (${FIRE_EVENT_JS})(el, 'change');
-  return (${FILL_DONE_JS})(el, pending);
+  const done = (${FILL_DONE_JS})(el, pending);
+  return notTyped ? { ...done, notTyped: notTyped } : done;
 }`;
 
 /**

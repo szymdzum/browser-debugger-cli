@@ -449,34 +449,43 @@ export function valueMismatchWarning(mismatch: FillValueMismatch): string {
 export const FILL_BEFOREINPUT_CANCELLED_WARNING =
   'The page cancelled beforeinput (it may reject typed text); the value was set anyway, so check the page took it';
 
-/** Stands for the field's minlength in {@link FILL_TOO_SHORT_WARNING} */
-export const MINLENGTH_PLACEHOLDER = '<minlength>';
-
 /**
  * Warning shown when `dom fill` entered a value shorter than the field's
- * `minlength` (the browser applies it to the value, as to typed text);
- * {@link MINLENGTH_PLACEHOLDER} is replaced page-side.
+ * `minlength` (the browser applies it to the value, as to typed text).
+ *
+ * @param minLength - The field's minlength
+ * @returns Warning text
  */
-export const FILL_TOO_SHORT_WARNING = `The value is shorter than the field's minlength (${MINLENGTH_PLACEHOLDER}); the form will not submit until it is fixed`;
+export function fillTooShortWarning(minLength: number): string {
+  return `The value is shorter than the field's minlength (${minLength}); the form will not submit until it is fixed`;
+}
 
-/** Stands for the reason in {@link FILL_NOT_TYPED_WARNING} */
-export const NOT_TYPED_REASON_PLACEHOLDER = '<reason>';
-
-/**
- * Warning shown when `dom fill` set a text field's value by script instead
- * of typing it (other than for a cancelled `beforeinput`, which has its own
- * warning); {@link NOT_TYPED_REASON_PLACEHOLDER} is replaced page-side by
- * one of {@link FILL_NOT_TYPED_REASONS}.
- */
-export const FILL_NOT_TYPED_WARNING = `The value was set by script, not typed (${NOT_TYPED_REASON_PLACEHOLDER}), so the browser does not apply minlength to it`;
-
-/** Why `dom fill` set a text field's value by script, by key */
-export const FILL_NOT_TYPED_REASONS = {
+/** Why `dom fill` set a text field's value by script instead of typing it, by key */
+const FILL_NOT_TYPED_REASONS = {
   noFocus: 'the field did not take the focus',
   unfocused: 'the field lost the focus before bdg typed',
   failed: 'typing failed',
   lost: 'the typed text did not reach the field',
 } as const;
+
+/**
+ * Key of a reason `dom fill` set a text field's value by script; `cancelled`
+ * (the page cancelled `beforeinput`) has its own warning
+ */
+export type FillNotTypedReason = 'cancelled' | keyof typeof FILL_NOT_TYPED_REASONS;
+
+/**
+ * Warning shown when `dom fill` set a text field's value by script instead
+ * of typing it; a cancelled `beforeinput` keeps its own wording
+ * ({@link FILL_BEFOREINPUT_CANCELLED_WARNING}).
+ *
+ * @param reason - Why it was not typed
+ * @returns Warning text
+ */
+export function fillNotTypedWarning(reason: FillNotTypedReason): string {
+  if (reason === 'cancelled') return FILL_BEFOREINPUT_CANCELLED_WARNING;
+  return `The value was set by script, not typed (${FILL_NOT_TYPED_REASONS[reason]}), so the browser does not apply minlength to it`;
+}
 
 /**
  * Warning shown when a mouse press was dispatched but the target never
@@ -1528,8 +1537,10 @@ export const FILL_RESULT_HELP = joinLines(
   '',
   'Text fields get the value typed like a user (trusted input events), so the browser',
   'applies minlength: a shorter value is filled with a warning and blocks the submit;',
-  'a value over maxlength is refused (exit 81). Secret fields (passwords, one-time',
-  'codes, card data: the fields dom query masks) show Value: ••••.'
+  'a value over maxlength is refused (exit 81). A value set by script instead (the',
+  'field had no focus) says so in a warning. If the page moves the focus and the text',
+  'lands in another field, the fill fails (exit 90) naming that field. Secret fields',
+  '(passwords, one-time codes, card data: the fields dom query masks) show Value: ••••.'
 );
 
 /** Examples in the help of `bdg dom wait` */

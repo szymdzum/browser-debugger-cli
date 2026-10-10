@@ -304,11 +304,21 @@ void describe('dom fill when the page moves the focus as it types (#592)', () =>
     assert.equal(await valueOf('vis'), '');
   });
 
+  void it('does not blame another field when the page cancelled the text and moved the focus', async () => {
+    const { exit, output } = await fill('#cm', 'Ada');
+    assert.equal(exit, 0, output);
+    assert.match(output, /The page cancelled beforeinput/);
+    assert.equal(await valueOf('cm'), 'Ada');
+    assert.equal(await valueOf('vis'), '');
+  });
+
   void it('warns when a field that cannot take the focus gets its value by script', async () => {
     const { exit, output } = await fill('#gone', 'Ada');
     assert.equal(exit, 0, output);
     assert.match(output, /not typed \(the field did not take the focus\)/);
     assert.equal(await valueOf('gone'), 'Ada');
+    const data = await json<FillJson>(['dom', 'fill', '#gone', 'Bea']);
+    assert.match(data.warning ?? '', /not typed \(the field did not take the focus\)/);
   });
 
   void it('fills one-digit code fields whose input moves the focus to the next', async () => {

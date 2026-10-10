@@ -51,6 +51,9 @@ import {
   POINTER_ACTION_DONE,
   POINTER_ACTION_NOUN,
   domClickFallbackWarning,
+  fillNotTypedWarning,
+  fillTooShortWarning,
+  type FillNotTypedReason,
 } from '@/ui/messages/commands.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -58,10 +61,33 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 const log = createLogger('dom');
 
 /**
- * A fill result, plus whether the page script left the text for
- * {@link insertAsUser} to type (not part of the CLI result)
+ * A fill result, plus what the page scripts report for the caller to word
+ * (not part of the CLI result): whether the text was left for
+ * {@link insertAsUser} to type, why a text field's value was set by script
+ * instead, and the `minlength` a value is shorter than
  */
-type FillOutcome = FillResult & { insertText?: true };
+type FillOutcome = FillResult & {
+  insertText?: true;
+  notTyped?: FillNotTypedReason | FillNotTypedReason[];
+  tooShort?: number;
+};
+
+/**
+ * Turn what the page scripts reported into warnings (worded here, so no
+ * message text is put into page code), ahead of the page's own.
+ *
+ * @param outcome - Fill outcome
+ * @returns The CLI result
+ */
+function withFillWarnings(outcome: FillOutcome): FillResult {
+  const { insertText: _typed, notTyped, tooShort, ...result } = outcome;
+  const warnings = [
+    ...[notTyped ?? []].flat().map(fillNotTypedWarning),
+    ...(tooShort !== undefined ? [fillTooShortWarning(tooShort)] : []),
+    ...(result.warning ? [result.warning] : []),
+  ];
+  return warnings.length > 0 ? { ...result, warning: warnings.join('; ') } : result;
+}
 
 /**
  * Fill a form element with a value in a React-compatible way. A text field
@@ -102,7 +128,7 @@ export async function fillElement(
       const result: FillOutcome = cdpResponse.result.value;
       if (!result.fileInput) {
         const filled = result.insertText ? await insertAsUser(cdp, value, result) : result;
-        return withValueMismatchWarning(await withReadBack(cdp, filled));
+        return withValueMismatchWarning(await withReadBack(cdp, withFillWarnings(filled)));
       }
       const uploaded = await setFileInput(cdp, selector, value, options);
       return uploaded.success && result.elementType
@@ -124,11 +150,15 @@ export async function fillElement(
 
 /** What {@link FILL_INSERTED_FUNCTION} evaluates to */
 type FilledField =
-  | { value: string; sensitive?: true; warning?: string; typedInto?: undefined }
+  | {
+      value: string;
+      sensitive?: true;
+      warning?: string;
+      tooShort?: number;
+      notTyped?: FillNotTypedReason;
+      typedInto?: undefined;
+    }
   | { typedInto: string };
-
-/** Why a fill's text was set by script instead of typed */
-type NotTypedReason = 'unfocused' | 'failed';
 
 /**
  * Type the value with CDP `Input.insertText`, unless the field the fill
@@ -141,7 +171,7 @@ type NotTypedReason = 'unfocused' | 'failed';
  * @param cdp - CDP connection
  * @param value - Text to type
  * @param pending - Result of the fill script, with `insertText`
- * @returns Fill result
+ * @returns Fill outcome
  * @throws CommandError (exit 90) when the page moved the focus and the text
  *   went to another field
  */
@@ -149,11 +179,11 @@ async function insertAsUser(
   cdp: CDPConnection,
   value: string,
   pending: FillOutcome
-): Promise<FillResult> {
+): Promise<FillOutcome> {
   const { insertText: _typed, ...result } = pending;
   const reason = await typeText(cdp, value);
   const response = (await cdp.send('Runtime.evaluate', {
-    expression: `(${FILL_INSERTED_FUNCTION})(${JSON.stringify(reason)})`,
+    expression: `(${FILL_INSERTED_FUNCTION})(${reason === null ? 'true' : 'false'})`,
     returnByValue: true,
     userGesture: true,
   })) as { result?: { value?: unknown } };
@@ -171,11 +201,14 @@ async function insertAsUser(
     );
   }
   const { sensitive: _sensitive, warning: _warning, ...field } = result;
+  const notTyped = [reason, done.notTyped].filter((why) => why !== null && why !== undefined);
   return {
     ...field,
     value: done.value,
     ...(done.sensitive && { sensitive: true }),
     ...(done.warning && { warning: done.warning }),
+    ...(done.tooShort !== undefined && { tooShort: done.tooShort }),
+    ...(notTyped.length > 0 && { notTyped }),
   };
 }
 
@@ -186,7 +219,7 @@ async function insertAsUser(
  * @param value - Text to type
  * @returns Null when typed, else why not
  */
-async function typeText(cdp: CDPConnection, value: string): Promise<NotTypedReason | null> {
+async function typeText(cdp: CDPConnection, value: string): Promise<'unfocused' | 'failed' | null> {
   const check = (await cdp.send('Runtime.evaluate', {
     expression: FILL_FOCUS_CHECK_SCRIPT,
     returnByValue: true,

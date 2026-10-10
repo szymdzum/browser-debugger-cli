@@ -20,7 +20,8 @@
  * `#vis` while `dom fill` types: 30 ms after they get the focus (`#ta`, and
  * the password `#tp`), on `beforeinput`, so the typed text lands in `#vis`
  * (`#bi`, and the password `#bip`), or right after they get the focus, in a
- * microtask (`#mt`); a field that cannot take the focus
+ * microtask (`#mt`); a field whose `beforeinput` handler cancels the text
+ * and moves the focus (`#cm`, so no field gets it); a field that cannot take the focus
  * (`#gone`, `display: none`); and four one-digit code fields (`#otp-1` to `#otp-4`,
  * `maxlength=1`) whose input handler moves the focus to the next one, as
  * one-time-code forms do.
@@ -82,6 +83,7 @@ const FILL_FOCUS_STEAL_HTML = `<!doctype html><title>fill focus steal</title>
 <label>Moved on typing <input id="bi"></label>
 <label>Moved on typing, password <input id="bip" type="password"></label>
 <label>Moved at once <input id="mt"></label>
+<label>Cancelled and moved <input id="cm"></label>
 <input id="gone" style="display: none" aria-label="Gone">
 <fieldset id="code"><legend>Code</legend>
   <input id="otp-1" maxlength="1" aria-label="Digit 1"><input id="otp-2" maxlength="1" aria-label="Digit 2">
@@ -95,6 +97,10 @@ const FILL_FOCUS_STEAL_HTML = `<!doctype html><title>fill focus steal</title>
   for (const id of ['bi', 'bip']) {
     document.getElementById(id).addEventListener('beforeinput', () => vis.focus());
   }
+  document.getElementById('cm').addEventListener('beforeinput', (event) => {
+    event.preventDefault();
+    vis.focus();
+  });
   document.getElementById('mt').addEventListener('focus', () => queueMicrotask(() => vis.focus()));
   document.getElementById('code').addEventListener('input', (event) => {
     const next = event.target.nextElementSibling;
