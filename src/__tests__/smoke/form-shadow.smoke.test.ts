@@ -199,6 +199,18 @@ void describe('Forms in shadow roots', () => {
     assert.match(output, /<x-vault> has a closed shadow root/);
   });
 
+  void it('dom get on a closed shadow host names the root closed, not dom inspect (#574)', async () => {
+    const output = await bdg(['dom', 'get', 'x-vault']);
+    assert.match(output, /^No text; its closed shadow root holds 1 element: form \(/m);
+    assert.match(output, /bdg dom a11y query/);
+    assert.doesNotMatch(output, /dom inspect\)/, 'dom inspect shows nothing of a closed root');
+    const json = JSON.parse(await bdg(['dom', 'get', 'x-vault', '--json'])) as {
+      data: { domContext: { shadowChildren?: boolean; shadowRootMode?: string } };
+    };
+    assert.equal(json.data.domContext.shadowChildren, true);
+    assert.equal(json.data.domContext.shadowRootMode, 'closed');
+  });
+
   void it('lists the search form a component renders once it is opened', async () => {
     assert.ok((await discover()).forms.every((form) => form.fields.every((f) => f.name !== 'q')));
     await bdg(['dom', 'click', '#open-search']);
