@@ -432,8 +432,8 @@ export function valueMismatchWarning(mismatch: FillValueMismatch): string {
   if (mismatch.truncatedTo !== undefined) {
     return `The value was cut to ${mismatch.truncatedTo} characters by maxlength`;
   }
-  if (mismatch.expectedLength !== undefined) {
-    return `The field's value differs from the one filled (masked: length ${mismatch.actualLength ?? 0}, expected ${mismatch.expectedLength}); the page may have rejected or changed the input`;
+  if (mismatch.masked) {
+    return 'The page kept another value than the one filled (secret field, value not shown); it may have rejected or changed the input';
   }
   const outcome =
     mismatch.movedTo === undefined

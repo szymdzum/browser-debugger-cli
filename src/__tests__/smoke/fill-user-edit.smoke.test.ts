@@ -222,15 +222,35 @@ void describe('dom fill echoes secret fields masked, as dom query does (#592)', 
     assert.match(await bdg(['dom', 'fill', '#mlp', '']), /^Value: +\(empty\)$/m);
   });
 
-  void it('reports a secret field the page changed by length only', async () => {
-    const data = await json<FillJson>(['dom', 'fill', '#digits', 'ab12']);
-    assert.deepEqual(data.valueMismatch, {
-      expected: MASKED,
-      actual: MASKED,
-      expectedLength: 4,
-      actualLength: 2,
-    });
-    assert.ok(!(data.warning ?? '').includes('12'), `warning echoes the value: ${data.warning}`);
+  void it('reports a secret field the page changed without its value or length', async () => {
+    const data = await json<FillJson>(['dom', 'fill', '#digits', 'ab12cd34ef56']);
+    assert.deepEqual(data.valueMismatch, { expected: MASKED, actual: MASKED, masked: true });
+    assert.match(data.warning ?? '', /secret field, value not shown/);
+    assert.doesNotMatch(
+      data.warning ?? '',
+      /\d/,
+      `warning gives a length or the value: ${data.warning}`
+    );
+    await bdg(['page', 'navigate', `${fixture.url}fill-user-edit`]);
+    const output = await bdg(['dom', 'fill', '#digits', 'ab12cd34ef56']);
+    assert.match(
+      output,
+      /The page kept another value than the one filled \(secret field, value not shown\)/
+    );
+    assert.doesNotMatch(
+      output,
+      /length|\b(6|12)\b|123456/,
+      `the output gives a length or the value: ${output}`
+    );
+  });
+
+  void it('refuses a secret value over maxlength, or one the browser rejects, without its length or text', async () => {
+    const tooLong = await bdg(['dom', 'fill', '#cvv', '98765'], 81);
+    assert.match(tooLong, /The value is longer than the field accepts \(at most 4 characters\)/);
+    assert.doesNotMatch(tooLong, /\b5\b|98765/, tooLong);
+    const rejected = await bdg(['dom', 'fill', '#npin', 'x9z'], 81);
+    assert.match(rejected, /The browser rejected the value for a number field/);
+    assert.ok(!rejected.includes('x9z'), rejected);
   });
 
   void it('masks the PIN and the password of /shadow-forms', async () => {

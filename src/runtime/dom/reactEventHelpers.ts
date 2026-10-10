@@ -48,7 +48,7 @@ const LIST_JS = `(list) => {
  * whitespace collapsed. A value cut to the field's maxlength sets
  * `truncatedTo`; a mismatch of a password or another secret field (`secret`,
  * see {@link FILL_SECRET_JS}) gives values masked as `dom query` masks them
- * and both lengths.
+ * and `masked: true`, never their lengths.
  */
 export const FILL_VALUE_MISMATCH_JS = `(field, expected, secret) => {
   const type = (field.type || '').toLowerCase();
@@ -74,7 +74,7 @@ export const FILL_VALUE_MISMATCH_JS = `(field, expected, secret) => {
   if (same) return undefined;
   if (secret || type === 'password') {
     const mask = (text) => (text === '' ? '' : '${MASKED_VALUE}');
-    return { expected: mask(expected), actual: mask(actual), expectedLength: expected.length, actualLength: actual.length };
+    return { expected: mask(expected), actual: mask(actual), masked: true };
   }
   const cut = field.maxLength > 0 && actual.length === field.maxLength && expected.length > actual.length &&
     expected.startsWith(actual);
@@ -394,7 +394,8 @@ export const REACT_FILL_SCRIPT = `
       month: 'YYYY-MM',
       week: 'YYYY-Www'
     };
-    const rejected = 'The browser rejected "' + text + '" for a ' + type + ' field (it keeps its previous value)';
+    const given = (${FILL_SECRET_JS})(field) ? 'the value' : '"' + text + '"';
+    const rejected = 'The browser rejected ' + given + ' for a ' + type + ' field (it keeps its previous value)';
     if (formats[type] && text.trim() !== '' && field.value === '') {
       return { error: rejected, suggestion: 'Expected ' + formats[type] };
     }
@@ -584,10 +585,10 @@ export const REACT_FILL_SCRIPT = `
     if (el.maxLength > 0 && value.length > el.maxLength) {
       return {
         success: false,
-        error: 'Value is ' + value.length + ' characters; the field accepts at most ' + el.maxLength,
+        tooLong: el.maxLength,
+        sensitive: (${FILL_SECRET_JS})(el) || undefined,
         elementType: tagName + viaLabel + viaShadow,
-        inputType: inputType || null,
-        suggestion: 'Shorten the value (a user could not type more than maxlength characters)'
+        inputType: inputType || null
       };
     }
     

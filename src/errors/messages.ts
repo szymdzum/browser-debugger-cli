@@ -2037,6 +2037,27 @@ export function pressNotReceivedError(
 }
 
 /**
+ * `dom fill` refused a value longer than the field's `maxlength` (typing
+ * would cut it). The length of a secret field's value is not given.
+ *
+ * @param maxLength - The field's maxlength
+ * @param length - Length of the value given, or undefined for a secret field
+ * @returns Error with suggestion
+ */
+export function fillTooLongError(
+  maxLength: number,
+  length: number | undefined
+): ErrorWithSuggestion {
+  return {
+    message:
+      length === undefined
+        ? `The value is longer than the field accepts (at most ${maxLength} characters)`
+        : `Value is ${length} characters; the field accepts at most ${maxLength}`,
+    suggestion: 'Shorten the value (a user could not type more than maxlength characters)',
+  };
+}
+
+/**
  * `dom fill` typed the text, but the page had moved the focus and it went
  * to another field (named, never with the text).
  *

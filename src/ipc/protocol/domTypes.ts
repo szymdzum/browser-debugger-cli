@@ -185,10 +185,8 @@ export interface FillValueMismatch {
   actual: string;
   /** Set when the page cut the value to the field's maxlength */
   truncatedTo?: number;
-  /** Secret fields (values masked as `••••`): length of the value given */
-  expectedLength?: number;
-  /** Secret fields (values masked as `••••`): length of the field's value */
-  actualLength?: number;
+  /** Set for a secret field: `expected` and `actual` are masked as `••••` (no lengths) */
+  masked?: true;
   /** Another field of the form that holds the value given, e.g. `input#first-name` */
   movedTo?: string;
 }

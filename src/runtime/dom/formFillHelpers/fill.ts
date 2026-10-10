@@ -14,6 +14,7 @@ import {
   uploadDirectoryError,
   singleFileInputError,
   fillableElementNotFoundError,
+  fillTooLongError,
   clickTargetDetachedError,
   unexpectedResponseFormatError,
   operationFailedError,
@@ -70,7 +71,22 @@ type FillOutcome = FillResult & {
   insertText?: true;
   notTyped?: FillNotTypedReason | FillNotTypedReason[];
   tooShort?: number;
+  tooLong?: number;
 };
+
+/**
+ * The refusal of a value over the field's `maxlength`, worded here (the
+ * length given only for a field that is not secret).
+ *
+ * @param outcome - Fill script result with `tooLong`
+ * @param value - Value given
+ * @returns Failed fill result
+ */
+function tooLongFailure(outcome: FillOutcome & { tooLong: number }, value: string): FillResult {
+  const { tooLong, sensitive, ...result } = outcome;
+  const err = fillTooLongError(tooLong, sensitive ? undefined : value.length);
+  return { ...result, success: false, error: err.message, suggestion: err.suggestion };
+}
 
 /**
  * Turn what the page scripts reported into warnings (worded here, so no
@@ -126,6 +142,8 @@ export async function fillElement(
 
     if (cdpResponse.result?.value && isFillResult(cdpResponse.result.value)) {
       const result: FillOutcome = cdpResponse.result.value;
+      if (result.tooLong !== undefined)
+        return tooLongFailure({ ...result, tooLong: result.tooLong }, value);
       if (!result.fileInput) {
         const filled = result.insertText
           ? await insertAsUser(cdp, { selector, value }, result)

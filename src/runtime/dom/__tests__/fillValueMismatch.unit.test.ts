@@ -51,7 +51,7 @@ void describe('FILL_VALUE_MISMATCH_JS', () => {
     );
   });
 
-  void it('masks passwords and gives their lengths', () => {
+  void it('masks passwords without their lengths', () => {
     const mismatch = valueMismatch(
       { localName: 'input', type: 'password', value: 'secret' },
       'secret_sauce'
@@ -59,12 +59,11 @@ void describe('FILL_VALUE_MISMATCH_JS', () => {
     assert.deepEqual(mismatch, {
       expected: '••••',
       actual: '••••',
-      expectedLength: 12,
-      actualLength: 6,
+      masked: true,
     });
     assert.equal(
       valueMismatchWarning(mismatch as FillValueMismatch),
-      "The field's value differs from the one filled (masked: length 6, expected 12); the page may have rejected or changed the input"
+      'The page kept another value than the one filled (secret field, value not shown); it may have rejected or changed the input'
     );
     assert.equal(
       valueMismatch({ localName: 'input', type: 'password', value: '' }, 'x')?.actual,
@@ -78,8 +77,7 @@ void describe('FILL_VALUE_MISMATCH_JS', () => {
       {
         expected: '••••',
         actual: '••••',
-        expectedLength: 4,
-        actualLength: 2,
+        masked: true,
       }
     );
   });

@@ -7,8 +7,8 @@
  * textarea (`#bio`), a `maxlength=4` code (`#code`) and a submit button
  * (`#go`); a form of fields `dom query` masks without being passwords
  * (`#secrets`: a one-time code by autocomplete `#otp`, a CSS-masked field
- * `#dots`, a field named `cvv`, a field named `pin` whose input handler
- * drops everything but digits, `#digits`) next to an ordinary one
+ * `#dots`, a `maxlength=4` field named `cvv`, a field named `pin` whose input handler
+ * drops everything but digits, `#digits`, a number field named `pin`, `#npin`) next to an ordinary one
  * (`#city`); and
  * `<x-alias>`, whose open shadow root holds a form with a required
  * `minlength=5` field (`#alias`) and a submit button. Every form's `submit`
@@ -55,8 +55,9 @@ const FILL_USER_EDIT_HTML = `<!doctype html><title>fill user edit</title>
 <form id="secrets">
   <label>One-time code <input id="otp" name="token" autocomplete="one-time-code"></label>
   <label>Hint <input id="dots" name="hint" style="-webkit-text-security: disc"></label>
-  <label>CVV <input id="cvv" name="cvv"></label>
+  <label>CVV <input id="cvv" name="cvv" maxlength="4"></label>
   <label>PIN <input id="digits" name="pin" oninput="this.value = this.value.replace(/[^0-9]/g, '')"></label>
+  <label>PIN number <input id="npin" name="pin" type="number"></label>
   <label>City <input id="city" name="city"></label>
 </form>
 <x-alias></x-alias>
