@@ -394,17 +394,20 @@ export const REACT_FILL_SCRIPT = `
       month: 'YYYY-MM',
       week: 'YYYY-Www'
     };
-    const given = (${FILL_SECRET_JS})(field) ? 'the value' : '"' + text + '"';
-    const rejected = 'The browser rejected ' + given + ' for a ' + type + ' field (it keeps its previous value)';
+    // A secret field's value (given, or as the browser would set it) is never shown
+    const secret = () => (${FILL_SECRET_JS})(field);
+    const rejected = () => 'The browser rejected ' + (secret() ? 'the value' : '"' + text + '"') + ' for a ' + type + ' field (it keeps its previous value)';
     if (formats[type] && text.trim() !== '' && field.value === '') {
-      return { error: rejected, suggestion: 'Expected ' + formats[type] };
+      return { error: rejected(), suggestion: 'Expected ' + formats[type] };
     }
     if (type === 'color' && field.value.toLowerCase() !== text.trim().toLowerCase()) {
-      return { error: rejected, suggestion: 'Expected a hex color like #1a2b3c' };
+      return { error: rejected(), suggestion: 'Expected a hex color like #1a2b3c' };
     }
     if (type === 'range' && Number(field.value) !== Number(text)) {
       return {
-        error: 'The browser would set ' + field.value + ' instead of "' + text + '" (range ' + (field.min || 0) + ' to ' + (field.max || 100) + ', step ' + (field.step || 1) + ')',
+        error: secret()
+          ? 'The browser would change the value for a range field (it is outside the range or off the step)'
+          : 'The browser would set ' + field.value + ' instead of "' + text + '" (range ' + (field.min || 0) + ' to ' + (field.max || 100) + ', step ' + (field.step || 1) + ')',
         suggestion: 'Use a value within the range that matches the step'
       };
     }

@@ -253,6 +253,34 @@ void describe('dom fill echoes secret fields masked, as dom query does (#592)', 
     assert.ok(!rejected.includes('x9z'), rejected);
   });
 
+  void it('refuses a secret range value without the value or the one the browser would set', async () => {
+    const output = await bdg(['dom', 'fill', '#pin-slider', '7777'], 81);
+    assert.match(output, /The browser would change the value for a range field/);
+    assert.doesNotMatch(
+      output,
+      /[017]/,
+      `the output gives a digit of the value or the clamped 100: ${output}`
+    );
+    const result = await runCommand('dom', ['fill', '#pin-slider', '7777', '--json'], {
+      timeout: 60000,
+    });
+    const {
+      version: _version,
+      exitCode,
+      ...response
+    } = JSON.parse(result.stdout) as {
+      version: string;
+      exitCode: number;
+    };
+    assert.equal(exitCode, 81);
+    assert.doesNotMatch(
+      JSON.stringify(response),
+      /[017]/,
+      `--json gives a digit: ${result.stdout}`
+    );
+    assert.equal(await evaluate("document.getElementById('pin-slider').value"), '50');
+  });
+
   void it('masks the PIN and the password of /shadow-forms', async () => {
     await bdg(['page', 'navigate', `${fixture.url}shadow-forms`]);
     const pin = await bdg(['dom', 'fill', '#pin', '9876']);
