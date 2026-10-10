@@ -185,10 +185,8 @@ export interface FillValueMismatch {
   actual: string;
   /** Set when the page cut the value to the field's maxlength */
   truncatedTo?: number;
-  /** Password fields (values masked): length of the value given */
-  expectedLength?: number;
-  /** Password fields (values masked): length of the field's value */
-  actualLength?: number;
+  /** Set for a secret field: `expected` and `actual` are masked as `••••` (no lengths) */
+  masked?: true;
   /** Another field of the form that holds the value given, e.g. `input#first-name` */
   movedTo?: string;
 }
@@ -200,7 +198,13 @@ export interface FillResult extends ActionEffects {
   success: boolean;
   error?: string;
   selector?: string;
+  /** The field's value after filling; `••••` for a secret field (see `sensitive`) */
   value?: string;
+  /**
+   * Set when the field holds a secret that `dom query` masks too (a password,
+   * one-time code, card data, a CSS-masked field…): `value` is `••••`
+   */
+  sensitive?: boolean;
   /** The element acted on, e.g. `input.toggle in div.view "Write report"` */
   element?: string;
   elementType?: string;
@@ -208,7 +212,7 @@ export interface FillResult extends ActionEffects {
   checked?: boolean;
   /**
    * Set when the field's value read back after filling is not the one given
-   * (the page rejected, reformatted or moved it; passwords masked)
+   * (the page rejected, reformatted or moved it; secret fields masked)
    */
   valueMismatch?: FillValueMismatch;
   suggestion?: string;

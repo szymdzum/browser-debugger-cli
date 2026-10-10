@@ -62,11 +62,12 @@ export const DOM_ACTION_BEHAVIORS: BehaviorTable = {
   'fill:--no-wait': {
     default: 'Waits for network stability after filling input (150ms idle, up to 2s)',
     whenDisabled: NO_WAIT_TRIGGERED_REQUESTS,
-    automaticBehavior: `Network wait helps ensure React/Vue state updates complete before next action. The value is read back after filling: when the page rejected or moved it, the output starts with a warning and JSON has valueMismatch { expected, actual } (exit code stays 0), plus movedTo naming the field of the form that got the value instead. ${TRIGGERED_REQUESTS_BEHAVIOR}. ${ACTION_EFFECTS_BEHAVIOR}`,
+    automaticBehavior: `Network wait helps ensure React/Vue state updates complete before next action. Text fields (textarea; text, search, url, tel, email, password inputs) get the value typed as a user edit (CDP Input.insertText after emptying the field: trusted beforeinput/input events), so the browser applies minlength: a shorter value is filled with a warning and blocks the form's submit (dom form lists the field invalid; dom click/pressKey report submitBlocked); a value over maxlength exits 81; a value set by script instead of typed (the field had or kept no focus, typing failed, the text never arrived) carries a warning saying so; if the page moves the focus while bdg types and the text lands in another field, it exits 90 naming that field (never the text). A secret field (password, one-time code, card data, CSS-masked: the fields dom query masks) is echoed as Value: •••• (JSON value "••••", sensitive: true). The value is read back after filling: when the page rejected or moved it, the output starts with a warning and JSON has valueMismatch { expected, actual } (exit code stays 0; secret fields masked, with masked: true and no lengths), plus movedTo naming the field of the form that got the value instead. ${TRIGGERED_REQUESTS_BEHAVIOR}. ${ACTION_EFFECTS_BEHAVIOR}`,
   },
   'fill:--no-blur': {
-    default: 'Triggers blur event after filling (validates most form fields)',
-    whenDisabled: 'Keeps focus on element after filling',
+    default:
+      'Triggers blur event after filling (validates most form fields; for typed text the browser fires change on blur)',
+    whenDisabled: 'Keeps focus on element after filling (change is fired right away instead)',
     automaticBehavior:
       'Blur triggers validation in most frameworks - disable only if you need to continue typing',
   },

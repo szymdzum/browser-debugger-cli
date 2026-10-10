@@ -20,6 +20,8 @@ import {
   DISABLED_CAUSE_JS,
   ELEMENT_DESCRIPTION_JS,
   ELEMENT_IDENTITY_JS,
+  MASKED_VALUE,
+  SENSITIVE_FIELD_JS,
 } from '@/runtime/dom/elementInfo.js';
 import { FIND_ELEMENTS_JS, LABEL_CONTROL_JS } from '@/runtime/dom/targetNode.js';
 import { FILL_BEFOREINPUT_CANCELLED_WARNING, NO_BOX_CLICK_REASON } from '@/ui/messages/commands.js';
@@ -44,9 +46,11 @@ const LIST_JS = `(list) => {
  * Checkboxes and radios compare as `checked`/`unchecked`, a multiple select
  * as its selected values joined by ", ", contenteditable text with
  * whitespace collapsed. A value cut to the field's maxlength sets
- * `truncatedTo`; a password mismatch gives masked values and both lengths.
+ * `truncatedTo`; a mismatch of a password or another secret field (`secret`,
+ * see {@link FILL_SECRET_JS}) gives values masked as `dom query` masks them
+ * and `masked: true`, never their lengths.
  */
-export const FILL_VALUE_MISMATCH_JS = `(field, expected) => {
+export const FILL_VALUE_MISMATCH_JS = `(field, expected, secret) => {
   const type = (field.type || '').toLowerCase();
   const actual = field.isContentEditable
     ? (field.textContent || '')
@@ -68,9 +72,9 @@ export const FILL_VALUE_MISMATCH_JS = `(field, expected) => {
   const numeric = (type === 'number' || type === 'range') && actual.trim() !== '' && String(expected).trim() !== '';
   const same = numeric ? Number(actual) === Number(expected) : normalize(actual) === normalize(expected);
   if (same) return undefined;
-  if (type === 'password') {
-    const mask = (text) => (text === '' ? '' : '********');
-    return { expected: mask(expected), actual: mask(actual), expectedLength: expected.length, actualLength: actual.length };
+  if (secret || type === 'password') {
+    const mask = (text) => (text === '' ? '' : '${MASKED_VALUE}');
+    return { expected: mask(expected), actual: mask(actual), masked: true };
   }
   const cut = field.maxLength > 0 && actual.length === field.maxLength && expected.length > actual.length &&
     expected.startsWith(actual);
@@ -152,6 +156,30 @@ export const FIRE_EVENT_JS = `(target, type) => {
 }`;
 
 /**
+ * Page-side: whether `dom fill` masks a field's value in its result, as
+ * `dom query` does ({@link SENSITIVE_FIELD_JS}): an input (not a checkbox,
+ * radio or file input), textarea or select holding a secret.
+ */
+export const FILL_SECRET_JS = `(el) =>
+  /^(input|textarea|select)$/.test(el.localName) &&
+  !/^(checkbox|radio|file)$/i.test(el.type || '') &&
+  (${SENSITIVE_FIELD_JS})(el)`;
+
+/**
+ * Page-side: set a text field's value with the native setter of its
+ * prototype (from its own realm), which a framework's value tracker on the
+ * element (React's) does not see, so the next `input` event reads as a
+ * change.
+ */
+export const SET_NATIVE_VALUE_JS = `(el, text) => {
+  const view = el.ownerDocument.defaultView;
+  const prototype = el.localName === 'textarea' ? view.HTMLTextAreaElement.prototype : view.HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+  if (setter) setter.call(el, text);
+  else el.value = text;
+}`;
+
+/**
  * Page-side: fire `beforeinput` (cancelable) or `input` on a text field as
  * Chrome does when a user selects all and types the text: an `InputEvent`
  * with `inputType` `insertText` and the text as `data`, or
@@ -186,6 +214,114 @@ export const FIRE_INPUT_EVENT_JS = `(target, type, text) => {
 }`;
 
 /**
+ * Page-side end of a fill, once the field has its value: warns when the
+ * value is outside the field's range, notes the field's `minlength` as
+ * `tooShort` when the value is shorter (the caller words that warning),
+ * blurs the field (unless `state.blur` is false), leaves the field and the
+ * value to expect in `window.__bdgFillCheck` for
+ * {@link FILL_READ_BACK_SCRIPT}, and evaluates to the value to show (masked
+ * for a secret field, {@link FILL_SECRET_JS}, with `sensitive: true`),
+ * `tooShort` and the warnings joined.
+ * `state` holds `expected`, `before` (other fields' values,
+ * {@link FIELD_VALUES_JS}), `warnings` so far, `blur` and `multiple` (the
+ * warning that several elements matched, or "").
+ */
+const FILL_DONE_JS = `(el, state) => {
+  const listOf = ${LIST_JS};
+  const warnings = state.warnings;
+  const validity = el.validity;
+  if (validity && (validity.rangeOverflow || validity.rangeUnderflow)) {
+    warnings.push('The value is outside the allowed range (' + (el.min || 'no minimum') + ' to ' + (el.max || 'no maximum') + '); the form will not submit until it is fixed');
+  }
+  const secret = (${FILL_SECRET_JS})(el);
+  if (state.blur !== false) el.blur();
+  window.__bdgFillCheck = { el: el, expected: state.expected, before: state.before, secret: secret };
+  const shown = el.localName === 'select' && el.multiple
+    ? listOf(el.selectedOptions).map((o) => o.value).join(', ')
+    : el.value;
+  return {
+    value: el.isContentEditable ? el.textContent : secret ? (shown ? '${MASKED_VALUE}' : '') : shown,
+    sensitive: secret || undefined,
+    tooShort: validity && validity.tooShort ? el.minLength : undefined,
+    warning: warnings.concat(state.multiple ? [state.multiple] : []).join('; ') || undefined
+  };
+}`;
+
+/**
+ * Page-side: the documents a field's typed text can be seen in, from its
+ * own up through the same-origin frames that hold it (a cross-origin parent
+ * ends the list).
+ */
+const FIELD_DOCUMENTS_JS = `(el) => {
+  const documents = [el.ownerDocument];
+  for (;;) {
+    let frame = null;
+    try {
+      frame = documents[documents.length - 1].defaultView.frameElement;
+    } catch (error) {
+      frame = null;
+    }
+    if (!frame) return documents;
+    documents.push(frame.ownerDocument);
+  }
+}`;
+
+/**
+ * Page-side: whether an element has the focus all the way up, so typed
+ * text goes to it: it is the active element of its shadow root or document,
+ * each shadow host above it is the active element of its own root, and each
+ * same-origin frame holding it is the active element of its parent
+ * document (a cross-origin parent cannot be checked and is trusted).
+ */
+export const DEEP_FOCUSED_JS = `(el) => {
+  let node = el;
+  for (;;) {
+    const root = node.getRootNode();
+    if (root.activeElement !== node) return false;
+    if (root.host) {
+      node = root.host;
+      continue;
+    }
+    let frame = null;
+    try {
+      frame = root.defaultView && root.defaultView.frameElement;
+    } catch (error) {
+      frame = null;
+    }
+    if (!frame) return true;
+    node = frame;
+  }
+}`;
+
+/**
+ * Page-side: the field typed text would go to, from the topmost document
+ * {@link FIELD_DOCUMENTS_JS} reaches down through open shadow roots and
+ * same-origin frames, when it is an editable element; else null.
+ */
+const FOCUSED_FIELD_JS = `(documents) => {
+  let active = documents[documents.length - 1].activeElement;
+  for (;;) {
+    let inner = active && active.shadowRoot ? active.shadowRoot.activeElement : null;
+    if (!inner && active && active.localName === 'iframe') {
+      try {
+        inner = active.contentDocument && active.contentDocument.activeElement;
+      } catch (error) {
+        inner = null;
+      }
+    }
+    if (!inner) break;
+    active = inner;
+  }
+  return active && (/^(input|textarea)$/.test(active.localName) || active.isContentEditable) ? active : null;
+}`;
+
+/**
+ * Text field types whose value `dom fill` enters as a user edit
+ * ({@link REACT_FILL_SCRIPT}): those `minlength` and `maxlength` apply to.
+ */
+const USER_EDIT_TYPES = ['text', 'search', 'url', 'tel', 'email', 'password'];
+
+/**
  * JavaScript function to fill an input element in a React-compatible way.
  *
  * This approach:
@@ -195,6 +331,19 @@ export const FIRE_INPUT_EVENT_JS = `(target, type, text) => {
  *    and `input` `InputEvent`s Chrome fires for typing
  *    ({@link FIRE_INPUT_EVENT_JS}), for other fields a plain `input` event
  * 3. Properly handles focus/blur for form validation
+ *
+ * A text value (not "") for a textarea or a text, search, URL, tel, email or
+ * password input that has the focus is entered as a user edit, so Chrome
+ * applies `minlength` (`validity.tooShort`, which it checks only for text a
+ * user entered): the script empties the field with the native setter (no
+ * events), notes the `beforeinput` and `input` events the field gets and
+ * leaves it in `window.__bdgFillPending`, and evaluates to a result with
+ * `insertText: true`. The caller then types the value with CDP
+ * `Input.insertText` (Chrome fires the trusted `beforeinput` and `input`
+ * events, and `change` on blur) and runs {@link FILL_INSERTED_FUNCTION}.
+ * A value over `maxlength` is refused before that (a user could not type
+ * it). Other fields (number, date, select, checkbox, contenteditable) get
+ * the value through the native setter and events, as below.
  *
  * A page that cancels `beforeinput` (a rich editor rejecting the text) still
  * gets the value and the `input` event, so scripted flows keep working, and
@@ -221,6 +370,7 @@ export const REACT_FILL_SCRIPT = `
   const textTypes = ['text', 'email', 'search', 'url', 'tel', 'password', 'number'];
   const listOf = ${LIST_JS};
   const warnings = [];
+  let notTyped;
   let expected = value;
   // Why a user could not reach the field (the value is still set, so scripted
   // flows keep working, but the result may not be what a user would see)
@@ -244,16 +394,20 @@ export const REACT_FILL_SCRIPT = `
       month: 'YYYY-MM',
       week: 'YYYY-Www'
     };
-    const rejected = 'The browser rejected "' + text + '" for a ' + type + ' field (it keeps its previous value)';
+    // A secret field's value (given, or as the browser would set it) is never shown
+    const secret = () => (${FILL_SECRET_JS})(field);
+    const rejected = () => 'The browser rejected ' + (secret() ? 'the value' : '"' + text + '"') + ' for a ' + type + ' field (it keeps its previous value)';
     if (formats[type] && text.trim() !== '' && field.value === '') {
-      return { error: rejected, suggestion: 'Expected ' + formats[type] };
+      return { error: rejected(), suggestion: 'Expected ' + formats[type] };
     }
     if (type === 'color' && field.value.toLowerCase() !== text.trim().toLowerCase()) {
-      return { error: rejected, suggestion: 'Expected a hex color like #1a2b3c' };
+      return { error: rejected(), suggestion: 'Expected a hex color like #1a2b3c' };
     }
     if (type === 'range' && Number(field.value) !== Number(text)) {
       return {
-        error: 'The browser would set ' + field.value + ' instead of "' + text + '" (range ' + (field.min || 0) + ' to ' + (field.max || 100) + ', step ' + (field.step || 1) + ')',
+        error: secret()
+          ? 'The browser would change the value for a range field (it is outside the range or off the step)'
+          : 'The browser would set ' + field.value + ' instead of "' + text + '" (range ' + (field.min || 0) + ' to ' + (field.max || 100) + ', step ' + (field.step || 1) + ')',
         suggestion: 'Use a value within the range that matches the step'
       };
     }
@@ -326,6 +480,23 @@ export const REACT_FILL_SCRIPT = `
   }
 
   const fieldsBefore = (${FIELD_VALUES_JS})(el);
+  const multiple = allMatches.length > 1 && typeof index !== 'number'
+    ? allMatches.length + ' elements match; filled the first (use --index or a more specific selector)'
+    : '';
+  const result = (fields) => ({
+    ...{
+      success: true,
+      selector: selector,
+      value: undefined,
+      sensitive: undefined,
+      element: (${ELEMENT_IDENTITY_JS})(el),
+      elementType: tagName + viaLabel + viaShadow,
+      inputType: inputType || null,
+      checked: undefined,
+      matchCount: allMatches.length
+    },
+    ...fields
+  });
   el.focus();
 
   if (tagName === 'select' && el.multiple) {
@@ -414,31 +585,17 @@ export const REACT_FILL_SCRIPT = `
       fireInput(el, 'input', value);
     }
   } else {
-    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-      el.ownerDocument.defaultView.HTMLInputElement.prototype,
-      'value'
-    )?.set;
-    
-    const nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(
-      el.ownerDocument.defaultView.HTMLTextAreaElement.prototype,
-      'value'
-    )?.set;
-    
-    const setter = tagName === 'textarea' 
-      ? nativeTextAreaValueSetter 
-      : nativeInputValueSetter;
-
     if (el.maxLength > 0 && value.length > el.maxLength) {
       return {
         success: false,
-        error: 'Value is ' + value.length + ' characters; the field accepts at most ' + el.maxLength,
+        tooLong: el.maxLength,
+        sensitive: (${FILL_SECRET_JS})(el) || undefined,
         elementType: tagName + viaLabel + viaShadow,
-        inputType: inputType || null,
-        suggestion: 'Shorten the value (a user could not type more than maxlength characters)'
+        inputType: inputType || null
       };
     }
     
-    const setValue = (text) => (setter ? setter.call(el, text) : (el.value = text));
+    const setValue = (text) => (${SET_NATIVE_VALUE_JS})(el, text);
     const typed = tagName === 'textarea' || textTypes.includes(inputType);
     const previous = el.value;
     setValue(value);
@@ -455,6 +612,47 @@ export const REACT_FILL_SCRIPT = `
       };
     }
 
+    const userEditType = value !== '' &&
+      (tagName === 'textarea' || ${JSON.stringify(USER_EDIT_TYPES)}.includes(inputType));
+    const userEdit = userEditType && (${DEEP_FOCUSED_JS})(el);
+    if (userEditType && !userEdit) notTyped = 'noFocus';
+    if (userEdit) {
+      if (previous !== '') setValue('');
+      const pending = {
+        el: el, value: value, expected: expected, before: fieldsBefore, warnings: warnings,
+        blur: options.blur, multiple: multiple, sawBeforeinput: false, sawInput: false,
+        documents: (${FIELD_DOCUMENTS_JS})(el), elsewhere: null
+      };
+      const sawBeforeinput = () => { pending.sawBeforeinput = true; };
+      const sawInput = () => { pending.sawInput = true; };
+      // Trusted input in another field: the page moved the focus and the
+      // text went there (seen from outside, a field in a shadow root is its host)
+      const ours = (node) => {
+        for (let n = el; n; n = n.getRootNode().host) if (n === node) return true;
+        return false;
+      };
+      const sawElsewhere = (event) => {
+        const target = event.composedPath()[0];
+        if (event.isTrusted && !pending.elsewhere && !ours(target)) pending.elsewhere = target;
+      };
+      el.addEventListener('beforeinput', sawBeforeinput, true);
+      el.addEventListener('input', sawInput, true);
+      pending.documents.forEach((d) => d.addEventListener('input', sawElsewhere, true));
+      pending.stop = () => {
+        el.removeEventListener('beforeinput', sawBeforeinput, true);
+        el.removeEventListener('input', sawInput, true);
+        pending.documents.forEach((d) => d.removeEventListener('input', sawElsewhere, true));
+      };
+      window.__bdgFillPending = pending;
+      const secret = (${FILL_SECRET_JS})(el);
+      return result({
+        insertText: true,
+        value: secret ? '${MASKED_VALUE}' : value,
+        sensitive: secret || undefined,
+        warning: warnings.concat(multiple ? [multiple] : []).join('; ') || undefined
+      });
+    }
+
     if (value !== '' || previous !== '') {
       if (typed && !fireInput(el, 'beforeinput', value)) {
         warnings.push(${JSON.stringify(FILL_BEFOREINPUT_CANCELLED_WARNING)});
@@ -464,37 +662,75 @@ export const REACT_FILL_SCRIPT = `
       else fire(el, 'input');
       fire(el, 'change');
     }
-    if (el.validity && (el.validity.rangeOverflow || el.validity.rangeUnderflow)) {
-      warnings.push('The value is outside the allowed range (' + (el.min || 'no minimum') + ' to ' + (el.max || 'no maximum') + '); the form will not submit until it is fixed');
-    }
   }
-  
-  if (options.blur !== false) {
-    el.blur();
-  }
-  window.__bdgFillCheck = { el: el, expected: expected, before: fieldsBefore };
 
-  return {
-    success: true,
-    selector: selector,
-    value: el.isContentEditable
-      ? el.textContent
-      : inputType === 'password'
-        ? '********'
-        : tagName === 'select' && el.multiple
-          ? listOf(el.selectedOptions).map((o) => o.value).join(', ')
-          : el.value,
-    element: (${ELEMENT_IDENTITY_JS})(el),
-    elementType: tagName + viaLabel + viaShadow,
-    inputType: inputType || null,
+  const done = (${FILL_DONE_JS})(el, {
+    expected: expected, before: fieldsBefore, warnings: warnings, blur: options.blur, multiple: multiple
+  });
+  return result({
+    value: done.value,
+    sensitive: done.sensitive,
     checked: inputType === 'checkbox' || inputType === 'radio' ? el.checked : undefined,
-    matchCount: allMatches.length,
-    warning: warnings.concat(allMatches.length > 1 && typeof index !== 'number'
-      ? [allMatches.length + ' elements match; filled the first (use --index or a more specific selector)']
-      : []).join('; ') || undefined
-  };
+    tooShort: done.tooShort,
+    notTyped: notTyped,
+    warning: done.warning
+  });
 })
 `;
+
+/**
+ * Page script evaluating to whether the field a fill left for typing
+ * (`window.__bdgFillPending`) still has the focus ({@link DEEP_FOCUSED_JS}),
+ * checked right before the text is typed.
+ */
+export const FILL_FOCUS_CHECK_SCRIPT = `(() => {
+  const pending = window.__bdgFillPending;
+  return Boolean(pending) && (${DEEP_FOCUSED_JS})(pending.el);
+})()`;
+
+/**
+ * Page function finishing a fill whose text was to be typed with
+ * `Input.insertText` ({@link REACT_FILL_SCRIPT}, `window.__bdgFillPending`),
+ * called with whether it was typed (false: the field lost the focus before,
+ * or typing failed). When the text went to another field (a trusted `input`
+ * there, or another field has the focus, holds the text, and this one got
+ * nothing) it evaluates to `{ typedInto }` naming that field (never its
+ * value), and nothing else is done. When it was not typed, or the field got
+ * neither the `input` event nor any text (the page cancelled `beforeinput`,
+ * or the text never reached it), the value is set as for other fields: the
+ * native setter, `input` (after a `beforeinput` when the field got none)
+ * and `change`, with `notTyped: 'cancelled'` when the page cancelled
+ * `beforeinput`, else `notTyped: 'lost'` for typed text that did not arrive
+ * (the caller words the warnings).
+ * `change` is also fired when the field is not blurred (a blur fires it for
+ * typed text). Evaluates to {@link FILL_DONE_JS}'s result, or null when
+ * nothing was pending (the page navigated).
+ */
+export const FILL_INSERTED_FUNCTION = `(typed) => {
+  const pending = window.__bdgFillPending;
+  delete window.__bdgFillPending;
+  if (!pending) return null;
+  pending.stop();
+  const el = pending.el;
+  const inserted = typed && (pending.sawInput || String(el.value) !== '');
+  if (typed && !inserted) {
+    const focused = (${FOCUSED_FIELD_JS})(pending.documents);
+    const holdsText = (field) =>
+      String(field.isContentEditable ? field.textContent : field.value).includes(pending.value);
+    const receiver = pending.elsewhere || (focused && focused !== el && holdsText(focused) ? focused : null);
+    if (receiver) return { typedInto: (${ELEMENT_IDENTITY_JS})(receiver) };
+  }
+  let notTyped;
+  if (!inserted) {
+    const cancelled = pending.sawBeforeinput || !(${FIRE_INPUT_EVENT_JS})(el, 'beforeinput', pending.value);
+    notTyped = cancelled ? 'cancelled' : typed ? 'lost' : undefined;
+    (${SET_NATIVE_VALUE_JS})(el, pending.value);
+    (${FIRE_INPUT_EVENT_JS})(el, 'input', pending.value);
+  }
+  if (!inserted || pending.blur === false) (${FIRE_EVENT_JS})(el, 'change');
+  const done = (${FILL_DONE_JS})(el, pending);
+  return notTyped ? { ...done, notTyped: notTyped } : done;
+}`;
 
 /**
  * Page-side search for the field a moved value went to: one of the fields
@@ -529,7 +765,7 @@ export const FILL_READ_BACK_SCRIPT = `(() => {
   if (!check) return null;
   const readBack = () => {
     if (!check.el.isConnected) return null;
-    const mismatch = (${FILL_VALUE_MISMATCH_JS})(check.el, check.expected);
+    const mismatch = (${FILL_VALUE_MISMATCH_JS})(check.el, check.expected, check.secret);
     if (!mismatch) return null;
     const movedTo = (${MOVED_VALUE_JS})(check.el, check.expected, check.before);
     return movedTo ? Object.assign(mismatch, { movedTo: movedTo }) : mismatch;

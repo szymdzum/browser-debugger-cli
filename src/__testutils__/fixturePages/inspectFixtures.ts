@@ -141,11 +141,15 @@ JSON.stringify = function () { return '"replaced"'; };
  * avoid them: `Element.prototype.matches` always matches (so everything
  * would look `:disabled`), `Event` is a MooTools-1.2-like wrapper that
  * builds no event, `Object.keys` lies, and, as anti-bot scripts do,
- * `dispatchEvent` throws for `#guarded-field` and `getBoundingClientRect`
- * for `#guarded`. Input and change events on `#name` are logged in `#log`.
+ * `dispatchEvent` throws for `#guarded-field` (a number field, which
+ * `dom fill` gives its value through events; text fields get typed text,
+ * whose events the page's `dispatchEvent` does not see) and for
+ * `#guarded-text` (a text field that hands the focus to `#name` as soon as
+ * it gets it, so `dom fill` sets its value through events instead of
+ * typing), and `getBoundingClientRect` for `#guarded`. Input and change events on `#name` are logged in `#log`.
  */
 const TAMPERED_ACTIONS_HTML = `<!doctype html><html><head><title>Tampered actions</title></head><body>
-<input id="name"> <input id="guarded-field">
+<input id="name"> <input id="guarded-field" type="number"> <input id="guarded-text" aria-label="Guarded text">
 <button type="button" id="go" onclick="this.textContent = 'Clicked'">Go</button>
 <button type="button" id="guarded">Guarded</button>
 <div id="log"></div>
@@ -157,7 +161,7 @@ Element.prototype.matches = function () { return true; };
 window.Event = function (event) { this.event = event; };
 const dispatch = EventTarget.prototype.dispatchEvent;
 EventTarget.prototype.dispatchEvent = function (event) {
-  if (this.id === 'guarded-field') throw new Error('anti-bot: dispatchEvent');
+  if (this.id === 'guarded-field' || this.id === 'guarded-text') throw new Error('anti-bot: dispatchEvent');
   return dispatch.call(this, event);
 };
 const rect = Element.prototype.getBoundingClientRect;
@@ -166,6 +170,8 @@ Element.prototype.getBoundingClientRect = function () {
   return rect.call(this);
 };
 Object.keys = function () { return ['bogus']; };
+document.getElementById('guarded-text').addEventListener('focus', () =>
+  queueMicrotask(() => document.getElementById('name').focus()));
 </script>
 </body></html>`;
 

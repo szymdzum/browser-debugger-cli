@@ -14,10 +14,12 @@ import {
   uploadDirectoryError,
   singleFileInputError,
   fillableElementNotFoundError,
+  fillTooLongError,
   clickTargetDetachedError,
   unexpectedResponseFormatError,
   operationFailedError,
   pressNotReceivedError,
+  textTypedElsewhereError,
   unreachableElementError,
 } from '@/errors/messages.js';
 import type { FillValueMismatch } from '@/ipc/protocol/domTypes.js';
@@ -30,6 +32,8 @@ import {
   withValueMismatchWarning,
 } from '@/runtime/dom/formFillHelpers/shared.js';
 import {
+  FILL_FOCUS_CHECK_SCRIPT,
+  FILL_INSERTED_FUNCTION,
   FILL_READ_BACK_SCRIPT,
   FIRE_EVENT_JS,
   REACT_FILL_SCRIPT,
@@ -49,6 +53,9 @@ import {
   POINTER_ACTION_DONE,
   POINTER_ACTION_NOUN,
   domClickFallbackWarning,
+  fillNotTypedWarning,
+  fillTooShortWarning,
+  type FillNotTypedReason,
 } from '@/ui/messages/commands.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -56,7 +63,53 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 const log = createLogger('dom');
 
 /**
- * Fill a form element with a value in a React-compatible way.
+ * A fill result, plus what the page scripts report for the caller to word
+ * (not part of the CLI result): whether the text was left for
+ * {@link insertAsUser} to type, why a text field's value was set by script
+ * instead, and the `minlength` a value is shorter than
+ */
+type FillOutcome = FillResult & {
+  insertText?: true;
+  notTyped?: FillNotTypedReason | FillNotTypedReason[];
+  tooShort?: number;
+  tooLong?: number;
+};
+
+/**
+ * The refusal of a value over the field's `maxlength`, worded here (the
+ * length given only for a field that is not secret).
+ *
+ * @param outcome - Fill script result with `tooLong`
+ * @param value - Value given
+ * @returns Failed fill result
+ */
+function tooLongFailure(outcome: FillOutcome & { tooLong: number }, value: string): FillResult {
+  const { tooLong, sensitive, ...result } = outcome;
+  const err = fillTooLongError(tooLong, sensitive ? undefined : value.length);
+  return { ...result, success: false, error: err.message, suggestion: err.suggestion };
+}
+
+/**
+ * Turn what the page scripts reported into warnings (worded here, so no
+ * message text is put into page code), ahead of the page's own.
+ *
+ * @param outcome - Fill outcome
+ * @returns The CLI result
+ */
+function withFillWarnings(outcome: FillOutcome): FillResult {
+  const { insertText: _typed, notTyped, tooShort, ...result } = outcome;
+  const warnings = [
+    ...[notTyped ?? []].flat().map(fillNotTypedWarning),
+    ...(tooShort !== undefined ? [fillTooShortWarning(tooShort)] : []),
+    ...(result.warning ? [result.warning] : []),
+  ];
+  return warnings.length > 0 ? { ...result, warning: warnings.join('; ') } : result;
+}
+
+/**
+ * Fill a form element with a value in a React-compatible way. A text field
+ * gets the value as a user edit ({@link insertAsUser}), so the browser
+ * applies `minlength` to it.
  */
 export async function fillElement(
   cdp: CDPConnection,
@@ -89,8 +142,15 @@ export async function fillElement(
     }
 
     if (cdpResponse.result?.value && isFillResult(cdpResponse.result.value)) {
-      const result = cdpResponse.result.value;
-      if (!result.fileInput) return withValueMismatchWarning(await withReadBack(cdp, result));
+      const result: FillOutcome = cdpResponse.result.value;
+      if (result.tooLong !== undefined)
+        return tooLongFailure({ ...result, tooLong: result.tooLong }, value);
+      if (!result.fileInput) {
+        const filled = result.insertText
+          ? await insertAsUser(cdp, { selector, value }, result)
+          : result;
+        return withValueMismatchWarning(await withReadBack(cdp, withFillWarnings(filled)));
+      }
       const uploaded = await setFileInput(cdp, selector, value, options);
       return uploaded.success && result.elementType
         ? { ...uploaded, elementType: result.elementType }
@@ -106,6 +166,96 @@ export async function fillElement(
     const errorMessage = error instanceof Error ? error.message : String(error);
     const err = operationFailedError('fill element', errorMessage);
     throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SOFTWARE_ERROR);
+  }
+}
+
+/** What {@link FILL_INSERTED_FUNCTION} evaluates to */
+type FilledField =
+  | {
+      value: string;
+      sensitive?: true;
+      warning?: string;
+      tooShort?: number;
+      notTyped?: FillNotTypedReason;
+      typedInto?: undefined;
+    }
+  | { typedInto: string };
+
+/**
+ * Type the value with CDP `Input.insertText`, unless the field the fill
+ * script focused and emptied lost the focus meanwhile
+ * ({@link FILL_FOCUS_CHECK_SCRIPT}); then finish the fill
+ * ({@link FILL_INSERTED_FUNCTION}). Chrome takes typed text as a user edit,
+ * so `minlength` applies. When nothing was pending any more (the page
+ * navigated) the fill script's result stands.
+ *
+ * @param cdp - CDP connection
+ * @param fill - The selector filled and the text to type
+ * @param pending - Result of the fill script, with `insertText`
+ * @returns Fill outcome
+ * @throws CommandError (exit 90) when the page moved the focus and the text
+ *   went to another field; ActionScriptError when the finishing script
+ *   threw (a page API it calls was replaced)
+ */
+async function insertAsUser(
+  cdp: CDPConnection,
+  fill: { selector: string; value: string },
+  pending: FillOutcome
+): Promise<FillOutcome> {
+  const { insertText: _typed, ...result } = pending;
+  const reason = await typeText(cdp, fill.value);
+  const response = (await cdp.send('Runtime.evaluate', {
+    expression: `(${FILL_INSERTED_FUNCTION})(${reason === null ? 'true' : 'false'})`,
+    returnByValue: true,
+    userGesture: true,
+  })) as { result?: { value?: unknown }; exceptionDetails?: Protocol.Runtime.ExceptionDetails };
+  if (response.exceptionDetails) {
+    throw new ActionScriptError('fill', exceptionSummary(response.exceptionDetails), fill.selector);
+  }
+  const done = response.result?.value as FilledField | null | undefined;
+  if (!done) return result;
+  if (done.typedInto !== undefined) {
+    const err = textTypedElsewhereError(
+      { selector: result.selector ?? '', element: result.element },
+      done.typedInto
+    );
+    throw new CommandError(
+      err.message,
+      { suggestion: err.suggestion },
+      EXIT_CODES.RESOURCE_CONFLICT
+    );
+  }
+  const { sensitive: _sensitive, warning: _warning, ...field } = result;
+  const notTyped = [reason, done.notTyped].filter((why) => why !== null && why !== undefined);
+  return {
+    ...field,
+    value: done.value,
+    ...(done.sensitive && { sensitive: true }),
+    ...(done.warning && { warning: done.warning }),
+    ...(done.tooShort !== undefined && { tooShort: done.tooShort }),
+    ...(notTyped.length > 0 && { notTyped }),
+  };
+}
+
+/**
+ * Type the text into the pending field when it still has the focus.
+ *
+ * @param cdp - CDP connection
+ * @param value - Text to type
+ * @returns Null when typed, else why not
+ */
+async function typeText(cdp: CDPConnection, value: string): Promise<'unfocused' | 'failed' | null> {
+  const check = (await cdp.send('Runtime.evaluate', {
+    expression: FILL_FOCUS_CHECK_SCRIPT,
+    returnByValue: true,
+  })) as { result?: { value?: unknown } };
+  if (check.result?.value !== true) return 'unfocused';
+  try {
+    await cdp.send('Input.insertText', { text: value });
+    return null;
+  } catch (error) {
+    log.debug(`Text not typed: ${getErrorMessage(error)}`);
+    return 'failed';
   }
 }
 

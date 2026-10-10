@@ -421,18 +421,19 @@ export function newMessageText(message: NewMessage): string {
 
 /**
  * Warning shown when a filled field's value read back is not the one given:
- * cut to its maxlength, a password of another length (values never shown),
- * or another value (naming the field the value went to, when one has it).
+ * cut to its maxlength, a secret field (one `dom query` masks) whose value
+ * has another length (values never shown), or another value (naming the
+ * field the value went to, when one has it).
  *
- * @param mismatch - Value given and value found (masked for passwords)
+ * @param mismatch - Value given and value found (masked for secret fields)
  * @returns Warning text
  */
 export function valueMismatchWarning(mismatch: FillValueMismatch): string {
   if (mismatch.truncatedTo !== undefined) {
     return `The value was cut to ${mismatch.truncatedTo} characters by maxlength`;
   }
-  if (mismatch.expectedLength !== undefined) {
-    return `The password field's value differs from the one filled (length ${mismatch.actualLength ?? 0}, expected ${mismatch.expectedLength}); the page may have rejected or changed the input`;
+  if (mismatch.masked) {
+    return 'The page kept another value than the one filled (secret field, value not shown); it may have rejected or changed the input';
   }
   const outcome =
     mismatch.movedTo === undefined
@@ -447,6 +448,44 @@ export function valueMismatchWarning(mismatch: FillValueMismatch): string {
  */
 export const FILL_BEFOREINPUT_CANCELLED_WARNING =
   'The page cancelled beforeinput (it may reject typed text); the value was set anyway, so check the page took it';
+
+/**
+ * Warning shown when `dom fill` entered a value shorter than the field's
+ * `minlength` (the browser applies it to the value, as to typed text).
+ *
+ * @param minLength - The field's minlength
+ * @returns Warning text
+ */
+export function fillTooShortWarning(minLength: number): string {
+  return `The value is shorter than the field's minlength (${minLength}); the form will not submit until it is fixed`;
+}
+
+/** Why `dom fill` set a text field's value by script instead of typing it, by key */
+const FILL_NOT_TYPED_REASONS = {
+  noFocus: 'the field did not take the focus',
+  unfocused: 'the field lost the focus before bdg typed',
+  failed: 'typing failed',
+  lost: 'the typed text did not reach the field',
+} as const;
+
+/**
+ * Key of a reason `dom fill` set a text field's value by script; `cancelled`
+ * (the page cancelled `beforeinput`) has its own warning
+ */
+export type FillNotTypedReason = 'cancelled' | keyof typeof FILL_NOT_TYPED_REASONS;
+
+/**
+ * Warning shown when `dom fill` set a text field's value by script instead
+ * of typing it; a cancelled `beforeinput` keeps its own wording
+ * ({@link FILL_BEFOREINPUT_CANCELLED_WARNING}).
+ *
+ * @param reason - Why it was not typed
+ * @returns Warning text
+ */
+export function fillNotTypedWarning(reason: FillNotTypedReason): string {
+  if (reason === 'cancelled') return FILL_BEFOREINPUT_CANCELLED_WARNING;
+  return `The value was set by script, not typed (${FILL_NOT_TYPED_REASONS[reason]}), so the browser does not apply minlength to it`;
+}
 
 /**
  * Warning shown when a mouse press was dispatched but the target never
@@ -1502,6 +1541,17 @@ export const CLICK_RESULT_WAIT_HELP = joinLines(
   'results the page shows later (timers, spinners, animations); the result says',
   '"page still changing" when it saw such work pending. Wait for those with:',
   "  bdg dom wait '#result' --visible          # or --text 'Saved', or '.spinner' --gone"
+);
+
+/** Help of `bdg dom fill` after its options: how text is entered, and what it shows */
+export const FILL_RESULT_HELP = joinLines(
+  '',
+  'Text fields get the value typed like a user (trusted input events), so the browser',
+  'applies minlength: a shorter value is filled with a warning and blocks the submit;',
+  'a value over maxlength is refused (exit 81). A value set by script instead (the',
+  'field had no focus) says so in a warning. If the page moves the focus and the text',
+  'lands in another field, the fill fails (exit 90) naming that field. Secret fields',
+  '(passwords, one-time codes, card data: the fields dom query masks) show Value: ••••.'
 );
 
 /** Examples in the help of `bdg dom wait` */

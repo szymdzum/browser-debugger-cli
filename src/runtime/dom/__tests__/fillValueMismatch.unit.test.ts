@@ -18,7 +18,8 @@ type Mismatch = FillValueMismatch | undefined;
 
 const pageCheck = vm.runInNewContext(`(${FILL_VALUE_MISMATCH_JS})`) as (
   field: Record<string, unknown>,
-  expected: string
+  expected: string,
+  secret?: boolean
 ) => Mismatch;
 
 /**
@@ -26,10 +27,15 @@ const pageCheck = vm.runInNewContext(`(${FILL_VALUE_MISMATCH_JS})`) as (
  *
  * @param field - Field-like object
  * @param expected - Value given to fill
+ * @param secret - Whether `dom query` masks the field
  * @returns Mismatch, or undefined when the value matches
  */
-function valueMismatch(field: Record<string, unknown>, expected: string): Mismatch {
-  const result = pageCheck(field, expected);
+function valueMismatch(
+  field: Record<string, unknown>,
+  expected: string,
+  secret?: boolean
+): Mismatch {
+  const result = pageCheck(field, expected, secret);
   return result && { ...result };
 }
 
@@ -45,24 +51,34 @@ void describe('FILL_VALUE_MISMATCH_JS', () => {
     );
   });
 
-  void it('masks passwords and gives their lengths', () => {
+  void it('masks passwords without their lengths', () => {
     const mismatch = valueMismatch(
       { localName: 'input', type: 'password', value: 'secret' },
       'secret_sauce'
     );
     assert.deepEqual(mismatch, {
-      expected: '********',
-      actual: '********',
-      expectedLength: 12,
-      actualLength: 6,
+      expected: '••••',
+      actual: '••••',
+      masked: true,
     });
     assert.equal(
       valueMismatchWarning(mismatch as FillValueMismatch),
-      "The password field's value differs from the one filled (length 6, expected 12); the page may have rejected or changed the input"
+      'The page kept another value than the one filled (secret field, value not shown); it may have rejected or changed the input'
     );
     assert.equal(
       valueMismatch({ localName: 'input', type: 'password', value: '' }, 'x')?.actual,
       ''
+    );
+  });
+
+  void it('masks any field dom query masks (#592)', () => {
+    assert.deepEqual(
+      valueMismatch({ localName: 'input', type: 'text', value: '12' }, 'ab12', true),
+      {
+        expected: '••••',
+        actual: '••••',
+        masked: true,
+      }
     );
   });
 

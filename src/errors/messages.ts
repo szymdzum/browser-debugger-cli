@@ -2051,6 +2051,47 @@ export function pressNotReceivedError(
 }
 
 /**
+ * `dom fill` refused a value longer than the field's `maxlength` (typing
+ * would cut it). The length of a secret field's value is not given.
+ *
+ * @param maxLength - The field's maxlength
+ * @param length - Length of the value given, or undefined for a secret field
+ * @returns Error with suggestion
+ */
+export function fillTooLongError(
+  maxLength: number,
+  length: number | undefined
+): ErrorWithSuggestion {
+  return {
+    message:
+      length === undefined
+        ? `The value is longer than the field accepts (at most ${maxLength} characters)`
+        : `Value is ${length} characters; the field accepts at most ${maxLength}`,
+    suggestion: 'Shorten the value (a user could not type more than maxlength characters)',
+  };
+}
+
+/**
+ * `dom fill` typed the text, but the page had moved the focus and it went
+ * to another field (named, never with the text).
+ *
+ * @param target - The field filled: its selector, and its description
+ *   (e.g. `input#password "Password"`) when known
+ * @param receiver - The field that got the text instead
+ * @returns Error with suggestion
+ */
+export function textTypedElsewhereError(
+  target: { selector: string; element?: string | undefined },
+  receiver: string
+): ErrorWithSuggestion {
+  const field = target.element ?? target.selector;
+  return {
+    message: `Did not fill ${field}: the page moved the focus to ${receiver} as bdg typed the text, so ${receiver} got it instead`,
+    suggestion: `Clear ${receiver} if it should not keep the text, and see what moves the focus (focus, beforeinput) with ${sessionCommand(`bdg dom listeners ${shellQuote(target.selector)}`)}`,
+  };
+}
+
+/**
  * Key press failed.
  */
 export function keyPressFailedError(details: string): ErrorWithSuggestion {
