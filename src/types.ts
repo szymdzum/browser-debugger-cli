@@ -473,7 +473,8 @@ export interface A11yQueryResult {
  */
 export interface DomContext {
   tag: string;
-  classes?: string[];
+  /** Every class of the element, `[]` when it has none */
+  classes: string[];
   preview?: string;
   /** Up to 500 characters of text, when it is longer than the preview */
   text?: string;
@@ -588,6 +589,10 @@ export interface DomQueryResult {
     value?: string;
     /** Attributes that identify it by its type (see {@link KeyAttributes}) */
     attributes?: KeyAttributes;
+    /**
+     * Every class of the element, `[]` when it has none; always set by
+     * `dom query` (cached `dom form` and `dom a11y query` results have none)
+     */
     classes?: string[];
     /** Text content preview (display only, never used for targeting) */
     preview?: string;
@@ -618,7 +623,8 @@ export interface DomGetResult {
     nodeId: number;
     tag?: string;
     attributes?: Record<string, unknown>;
-    classes?: string[];
+    /** Every class of the element, `[]` when it has none */
+    classes: string[];
     outerHTML?: string;
     /** Original length of `outerHTML` when JSON output cut it (`--full` keeps it whole) */
     truncatedFrom?: number;

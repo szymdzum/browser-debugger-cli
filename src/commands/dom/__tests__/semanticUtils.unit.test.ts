@@ -20,7 +20,7 @@ void describe('formatSemanticNodeWithContext', () => {
   void it('keeps one line for short text', () => {
     const output = formatSemanticNodeWithContext({
       node: NODE,
-      domContext: { tag: 'div', preview: 'Hello' },
+      domContext: { tag: 'div', classes: [], preview: 'Hello' },
     });
     assert.equal(output, '[Generic] <div> "Hello"');
   });
@@ -29,7 +29,12 @@ void describe('formatSemanticNodeWithContext', () => {
     const long = 'word '.repeat(300);
     const output = formatSemanticNodeWithContext({
       node: NODE,
-      domContext: { tag: 'div', preview: textPreview(long), text: textPreview(long, 500) },
+      domContext: {
+        tag: 'div',
+        classes: [],
+        preview: textPreview(long),
+        text: textPreview(long, 500),
+      },
     });
     const [first, second] = output.split('\n');
     assert.equal(first, '[Generic] <div>');
@@ -42,7 +47,7 @@ void describe('formatSemanticNodeWithContext', () => {
     const text = 'x'.repeat(200);
     const output = formatSemanticNodeWithContext({
       node: NODE,
-      domContext: { tag: 'div', preview: textPreview(text), text },
+      domContext: { tag: 'div', classes: [], preview: textPreview(text), text },
     });
     assert.equal(output.split('\n')[1], `Text: ${text}`);
   });
@@ -50,7 +55,7 @@ void describe('formatSemanticNodeWithContext', () => {
   void it('says what an element without text holds (a body with only an iframe)', () => {
     const output = formatSemanticNodeWithContext({
       node: NODE,
-      domContext: { tag: 'body', children: ['iframe#app', 'script'], childCount: 2 },
+      domContext: { tag: 'body', classes: [], children: ['iframe#app', 'script'], childCount: 2 },
     });
     assert.equal(
       output,
@@ -63,6 +68,7 @@ void describe('formatSemanticNodeWithContext', () => {
       node: NODE,
       domContext: {
         tag: 'x-icon-button',
+        classes: [],
         children: ['button.icon "Close"'],
         childCount: 1,
         shadowChildren: true,
@@ -82,6 +88,7 @@ void describe('formatSemanticNodeWithContext key attributes', () => {
         node: { nodeId: '1', role: 'image', name: 'Backpack' },
         domContext: {
           tag: 'img',
+          classes: [],
           attributes: { src: 'https://cdn.test/img/sl-404.jpg', alt: 'Backpack' },
         },
       }),
@@ -90,7 +97,11 @@ void describe('formatSemanticNodeWithContext key attributes', () => {
     assert.equal(
       formatSemanticNodeWithContext({
         node: { nodeId: '2', role: 'textbox', name: 'Name', value: 'Ada', focusable: true },
-        domContext: { tag: 'input', attributes: { type: 'text', name: 'custname', value: 'Ada' } },
+        domContext: {
+          tag: 'input',
+          classes: [],
+          attributes: { type: 'text', name: 'custname', value: 'Ada' },
+        },
       }),
       '[Textbox] "Name" type="text" name="custname" (value: "Ada", focusable)'
     );
@@ -102,7 +113,7 @@ void describe('formatSemanticNodeWithContext text next to the accessible name', 
     assert.equal(
       formatSemanticNodeWithContext({
         node: { nodeId: '1', role: 'generic', name: 'Rich Text Area. Press ALT-0 for help.' },
-        domContext: { tag: 'body', preview: 'Your content goes here.' },
+        domContext: { tag: 'body', classes: [], preview: 'Your content goes here.' },
       }),
       '[Generic] "Rich Text Area. Press ALT-0 for help."\nText: Your content goes here.'
     );
@@ -112,14 +123,14 @@ void describe('formatSemanticNodeWithContext text next to the accessible name', 
     assert.equal(
       formatSemanticNodeWithContext({
         node: { nodeId: '1', role: 'button', name: 'Add to cart', focusable: true },
-        domContext: { tag: 'button', preview: 'ADD  TO CART' },
+        domContext: { tag: 'button', classes: [], preview: 'ADD  TO CART' },
       }),
       '[Button] "Add to cart" (focusable)'
     );
     assert.equal(
       formatSemanticNodeWithContext({
         node: { nodeId: '2', role: 'generic', name: 'Notes', value: 'Typed notes' },
-        domContext: { tag: 'div', preview: 'Typed notes' },
+        domContext: { tag: 'div', classes: [], preview: 'Typed notes' },
       }),
       '[Generic] "Notes" (value: "Typed notes")'
     );
@@ -133,6 +144,7 @@ void describe('formatSemanticNodeWithContext text next to the accessible name', 
         node: { nodeId: '1', role: 'heading', name: text, properties: { level: 4 } },
         domContext: {
           tag: 'h4',
+          classes: [],
           preview: textPreview(text),
           text: text.replace(' tomsmith ', '  tomsmith\n'),
         },
@@ -145,15 +157,23 @@ void describe('formatSemanticNodeWithContext text next to the accessible name', 
 void describe('withSecretMasked', () => {
   void it('masks the accessibility value of a secret field (dom get, a11y describe)', () => {
     const node = { nodeId: '1', role: 'textbox', name: 'Password', value: 'hunter2' };
-    assert.equal(withSecretMasked(node, { tag: 'input', sensitive: true }).value, MASKED_VALUE);
-    assert.equal(withSecretMasked(node, { tag: 'input' }).value, 'hunter2');
-    const resolved = resolveNodeWithFallback(node, { tag: 'input', sensitive: true }, 1);
+    assert.equal(
+      withSecretMasked(node, { tag: 'input', classes: [], sensitive: true }).value,
+      MASKED_VALUE
+    );
+    assert.equal(withSecretMasked(node, { tag: 'input', classes: [] }).value, 'hunter2');
+    const resolved = resolveNodeWithFallback(
+      node,
+      { tag: 'input', classes: [], sensitive: true },
+      1
+    );
     assert.equal(resolved?.value, MASKED_VALUE);
     assert.match(
       formatSemanticNodeWithContext({
         node: resolved ?? node,
         domContext: {
           tag: 'input',
+          classes: [],
           sensitive: true,
           attributes: { type: 'text', value: MASKED_VALUE },
         },
@@ -165,7 +185,7 @@ void describe('withSecretMasked', () => {
   void it('never shows the text of a secret field on a text line', () => {
     const output = formatSemanticNodeWithContext({
       node: { nodeId: '3', role: 'textbox', name: 'Password' },
-      domContext: { tag: 'div', sensitive: true, preview: 'hunter2' },
+      domContext: { tag: 'div', classes: [], sensitive: true, preview: 'hunter2' },
     });
     assert.doesNotMatch(output, /hunter2/);
   });

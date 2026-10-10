@@ -10,6 +10,7 @@
  * roots and same-origin iframes, like a user sees the page.
  */
 
+import { elementClasses } from '@/commands/dom/helpers/elementClasses.js';
 import { keyAttributes } from '@/commands/dom/helpers/keyAttributes.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
@@ -569,10 +570,13 @@ export async function queryDOMElements(selector: string, limit = 0): Promise<Dom
  * @param index - Its position among the matches
  * @returns Query node
  */
-function queryNode(element: ElementDetails, index: number): DomQueryResult['nodes'][number] {
+function queryNode(
+  element: ElementDetails,
+  index: number
+): DomQueryResult['nodes'][number] & { classes: string[] } {
   const { backendNodeId, context, text, state, inViewport, clippedBy } = element;
   const attributes = unpackAttributes(element.attributes);
-  const classes = attributes['class']?.split(/\s+/).filter(Boolean);
+  const classes = elementClasses(attributes);
   const preview = textPreview(text);
   const tag = element.tag.toLowerCase();
   const keys = keyAttributes(tag, attributes, state);
@@ -582,7 +586,7 @@ function queryNode(element: ElementDetails, index: number): DomQueryResult['node
     tag,
     ...identifyingAttributes(attributes, element.tag),
     ...(keys && { attributes: keys }),
-    ...(classes && { classes }),
+    classes,
     ...(preview && { preview }),
     ...(context && { context }),
     ...(inViewport && { inViewport }),
@@ -670,7 +674,7 @@ export async function getDomContext(
   }
   const full = options.full === true;
   const attributes = unpackAttributes(desc.attributes);
-  const classes = attributes['class']?.split(/\s+/).filter(Boolean);
+  const classes = elementClasses(attributes);
   const { text, state } = await elementTextAndState(ref, full);
   const preview = textPreview(text);
   const longer = textPreview(text, full ? Number.POSITIVE_INFINITY : ELEMENT_TEXT_LENGTH);
@@ -678,7 +682,7 @@ export async function getDomContext(
   const keys = keyAttributes(tag, attributes, state);
   return {
     tag,
-    ...(classes && classes.length > 0 && { classes }),
+    classes,
     ...(keys && { attributes: keys }),
     ...(state.sensitive && { sensitive: true }),
     ...(preview && { preview }),
@@ -727,7 +731,7 @@ async function childElements(
 function childLabel(node: Protocol.DOM.Node): string {
   const attributes = unpackAttributes(node.attributes);
   const id = attributes['id'] ? `#${attributes['id']}` : '';
-  const { shown } = labelClasses((attributes['class'] ?? '').split(/\s+/), 2);
+  const { shown } = labelClasses(elementClasses(attributes), 2);
   const label = attributes['aria-label']?.trim();
   return `${node.nodeName.toLowerCase()}${id}${shown.map((name) => `.${name}`).join('')}${label ? ` "${label}"` : ''}`;
 }
@@ -826,13 +830,13 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
       );
     }
     const attributes = unpackAttributes(desc.attributes);
-    const classes = attributes['class']?.split(/\s+/).filter(Boolean);
+    const classes = elementClasses(attributes);
     const outerHTML = await getOuterHTML(ref);
     return {
       nodeId: desc.backendNodeId,
       tag: desc.nodeName.toLowerCase(),
       ...(Object.keys(attributes).length > 0 && { attributes }),
-      ...(classes && { classes }),
+      classes,
       ...(outerHTML && { outerHTML }),
     };
   });
