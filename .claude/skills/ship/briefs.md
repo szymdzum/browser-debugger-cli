@@ -31,7 +31,12 @@ Build only in your worktree. If another branch you depend on hasn't merged yet, 
 - New fixture pages go in a new module in `src/__testutils__/fixturePages/`; don't edit `fixtureServer.ts`.
 
 **Tests**
-- Write a failing test first, then the fix. Report which tests failed before the change.
+- **Red commit first.** Write the failing tests and commit them alone, before any fix: `test: reproduce #<N>` (bug) or `test: specify #<N>` (feature). The commit holds only tests and fixture pages, no product code.
+- Run them on that commit. They must fail **for the right reason**: an assertion about the issue, or the CLI's real output (unknown flag, wrong result). Not a build error or a missing import; for a new command or flag, drive the CLI or an existing entry point so the test fails on behaviour.
+- A unit test for a new module or function may import it if the red commit also adds its **empty skeleton** (the signature, throwing `not implemented`); the next commit fills it in. Otherwise drive the CLI.
+- Then fix in later commits. Don't weaken the red commit's assertions in the fix; if a test was wrong, fix it in a separate commit and say why in your report.
+- A test that passed on its first run is a regression test: say in your report what it protects against.
+- No red commit for docs-only changes, pure refactors covered by existing tests, or CI/tooling changes; say which applies.
 - Tests must be deterministic. Wait for an observable event (a log line, a request, a DOM change, a file), never a fixed sleep. If anything is timing-sensitive, dispatch `gh workflow run ci.yml --repo szymdzum/browser-debugger-cli --ref <branch> -f smoke_files='<space-separated paths>' -f repeat=10` (no brace globs, no `debug=true`) and report the run ID.
 - Collect before/after evidence: real command output or a measurement on a fixture page (`npx tsx src/__testutils__/serveFixtures.ts`) or a real site.
 
@@ -49,7 +54,7 @@ Build only in your worktree. If another branch you depend on hasn't merged yet, 
 - Never touch `~/.bdg`, other worktrees, or the main checkout (including its `.tmp/`). Nothing may land in `~/Downloads`.
 - Other agents are working in parallel on `<their areas and files>`. Stay out of those, and keep your edits to shared files (registries, docs) minimal and additive.
 
-**Report.** What changed, decisions with reasons, before/after evidence, test and CI results with run IDs, the commit hash, the PR URL, and any finding outside your scope (I'll file it).
+**Report.** What changed, decisions with reasons, the red commit (SHA and the failure line it produced), before/after evidence, test and CI results with run IDs, the final commit hash, the PR URL, and any finding outside your scope (I'll file it).
 
 ## Reviewer brief
 The reviewer must be a **fresh agent** that hasn't seen the implementation discussion: spawn it as a `code-reviewer` agent (read-only tools plus Bash). Give it the diff, the issue, and the risky areas. Don't give it the implementer's reasoning.
@@ -69,12 +74,22 @@ Review `<branch>` in the worktree `../bdg-<N>` (bdg). Diff it against `origin/ma
 - **Security:** secrets in output, logs or errors; file writes (symlinks, permissions, atomicity); injection; prototype pollution.
 - **Contracts:** is the `--json` shape additive only? Exit codes, changed defaults (does the PR description mark them as changed?), backwards compatibility.
 - **Interaction with recent work:** `<recently merged features this could break>`.
-- **Tests:** do they test the claim? Would they fail on the old code? Are they deterministic (no fixed sleeps)?
+- **Tests:** do they test the claim? Are they deterministic (no fixed sleeps)? Did a later commit weaken an assertion from the red commit?
 - **Docs and PR description:** do `docs/CLI_REFERENCE.md`, help text, the bdg skill and the PR description say exactly what the code does? `CHANGELOG.md` must not be edited.
 - **Conventions (CLAUDE.md):** CommandRunner, CommandError or `{success, error}` never both, the `BdgResponse` envelope, semantic exit codes, centralized messages, option behavior keys `<command>:--flag`, TSDoc, no inline comments, no empty catch, ~30 lines per function.
 - `<change-specific risky questions>`
 
 **Run** with `export PATH="$HOME/.nvm/versions/node/v22.15.0/bin:$PATH"` and `BDG_TEST_SESSION_DIR`/`BDG_TEST_HOME_DIR`/`BDG_SESSION_DIR` under `/tmp`: `npm run build`, `<the targeted unit tests>` and `<one targeted smoke test>`. If a claim is cheap to check by hand (`node ../bdg-<N>/dist/index.js …`), do it.
+
+**Check the red commit.** `git -C ../bdg-<N> log --oneline <base>..HEAD` (`<base>`: `origin/main`, or the unmerged branch this one builds on): the first commit of this PR is `test: …` and holds only tests and fixture pages. Run its tests on that commit, in a worktree of your own:
+```
+git -C ../bdg-<N> worktree add /tmp/red-<N> <red sha>
+ln -s <main checkout>/node_modules /tmp/red-<N>/node_modules
+npm --prefix /tmp/red-<N> run build    # only if the tests run against dist
+(cd /tmp/red-<N> && npx tsx --test --test-concurrency=1 <the new test files>)
+git -C ../bdg-<N> worktree remove --force /tmp/red-<N>
+```
+They must fail on an assertion about the issue (or the CLI's real output), not on a build or import error. A missing or wrong-reason red commit is **blocking**, unless the change is docs-only, a pure refactor or CI/tooling. Quote the failure line in your report.
 
 **Rules:** no `git stash`; no `pkill`/`killall`; don't touch `~/.bdg`, the worktree, or the main checkout (including its `.tmp/`). Run tests in the foreground.
 

@@ -28,8 +28,8 @@ Copy one per issue into your notes and tick it off:
 ```
 #<N> <slug>
 - [ ] Brief sent (briefs.md → Implementer), worktree ../bdg-<N>
-- [ ] Implementer report: failing test first, before/after evidence, draft PR opened
-- [ ] Fresh review (briefs.md → Reviewer) → findings back to the same implementer
+- [ ] Implementer report: red commit (SHA, failure line), before/after evidence, draft PR opened
+- [ ] Fresh review (briefs.md → Reviewer), red commit checked → findings back to the same implementer
 - [ ] Second review, only if the fix commit is large or risky
 - [ ] Fresh-agent test on the branch (briefs.md → Tester), findings fixed in the PR
 - [ ] Gates 1–8 hold on the final head SHA
@@ -39,7 +39,7 @@ Copy one per issue into your notes and tick it off:
 
 ### Implement
 
-Spawn one implementer per issue with the implementer brief. Fill in scope, decisions and the files other agents are working on; the brief carries the rules (test first, no `CHANGELOG.md` edits, forbidden commands).
+Spawn one implementer per issue with the implementer brief. Fill in scope, decisions and the files other agents are working on; the brief carries the rules (red commit first, no `CHANGELOG.md` edits, forbidden commands).
 
 Run subagents in the **foreground** (`run_in_background: false`), so the user sees them work; between steps give the user one line on what is happening and where (`git status --short` in the agent's worktree is enough). Background runs are for your own CI polls only.
 
@@ -48,7 +48,7 @@ Run subagents in the **foreground** (`run_in_background: false`), so the user se
 When the implementer reports, spawn a fresh reviewer with the reviewer brief: the diff, the issue, and the risky areas of this change (races, failure and cleanup paths, leaks, security, contract changes, recently merged features it could break). Don't pass on the implementer's reasoning.
 
 - Findings come back as **blocking / should-fix / nit** with file:line and a scenario.
-- Send every finding to the **same implementer** (SendMessage, so it keeps its context): a test and a fix, or an argued rejection. You decide disputes.
+- Send every finding to the **same implementer** (SendMessage, so it keeps its context): a test and a fix in the same commit (no red commit per finding), or an argued rejection. You decide disputes.
 - A **second review** only for large or risky fix commits (rollback, file handling, concurrency).
 
 ### Fresh-agent test
@@ -77,7 +77,7 @@ Merge only when **all** hold. If one fails, fix it; don't negotiate it.
 
 1. **Review resolved.** Every blocking and should-fix finding fixed or rejected with a reason you accept; nits fixed or filed.
 2. **Fresh-agent test done** on the branch (features and behaviour changes), its findings about this change fixed in the PR.
-3. **Tests written first,** or evidence they fail without the change.
+3. **Red commit verified.** The first commit holds only the new tests and fixtures, and the reviewer ran them on it: they fail on an assertion about the issue, not a build or import error. Exempt: docs-only, pure refactors covered by existing tests, CI/tooling (the PR says which). Review-fix commits carry their test with the fix. Self-reported "it failed before" doesn't count.
 4. **Timing-sensitive tests** passed the CI repeat dispatch with repeat ≥ 10 on Linux and macOS. CI or environment changes (browser, runner, tooling): the full smoke suite with repeat ≥ 3.
 5. **`CI OK` green on the final head commit:** `gh pr checks <n>` with no `fail` or `pending` line (never `--watch`), and the head SHA matches what you checked (`gh pr view <n> --json headRefOid`). macOS smoke runs on timing-sensitive PRs; it isn't part of `CI OK` but must be green or a known, filed flake.
 6. **Mergeable on current `main`** (`gh pr view <n> --json mergeable`; `UNKNOWN` right after a push means re-check). After a rebase: typecheck and the affected tests re-run, no conflict markers.
@@ -96,6 +96,7 @@ Merge only when **all** hold. If one fails, fix it; don't negotiate it.
 
 - **Shared registries** conflict between parallel PRs. Fixture pages: a new module in `src/__testutils__/fixturePages/` exporting `ROUTES`, never an edit to `fixtureServer.ts`. Option behaviors: the area table in `src/commands/optionBehaviors/<area>.ts`.
 - **A rebase after the agent's last test run:** re-run typecheck and the affected tests before merging.
+- **A new test that passed on its first run** tests nothing yet. Ask what it would have caught.
 - **"Flaky" can be a real bug.** Root-cause a flake before calling it one; several were product bugs or tests asserting wrong timing.
 - **Interim "waiting for CI" reports** are not done. Wait for the final report.
 - **CodeQL or linters on test fixtures** (e.g. a variable named `SECRET`): rename, don't suppress.
