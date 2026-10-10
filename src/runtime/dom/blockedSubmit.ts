@@ -44,14 +44,14 @@ export const CLEAR_SUBMIT_PROBE_JS = `if (window.__bdgSubmitProbe) {
  * holding it or the one its `form` attribute names, reachable from the
  * button in a closed shadow root too) has no `novalidate` and the button no
  * `formnovalidate`. It notes the first click event that reached the button
- * and whether the form fired `submit`.
+ * and whether the form fired `submit`. Evaluates to whether it was installed.
  */
 export const SUBMIT_PROBE_JS = `(el) => {
   const button = el.closest('button') || el;
   const submits = (button.localName === 'button' && button.type === 'submit') ||
     (button.localName === 'input' && (button.type === 'submit' || button.type === 'image'));
   const form = submits ? button.form : null;
-  if (!form || form.noValidate || button.formNoValidate) return;
+  if (!form || form.noValidate || button.formNoValidate) return false;
   const probe = { form: form, click: null, submitted: false };
   const onClick = (event) => { probe.click = probe.click || event; };
   const onSubmit = () => { probe.submitted = true; };
@@ -62,6 +62,7 @@ export const SUBMIT_PROBE_JS = `(el) => {
     form.removeEventListener('submit', onSubmit, true);
   };
   window.__bdgSubmitProbe = probe;
+  return true;
 }`;
 
 /**

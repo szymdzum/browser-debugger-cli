@@ -817,6 +817,7 @@ export function createCommandRegistry(
 
     dom_click: async (cdp, params) => {
       let scriptCdp = cdp;
+      let probed = false;
       const presses = params.action !== 'hover' && params.action !== 'right';
       return interact(
         cdp,
@@ -825,8 +826,8 @@ export function createCommandRegistry(
             scriptCdp = target.cdp;
             return withActionStability(
               cdp,
-              () =>
-                clickElement(
+              async () => {
+                const { submitProbe, ...click } = await clickElement(
                   target.cdp,
                   target.selector,
                   filterDefined({
@@ -834,7 +835,10 @@ export function createCommandRegistry(
                     action: params.action,
                     strict: params.strict,
                   })
-                ),
+                );
+                probed = submitProbe === true;
+                return click;
+              },
               params.wait !== false
             );
           }),
@@ -842,7 +846,9 @@ export function createCommandRegistry(
           detectNoEffect: params.wait !== false && presses,
           reportShown: params.action === 'hover',
           detectUnsettled: params.wait !== false && params.action !== 'hover',
-          ...(presses && { readBlockedSubmit: () => readBlockedSubmit(scriptCdp) }),
+          ...(presses && {
+            readBlockedSubmit: async () => (probed ? readBlockedSubmit(scriptCdp) : undefined),
+          }),
           dialogs: params,
         }
       );

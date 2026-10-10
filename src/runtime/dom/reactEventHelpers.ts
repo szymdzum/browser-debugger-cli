@@ -732,7 +732,7 @@ export const CLICK_ELEMENT_SCRIPT = `
   }
 
   if (action === 'hover') (${REVEAL_SNAPSHOT_JS})(el);
-  if (action === 'click' || action === 'double') (${SUBMIT_PROBE_JS})(el);
+  const submitProbe = (action === 'click' || action === 'double') && (${SUBMIT_PROBE_JS})(el);
 
   if (hittable && action !== 'hover') {
     const probe = { reached: false, landedOn: null };
@@ -763,7 +763,8 @@ export const CLICK_ELEMENT_SCRIPT = `
     y: y,
     hittable: hittable,
     obstruction: obstruction,
-    scrolledBy: scrolledBy.x !== 0 || scrolledBy.y !== 0 ? scrolledBy : undefined
+    scrolledBy: scrolledBy.x !== 0 || scrolledBy.y !== 0 ? scrolledBy : undefined,
+    submitProbe: submitProbe || undefined
   };
 })
 `;
