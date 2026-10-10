@@ -562,7 +562,12 @@ export const FILL_READ_BACK_SCRIPT = `(() => {
  * ({@link REVEAL_SNAPSHOT_JS}), so its result can say what it revealed. For
  * a press, a probe (`window.__bdgPressProbe`) records whether the press
  * reaches the element, and otherwise which element it landed on: a browser
- * dialog or bubble can swallow input while the page looks normal. For a
+ * dialog or bubble can swallow input while the page looks normal. It
+ * listens on the window and on each shadow root around the element, since
+ * an event path seen from outside a closed root stops at its host (#582);
+ * the deepest listener the press got to decides. A press seen last at a
+ * closed host around the element (the page stopped it on the way in)
+ * counts as reached, as any doubt does. For a
  * click on a submit button, a probe on its form ({@link SUBMIT_PROBE_JS})
  * lets the result say when validation blocked the submit.
  * Slotted text hit-tests as its shadow host, so an element in a shadow root
@@ -737,19 +742,32 @@ export const CLICK_ELEMENT_SCRIPT = `
   const submitProbe = (action === 'click' || action === 'double') && (${SUBMIT_PROBE_JS})(el);
 
   if (hittable && action !== 'hover') {
-    const probe = { reached: false, landedOn: null };
+    const probe = { reached: false, landedOn: null, hidden: false };
+    const listenOn = [view];
+    const closedHosts = [];
+    for (let root = el.getRootNode(); root.nodeType === 11 && root.host; root = root.host.getRootNode()) {
+      listenOn.push(root);
+      if (root.host.shadowRoot !== root) closedHosts.push(root.host);
+    }
     const markReached = (event) => {
       const path = event.composedPath();
-      let reached = false;
-      for (let i = 0; i < path.length; i++) reached = reached || path[i] === el;
-      if (reached) probe.reached = true;
-      else if (!probe.landedOn && path[0] && path[0].nodeType === 1) probe.landedOn = describe(path[0]);
+      if (path.indexOf(el) !== -1) probe.reached = true;
+      else if (closedHosts.indexOf(path[0]) !== -1) probe.hidden = true;
+      else {
+        probe.hidden = false;
+        if (!probe.landedOn && path[0] && path[0].nodeType === 1) probe.landedOn = describe(path[0]);
+      }
     };
-    view.addEventListener('pointerdown', markReached, true);
-    view.addEventListener('mousedown', markReached, true);
+    listenOn.forEach((target) => {
+      target.addEventListener('pointerdown', markReached, true);
+      target.addEventListener('mousedown', markReached, true);
+    });
     probe.stop = () => {
-      view.removeEventListener('pointerdown', markReached, true);
-      view.removeEventListener('mousedown', markReached, true);
+      listenOn.forEach((target) => {
+        target.removeEventListener('pointerdown', markReached, true);
+        target.removeEventListener('mousedown', markReached, true);
+      });
+      probe.reached = probe.reached || probe.hidden;
     };
     window.__bdgPressProbe = probe;
   }

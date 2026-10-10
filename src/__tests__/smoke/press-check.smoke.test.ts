@@ -7,10 +7,10 @@
  * stops the press in a capture listener on `document`; an open root stays
  * unchanged. A press that lands on a shield covering the element (appearing
  * as the mouse moves onto it, so the element was topmost when bdg aimed)
- * still warns, also when the shield reacts to the press, for a shield
- * inside the element's closed root, one in the document over a closed root
- * element, and one over a light element; `--strict` refuses it, naming the
- * shield.
+ * still warns, also when the shield reacts to the press: for a shield inside the element's closed root, one in an outer
+ * closed root over an element in a nested one, one in the document over a
+ * closed root element, and one over a light element; `--strict` refuses
+ * it, naming the shield.
  *
  * Each test loads `/press-check` again after resting the mouse on `#park`,
  * so no shield is up before the click moves the mouse. The checks read the
@@ -127,6 +127,7 @@ void describe('Press check', () => {
 
   for (const [target, shield, where] of [
     ['Shielded', 'div#inner-shield', 'inside its closed root'],
+    ['Nested', 'div#nest-shield', 'in an outer closed root over a nested one'],
     ['Under', 'div#outer-shield', 'in the document over a closed root'],
     ['#light', 'div#light-shield', 'over a light element'],
   ] as const) {

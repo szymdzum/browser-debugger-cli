@@ -4,12 +4,15 @@
  * closed shadow roots, which the page's window never sees in an event path:
  * `Deep` two closed roots deep (`<x-deep>` → `<x-deep-inner>`), `Swap`,
  * whose root re-renders itself on `pointerdown` (the button is gone before
- * `mousedown`), and `Guarded`, whose host's presses the page stops in a
+ * `mousedown`, so the browser sends no `click`; the press is noted in
+ * `window.clicks` as `Swap pressed`), and `Guarded`, whose host's presses the page stops in a
  * capture listener on `document`; `Open` in an open root; and buttons that a
  * shield covers as the mouse moves onto them, so the press lands on the
  * shield, which reacts to it (counts it in `window.shieldPresses` and adds
  * text to the page): `Shielded`, covered by `div#inner-shield` inside its
- * closed root (`<x-shield>`), `Under`, in `<x-under>`'s closed root and
+ * closed root (`<x-shield>`), `Nested`, in `<x-nest-inner>`'s closed root
+ * inside `<x-nest>`'s and covered by `div#nest-shield` in the outer root,
+ * `Under`, in `<x-under>`'s closed root and
  * covered by `div#outer-shield` in the document, and the light `#light`,
  * covered by `div#light-shield`. `#park` is a corner to rest the mouse on
  * before the page loads again, so no shield appears before a click moves
@@ -33,6 +36,7 @@ const PRESS_CHECK_HTML = `<!doctype html><title>press check</title>
   <x-guarded></x-guarded>
   <x-open></x-open>
   <x-shield></x-shield>
+  <x-nest></x-nest>
   <x-under></x-under>
   <button id="light">Light</button>
 </main>
@@ -76,6 +80,7 @@ const PRESS_CHECK_HTML = `<!doctype html><title>press check</title>
       super();
       const root = closedRoot(this, '<button>Swap</button>');
       root.querySelector('button').addEventListener('pointerdown', () => {
+        window.clicks.push('Swap pressed');
         root.innerHTML = '<button>Swapped</button>';
         count(root.querySelector('button'));
       });
@@ -102,6 +107,23 @@ const PRESS_CHECK_HTML = `<!doctype html><title>press check</title>
         shield.style.position = 'fixed';
         cover(button, shield);
         root.firstElementChild.append(shield);
+      }, { once: true });
+    }
+  });
+  customElements.define('x-nest-inner', class extends HTMLElement {
+    constructor() { super(); closedRoot(this, '<button>Nested</button>'); }
+  });
+  customElements.define('x-nest', class extends HTMLElement {
+    constructor() {
+      super();
+      const root = closedRoot(this, '<x-nest-inner></x-nest-inner>');
+      const inner = root.querySelector('x-nest-inner');
+      inner.addEventListener('mouseover', () => {
+        const shield = document.createElement('div');
+        shield.id = 'nest-shield';
+        shield.style.position = 'fixed';
+        cover(inner, shield);
+        root.append(shield);
       }, { once: true });
     }
   });
