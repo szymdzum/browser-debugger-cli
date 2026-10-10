@@ -32,8 +32,8 @@ Copy one per issue into your notes and tick it off:
 - [ ] Fresh review (briefs.md → Reviewer), red commit checked → findings back to the same implementer
 - [ ] Second review, only if the fix commit is large or risky
 - [ ] Fresh-agent test on the branch (briefs.md → Tester), findings fixed in the PR
-- [ ] Gates 1–8 hold on the final head SHA
-- [ ] Merged, main CI green, worktree and branch removed, fixture server (PID file) killed, issue updated
+- [ ] Gates 1–8 hold on the final head SHA → enqueued with that SHA
+- [ ] Merged by the queue, main CI green, worktree and branch removed, fixture server (PID file) killed, issue updated
 - [ ] Every finding fixed or filed
 ```
 
@@ -77,16 +77,20 @@ The highest-yield step. Run it for every behaviour change (tier 2 and 3 below). 
 
 When every gate below holds:
 
+`main` has a **merge queue** (ruleset "main: merge queue", since 2026-10-10): `gh pr merge` enqueues the PR, GitHub runs `CI OK` on `main` + the PR (event `merge_group`, Linux smoke on Node 22, ~10 min) and merges only when it passes, one PR at a time. You don't wait for a green `main` between merges any more, and a stale branch is tested against the real base.
+
 ```bash
 R=szymdzum/browser-debugger-cli
 sha=$(gh pr view <n> --repo $R --json headRefOid -q .headRefOid)          # the SHA the gates were checked on
 gh pr ready <n> --repo $R
-gh pr merge <n> --repo $R --merge --match-head-commit $sha --subject "<PR title> (#<n>)"
+gh pr merge <n> --repo $R --merge --match-head-commit $sha --subject "<PR title> (#<n>)"   # enqueues
+until [ "$(gh pr view <n> --repo $R --json state -q .state)" = MERGED ]; do sleep 60; done  # background, timeout 45 min
 m=$(gh pr view <n> --repo $R --json mergeCommit -q .mergeCommit.oid)
-gh run list --repo $R --branch main --json headSha,name,status,conclusion -q ".[]|select(.headSha==\"$m\")"   # until done, macOS included
 git -C ../bdg-<N> status --short                                          # anything modified or untracked that matters? look before you remove
 git worktree remove ../bdg-<N> && git branch -D <branch>                  # no --force; GitHub deletes the remote branch
 ```
+
+If the PR is still open after 45 minutes, the queue removed it: `gh run list --repo $R --event merge_group --limit 5 --json headBranch,conclusion,url` shows its run (`gh-readonly-queue/main/pr-<n>-…`). Read the failure before you enqueue again; a test that passes on the PR and fails in the queue is a conflict with a merge that landed in between, or a flake worth an issue. The push run on `main` after the merge is a confirmation now, not a gate: if it's red, the cause is outside the queue's scope (nightly-only paths, macOS) and gets an issue.
 
 A red `main` is fixed before any new work. Close the issue, or comment with what's left, if the PR didn't.
 
@@ -102,7 +106,7 @@ Merge only when **all** hold. If one fails, fix it; don't negotiate it.
    - **required:** `CI OK` passed (it aggregates changes, build, quality, contract tests and Linux smoke; Security and macOS are outside it);
    - **additionally required for this PR:** macOS smoke when the PR touches timing-sensitive paths, the repeat dispatch for tier 3 timing changes, Security Audit for dependency changes;
    - **accepted exceptions:** a failing job counts as an exception only with an issue number for the known flake and a passing re-run of that job; name both in the merge summary.
-6. **Mergeable on current `main`** (`gh pr view <n> --json mergeable`; `UNKNOWN` right after a push means re-check), **and tested against it**: when `main` has merged changes to the PR's files since its last rebase, either the implementer rebases and re-runs, or you run a merge-check yourself: `tree=$(git merge-tree --write-tree origin/main <branch>)` (a conflict exits non-zero), then `git worktree add /tmp/mc-<N> $tree`, link `node_modules`, `npm run check`, the affected unit and smoke files, remove the worktree. After any rebase: typecheck and the affected tests re-run, no conflict markers.
+6. **Mergeable on current `main`** (`gh pr view <n> --json mergeable`; `UNKNOWN` right after a push means re-check). Testing against the current base is the **merge queue's** job (it runs `CI OK` on `main` + PR before merging); the rebase before the fresh-agent test stays, because the tester must see the behaviour that will ship. If the queue is ever off, do its job yourself: `tree=$(git merge-tree --write-tree origin/main <branch>)` (a conflict exits non-zero), `git worktree add /tmp/mc-<N> $tree`, link `node_modules`, `npm run check`, the affected unit and smoke files, remove the worktree. After any rebase: typecheck and the affected tests re-run, no conflict markers.
 7. **Docs match the behaviour:** `docs/CLI_REFERENCE.md`, help text, `.claude/skills/bdg/SKILL.md`, option behaviors. `CHANGELOG.md` untouched; the PR description says what changed for users and marks changed defaults, contracts and breaking changes.
 8. **No leftovers:** no temp files in the repo, no stray agent processes, nothing **new** in `~/.bdg` or `~/Downloads` (compare with the snapshot taken before the agents ran).
 
@@ -127,7 +131,7 @@ Merge only when **all** hold. If one fails, fix it; don't negotiate it.
 
 ### Repo
 - `gh --repo szymdzum/browser-debugger-cli`, default branch `main`.
-- Merge commits, subject `<PR title> (#N)`. Required check: `CI OK`.
+- Merge commits, subject `<PR title> (#N)`. Required check: `CI OK`, on the PR and again in the merge queue (ruleset "main: merge queue", one PR at a time, merge method MERGE; classic protection with `CI OK` and enforce-admins stays next to it).
 - Push over SSH: `git push -u git@github.com:szymdzum/browser-debugger-cli.git <branch>`. After a push to the URL, `gh pr create` needs `--head <branch>` (the branch isn't tracked under the `origin` name).
 - The implementer opens a draft PR with the full body; you add the review summary and mark it ready.
 - Roadmap: #466. Milestones: "Next: hardening", "Next: agent gaps", "1.0".
