@@ -85,6 +85,7 @@ void describe('formatSemanticNodeWithContext', () => {
       node: NODE,
       domContext: {
         tag: 'x-vault',
+        classes: [],
         children: ['form'],
         childCount: 1,
         shadowChildren: true,
