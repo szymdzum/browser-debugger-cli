@@ -8,7 +8,10 @@
  *
  * The session directory is unique per process (removed when it exits): two
  * test runs at the same time (two agents, a checkout and a worktree) would
- * otherwise stop and clean up each other's sessions.
+ * otherwise stop and clean up each other's sessions. `BDG_TEST_SESSION_PARENT`
+ * moves these directories under another parent (one per worktree, keep it
+ * short for the socket path); `BDG_TEST_SESSION_DIR` replaces them with one
+ * fixed directory.
  */
 
 import { spawnSync } from 'child_process';
@@ -20,8 +23,22 @@ import { fileURLToPath } from 'url';
 let cachedSessionDir: string | null = null;
 let cachedHomeDir: string | null = null;
 
-/** Parent of the per-process session directories: short, for the daemon's socket path */
+/** Default parent of the per-process session directories: short, for the daemon's socket path */
 const SESSION_DIR_PARENT = os.platform() === 'win32' ? os.tmpdir() : '/tmp';
+
+/**
+ * Parent of the per-process session directories: `BDG_TEST_SESSION_PARENT`
+ * when set (created if missing), else {@link SESSION_DIR_PARENT}.
+ *
+ * @returns Absolute path of an existing directory
+ */
+function sessionDirParent(): string {
+  const parent = process.env['BDG_TEST_SESSION_PARENT'];
+  if (!parent) return SESSION_DIR_PARENT;
+  const absolute = path.resolve(parent);
+  fs.mkdirSync(absolute, { recursive: true });
+  return absolute;
+}
 
 /**
  * Whether session directories are kept when the test process exits
@@ -34,7 +51,8 @@ function keepSessionDirs(): boolean {
 }
 
 /**
- * A session directory for this process, removed when it exits (after
+ * A session directory for this process under {@link sessionDirParent},
+ * removed when it exits (after
  * ending a session a test left running in it, which would otherwise be
  * orphaned without its files). With `BDG_TEST_KEEP_DIRS=1` the session is
  * still ended but the directory and its logs stay.
@@ -42,7 +60,7 @@ function keepSessionDirs(): boolean {
  * @returns Absolute path
  */
 function ownSessionDir(): string {
-  const dir = fs.mkdtempSync(path.join(SESSION_DIR_PARENT, 'bdg-test-'));
+  const dir = fs.mkdtempSync(path.join(sessionDirParent(), 'bdg-test-'));
   process.on('exit', () => {
     try {
       endLeftoverSession(dir);
@@ -75,8 +93,12 @@ function endLeftoverSession(dir: string): void {
 
 /**
  * Set BDG_SESSION_DIR to a directory of this test process and make sure it
- * exists on disk (`BDG_TEST_SESSION_DIR` overrides it). Subsequent calls are
- * cheap and return the same path.
+ * exists on disk. Subsequent calls are cheap and return the same path.
+ *
+ * `BDG_TEST_SESSION_DIR` overrides it with a fixed directory, which disables
+ * per-process isolation: every test process of the run shares that directory
+ * (its sessions and metadata), and it is not removed on exit. To keep a run's
+ * directories apart from other runs, set `BDG_TEST_SESSION_PARENT` instead.
  *
  * @returns Absolute path used as BDG session directory for tests
  */

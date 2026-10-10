@@ -38,11 +38,11 @@ Build only in your worktree. If another branch you depend on hasn't merged yet, 
 - Then fix in later commits. Don't weaken the red commit's assertions in the fix; if a test was wrong, fix it in a separate commit and say why in your report.
 - A test that passed on its first run is a regression test: say in your report what it protects against.
 - No red commit for docs-only changes, pure refactors covered by existing tests, or CI/tooling changes; say which applies.
-- Tests must be deterministic. Wait for an observable event (a log line, a request, a DOM change, a file), never a fixed sleep. If anything is timing-sensitive, dispatch `gh workflow run ci.yml --repo szymdzum/browser-debugger-cli --ref <branch> -f smoke_files='<space-separated paths>' -f repeat=10` (no brace globs, no `debug=true`) and report the run ID.
+- Tests must be deterministic. Wait for an observable event (a log line, a request, a DOM change, a file), never a fixed sleep. If anything is timing-sensitive, dispatch `gh workflow run ci.yml --repo szymdzum/browser-debugger-cli --ref <branch> -f smoke_files='<space-separated paths>' -f repeat=10 -f node=22` (no brace globs, no `debug=true`) and report the run ID.
 - Collect before/after evidence: real command output or a measurement on a fixture page (`npx tsx src/__testutils__/serveFixtures.ts`) or a real site.
 
 **Verify**
-- Environment, at the start of every shell call: `export PATH="$HOME/.nvm/versions/node/v22.15.0/bin:$PATH" BDG_TEST_SESSION_DIR=/tmp/bt-<N>-s BDG_TEST_HOME_DIR=/tmp/bt-<N>-h` (yours alone; other agents have their own), `BDG_SESSION_DIR=/tmp/bdg-<N>-manual` for manual runs. `node_modules` is a symlink to the main checkout: don't `npm install` through it; if your change touches `package-lock.json`, run `npm ci` in your worktree instead of the symlink.
+- Environment, at the start of every shell call: `export PATH="$HOME/.nvm/versions/node/v22.15.0/bin:$PATH" BDG_TEST_SESSION_PARENT=/tmp/bt-<N> BDG_TEST_HOME_DIR=/tmp/bt-<N>-h` (yours alone; other agents have their own; each test process gets its own session dir under the parent), `BDG_SESSION_DIR=/tmp/bdg-<N>-manual` for manual runs. `node_modules` is a symlink to the main checkout: don't `npm install` through it; if your change touches `package-lock.json`, run `npm ci` in your worktree instead of the symlink.
 - Run `npm run check`, `npm test`, `npm run build`, and the affected smoke files (`npx tsx --test --test-concurrency=1 src/__tests__/smoke/<file>.smoke.test.ts`). CI runs the full smoke suite. Run every suite in the **foreground** (a background run is lost when your turn ends; the report must contain its exit line).
 - You commit and push in your worktree; this brief grants that. Push over SSH: `git push -u git@github.com:szymdzum/browser-debugger-cli.git <branch>`.
 - Open a **draft PR** (`gh pr create --draft --head <branch> --repo szymdzum/browser-debugger-cli`; `--head` is needed after a push to the SSH URL) with a full body: what changed for users, before/after, verification with run IDs, decisions you made, and known limits. Link the issue (`Closes #N`).
@@ -85,7 +85,7 @@ Scratch files go in `/tmp/review-<N>-work`. Remove the worktree at the end (`git
 - **Conventions (CLAUDE.md):** CommandRunner, CommandError or `{success, error}` never both, the `BdgResponse` envelope, semantic exit codes, centralized messages, option behavior keys `<command>:--flag`, TSDoc, no inline comments, no empty catch, ~30 lines per function.
 - `<change-specific risky questions>`
 
-**Run** in `/tmp/review-<N>` with `export PATH="$HOME/.nvm/versions/node/v22.15.0/bin:$PATH" BDG_TEST_SESSION_DIR=/tmp/rv-<N>-s BDG_TEST_HOME_DIR=/tmp/rv-<N>-h BDG_SESSION_DIR=/tmp/rv-<N>`: `npm run build`, `<the targeted unit tests>` and `<one targeted smoke test>`. If a claim is cheap to check by hand (`node /tmp/review-<N>/dist/index.js …`), do it.
+**Run** in `/tmp/review-<N>` with `export PATH="$HOME/.nvm/versions/node/v22.15.0/bin:$PATH" BDG_TEST_SESSION_PARENT=/tmp/rv-<N>-t BDG_TEST_HOME_DIR=/tmp/rv-<N>-h BDG_SESSION_DIR=/tmp/rv-<N>`: `npm run build`, `<the targeted unit tests>` and `<one targeted smoke test>`. If a claim is cheap to check by hand (`node /tmp/review-<N>/dist/index.js …`), do it.
 
 **Check the red commit.** `git -C ../bdg-<N> log --oneline <base>..HEAD` (`<base>`: `origin/main`, or the unmerged branch this one builds on): the first commit of this PR is `test: …` and holds only tests, fixture pages and `not implemented` skeletons. Run its tests on that commit, in a worktree of your own:
 ```

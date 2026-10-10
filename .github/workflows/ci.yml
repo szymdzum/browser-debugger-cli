@@ -20,6 +20,11 @@ on:
       repeat:
         description: 'Run the selection this many times'
         default: '1'
+      node:
+        description: 'Node version of the smoke jobs (Linux and macOS)'
+        type: choice
+        options: ['22', '24', '26']
+        default: '22'
       debug:
         description: 'BDG_DEBUG=1 for the daemons (logs uploaded)'
         type: boolean
@@ -201,7 +206,8 @@ jobs:
       - name: Run contract tests
         run: npm test
 
-  # Smoke tests with Chrome: Node 22 on PRs, 22/24/26 on main and nightly.
+  # Smoke tests with Chrome: Node 22 on PRs, 22/24/26 on main and nightly,
+  # the `node` input on dispatch.
   # The shell integration suite runs on main pushes and the nightly run
   # (on PRs once #446 makes it hermetic).
   smoke:
@@ -217,7 +223,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ${{ fromJSON(github.event_name == 'pull_request' && '["22"]' || '["22","24","26"]') }}
+        node: ${{ fromJSON(github.event_name == 'pull_request' && '["22"]' || github.event_name == 'workflow_dispatch' && format('["{0}"]', inputs.node || '22') || '["22","24","26"]') }}
 
     steps:
       - name: Checkout code
@@ -305,7 +311,7 @@ jobs:
   # Chrome. On main, nightly and dispatch, and on PRs that touch timing-sensitive
   # paths (changes.timing). Not part of CI OK: it gives signal without blocking.
   smoke-macos:
-    name: Smoke Tests (macOS, Chrome) (Node 22)
+    name: Smoke Tests (macOS, Chrome) (Node ${{ inputs.node || '22' }})
     runs-on: macos-latest
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || needs.changes.outputs.timing == 'true')
@@ -321,7 +327,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: ${{ inputs.node || '22' }}
 
       - name: Restore node_modules cache
         id: cache

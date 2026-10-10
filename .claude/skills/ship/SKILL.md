@@ -130,13 +130,13 @@ Merge only when **all** hold. If one fails, fix it; don't negotiate it.
 ### Environment
 - Node: `export PATH="$HOME/.nvm/versions/node/v22.15.0/bin:$PATH"` at the start of every shell call (no `.nvmrc`; the default Node may be too new).
 - Worktrees: `git worktree add ../bdg-<N> -b <type>/<slug> origin/main`, then `ln -s <main checkout>/node_modules ../bdg-<N>/node_modules`. Each builds its own `dist`; never rebuild one other agents use.
-- Tests: `BDG_TEST_SESSION_DIR=/tmp/bt-<N>-s` and `BDG_TEST_HOME_DIR=/tmp/bt-<N>-h`, **one pair per worktree** (socket paths are too long without the override, and two agents sharing a value share sessions). Manual sessions: `BDG_SESSION_DIR=/tmp/...`.
+- Tests: `BDG_TEST_SESSION_PARENT=/tmp/bt-<N>` and `BDG_TEST_HOME_DIR=/tmp/bt-<N>-h`, **one pair per worktree**: each test process gets its own session dir under the parent (removed on exit), in a short path an agent can tell apart from other agents'. Not `BDG_TEST_SESSION_DIR`: that is one fixed dir shared by every test process of the run (#576). Manual sessions: `BDG_SESSION_DIR=/tmp/...`.
 - `node_modules` is a symlink to the main checkout: never `npm install` through it; a PR that changes `package-lock.json` runs its own `npm ci` in the worktree instead.
 
 ### Commands
 - Check `npm run check` (release: `npm run check:enhanced`), unit `npm test`, build `npm run build`.
 - Smoke, one file: `npx tsx --test --test-concurrency=1 src/__tests__/smoke/<file>.smoke.test.ts`. Integration: `./tests/run-all-tests.sh --integration`.
-- CI repeat (Linux and macOS): `gh workflow run ci.yml --repo szymdzum/browser-debugger-cli --ref <branch> -f smoke_files='<space-separated paths>' -f repeat=10`. No brace globs, no `debug=true` (#510).
+- CI repeat (Linux and macOS): `gh workflow run ci.yml --repo szymdzum/browser-debugger-cli --ref <branch> -f smoke_files='<space-separated paths>' -f repeat=10 -f node=22`. `node` picks the one Node version of the smoke jobs (22, 24 or 26; push and nightly run all three). No brace globs, no `debug=true` (#510).
 - You (not subagents) run long suites in the background with a one-line status and a timeout; never block silently for minutes.
 
 ### Forbidden
