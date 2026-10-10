@@ -57,6 +57,31 @@ void describe('elementNotFoundError', () => {
     );
   });
 
+  void it('names closed shadow hosts and points to dom a11y query for their elements', () => {
+    const help =
+      'For an element in a closed shadow root: bdg dom a11y query role=textbox (or another role), then use its index with dom fill, dom click or dom get';
+    assert.equal(
+      unreachableElementsNote('#x', {
+        crossOriginFrames: false,
+        embeds: false,
+        closedShadowHosts: ['x-vault'],
+      }),
+      `The page has closed shadow roots (in <x-vault>), which are not searched.\n${help}`
+    );
+    const many = unreachableElementsNote('#x', {
+      crossOriginFrames: true,
+      embeds: true,
+      closedShadowHosts: ['a-b', 'c-d#pay', 'e-f', 'g-h'],
+    });
+    assert.match(
+      many,
+      /^The page has closed shadow roots \(in <a-b>, <c-d#pay>, <e-f>, \+1 more\), cross-origin iframes and <object>\/<embed> documents, which are not searched\./
+    );
+    assert.ok(many.includes(help));
+    assert.match(many, /bdg dom eval --frame <n>/);
+    assert.ok(unreachableElementsNote('#x').includes(help), 'an unchecked page names the path too');
+  });
+
   void it('puts similar ids or classes first', () => {
     const similar = similarSelectorsLine('id', ['remove-backpack', 'add-to-cart-bike']);
     assert.equal(

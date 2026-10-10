@@ -1382,14 +1382,41 @@ export interface UnsearchedContent {
   crossOriginFrames: boolean;
   /** `<object>`/`<embed>` elements */
   embeds: boolean;
+  /** Custom elements with a closed shadow root, e.g. `x-vault#pay` (read over CDP) */
+  closedShadowHosts?: string[];
+}
+
+/** Closed shadow hosts named in a "not found" note */
+const CLOSED_HOSTS_NAMED = 3;
+
+/**
+ * How to reach an element in a closed shadow root: the accessibility tree
+ * holds it, and `dom fill`, `dom click` and `dom get` accept its query indices.
+ *
+ * @returns Line for "not found" notes
+ */
+function closedShadowRootHelp(): string {
+  return `For an element in a closed shadow root: ${sessionCommand('bdg dom a11y query role=textbox')} (or another role), then use its index with dom fill, dom click or dom get`;
+}
+
+/**
+ * The closed shadow hosts of a page, named for a "not found" note.
+ *
+ * @param hosts - Short names, e.g. `x-vault#pay`
+ * @returns e.g. `closed shadow roots (in <x-vault>)`
+ */
+function closedShadowRootsPlace(hosts: string[]): string {
+  const named = hosts.slice(0, CLOSED_HOSTS_NAMED).map((host) => `<${host}>`);
+  const more = hosts.length > named.length ? `, +${hosts.length - named.length} more` : '';
+  return `closed shadow roots (in ${named.join(', ')}${more})`;
 }
 
 /**
  * Where selectors do not reach (open shadow roots and same-origin iframes are
- * searched), and how to reach an element in a cross-origin iframe instead.
- * When the page was checked, only what it has is named (nothing when it has
- * neither cross-origin iframes nor embeds; closed shadow roots cannot be
- * detected).
+ * searched), and how to reach an element there instead: a closed shadow
+ * root's through the accessibility tree, a cross-origin iframe's with
+ * `dom eval --frame`. When the page was checked, only what it has is named
+ * (nothing when it has none of them).
  *
  * @param selector - Selector that matched nothing
  * @param unsearched - What the page holds, when it was checked
@@ -1401,16 +1428,22 @@ export function unreachableElementsNote(selector: string, unsearched?: Unsearche
   if (!unsearched) {
     return joinLines(
       'Closed shadow roots, cross-origin iframes and <object>/<embed> documents are not searched.',
+      closedShadowRootHelp(),
       framesHelp
     );
   }
+  const closedHosts = unsearched.closedShadowHosts ?? [];
   const places = [
+    closedHosts.length > 0 && closedShadowRootsPlace(closedHosts),
     unsearched.crossOriginFrames && 'cross-origin iframes',
     unsearched.embeds && '<object>/<embed> documents',
-  ].filter(Boolean);
+  ].filter((place): place is string => typeof place === 'string');
   if (places.length === 0) return '';
+  const listed =
+    places.length === 1 ? places[0] : `${places.slice(0, -1).join(', ')} and ${places.at(-1)}`;
   return joinLines(
-    `The page has ${places.join(' and ')}, which are not searched.`,
+    `The page has ${listed}, which are not searched.`,
+    closedHosts.length > 0 ? closedShadowRootHelp() : undefined,
     unsearched.crossOriginFrames ? framesHelp : undefined
   );
 }

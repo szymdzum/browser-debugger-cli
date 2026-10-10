@@ -203,6 +203,21 @@ void describe('Forms in shadow roots', () => {
     assert.match(output, /reach them with bdg dom a11y query role=textbox, then bdg dom fill/);
   });
 
+  void it('points selectors that miss to the closed shadow host and dom a11y query', async () => {
+    const closedNote =
+      /The page has closed shadow roots \(in <x-vault>\), which are not searched\.\nFor an element in a closed shadow root: bdg dom a11y query role=textbox/;
+    for (const args of [
+      ['dom', 'query', 'x-vault input'],
+      ['dom', 'query', 'input[name=card-holder]'],
+      ['dom', 'fill', 'input[name=card-holder]', 'x'],
+      ['dom', 'click', 'x-vault button'],
+    ]) {
+      const output = await bdg(args, 83);
+      assert.match(output, closedNote, `bdg ${args.join(' ')}`);
+      assert.doesNotMatch(output, /eval --frame/, `bdg ${args.join(' ')}: no iframe on the page`);
+    }
+  });
+
   void it('reaches a closed shadow root field the way the notes say: a11y query, then fill by index', async () => {
     const query = JSON.parse(await bdg(['dom', 'a11y', 'query', 'role=textbox', '--json'])) as {
       data: { nodes: Array<{ index: number; backendDOMNodeId: number }> };

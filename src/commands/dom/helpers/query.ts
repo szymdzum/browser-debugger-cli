@@ -10,6 +10,10 @@
  * roots and same-origin iframes, like a user sees the page.
  */
 
+import {
+  closedShadowHostNames,
+  CLOSED_HOST_CANDIDATES_JS,
+} from '@/commands/dom/helpers/closedShadowHosts.js';
 import { elementClasses } from '@/commands/dom/helpers/elementClasses.js';
 import { keyAttributes } from '@/commands/dom/helpers/keyAttributes.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
@@ -210,6 +214,7 @@ interface NoMatchPageValue {
   unsearched?: { crossOriginFrames?: unknown; embeds?: unknown };
   names?: unknown;
   shadowHost?: unknown;
+  closedCandidates?: unknown;
 }
 
 /**
@@ -217,7 +222,9 @@ interface NoMatchPageValue {
  * evaluation: whether it is still loading, how many elements match with the
  * selector's `:visible` filters removed, whether it has cross-origin iframes
  * or embeds (which selectors do not search), and for a selector that is a
- * single id or class, the similar ids or classes on the page.
+ * single id or class, the similar ids or classes on the page. When it has
+ * custom elements that may host a closed shadow root, CDP tells which do
+ * ({@link closedShadowHostNames}).
  *
  * @param selector - Selector as given
  * @returns Context for {@link noNodesFoundError} (empty when the page did not answer)
@@ -234,7 +241,7 @@ export async function noMatchContext(selector: string): Promise<NoMatchContext> 
   const shadowHost = compounds.length > 0 ? shadowHostJS(compounds) : '-1';
   try {
     const evaluated = await callBdgScript('Runtime.evaluate', {
-      expression: `({ hidden: ${hidden}, readyState: document.readyState, unsearched: ${UNSEARCHED_CONTENT_JS}, names: ${names}, shadowHost: ${shadowHost} })`,
+      expression: `({ hidden: ${hidden}, readyState: document.readyState, unsearched: ${UNSEARCHED_CONTENT_JS}, names: ${names}, shadowHost: ${shadowHost}, closedCandidates: (() => { try { return ${CLOSED_HOST_CANDIDATES_JS}.length; } catch (e) { return 0; } })() })`,
       returnByValue: true,
     });
     const { result } = (evaluated.data?.result ?? {}) as Partial<Protocol.Runtime.EvaluateResponse>;
@@ -249,6 +256,10 @@ export async function noMatchContext(selector: string): Promise<NoMatchContext> 
             )
           )
         : '';
+    const closedShadowHosts =
+      typeof value.closedCandidates === 'number' && value.closedCandidates > 0
+        ? await closedShadowHostNames()
+        : [];
     return {
       hidden: typeof value.hidden === 'number' ? value.hidden : 0,
       ...(typeof value.readyState === 'string' && { readyState: value.readyState }),
@@ -256,6 +267,7 @@ export async function noMatchContext(selector: string): Promise<NoMatchContext> 
         unsearched: {
           crossOriginFrames: value.unsearched.crossOriginFrames === true,
           embeds: value.unsearched.embeds === true,
+          ...(closedShadowHosts.length > 0 && { closedShadowHosts }),
         },
       }),
       ...(similar && { similar }),
