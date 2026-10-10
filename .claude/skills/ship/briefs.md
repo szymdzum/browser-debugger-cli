@@ -45,7 +45,7 @@ Build only in your worktree. If another branch you depend on hasn't merged yet, 
 **Verify**
 - Environment, at the start of every shell call: `export PATH="$HOME/.nvm/versions/node/v22.15.0/bin:$PATH" BDG_TEST_SESSION_PARENT=/tmp/bt-<N> BDG_TEST_HOME_DIR=/tmp/bt-<N>-h` (yours alone; other agents have their own; each test process gets its own session dir under the parent), `BDG_SESSION_DIR=/tmp/bdg-<N>-manual` for manual runs. `node_modules` is a symlink to the main checkout: don't `npm install` through it; if your change touches `package-lock.json`, run `npm ci` in your worktree instead of the symlink.
 - Run `npm run check`, `npm test`, `npm run build`, and the affected smoke files (`npx tsx --test --test-concurrency=1 src/__tests__/smoke/<file>.smoke.test.ts`). CI runs the full smoke suite. Run every suite in the **foreground** (a background run is lost when your turn ends; the report must contain its exit line).
-- You commit and push in your worktree; this brief grants that. Push over SSH: `git push -u git@github.com:szymdzum/browser-debugger-cli.git <branch>`. If you must rewrite a pushed branch, use `git push --force-with-lease=<branch>:<old sha> git@github.com:szymdzum/browser-debugger-cli.git <branch>` (plain `--force-with-lease` refuses on a URL remote); never force-push after the PR has a review.
+- You commit and push in your worktree; this brief grants that. Push over SSH: `git push -u git@github.com:szymdzum/browser-debugger-cli.git <branch>`. If you must rewrite a pushed branch, use `git push --force-with-lease=<branch>:<old sha> git@github.com:szymdzum/browser-debugger-cli.git <branch>` (plain `--force-with-lease` refuses on a URL remote); after a review, force-push only for a rebase the orchestrator asked for (say so in the PR).
 - Open a **draft PR** (`gh pr create --draft --head <branch> --repo szymdzum/browser-debugger-cli`; `--head` is needed after a push to the SSH URL) with a full body: what changed for users, before/after, verification with run IDs, decisions you made, and known limits. Link the issue (`Closes #N`).
 - **Don't return before the draft PR is open and CI has a result.** Your report's **last line** is exactly `PR <url> HEAD <sha> CI <run id> <conclusion>`; a report without it is treated as unfinished.
 - No AI attribution in commits or the PR.
@@ -136,7 +136,7 @@ bdg() { node <absolute path to ../bdg-<N>>/dist/index.js "$@"; }
 - Clean up at the end: `bdg stop`, kill your own PIDs.
 - Run `ls -A ~/Downloads` before and after; nothing may appear there.
 
-**Report** the build you tested (`git -C <worktree> rev-parse --short HEAD`), then per task, in the scenario report format: result (works / partly / broken), ease 1–10, command counts (bdg, `dom eval`, screenshots), bugs (exact command, expected vs actual output, exit code), friction, and how you discovered the right command. Then the `~/Downloads` diff.
+**Report** the build you tested (`<head sha>`, given here), then per task, in the scenario report format: result (works / partly / broken), ease 1–10, command counts (bdg, `dom eval`, screenshots), bugs (exact command, expected vs actual output, exit code), friction, and how you discovered the right command. Then the `~/Downloads` diff.
 
 Be concise.
 
@@ -145,9 +145,9 @@ After a fresh-agent round, one agent reproduces every finding about older code o
 
 ---
 
-Verify the findings below against bdg on current `main` (worktree `<path to a main worktree>`, built; `export PATH="$HOME/.nvm/versions/node/v22.15.0/bin:$PATH"`, `BDG_SESSION_DIR=/tmp/verify-<date>`). Start the fixtures from that worktree when a finding needs them (`npx tsx src/__testutils__/serveFixtures.ts`).
+Verify the findings below against bdg on `main` at commit `<sha>`, checked out and built for you at `<absolute path of the verify worktree>` (`export PATH="$HOME/.nvm/versions/node/v22.15.0/bin:$PATH"`, `bdg() { node <absolute path of the verify worktree>/dist/index.js "$@"; }`, `BDG_SESSION_DIR=/tmp/verify-<date>`). Start the fixtures from that directory when a finding needs them (`cd <absolute path of the verify worktree> && npx tsx src/__testutils__/serveFixtures.ts & echo $!`) and kill that PID at the end. Keep **one bdg session at a time**: other agents may be running smoke suites on this machine.
 
-For each finding: run the reported command (or the closest one that makes sense), paste the real output, and classify it: **reproduced** (with the exact command, output and exit code), **not reproduced** (what happened instead), **by design** (where the docs or code say so, file:line), or **duplicate of** another finding or an open issue (`gh issue list --repo szymdzum/browser-debugger-cli --search "<words>"`). Group findings that share one root cause.
+For each finding: run the reported command (or the closest one that makes sense), paste the real output, and, when a few minutes of reading find it, name the cause with file:line. Classify it: **reproduced** (with the exact command, output and exit code), **not reproduced** (what happened instead), **by design** (where the docs or code say so, file:line), or **duplicate of** another finding or an open issue (`gh issue list --repo szymdzum/browser-debugger-cli --search "<words>"`). Group findings that share one root cause.
 
 Findings:
 1. `<finding as the tester wrote it>`
@@ -155,5 +155,4 @@ Findings:
 
 **Rules:** no git commands, no repo edits, no `pkill`/`killall`, don't touch `~/.bdg` or `~/Downloads`; `bdg stop` at the end.
 
-**Report.** One block per finding with the classification, command, output and exit code; then the groups. Be concise.
-
+**Report.** The commit given above; one block per finding with the classification, command, output, exit code and (when found) the cause with file:line; then the groups. Be concise.
