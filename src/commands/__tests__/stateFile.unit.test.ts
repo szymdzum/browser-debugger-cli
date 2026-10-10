@@ -5,12 +5,17 @@
  */
 
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { after, describe, it } from 'node:test';
 
 import { makeTempDir, removeTempDirs } from '@/__testutils__/tempDirs.js';
-import { readStateFile, writeStateFile } from '@/commands/shared/stateFile.js';
+import {
+  STATE_FILE_MAX_BYTES,
+  readStateFile,
+  writeStateFile,
+} from '@/commands/shared/stateFile.js';
 import { CommandError } from '@/errors/index.js';
 import type { AuthStateContent } from '@/ipc/protocol/stateTypes.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -89,5 +94,18 @@ void describe('state files', { skip: process.platform === 'win32' }, () => {
     const bad = path.join(dir, 'bad.json');
     fs.writeFileSync(bad, '{');
     assertUnreadable(bad, /not valid JSON/);
+  });
+
+  it('exits 81 for a FIFO without blocking on it', () => {
+    const fifo = path.join(makeTempDir('bdg-state-'), 'pipe.json');
+    execFileSync('mkfifo', [fifo]);
+    assertUnreadable(fifo, /not a regular file/);
+  });
+
+  it('exits 81 for a file over the size limit', () => {
+    const big = path.join(makeTempDir('bdg-state-'), 'big.json');
+    fs.writeFileSync(big, '');
+    fs.truncateSync(big, STATE_FILE_MAX_BYTES + 1);
+    assertUnreadable(big, /larger than 50 MB/);
   });
 });

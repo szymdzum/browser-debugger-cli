@@ -27,27 +27,64 @@ const READ_PROBLEMS: Record<string, string> = {
   EPERM: 'operation not permitted',
 };
 
+/** Largest state file read (50 MB): a real one is a few KB */
+export const STATE_FILE_MAX_BYTES = 50 * 1024 * 1024;
+
+/** Flags to open a state file: never blocks on a FIFO or device */
+const READ_FLAGS = fs.constants.O_RDONLY | (fs.constants.O_NONBLOCK ?? 0);
+
+/**
+ * Throw the error of a state file that cannot be read.
+ *
+ * @param file - Path given
+ * @param reason - Why
+ * @throws CommandError (81)
+ */
+function unreadable(file: string, reason: string): never {
+  const err = invalidStateFileError(file, reason);
+  throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
+}
+
+/**
+ * Read a regular file of at most {@link STATE_FILE_MAX_BYTES}.
+ *
+ * @param file - Path given
+ * @returns Its text
+ * @throws CommandError (81) when it cannot be opened, is not a regular file or is too large
+ */
+function readRegularFile(file: string): string {
+  let fd: number;
+  try {
+    fd = fs.openSync(file, READ_FLAGS);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code ?? '';
+    unreadable(file, READ_PROBLEMS[code] ?? 'it cannot be read');
+  }
+  try {
+    const stat = fs.fstatSync(fd);
+    if (stat.isDirectory()) unreadable(file, 'it is a directory');
+    if (!stat.isFile()) unreadable(file, 'it is not a regular file');
+    if (stat.size > STATE_FILE_MAX_BYTES) unreadable(file, 'it is larger than 50 MB');
+    return fs.readFileSync(fd, 'utf8');
+  } catch (error) {
+    if (error instanceof CommandError) throw error;
+    const code = (error as NodeJS.ErrnoException).code ?? '';
+    return unreadable(file, READ_PROBLEMS[code] ?? 'it cannot be read');
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 /**
  * Read and validate a state file.
  *
  * @param file - Path given
  * @returns Cookies and origins
- * @throws CommandError (81) when it cannot be read or is not a valid state file
+ * @throws CommandError (81) when it cannot be read, is not a regular file of
+ *   at most 50 MB, or is not a valid state file
  */
 export function readStateFile(file: string): AuthStateContent {
-  let text: string;
-  try {
-    text = fs.readFileSync(file, 'utf8');
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code ?? '';
-    const err = invalidStateFileError(file, READ_PROBLEMS[code] ?? 'it cannot be read');
-    throw new CommandError(
-      err.message,
-      { suggestion: err.suggestion },
-      EXIT_CODES.INVALID_ARGUMENTS
-    );
-  }
-  return parseStateFile(text, file);
+  return parseStateFile(readRegularFile(file), file);
 }
 
 /**

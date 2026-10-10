@@ -586,7 +586,7 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     whenEnabled:
       'Before the page first loads, restores a file written by bdg state save: every cookie (session and HttpOnly ones included; expired ones are skipped) and the localStorage and sessionStorage of every saved origin. The start output says what was loaded (State: loaded 3 cookies, storage of 2 origins; JSON data.state with counts and origins, never values)',
     automaticBehavior:
-      'Each saved origin with storage gets a blank document in the session tab first (served by Fetch interception: no request reaches the server and no page script runs; service workers bypassed), its items are set with DOMStorage, then the tab goes back to about:blank with its history cleared, before collectors start, so network list and history show only the target. Items are added to what the profile already holds (keys in the file win). A missing, unreadable or invalid file (not JSON, no or another version, a bad cookie or origin field) exits 81 with a suggestion before anything starts. Works with --session and --chrome-ws-url. ' +
+      "Each saved origin with storage gets a blank document in the session tab first (served by Fetch interception: no request reaches the server and no page script runs; service workers bypassed), its items are set with DOMStorage, then the tab goes back to about:blank with its history cleared, before collectors start, so network list and history show only the target. Items are added to what the profile already holds (keys in the file win). A missing, unreadable or invalid file (not JSON, no or another version, a bad cookie or origin field) exits 81 with a suggestion before anything starts, as does a file larger than 50 MB or not a regular file. An http origin Chrome loads over https (HSTS, HTTPS-First) is skipped (skipped: upgraded-to-https; that storage is another origin's). Works with --session; with --chrome-ws-url it exits 81 before attaching (it would walk your own tab through the saved origins and clear its history): attach, then run bdg state load <file>. " +
       'The file holds secrets: keep it out of version control',
   },
   'save:--origin': {
@@ -603,7 +603,7 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     whenEnabled:
       'Sets them without reloading; the page sees them on its next request or navigation',
     automaticBehavior:
-      'Mid-session, storage is written through frames of its origin: a saved origin the page has no frame of is listed as skipped (not-on-page); start with bdg <url> --state <file> to restore every origin. Items are added to the existing ones (keys in the file win). Expired cookies are skipped. An invalid file exits 81 with a suggestion; output shows counts only',
+      "Mid-session, storage is written through frames of its origin: a saved origin the page has no frame of is listed as skipped (not-on-page); start with bdg <url> --state <file> to restore every origin. Items are added to the existing ones (keys in the file win). Expired cookies are skipped. An invalid file exits 81 with a suggestion; output shows counts only. With --chrome-ws-url (an attached Chrome) it writes the cookies and storage into that browser's own profile and reloads your tab unless --no-reload",
   },
 
   'bdg:--viewport': {

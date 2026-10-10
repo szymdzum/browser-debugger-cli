@@ -59,7 +59,7 @@ export interface AuthStateFile extends AuthStateContent {
 }
 
 /** Why an origin's storage was not saved or restored */
-export type SkippedOriginReason = 'not-on-page' | 'partitioned';
+export type SkippedOriginReason = 'not-on-page' | 'partitioned' | 'upgraded-to-https';
 
 /** An origin whose storage was left out */
 export interface SkippedOrigin {

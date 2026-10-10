@@ -360,7 +360,7 @@ void describe('auth state save and load', () => {
     assert.ok(!fs.existsSync(path.join(fileDir, 'other.json')), 'no file written');
   });
 
-  void it('exits 81 with a suggestion for a bad file, before starting anything', async () => {
+  void it('exits 81 with a suggestion for a bad file or --state with --chrome-ws-url, before starting anything', async () => {
     const bad = path.join(fileDir, 'bad.json');
     fs.writeFileSync(bad, '{"version": 1, "cookies": "LS-SECRET-A"}');
     const notJson = path.join(fileDir, 'not.json');
@@ -370,6 +370,17 @@ void describe('auth state save and load', () => {
       ['state', ['load', notJson, '--session', 'other']],
       ['state', ['load', path.join(fileDir, 'missing.json'), '--session', 'other']],
       [`${fixture.a}/secure`, ['--headless', '--session', 'fresh', '--state', notJson]],
+      [
+        `${fixture.a}/secure`,
+        [
+          '--chrome-ws-url',
+          'ws://127.0.0.1:9/devtools/browser/x',
+          '--session',
+          'fresh',
+          '--state',
+          stateFile,
+        ],
+      ],
     ] as const) {
       const result = await bdgJson<{ exitCode: number; suggestion?: string }>(command, [...args]);
       assert.equal(result.exitCode, 81, result.output);

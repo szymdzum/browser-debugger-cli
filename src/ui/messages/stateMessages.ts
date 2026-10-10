@@ -25,7 +25,7 @@ export const STATE_SAVE_DESCRIPTION =
 
 /** Description of `bdg state load` */
 export const STATE_LOAD_DESCRIPTION =
-  'Restore cookies and storage from a file saved by bdg state save, then reload the page';
+  "Restore cookies and storage from a file saved by bdg state save, then reload the page (with --chrome-ws-url: into that Chrome's own profile, reloading its tab)";
 
 /** Description of the start option `--state` */
 export const START_STATE_OPTION_DESCRIPTION =
@@ -38,9 +38,11 @@ export const START_STATE_OPTION_DESCRIPTION =
  * @returns Text
  */
 function skippedReason(skipped: SkippedOrigin): string {
-  return skipped.reason === 'partitioned'
-    ? 'cross-site frame, its storage is partitioned'
-    : 'no frame of it on the page';
+  if (skipped.reason === 'partitioned') return 'cross-site frame, its storage is partitioned';
+  if (skipped.reason === 'upgraded-to-https') {
+    return 'Chrome loads it over https (HSTS or HTTPS-First), whose storage is separate';
+  }
+  return 'no frame of it on the page';
 }
 
 /**
@@ -186,6 +188,22 @@ export function stateOriginNotOnPageError(
   return {
     message: `No frame of ${origins.join(', ')} on the page: storage is read through a frame of its origin (origins on the page: ${listed})`,
     suggestion: `Open a page of that origin first (${sessionCommand('bdg page navigate <url>')}) and save again, or leave out --origin to save the origins on the page`,
+  };
+}
+
+/**
+ * `--state` given with `--chrome-ws-url`: restoring before the first load
+ * would walk the user's own tab through the saved origins, clear its
+ * history and write into their profile.
+ *
+ * @param file - The state file given
+ * @returns Error with suggestion
+ */
+export function stateWithChromeWsUrlError(file: string): ErrorWithSuggestion {
+  return {
+    message:
+      '--state cannot be used with --chrome-ws-url (restoring before the first load would navigate your own tab through the saved origins and clear its history)',
+    suggestion: `Start without --chrome-ws-url to restore it into bdg's own Chrome, or attach first and run: ${sessionCommand(`bdg state load ${file}`)} (it writes into that Chrome's profile and reloads the tab)`,
   };
 }
 

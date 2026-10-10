@@ -307,8 +307,33 @@ export async function writeAuthState(cdp: Sender, state: AuthStateContent): Prom
 }
 
 /**
+ * Stop answering the tab's requests: remove the listener, turn interception
+ * and the service worker bypass off (the bypass belongs to this connection
+ * and is off until {@link serveBlankDocuments} turns it on) and disable the
+ * Network domain the collectors enable again. Each step is tried even when
+ * an earlier one fails.
+ *
+ * @param cdp - The session's page connection
+ * @param off - Removes the `Fetch.requestPaused` listener
+ */
+async function stopServingBlankDocuments(cdp: Sender, off: () => void): Promise<void> {
+  off();
+  for (const [method, params] of [
+    ['Fetch.disable', {}],
+    ['Network.setBypassServiceWorker', { bypass: false }],
+    ['Network.disable', {}],
+  ] as const) {
+    await cdp
+      .send(method, params)
+      .catch((error: unknown) => log.debug(`${method} failed: ${getErrorMessage(error)}`));
+  }
+}
+
+/**
  * Answer the tab's requests while storage is restored: documents get an
- * empty page, everything else fails, so nothing reaches a server.
+ * empty page, everything else fails, so nothing reaches a server. When
+ * setting it up fails part way (Chrome may have applied `Fetch.enable`
+ * before failing), everything is turned off again before the error is thrown.
  *
  * @param cdp - The session's page connection
  * @returns Stops answering
@@ -330,21 +355,16 @@ async function serveBlankDocuments(cdp: CDPConnection): Promise<() => Promise<vo
       reply.catch((error: unknown) => log.debug(`Request not answered: ${getErrorMessage(error)}`));
     }
   );
-  await cdp.send('Network.enable');
-  await cdp.send('Network.setBypassServiceWorker', { bypass: true });
-  await cdp.send('Fetch.enable', { patterns: [{ urlPattern: '*' }] });
-  return async () => {
-    off();
-    for (const [method, params] of [
-      ['Fetch.disable', {}],
-      ['Network.setBypassServiceWorker', { bypass: false }],
-      ['Network.disable', {}],
-    ] as const) {
-      await cdp
-        .send(method, params)
-        .catch((error: unknown) => log.debug(`${method} failed: ${getErrorMessage(error)}`));
-    }
-  };
+  const stop = (): Promise<void> => stopServingBlankDocuments(cdp, off);
+  try {
+    await cdp.send('Network.enable');
+    await cdp.send('Network.setBypassServiceWorker', { bypass: true });
+    await cdp.send('Fetch.enable', { patterns: [{ urlPattern: '*' }] });
+  } catch (error) {
+    await stop();
+    throw error;
+  }
+  return stop;
 }
 
 /**
@@ -353,13 +373,14 @@ async function serveBlankDocuments(cdp: CDPConnection): Promise<() => Promise<vo
  * @param cdp - The session's page connection
  * @param url - URL to load
  * @param loaded - Whether the top frame is the new document
+ * @returns The top frame
  * @throws Error when the navigation fails or does not commit in time
  */
 async function navigateTab(
   cdp: Sender,
   url: string,
   loaded: (frame: Protocol.Page.Frame) => boolean
-): Promise<void> {
+): Promise<Protocol.Page.Frame> {
   const { errorText } = (await cdp.send('Page.navigate', {
     url,
   })) as Protocol.Page.NavigateResponse;
@@ -369,10 +390,43 @@ async function navigateTab(
     const { frameTree } = (await cdp.send(
       'Page.getFrameTree'
     )) as Protocol.Page.GetFrameTreeResponse;
-    if (loaded(frameTree.frame)) return;
+    if (loaded(frameTree.frame)) return frameTree.frame;
     await delay(BLANK_DOCUMENT_POLL_MS);
   }
   throw new Error(`Could not open ${url} to restore its storage: the page did not change`);
+}
+
+/**
+ * The https counterpart of an http origin.
+ *
+ * @param origin - Origin
+ * @returns The https origin, or undefined for one that is not http
+ */
+function httpsCounterpart(origin: string): string | undefined {
+  if (!origin.startsWith('http:')) return undefined;
+  const url = new URL(origin);
+  url.protocol = 'https:';
+  if (url.port === '80') url.port = '';
+  return url.origin;
+}
+
+/**
+ * Load a blank document of an origin in the session tab.
+ *
+ * @param cdp - The session's page connection
+ * @param origin - Origin
+ * @returns False when Chrome upgraded the http origin to https (HSTS,
+ *   HTTPS-First), whose storage is another origin's
+ * @throws Error when the document does not load
+ */
+async function openOrigin(cdp: Sender, origin: string): Promise<boolean> {
+  const upgraded = httpsCounterpart(origin);
+  const frame = await navigateTab(
+    cdp,
+    `${origin}/`,
+    ({ securityOrigin }) => securityOrigin === origin || securityOrigin === upgraded
+  );
+  return frame.securityOrigin === origin;
 }
 
 /**
@@ -393,16 +447,18 @@ export async function restoreAuthStateBeforeLoad(
 ): Promise<StateSummary> {
   const cookies = await setCookies(cdp, state.cookies);
   const origins = state.origins.filter(hasItems);
+  const restored: OriginStorage[] = [];
+  const skipped: SkippedOrigin[] = [];
   if (origins.length > 0) {
     const stop = await serveBlankDocuments(cdp);
     try {
       for (const origin of origins) {
-        await navigateTab(
-          cdp,
-          `${origin.origin}/`,
-          (frame) => frame.securityOrigin === origin.origin
-        );
-        await writeOrigin(cdp, `${origin.origin}/`, origin);
+        if (await openOrigin(cdp, origin.origin)) {
+          await writeOrigin(cdp, `${origin.origin}/`, origin);
+          restored.push(origin);
+        } else {
+          skipped.push({ origin: origin.origin, reason: 'upgraded-to-https' });
+        }
       }
     } finally {
       await stop();
@@ -412,5 +468,5 @@ export async function restoreAuthStateBeforeLoad(
       .send('Page.resetNavigationHistory')
       .catch((error: unknown) => log.debug(`History not cleared: ${getErrorMessage(error)}`));
   }
-  return { ...summarizeState({ cookies: [], origins }), cookies };
+  return { ...summarizeState({ cookies: [], origins: restored }, skipped), cookies };
 }
