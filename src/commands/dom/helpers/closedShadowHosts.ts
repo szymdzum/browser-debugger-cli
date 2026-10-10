@@ -14,25 +14,35 @@ import { getErrorMessage } from '@/utils/errors.js';
 const log = createLogger('dom');
 
 /** Custom elements checked for a closed shadow root (one `DOM.describeNode` each) */
-const CLOSED_HOST_LIMIT = 20;
+export const CLOSED_HOST_LIMIT = 20;
 
 /**
  * Page-side array of the elements that may host a closed shadow root:
  * defined custom elements of the top document (open shadow roots searched)
- * without an open one, at most {@link CLOSED_HOST_LIMIT}.
+ * without an open one, at most {@link CLOSED_HOST_LIMIT} and one more (which
+ * tells that the check stopped before the end of the page).
  */
-export const CLOSED_HOST_CANDIDATES_JS = `(${DEEP_QUERY_JS})('*', null).filter((el) => el.ownerDocument === document && el.localName.includes('-') && !el.shadowRoot && el.matches(':defined')).slice(0, ${CLOSED_HOST_LIMIT})`;
+export const CLOSED_HOST_CANDIDATES_JS = `(${DEEP_QUERY_JS})('*', null).filter((el) => el.ownerDocument === document && el.localName.includes('-') && !el.shadowRoot && el.matches(':defined')).slice(0, ${CLOSED_HOST_LIMIT + 1})`;
 
 /** Calls that read the candidates */
 let readCount = 0;
 
+/** What {@link closedShadowHostNames} found */
+export interface ClosedShadowHosts {
+  /** Short names (`tag#id`) of the hosts, e.g. `x-vault#pay` */
+  hosts: string[];
+  /** The page has more candidates than were checked ({@link CLOSED_HOST_LIMIT}) */
+  capped: boolean;
+}
+
 /**
- * The candidates ({@link CLOSED_HOST_CANDIDATES_JS}) whose shadow root is
- * closed. Empty when the page did not answer.
+ * The first {@link CLOSED_HOST_LIMIT} candidates
+ * ({@link CLOSED_HOST_CANDIDATES_JS}) whose shadow root is closed, and
+ * whether there were more. None when the page did not answer.
  *
- * @returns Their short names (`tag#id`), e.g. `x-vault#pay`
+ * @returns The hosts found, and whether the check stopped early
  */
-export async function closedShadowHostNames(): Promise<string[]> {
+export async function closedShadowHostNames(): Promise<ClosedShadowHosts> {
   const objectGroup = `bdg-closed-hosts-${process.pid}-${++readCount}`;
   try {
     const evaluated = await callBdgScript('Runtime.evaluate', {
@@ -41,12 +51,16 @@ export async function closedShadowHostNames(): Promise<string[]> {
     });
     const arrayId = (evaluated.data?.result as Protocol.Runtime.EvaluateResponse | undefined)
       ?.result.objectId;
-    if (!arrayId) return [];
-    const names = await Promise.all((await entryObjectIds(arrayId)).map(closedHostName));
-    return names.filter((name): name is string => name !== undefined);
+    if (!arrayId) return { hosts: [], capped: false };
+    const candidates = await entryObjectIds(arrayId);
+    const names = await Promise.all(candidates.slice(0, CLOSED_HOST_LIMIT).map(closedHostName));
+    return {
+      hosts: names.filter((name): name is string => name !== undefined),
+      capped: candidates.length > CLOSED_HOST_LIMIT,
+    };
   } catch (error) {
     log.debug(`Closed shadow hosts not read: ${getErrorMessage(error)}`);
-    return [];
+    return { hosts: [], capped: false };
   } finally {
     await callCDP('Runtime.releaseObjectGroup', { objectGroup }).catch((error: unknown) =>
       log.debug(`Object group not released: ${getErrorMessage(error)}`)

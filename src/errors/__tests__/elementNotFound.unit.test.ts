@@ -82,6 +82,26 @@ void describe('elementNotFoundError', () => {
     assert.ok(unreachableElementsNote('#x').includes(help), 'an unchecked page names the path too');
   });
 
+  void it('says when the closed host check stopped before the end of the page', () => {
+    const stopped = unreachableElementsNote('#x', {
+      crossOriginFrames: false,
+      embeds: false,
+      closedShadowHostsChecked: 20,
+    });
+    assert.match(
+      stopped,
+      /^Closed shadow roots were looked for in the first 20 custom elements only \(none there\); selectors do not search them\.\nFor an element in a closed shadow root: bdg dom a11y query/
+    );
+    const found = unreachableElementsNote('#x', {
+      crossOriginFrames: false,
+      embeds: false,
+      closedShadowHosts: ['x-vault'],
+      closedShadowHostsChecked: 20,
+    });
+    assert.match(found, /^The page has closed shadow roots \(in <x-vault>\)/);
+    assert.doesNotMatch(found, /first 20 custom elements/);
+  });
+
   void it('puts similar ids or classes first', () => {
     const similar = similarSelectorsLine('id', ['remove-backpack', 'add-to-cart-bike']);
     assert.equal(

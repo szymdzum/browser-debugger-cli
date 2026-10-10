@@ -285,6 +285,16 @@ void describe('Forms in shadow roots', () => {
     );
   });
 
+  void it('says when the closed shadow host check stopped before the end of the page', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}closed-shadow-late`]);
+    const output = await bdg(['dom', 'query', '#nope'], 83);
+    assert.match(
+      output,
+      /Closed shadow roots were looked for in the first 20 custom elements only \(none there\); selectors do not search them\./
+    );
+    assert.match(output, /For an element in a closed shadow root: bdg dom a11y query role=textbox/);
+  });
+
   void it('lists form-less fields in an open shadow root', async () => {
     await bdg(['page', 'navigate', `${fixture.url}shadow-fields`]);
     const data = await discover();

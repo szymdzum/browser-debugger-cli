@@ -1384,6 +1384,8 @@ export interface UnsearchedContent {
   embeds: boolean;
   /** Custom elements with a closed shadow root, e.g. `x-vault#pay` (read over CDP) */
   closedShadowHosts?: string[];
+  /** How many custom elements were checked, when the page has more (the check stopped early) */
+  closedShadowHostsChecked?: number;
 }
 
 /** Closed shadow hosts named in a "not found" note */
@@ -1416,7 +1418,8 @@ function closedShadowRootsPlace(hosts: string[]): string {
  * searched), and how to reach an element there instead: a closed shadow
  * root's through the accessibility tree, a cross-origin iframe's with
  * `dom eval --frame`. When the page was checked, only what it has is named
- * (nothing when it has none of them).
+ * (nothing when it has none of them), and a closed host check that stopped
+ * before the end of the page without finding one says so.
  *
  * @param selector - Selector that matched nothing
  * @param unsearched - What the page holds, when it was checked
@@ -1438,12 +1441,17 @@ export function unreachableElementsNote(selector: string, unsearched?: Unsearche
     unsearched.crossOriginFrames && 'cross-origin iframes',
     unsearched.embeds && '<object>/<embed> documents',
   ].filter((place): place is string => typeof place === 'string');
-  if (places.length === 0) return '';
+  const checked = unsearched.closedShadowHostsChecked;
+  const stoppedEarly = checked !== undefined && closedHosts.length === 0;
+  if (places.length === 0 && !stoppedEarly) return '';
   const listed =
     places.length === 1 ? places[0] : `${places.slice(0, -1).join(', ')} and ${places.at(-1)}`;
   return joinLines(
-    `The page has ${listed}, which are not searched.`,
-    closedHosts.length > 0 ? closedShadowRootHelp() : undefined,
+    places.length > 0 ? `The page has ${listed}, which are not searched.` : undefined,
+    stoppedEarly
+      ? `Closed shadow roots were looked for in the first ${checked} custom elements only (none there); selectors do not search them.`
+      : undefined,
+    closedHosts.length > 0 || stoppedEarly ? closedShadowRootHelp() : undefined,
     unsearched.crossOriginFrames ? framesHelp : undefined
   );
 }

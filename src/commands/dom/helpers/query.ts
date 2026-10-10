@@ -13,6 +13,7 @@
 import {
   closedShadowHostNames,
   CLOSED_HOST_CANDIDATES_JS,
+  CLOSED_HOST_LIMIT,
 } from '@/commands/dom/helpers/closedShadowHosts.js';
 import { elementClasses } from '@/commands/dom/helpers/elementClasses.js';
 import { keyAttributes } from '@/commands/dom/helpers/keyAttributes.js';
@@ -256,10 +257,10 @@ export async function noMatchContext(selector: string): Promise<NoMatchContext> 
             )
           )
         : '';
-    const closedShadowHosts =
+    const closed =
       typeof value.closedCandidates === 'number' && value.closedCandidates > 0
         ? await closedShadowHostNames()
-        : [];
+        : { hosts: [], capped: false };
     return {
       hidden: typeof value.hidden === 'number' ? value.hidden : 0,
       ...(typeof value.readyState === 'string' && { readyState: value.readyState }),
@@ -267,7 +268,8 @@ export async function noMatchContext(selector: string): Promise<NoMatchContext> 
         unsearched: {
           crossOriginFrames: value.unsearched.crossOriginFrames === true,
           embeds: value.unsearched.embeds === true,
-          ...(closedShadowHosts.length > 0 && { closedShadowHosts }),
+          ...(closed.hosts.length > 0 && { closedShadowHosts: closed.hosts }),
+          ...(closed.capped && { closedShadowHostsChecked: CLOSED_HOST_LIMIT }),
         },
       }),
       ...(similar && { similar }),
