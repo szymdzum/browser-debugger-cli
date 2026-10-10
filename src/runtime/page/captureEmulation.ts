@@ -2,12 +2,15 @@
  * Page emulation a screenshot changes for its capture, and puts back.
  *
  * A capture at a pixel ratio of 1 on a high-DPI page, and one beyond the
- * viewport, override the device metrics (and hide the scrollbars). Each
- * change is recorded before it is sent, so {@link CaptureEmulation.restore}
- * (called once the capture ended, however it ended) undoes exactly what may
- * have been changed: the session's emulation is put back from the daemon's
- * own record of it as it is then (a `page emulate` during the capture
- * counts), not from a file.
+ * viewport, override the device metrics (and hide the scrollbars). Chrome
+ * itself lays the page out at the captured size for a capture beyond the
+ * viewport and, putting the size back, keeps the page laid out without its
+ * scrollbar (#514); only a change of the viewport's size lays it out again.
+ * Each change is recorded before it is sent, so
+ * {@link CaptureEmulation.restore} (called once the capture ended, however it
+ * ended) undoes exactly what may have been changed: the session's emulation
+ * is put back from the daemon's own record of it as it is then (a
+ * `page emulate` during the capture counts), not from a file.
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
@@ -78,6 +81,7 @@ export class CaptureEmulation {
   private readonly cdp: TypedCDPConnection;
   private metricsChanged = false;
   private scrollbarsHidden = false;
+  private beyondViewport: Size | undefined;
   private scrolledFrom: ScrollPosition | undefined;
 
   /**
@@ -124,8 +128,18 @@ export class CaptureEmulation {
     this.metricsChanged = true;
     await this.cdp.send(
       'Emulation.setDeviceMetricsOverride',
-      viewportOverride({ ...view, ...(phone && { mobile: true }) }, 1)
+      viewportOverride({ ...roundSize(view), ...(phone && { mobile: true }) }, 1)
     );
+  }
+
+  /**
+   * Record a capture beyond the viewport: Chrome lays the page out at the
+   * captured size, so the restore lays it out again at the session's size.
+   *
+   * @param view - Visible viewport size, used when the page does not answer
+   */
+  capturesBeyondViewport(view: Size): void {
+    this.beyondViewport = view;
   }
 
   /**
@@ -172,7 +186,8 @@ export class CaptureEmulation {
         () => this.cdp.send('Emulation.setScrollbarsHidden', { hidden: false }),
       ]);
     }
-    if (this.metricsChanged) steps.push(['device metrics', () => this.restoreSessionMetrics()]);
+    if (this.metricsChanged || this.beyondViewport)
+      steps.push(['device metrics', () => this.restoreSessionMetrics()]);
     const scrolledFrom = this.scrolledFrom;
     if (scrolledFrom) {
       const { x, y } = scrolledFrom;
@@ -182,10 +197,54 @@ export class CaptureEmulation {
   }
 
   /**
-   * Put back the session's device metrics, or clear the override.
+   * Put back the session's device metrics, or clear the override; after a
+   * capture beyond the viewport, lay the page out at another size first.
    */
   private async restoreSessionMetrics(): Promise<void> {
     const viewport = this.sessionViewport();
+    if (this.beyondViewport) {
+      await this.layOutAgain(viewport, this.beyondViewport);
+      return;
+    }
+    await this.applySessionMetrics(viewport);
+  }
+
+  /**
+   * Override the viewport one CSS px taller than the size it is put back at
+   * (the session's viewport, else the window's), then put that size back:
+   * Chrome lays the page out again, with its scrollbars, only when the
+   * viewport's size changes, and a capture beyond the viewport left it laid
+   * out without them (#514). Each change is waited for in the page, so the
+   * next command reads the size put back, not the taller one. The size is put
+   * back even when the window could not be read or the taller one not sent.
+   *
+   * @param viewport - Session's viewport, if any
+   * @param view - Visible viewport size, used when the page does not answer
+   */
+  private async layOutAgain(viewport: ViewportSize | undefined, view: Size): Promise<void> {
+    let taller: Size | undefined;
+    try {
+      const before = await this.windowSize(view);
+      const size = viewport ?? before;
+      await this.cdp.send(
+        'Emulation.setDeviceMetricsOverride',
+        viewportOverride({ ...size, height: size.height + 1 })
+      );
+      taller = await windowResizedFrom(this.connection, before);
+    } finally {
+      await this.applySessionMetrics(viewport);
+    }
+    if (taller) await windowResizedFrom(this.connection, taller);
+  }
+
+  /**
+   * Put back the session's device metrics (its viewport and a phone's touch
+   * input, which a capture beyond the viewport turns off), else clear the
+   * override.
+   *
+   * @param viewport - Session's viewport, if any
+   */
+  private async applySessionMetrics(viewport: ViewportSize | undefined): Promise<void> {
     if (!viewport) {
       await this.cdp.send('Emulation.clearDeviceMetricsOverride', {});
       return;
@@ -217,4 +276,71 @@ export class CaptureEmulation {
       height: Math.round(height ?? viewport.height),
     };
   }
+}
+
+/**
+ * A size in whole CSS px, as `Emulation.setDeviceMetricsOverride` takes it
+ * (a phone's visible viewport is fractional).
+ *
+ * @param size - Size
+ * @returns Rounded size
+ */
+function roundSize(size: Size): Size {
+  return { width: Math.round(size.width), height: Math.round(size.height) };
+}
+
+/** How long the page is watched for a metrics change to reach it */
+const RESIZE_WAIT_MS = 1000;
+
+/**
+ * Wait until the page's window (`innerWidth`/`innerHeight`) is no longer the
+ * given size: Chrome answers a metrics change before the page has it, and on
+ * Linux a command right after could still read the old size.
+ *
+ * @param cdp - Session connection
+ * @param size - Size the window had
+ * @returns The new size, undefined when it did not change within
+ *   {@link RESIZE_WAIT_MS} or the page did not answer (its script failed,
+ *   e.g. a navigation or terminated scripts, counts as no change)
+ */
+async function windowResizedFrom(cdp: CDPConnection, size: Size): Promise<Size | undefined> {
+  try {
+    return await readResize(cdp, size);
+  } catch (error) {
+    log.debug(
+      `Screenshot restore: waiting for the window to resize failed: ${getErrorMessage(error)}`
+    );
+    return undefined;
+  }
+}
+
+/**
+ * The page side of {@link windowResizedFrom}.
+ *
+ * @param cdp - Session connection
+ * @param size - Size the window had
+ * @returns The new size, undefined when it did not change in time
+ */
+async function readResize(cdp: CDPConnection, size: Size): Promise<Size | undefined> {
+  const expression = `new Promise((resolve) => {
+    const end = Date.now() + ${RESIZE_WAIT_MS};
+    const check = () => {
+      if (innerWidth !== ${size.width} || innerHeight !== ${size.height}) resolve([innerWidth, innerHeight]);
+      else if (Date.now() > end) resolve(null);
+      else setTimeout(check, 10);
+    };
+    check();
+  })`;
+  const response = await evaluateInBdgWorld(cdp, {
+    expression,
+    returnByValue: true,
+    awaitPromise: true,
+  });
+  const value = response.result.value as unknown;
+  if (!Array.isArray(value)) {
+    log.debug(`Screenshot restore: the window stayed ${size.width}x${size.height}`);
+    return undefined;
+  }
+  const [width, height] = value as number[];
+  return { width: width ?? size.width, height: height ?? size.height };
 }

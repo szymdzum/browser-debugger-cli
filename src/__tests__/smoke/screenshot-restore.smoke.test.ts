@@ -154,6 +154,17 @@ void describe('Screenshot emulation', () => {
     }
   });
 
+  void it('Ctrl-C during a full-page capture leaves the scrollbar as it was (#514)', async () => {
+    await evaluate(
+      `document.body.insertAdjacentHTML('beforeend', '<div id="tall" style="width: 400px; height: 3000px; margin: auto"></div>'); 1`
+    );
+    try {
+      await interruptCapture([]);
+    } finally {
+      await evaluate("document.getElementById('tall').remove(); 1");
+    }
+  });
+
   void it('Ctrl-C during a capture of a phone page leaves its pixel ratio as it was', async () => {
     await bdg(['page', 'emulate', '--mobile']);
     try {
