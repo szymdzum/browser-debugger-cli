@@ -21,7 +21,7 @@ import * as path from 'path';
 
 import { runCommand } from '@/__testutils__/commandRunner.js';
 import {
-  COOKIE_SECRET,
+  COOKIE_MARKER,
   startCookieFixtures,
   type CookieFixtures,
 } from '@/__testutils__/cookieFixtures.js';
@@ -211,10 +211,10 @@ void describe('Blocked cookies', () => {
       (await blockedCookieLines(page.requestId)).join('\n'),
       JSON.stringify((await detailsJson(api.requestId)).blockedCookies),
     ];
-    for (const output of outputs) assert.ok(!output.includes(COOKIE_SECRET), output);
+    for (const output of outputs) assert.ok(!output.includes(COOKIE_MARKER), output);
 
     const file = path.join(makeTempDir('bdg-cookies-'), 'out.har');
     await bdg(['network', 'har', file]);
-    assert.ok(!fs.readFileSync(file, 'utf8').includes(COOKIE_SECRET), 'default HAR is sanitized');
+    assert.ok(!fs.readFileSync(file, 'utf8').includes(COOKIE_MARKER), 'default HAR is sanitized');
   });
 });

@@ -11,7 +11,7 @@
  *   rejects, then fetches API `/cookies/api` with credentials: `tp_lax` is
  *   not sent. The page sets `window.cookieFetchDone` when the fetch ended.
  *
- * Every cookie value contains {@link COOKIE_SECRET}, which must never appear in
+ * Every cookie value contains {@link COOKIE_MARKER}, which must never appear in
  * bdg's blocked cookie output or a default (sanitized) HAR.
  */
 
@@ -20,7 +20,7 @@ import * as http from 'http';
 import type * as net from 'net';
 
 /** Text in every fixture cookie value */
-export const COOKIE_SECRET = 'cookie-secret-493';
+export const COOKIE_MARKER = 'cookie-marker-493';
 
 /** Running cookie fixture servers */
 export interface CookieFixtures {
@@ -84,7 +84,7 @@ export async function startCookieFixtures(): Promise<CookieFixtures> {
     if (req.url === '/cookies/seed') {
       res.writeHead(200, {
         'Content-Type': 'text/html',
-        'Set-Cookie': `tp_lax=${COOKIE_SECRET}; SameSite=Lax; Path=/`,
+        'Set-Cookie': `tp_lax=${COOKIE_MARKER}; SameSite=Lax; Path=/`,
       });
       res.end('<!doctype html><title>seed</title><p>tp_lax stored</p>');
       return;
@@ -111,8 +111,8 @@ export async function startCookieFixtures(): Promise<CookieFixtures> {
     res.writeHead(200, {
       'Content-Type': 'text/html',
       'Set-Cookie': [
-        `nosecure=${COOKIE_SECRET}; SameSite=None; Path=/`,
-        `wrongdomain=${COOKIE_SECRET}; Domain=example.com; Path=/`,
+        `nosecure=${COOKIE_MARKER}; SameSite=None; Path=/`,
+        `wrongdomain=${COOKIE_MARKER}; Domain=example.com; Path=/`,
       ],
     });
     res.end(pageHtml(apiUrl));
