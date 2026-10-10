@@ -46,6 +46,21 @@ void describe('formatDomQuery', () => {
     assert.doesNotMatch(output, /py-4|active/);
   });
 
+  void it('leaves declaration-like tokens out of the class and its count', () => {
+    const output = formatDomQuery({
+      selector: 'code',
+      count: 2,
+      nodes: [
+        { index: 0, nodeId: 1, tag: 'code', classes: ['brush:', 'js;'] },
+        { index: 1, nodeId: 2, tag: 'code', classes: ['brush:', 'html', 'x'] },
+      ],
+    });
+
+    assert.match(output, /\[0\] <code>$/m);
+    assert.match(output, /\[1\] <code class="html \+1">$/m);
+    assert.doesNotMatch(output, /brush|js;/);
+  });
+
   void it('lists the matches given and says how many more there are, and how many are indexed', () => {
     const nodes = Array.from({ length: 50 }, (_, index) => ({ index, nodeId: index, tag: 'li' }));
     const output = formatDomQuery({

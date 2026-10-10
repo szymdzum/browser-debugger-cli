@@ -33,6 +33,7 @@ import { handleDomScreenshot } from '@/commands/dom/screenshot.js';
 import { registerWaitCommand } from '@/commands/dom/wait.js';
 import {
   SELECTOR_OR_INDEX_ARGUMENT,
+  QUERY_CLASS_HELP,
   SELECTOR_SCOPE_HELP,
 } from '@/commands/shared/commonOptions.js';
 import type {
@@ -76,6 +77,7 @@ export function registerDomCommands(program: Command): void {
     )
     .option('-j, --json', 'Output as JSON')
     .addHelpText('after', SELECTOR_SCOPE_HELP)
+    .addHelpText('after', QUERY_CLASS_HELP)
     .action(async (selector: string, options: DomQueryCommandOptions) => {
       await handleDomQuery(selector, options);
     });

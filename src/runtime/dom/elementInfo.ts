@@ -422,7 +422,7 @@ export const ELEMENT_CONTEXT_JS = `(() => {
     return hostTexts.get(host);
   };
   const describe = (node) => node.tagName.toLowerCase() + (node.id ? '#' + node.id : '');
-  const labelClasses = ${LABEL_CLASSES_JS};
+  const shownClasses = ${LABEL_CLASSES_JS};
   return (el) => {
     const parts = [];
     for (let doc = el.ownerDocument; doc && doc.defaultView && doc.defaultView.frameElement; ) {
@@ -433,7 +433,7 @@ export const ELEMENT_CONTEXT_JS = `(() => {
     const root = el.getRootNode();
     if (root.host) {
       const host = root.host;
-      const firstClass = labelClasses(host)[0];
+      const firstClass = shownClasses(host)[0];
       const label = describe(host) + (!host.id && firstClass ? '.' + firstClass : '');
       const text = hostText(host);
       parts.push('shadow root of <' + label + (text ? ' "' + text + '"' : '') + '>');
