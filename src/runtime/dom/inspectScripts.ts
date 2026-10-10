@@ -483,8 +483,8 @@ export const PAINT_RISKS_JS = `(el, tree, textParent) => {
  * in a frame), text (only for elements without block-level children), and its
  * rendered children (or their count at the depth limit) with a count of the
  * hidden ones. A text-only slot is listed when its text shows: it is
- * visible and the element laying it out is rendered. Stops after {@link TREE_NODE_CAP} elements and counts the
- * children it did not reach.
+ * visible and the element laying it out is rendered. Stops after
+ * {@link TREE_NODE_CAP} elements and counts the children it did not reach.
  */
 const TREE_JS = `(el, tree, textOf, depth) => {
   let budget = ${TREE_NODE_CAP};

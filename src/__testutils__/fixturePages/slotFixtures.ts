@@ -8,9 +8,8 @@
  * holding only text, slots showing text inside a closed `<details>` and
  * under `visibility: hidden` ancestors (inline and inline-block), loading
  * buttons whose label slot is `visibility: hidden` (with a box of its own and
- * `display: contents`), and a slot
- * showing text below the fold. Each slot's id
- * is its host's id plus `-slot`.
+ * `display: contents`), and a slot showing text below the fold. Each slot's
+ * id is its host's id plus `-slot`.
  */
 
 import type { FixtureRoutes } from '@/__testutils__/fixtureRoutes.js';
