@@ -103,7 +103,10 @@ export default async function* failedTests(source) {
     const where = file ? `${code(relative(process.cwd(), file))}: ` : '';
     const inFlight = isFileTest ? running.innermost(file) : undefined;
     if (inFlight) {
-      yield `- ${where}${code(inFlight)} (still running when the file failed: ${details?.error?.message ?? 'unknown error'})\n`;
+      const reason = String(details?.error?.message ?? 'unknown error')
+        .replace(/\s+/g, ' ')
+        .trim();
+      yield `- ${where}${code(inFlight)} (still running when the file failed: ${code(reason)})\n`;
       continue;
     }
     const fullName = [...path.slice(0, nesting), name].join(' › ');
