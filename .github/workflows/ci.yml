@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
     branches: ['**']
+  # The merge queue runs CI OK on main + the queued PR before merging.
+  merge_group:
   schedule:
     - cron: '17 3 * * *'
   # Run selected smoke tests (Linux and macOS jobs) on any branch to
@@ -223,7 +225,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ${{ fromJSON(github.event_name == 'pull_request' && '["22"]' || github.event_name == 'workflow_dispatch' && format('["{0}"]', inputs.node || '22') || '["22","24","26"]') }}
+        node: ${{ fromJSON((github.event_name == 'pull_request' || github.event_name == 'merge_group') && '["22"]' || github.event_name == 'workflow_dispatch' && format('["{0}"]', inputs.node || '22') || '["22","24","26"]') }}
 
     steps:
       - name: Checkout code
@@ -314,7 +316,7 @@ jobs:
     name: Smoke Tests (macOS, Chrome) (Node ${{ inputs.node || '22' }})
     runs-on: macos-latest
     needs: changes
-    if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || needs.changes.outputs.timing == 'true')
+    if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' && github.event_name != 'merge_group' || needs.changes.outputs.timing == 'true')
     # As for the Linux smoke job.
     timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && (fromJSON('{"1":30,"2":45,"3":60,"4":75,"5":90,"6":105,"7":120,"8":135,"9":150,"10":165}')[inputs.repeat] || 360) || 30 }}
     env:
