@@ -11,6 +11,8 @@
  * shadow root only.
  */
 
+import type { FixtureRoutes } from '@/__testutils__/fixtureRoutes.js';
+
 /** Forms in open, nested and closed shadow roots, and one rendered on demand */
 const SHADOW_FORMS_HTML = `<!doctype html><title>shadow forms</title>
 <label for="pw">Light label</label>
@@ -91,7 +93,7 @@ const SHADOW_FIELDS_HTML = `<!doctype html><title>shadow fields</title>
 </script>`;
 
 /** Shadow root form pages by path */
-export const SHADOW_FORM_ROUTES: Record<string, string> = {
+export const ROUTES: FixtureRoutes = {
   '/shadow-forms': SHADOW_FORMS_HTML,
   '/shadow-fields': SHADOW_FIELDS_HTML,
 };

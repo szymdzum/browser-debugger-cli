@@ -49,6 +49,10 @@ src/
 - `*.integration.test.ts` - Cross-module interaction tests
 - `*.smoke.test.ts` - Full end-to-end user workflows
 
+### Fixture Pages
+
+Smoke tests load pages from a local fixture server (`src/__testutils__/fixtureServer.ts`), never the public internet. For new static pages, add a module to `src/__testutils__/fixturePages/` that exports `ROUTES: FixtureRoutes` (path → HTML, served 200 `text/html`) and describes its pages in a TSDoc header. The server loads every module in that directory, so you don't edit `fixtureServer.ts` and parallel PRs don't conflict there; a path served by two modules fails the server start. Pages that need custom status codes, headers or timing still go into `fixtureServer.ts`. To browse the fixtures by hand (or for agent test rounds): `npx tsx src/__testutils__/serveFixtures.ts`.
+
 ### Shell Tests (`tests/`)
 
 Shell-based tests for command-line integration:
@@ -300,5 +304,6 @@ bdg status --verbose  # Check Chrome diagnostics
 ## Related Documentation
 
 - [TESTING_PHILOSOPHY.md](./TESTING_PHILOSOPHY.md) - Test design principles
+- [AGENT_SCENARIOS.md](./AGENT_SCENARIOS.md) - Fresh-agent test scenarios and the exploratory sweep
 - [SHELL_TEST_HARDENING.md](./SHELL_TEST_HARDENING.md) - Shell test reliability
 - [tests/README.md](../../tests/README.md) - Shell test details

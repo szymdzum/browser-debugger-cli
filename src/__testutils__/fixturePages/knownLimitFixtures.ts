@@ -9,6 +9,8 @@
  * Preact-like event proxy.
  */
 
+import type { FixtureRoutes } from '@/__testutils__/fixtureRoutes.js';
+
 /** Same-origin iframe content of `/frame-order` */
 const FRAME_ORDER_CHILD_HTML = '<!doctype html><p>child</p>';
 
@@ -87,7 +89,7 @@ const PREACT_LISTENERS_HTML = `<!doctype html><title>preact</title>
 </script>`;
 
 /** Pages by path */
-export const KNOWN_LIMIT_ROUTES: Record<string, string> = {
+export const ROUTES: FixtureRoutes = {
   '/frame-order': FRAME_ORDER_HTML,
   '/frame-order-child': FRAME_ORDER_CHILD_HTML,
   '/rejections': REJECTIONS_HTML,

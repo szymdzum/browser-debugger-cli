@@ -1494,11 +1494,12 @@ This release completes Phase 3 of technical debt cleanup, achieving better Unix 
 
 ---
 
-**Legend:**
+**Legend** (sections of new releases, in this order; older releases also used `Deprecated`, `Removed` and `Performance`):
+- `Breaking` - Changes that need users to act, with what to do
 - `Added` - New features
-- `Changed` - Changes in existing functionality
-- `Deprecated` - Soon-to-be removed features
-- `Removed` - Removed features
+- `Changed` - Changes in existing functionality, defaults and contracts
 - `Fixed` - Bug fixes
 - `Security` - Vulnerability fixes
-- `Performance` - Performance improvements
+- `Internal` - Tests, CI, refactors and tooling
+
+Unreleased entries are written as fragments in `changes/` (see `changes/README.md`) and assembled here at release time.

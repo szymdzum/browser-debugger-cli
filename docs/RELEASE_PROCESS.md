@@ -46,7 +46,12 @@ Follow [Semantic Versioning](https://semver.org/). While the version is `0.x`, a
 
 On a branch from an up-to-date `main`:
 
-1. **CHANGELOG.md**: move everything under `## [Unreleased]` into a new `## [0.X.Y] - YYYY-MM-DD` section (Added, Changed, Performance, Removed, Fixed, Security; BREAKING entries first) and leave `## [Unreleased]` empty.
+1. **CHANGELOG.md**: assemble the changelog fragments (`changes/*.md`, one per merged PR; see [changes/README.md](../changes/README.md)) together with everything already under `## [Unreleased]` into the new version's section:
+   ```bash
+   node scripts/changelog-assemble.mjs --check                 # all fragments valid
+   node scripts/changelog-assemble.mjs --version 0.X.Y         # date defaults to today (UTC); --date YYYY-MM-DD to set it
+   ```
+   `## [Unreleased]` becomes `## [0.X.Y] - YYYY-MM-DD` with sections in the order Breaking, Added, Changed, Fixed, Security, Internal (fragments in file name order, after the entries that were already there); a new, empty `## [Unreleased]` stays above it and the fragment files are deleted (`git add -A changes CHANGELOG.md`). Read the result once: reorder entries within a section if a different order reads better, and check that breaking entries say what to do.
 2. **Version**: set `"version": "0.X.Y"` in `package.json` and in the two root entries of `package-lock.json` (or `npm version 0.X.Y --no-git-tag-version`).
 3. **README.md**: update if commands, requirements or install instructions changed.
 4. Check locally:
@@ -143,39 +148,38 @@ Editing a published release does not start the workflow again.
 ## Best Practices
 
 - Release from `main` only, after the release PR's CI is green
-- Keep the CHANGELOG user-focused; mark breaking changes `BREAKING` and say what to do
+- Keep the CHANGELOG user-focused; put breaking changes under `Breaking` and say what to do
+- Between releases, PRs add fragments to `changes/` and never edit `CHANGELOG.md`, so they don't conflict with each other
 - Never reuse a version number; npm does not allow republishing a version
 - Thank contributors in the release notes, including those whose ideas shipped through other PRs
 - Don't publish breaking changes as a patch version
 
 ## Release Templates
 
-### Patch Release
-
-```markdown
-## [0.X.Y] - YYYY-MM-DD
-
-### Fixed
-- Bug fix description
-
-### Performance
-- Performance improvement description
-```
-
-### Minor Release
+The assemble script writes the version section; it looks like this:
 
 ```markdown
 ## [0.X.0] - YYYY-MM-DD
 
+### Breaking
+
+- **What changed** (#N): what to do instead
+
 ### Added
-- New feature description
+
+- **New feature** (#N): description
 
 ### Changed
-- **BREAKING: what changed** - what to do instead
-- Modified behavior description
+
+- **Modified behavior** (#N): description
 
 ### Fixed
-- Bug fix description
+
+- **Bug fix** (#N): description
+
+### Internal
+
+- **Tests, CI, refactors** (#N): description
 ```
 
 ## Related Documentation

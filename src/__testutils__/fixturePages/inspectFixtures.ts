@@ -10,6 +10,8 @@
  * `/inspect-state` has a checkbox styled by `:checked`.
  */
 
+import type { FixtureRoutes } from '@/__testutils__/fixtureRoutes.js';
+
 /** Same-origin iframe content of `/inspect` */
 const INSPECT_FRAME_HTML =
   '<!doctype html><button id="in-frame" style="padding:6px 12px;color:#fff;background:#222">Framed</button>';
@@ -239,7 +241,7 @@ const STATE_HTML = `<!doctype html><meta charset="utf-8"><title>inspect state</t
 <input type="checkbox" id="c">`;
 
 /** Pages by path */
-export const INSPECT_ROUTES: Record<string, string> = {
+export const ROUTES: FixtureRoutes = {
   '/tampered': TAMPERED_HTML,
   '/tampered-actions': TAMPERED_ACTIONS_HTML,
   '/inspect': INSPECT_HTML,

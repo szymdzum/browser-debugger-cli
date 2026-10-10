@@ -8,11 +8,13 @@
  * `eval` under a CSP without `unsafe-eval`; `/issues/clean` has none.
  */
 
+import type { FixtureRoutes } from '@/__testutils__/fixtureRoutes.js';
+
 /** Stylesheet `/issues/import` imports, which the server answers with 404 */
 export const ISSUE_MISSING_STYLESHEET = '/issues/missing.css';
 
 /** Pages by path */
-export const ISSUE_ROUTES: Record<string, string> = {
+export const ROUTES: FixtureRoutes = {
   '/issues/quirks': '<html><head><title>quirks</title></head><body><p>No doctype</p></body></html>',
   '/issues/label-for': `<!doctype html><title>label for</title>
 <form onsubmit="event.preventDefault()">
