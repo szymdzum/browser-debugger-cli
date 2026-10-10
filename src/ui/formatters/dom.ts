@@ -98,7 +98,8 @@ function queryTagAttributes(node: DomQueryResult['nodes'][number]): string[] {
  * The class attribute of a `dom query` match's tag: its first class
  * ({@link labelClasses}) and how many more it has, `class="px-2 +4"`, the
  * same count `dom inspect` shows as `(+4)`. On utility-CSS pages the full
- * list is most of a row; `--json` (`classes`) and `dom get` keep it whole.
+ * list is most of a row; `--json` (`classes`), `dom get --json`
+ * (`domContext.classes`) and `dom get --raw` keep it whole.
  *
  * @param classes - The match's classes
  * @returns `class="…"`, or undefined when the match has no class to show

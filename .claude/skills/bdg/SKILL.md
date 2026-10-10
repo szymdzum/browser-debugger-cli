@@ -13,7 +13,7 @@ The loop: start, look, act, read the reported effect, check errors. Screenshots 
 
 ```bash
 bdg https://example.com --headless      # Start a session (Chrome + daemon); stays up until bdg stop
-bdg dom query "button"                  # Find elements: [0], [1], ... (0-based); class="px-2 +4" = first class + 4 more (all in --json classes, [] when none, or dom get)
+bdg dom query "button"                  # Find elements: [0], [1], ... (0-based); class="px-2 +4" = first class + 4 more (all in --json classes, [] when none, or dom get <index> --json domContext.classes)
 bdg dom inspect "button.primary"        # Box, layout, font, colors + contrast, without a screenshot
 bdg dom fill "input[name='email']" "a@b.co"
 bdg dom click "button[type='submit']"   # Prints what changed: navigation, new text, or no effect
