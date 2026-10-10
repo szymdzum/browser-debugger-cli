@@ -80,7 +80,7 @@ Network and console follow the session tab from the switch on (console also list
 Page: navigated to https://app.test/secure (200)    # navigation (or "URL changed ... (same document)")
 New text: "Your password is invalid!" (div#flash)   # alert/status/aria-live messages that appeared
 ⚠ Element Clicked (no visible effect observed ...)  # nothing changed - wrong element or a broken handler
-⚠ Submit blocked: email: Please include an '@' ...  # the form's validation stopped the submit: fix the named fields
+⚠ Submit blocked: email: Please include an '@' ...  # the form's validation stopped the submit (click or Enter): fix the named fields
 Errors: Uncaught Error: handler exploded (app.js:3:142)  # console errors/exceptions the action caused
 Download: report.txt → ~/.bdg/downloads/report.txt (completed, 15 B)  # files go to <session dir>/downloads
 Opened: popup https://idp.test/authorize (bdg page switch 1)          # a tab or window it opened

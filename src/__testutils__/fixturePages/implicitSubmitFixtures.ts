@@ -12,7 +12,7 @@
  * submit button. Every form's `submit` is noted in `window.submitted` and
  * canceled. The other cases (a submit button outside the form, a
  * `novalidate` form, a canceled click on the default button, a valid
- * form) are on `/submit-blocked` ({@link ./submitBlockedFixtures.ts}).
+ * form) are on `/submit-blocked` (`submitBlockedFixtures.ts`).
  */
 
 import type { FixtureRoutes } from '@/__testutils__/fixtureRoutes.js';
