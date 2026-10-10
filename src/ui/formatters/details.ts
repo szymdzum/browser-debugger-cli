@@ -1,4 +1,5 @@
 import { skippedBodyReason } from '@/telemetry/networkRetention.js';
+import { capResponseBody, type BodyOptions, type CappedRequest } from '@/telemetry/responseBody.js';
 import type { NetworkRequest, ConsoleMessage, WebSocketFrame } from '@/types.js';
 import { formatFramePosition, formatTimestamp } from '@/ui/formatters/console/shared.js';
 import { headerValueLines } from '@/ui/formatters/networkHeaders.js';
@@ -8,9 +9,9 @@ import {
   blockedCookieName,
   blockedCookieReason,
   blockedCookiesOmittedNote,
+  bodyCutNote,
   localProxyNote,
 } from '@/ui/messages/networkMessages.js';
-import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { truncateByLength } from '@/utils/strings.js';
 import { safeParseUrl } from '@/utils/url.js';
 
@@ -99,9 +100,6 @@ function addWebSocketMessages(
   fmt.text(`WebSocket Messages (${webSocket.frames.length}, ${state}):`).separator('━', 70);
   webSocket.frames.forEach((frame) => fmt.text(formatWebSocketMessage(frame)));
 }
-
-/** Characters of a text body shown in human output (`--json` has all of it) */
-const BODY_PREVIEW_LENGTH = 20000;
 
 /**
  * Whether an IP address is a loopback address (`127.0.0.0/8`, `::1`).
@@ -229,29 +227,35 @@ function addBlockedCookies(fmt: OutputFormatter, request: NetworkRequest): void 
 
 /**
  * Describe a response body for humans: binary and skipped bodies are
- * summarized, long text is cut (the JSON output has everything).
+ * summarized, long text is cut at the cap ({@link capResponseBody}) with a
+ * note on how to get all of it.
  *
- * @param request - Captured request with a body
+ * @param request - Captured request with its body cut at the cap
  * @returns Body text
  */
-function describeResponseBody(request: NetworkRequest & { responseBody: string }): string {
+function describeResponseBody(request: CappedRequest & { responseBody: string }): string {
   const skipped = skippedBodyReason(request.responseBody);
   if (skipped !== undefined) return `(not captured: ${skipped})`;
   if (request.responseBodyBase64) {
-    return `(binary, ${request.decodedBodyLength ?? 0} bytes; base64 in --json and HAR export)`;
+    return `(binary, ${request.decodedBodyLength ?? 0} bytes; base64 with --body and in the HAR export)`;
   }
   const body = request.responseBody;
-  if (body.length <= BODY_PREVIEW_LENGTH) return body;
-  return `${body.slice(0, BODY_PREVIEW_LENGTH)}\n… ${body.length - BODY_PREVIEW_LENGTH} more characters (full body: ${sessionCommand(`bdg details network ${request.requestId} --json`)})`;
+  if (!request.bodyTruncated || request.bodyLength === undefined) return body;
+  return `${body}\n${bodyCutNote(request.bodyLength - body.length, request.requestId)}`;
 }
 
 /**
  * Format network request details for human-readable output.
  *
- * @param request - Captured request
+ * @param captured - Captured request
+ * @param bodyOptions - `--no-body` and `--body-max` (default: the body cut at 20000 characters)
  * @returns Formatted details
  */
-export function formatNetworkDetails(request: NetworkRequest): string {
+export function formatNetworkDetails(
+  captured: NetworkRequest,
+  bodyOptions: BodyOptions = {}
+): string {
+  const request = capResponseBody(captured, bodyOptions);
   const fmt = new OutputFormatter();
 
   fmt.text('Network Request Details').separator('━', 70);

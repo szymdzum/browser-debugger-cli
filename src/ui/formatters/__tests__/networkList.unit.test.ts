@@ -256,3 +256,43 @@ void describe('blocked cookie mark on list previews', () => {
     assert.match(formatNetworkList([preview], {}), /⚠ cookie blocked$/m);
   });
 });
+
+void describe('formatNetworkList --page and --sort', () => {
+  const request: NetworkRequest = {
+    requestId: '1',
+    url: 'https://a.test/',
+    method: 'GET',
+    timestamp: 0,
+  };
+
+  void it('ends with how many requests of earlier pages were hidden', () => {
+    const output = formatNetworkList([request], { hiddenEarlierPages: 3 });
+    assert.equal(output.split('\n').at(-1), '3 requests from earlier pages hidden (--page all)');
+    assert.match(
+      formatNetworkList([], { hiddenEarlierPages: 1 }),
+      /No matching requests found\.\n1 request from earlier pages hidden \(--page all\)$/
+    );
+    assert.doesNotMatch(formatNetworkList([request], { hiddenEarlierPages: 0 }), /hidden/);
+  });
+
+  void it('says the order and the window of a sorted list', () => {
+    const header = (options: Parameters<typeof formatNetworkList>[1]): string | undefined =>
+      formatNetworkList([request], options).split('\n')[0];
+    assert.equal(
+      header({ sort: 'size', filteredCount: 5, totalCount: 5 }),
+      'NETWORK REQUESTS (1 largest of 5)'
+    );
+    assert.equal(
+      header({ sort: 'duration', filteredCount: 21, totalCount: 240 }),
+      'NETWORK REQUESTS (1 slowest of 21 matching, 240 in all)'
+    );
+    assert.equal(
+      header({ sort: 'size', filteredCount: 1, totalCount: 1 }),
+      'NETWORK REQUESTS (1, largest first)'
+    );
+    assert.equal(
+      header({ sort: 'start', filteredCount: 5, totalCount: 5 }),
+      'NETWORK REQUESTS (last 1 of 5)'
+    );
+  });
+});

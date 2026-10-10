@@ -18,6 +18,11 @@ export interface FilterPreset {
   description: string;
   /** Filter DSL string */
   filter: string;
+  /**
+   * Page scope without `--page`: `current` for presets whose matches on an
+   * earlier page mislead (an old page's 404 read as the current page's)
+   */
+  page?: 'current';
 }
 
 /**
@@ -28,6 +33,7 @@ export const FILTER_PRESETS: Record<string, FilterPreset> = {
     name: 'errors',
     description: 'HTTP error responses (4xx and 5xx status codes)',
     filter: 'status-code:>=400',
+    page: 'current',
   },
   api: {
     name: 'api',
@@ -63,6 +69,7 @@ export const FILTER_PRESETS: Record<string, FilterPreset> = {
     name: 'failed',
     description: 'Requests that got no response (DNS, refused, aborted, blocked)',
     filter: 'is:failed',
+    page: 'current',
   },
   pending: {
     name: 'pending',
@@ -73,6 +80,7 @@ export const FILTER_PRESETS: Record<string, FilterPreset> = {
     name: 'slow',
     description: 'Requests that took at least 1 second',
     filter: 'duration:>=1s',
+    page: 'current',
   },
 };
 

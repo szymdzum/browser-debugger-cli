@@ -6,12 +6,14 @@
  */
 
 import { summarizeBlockedCookies } from '@/telemetry/blockedCookies.js';
+import { currentNavigationOf } from '@/telemetry/pageScope.js';
 import type { NetworkRequest } from '@/types.js';
 import { getResourceTypeAbbr } from '@/ui/formatters/preview.js';
 import { getRequestState } from '@/ui/formatters/requestStatus.js';
 import { OutputFormatter, truncateUrl } from '@/ui/formatting.js';
 import {
   COOKIE_BLOCKED_MARK,
+  earlierPagesHiddenNote,
   networkEvictedNote,
   type NetworkEvictionCounts,
 } from '@/ui/messages/networkMessages.js';
@@ -26,7 +28,14 @@ export interface NetworkListOptions {
   filteredCount?: number;
   /** Requests dropped and bodies evicted at the session's capture limits */
   evictions?: NetworkEvictionCounts;
+  /** Order of the list (`--sort`); default: capture order */
+  sort?: SortKey;
+  /** Requests of earlier pages matching the filters that `--page current` left out */
+  hiddenEarlierPages?: number;
 }
+
+/** Orders of `network list --sort`: largest, slowest first, or by start time */
+export type SortKey = 'size' | 'duration' | 'start';
 
 /**
  * When the current page started loading: the request of its document, in
@@ -79,10 +88,7 @@ function formatDuration(ms: number | undefined): string {
  * @returns Its times, or undefined when there are no requests
  */
 export function pageStartOf(requests: NetworkRequest[]): PageStart | undefined {
-  const navigationIds = requests.flatMap((r) =>
-    r.navigationId === undefined ? [] : [r.navigationId]
-  );
-  const current = navigationIds.length > 0 ? Math.max(...navigationIds) : undefined;
+  const current = currentNavigationOf(requests);
   const page = requests.filter((r) => r.navigationId === current);
   const documents = page.filter((r) => r.resourceType === 'Document');
   const first = (documents.length > 0 ? documents : page).reduce<NetworkRequest | undefined>(
@@ -193,26 +199,50 @@ function columnWidths(requests: NetworkRequest[], minIdWidth: number): ColumnWid
   };
 }
 
+/** How a cut window and the order read for sorts with the largest values first */
+const DESCENDING_WORDS: Partial<Record<SortKey, string>> = {
+  size: 'largest',
+  duration: 'slowest',
+};
+
 /**
- * Header line with how many requests are shown.
+ * Header line with how many requests are shown, in which order.
  *
  * @param showingCount - Requests listed
  * @param filteredCount - Requests matching the filters
  * @param totalCount - Requests captured
- * @returns e.g. "NETWORK REQUESTS (last 10 of 42)" or "NETWORK REQUESTS (21 matching, 240 in all)"
+ * @param sort - Order of the list, if sorted
+ * @returns e.g. "NETWORK REQUESTS (last 10 of 42)", "NETWORK REQUESTS (21 matching, 240 in all)",
+ *   "NETWORK REQUESTS (5 largest of 42)" or "NETWORK REQUESTS (42, slowest first)"
  */
-function buildHeader(showingCount: number, filteredCount: number, totalCount: number): string {
-  const shown = filteredCount > showingCount ? `last ${showingCount} of ` : '';
+function buildHeader(
+  showingCount: number,
+  filteredCount: number,
+  totalCount: number,
+  sort?: SortKey
+): string {
+  const descending = sort && DESCENDING_WORDS[sort];
+  const cut = filteredCount > showingCount;
+  const window = descending ? `${showingCount} ${descending} of ` : `last ${showingCount} of `;
+  const shown = cut ? window : '';
+  const order = descending && !cut ? `, ${descending} first` : '';
   if (filteredCount < totalCount) {
-    return `NETWORK REQUESTS (${shown}${filteredCount} matching, ${totalCount} in all)`;
+    return `NETWORK REQUESTS (${shown}${filteredCount} matching, ${totalCount} in all${order})`;
   }
-  return `NETWORK REQUESTS (${shown}${totalCount})`;
+  return `NETWORK REQUESTS (${shown}${totalCount}${order})`;
 }
 
 function formatNetworkListHuman(requests: NetworkRequest[], options: NetworkListOptions): string {
   const fmt = new OutputFormatter();
   const totalCount = options.totalCount ?? requests.length;
-  const header = buildHeader(requests.length, options.filteredCount ?? totalCount, totalCount);
+  const header = buildHeader(
+    requests.length,
+    options.filteredCount ?? totalCount,
+    totalCount,
+    options.sort
+  );
+  const hiddenNote =
+    options.hiddenEarlierPages && earlierPagesHiddenNote(options.hiddenEarlierPages);
 
   fmt.text(header);
   fmt.separator('─', SEPARATOR_WIDTH);
@@ -221,6 +251,7 @@ function formatNetworkListHuman(requests: NetworkRequest[], options: NetworkList
 
   if (requests.length === 0) {
     fmt.text('No matching requests found.');
+    if (hiddenNote) fmt.text(hiddenNote);
     return fmt.build();
   }
 
@@ -231,6 +262,7 @@ function formatNetworkListHuman(requests: NetworkRequest[], options: NetworkList
   for (const request of requests) {
     fmt.text(formatRequestLine(request, options, widths));
   }
+  if (hiddenNote) fmt.text(hiddenNote);
 
   return fmt.build();
 }

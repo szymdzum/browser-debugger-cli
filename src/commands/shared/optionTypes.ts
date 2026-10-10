@@ -174,6 +174,10 @@ export type StatusCommandOptions = BaseOptions & VerboseOptions;
 export type DetailsCommandOptions = BaseOptions & {
   type: 'network' | 'console';
   id: string;
+  /** `--body`: only the response body, whole; `--no-body`: no response body */
+  body?: boolean;
+  /** `--body-max`: characters of the response body to show (0 = all) */
+  bodyMax?: number;
 };
 
 /** Options for DOM query command */

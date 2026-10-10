@@ -18,6 +18,8 @@ import { handleValidationError } from '@/commands/shared/handleValidationError.j
 import type { BaseOptions } from '@/commands/shared/optionTypes.js';
 import { positiveIntRule, resourceTypeRule } from '@/commands/shared/validation.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
+import { CommandError } from '@/errors/index.js';
+import { conflictingOptionsError } from '@/errors/messages.js';
 import type { TabSwitchInfo } from '@/ipc/protocol/tabTypes.js';
 import { applyFilters, getFilterHelpText, validateFilterString } from '@/telemetry/filterDsl.js';
 import { resolvePreset, FILTER_PRESETS } from '@/telemetry/filterPresets.js';
@@ -39,6 +41,15 @@ import {
 } from '@/ui/messages/networkMessages.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
+import {
+  defaultPageScope,
+  pageScopeOption,
+  scopeToPage,
+  selectRequests,
+  sortKeyOption,
+  type PageScope,
+  type SortKey,
+} from './listScope.js';
 import { validateFilterOption } from './shared.js';
 
 const MIN_LAST = 0;
@@ -53,6 +64,8 @@ interface NetworkListCommandOptions extends BaseOptions {
   last?: string;
   follow?: boolean;
   verbose?: boolean;
+  page?: PageScope;
+  sort?: SortKey;
 }
 
 const networkLastOption = new Option('--last <n>', 'Show last N requests (0 = all)').default(
@@ -121,12 +134,14 @@ function withoutHeaders(request: NetworkRequest): NetworkRequest {
  * @param requests - Network requests to filter
  * @param options - Command options containing filter and type
  * @param resourceTypes - Pre-validated resource types
+ * @param currentNavigationId - The session's current navigation id (for `page:current`)
  * @returns Filtered network requests
  */
 function filterRequests(
   requests: NetworkRequest[],
   options: NetworkListCommandOptions,
-  resourceTypes: Protocol.Network.ResourceType[]
+  resourceTypes: Protocol.Network.ResourceType[],
+  currentNavigationId: number | undefined
 ): NetworkRequest[] {
   let filtered = requests;
 
@@ -134,7 +149,7 @@ function filterRequests(
   if (filterString) {
     const validation = validateFilterString(filterString);
     if (validation.valid) {
-      filtered = applyFilters(filtered, validation.filters);
+      filtered = applyFilters(filtered, validation.filters, { currentNavigationId });
     }
   }
 
@@ -163,6 +178,8 @@ function buildFormatOptions(
     last: lastLimit,
     totalCount: result.totalCount,
     filteredCount: result.filteredCount,
+    ...(options.sort && { sort: options.sort }),
+    ...(result.hiddenEarlierPages && { hiddenEarlierPages: result.hiddenEarlierPages }),
     ...(result.pageStart && { pageStart: result.pageStart }),
     evictions: {
       requestsDropped: result.dropped ?? 0,
@@ -234,10 +251,12 @@ async function runFollowMode(
     }
     noteFollowConnected();
 
-    const { requests } = result.data;
+    const { requests, currentNavigationId } = result.data;
     const crashedAt = newCrash(result.data.pageCrashedAt);
     const evictions = newEviction(result.data.evictions);
-    const finished = filterRequests(requests, options, resourceTypes).filter(
+    const matching = filterRequests(requests, options, resourceTypes, currentNavigationId);
+    const scope = options.page ?? defaultPageScope(options.preset);
+    const finished = scopeToPage(matching, scope, currentNavigationId).requests.filter(
       (request) => request.duration !== undefined && !shown.has(request.requestId)
     );
     const present = new Set(requests.map((request) => request.requestId));
@@ -286,7 +305,10 @@ const COLUMNS_HELP = `Columns:
 
 function formatPresetHelp(): string {
   return Object.entries(FILTER_PRESETS)
-    .map(([name, preset]) => `  ${name.padEnd(12)} ${preset.description}`)
+    .map(
+      ([name, preset]) =>
+        `  ${name.padEnd(12)} ${preset.description}${preset.page ? ' (current page; --page all for every page)' : ''}`
+    )
     .join('\n');
 }
 
@@ -294,12 +316,18 @@ function formatPresetHelp(): string {
  * `network list` result (the `data` of `--json`).
  */
 interface NetworkListResult {
-  /** Requests after filters and `--last`, oldest first */
+  /** Requests after filters and `--last`: oldest first, or in `--sort` order */
   requests: NetworkRequest[];
   /** All captured requests, before filters */
   totalCount: number;
-  /** Requests matching the filters, before `--last` */
+  /** Requests matching the filters (and `--page`), before `--last` */
   filteredCount: number;
+  /** Page scope applied: `current` when `--page current` or the preset's default left out earlier pages */
+  page?: 'current';
+  /** Requests of earlier pages matching the filters that `--page current` left out (left out when none) */
+  hiddenEarlierPages?: number;
+  /** Order of `requests` (`--sort`; left out: capture order) */
+  sort?: SortKey;
   /**
    * Start of the current page (its document request) that the START column
    * counts from: `timestamp` (epoch ms) and `sentTime` (Chrome's monotonic
@@ -340,6 +368,18 @@ export function registerListCommand(networkCmd: Command): void {
       )
     )
     .addOption(networkLastOption)
+    .addOption(
+      new Option(
+        '--page <scope>',
+        'Requests of the current page or of all pages: current, all (default: current for --preset errors|failed|slow, else all)'
+      ).argParser(pageScopeOption)
+    )
+    .addOption(
+      new Option(
+        '--sort <key>',
+        'Order: size or duration (largest/slowest first; --last n keeps the top n), start'
+      ).argParser(sortKeyOption)
+    )
     .addOption(new Option('-f, --follow', 'Stream network requests in real-time').default(false))
     .addOption(new Option('-v, --verbose', 'Show full URLs and additional details').default(false))
     .addHelpText(
@@ -360,6 +400,14 @@ export function registerListCommand(networkCmd: Command): void {
           max: MAX_LAST,
           default: DEFAULT_LAST,
         }).validate(options.last);
+        if (options.follow && options.sort) {
+          const err = conflictingOptionsError('--sort', '--follow');
+          throw new CommandError(
+            err.message,
+            { suggestion: err.suggestion },
+            EXIT_CODES.INVALID_ARGUMENTS
+          );
+        }
       } catch (error) {
         handleValidationError(error, options.json ?? false);
       }
@@ -380,15 +428,21 @@ export function registerListCommand(networkCmd: Command): void {
             return createErrorResult(result.error, result.exitCode, result.suggestion);
           }
 
-          const { requests, pageCrashedAt, tabSwitch, evictions } = result.data;
-          const filtered = filterRequests(requests, options, resourceTypes);
+          const { requests, currentNavigationId, pageCrashedAt, tabSwitch, evictions } =
+            result.data;
+          const matching = filterRequests(requests, options, resourceTypes, currentNavigationId);
+          const scope = options.page ?? defaultPageScope(options.preset);
+          const scoped = scopeToPage(matching, scope, currentNavigationId);
           const pageStart = pageStartOf(requests);
           return {
             success: true,
             data: {
-              requests: lastN === 0 ? filtered : filtered.slice(-lastN),
+              requests: selectRequests(scoped.requests, options.sort, lastN),
               totalCount: requests.length,
-              filteredCount: filtered.length,
+              filteredCount: scoped.requests.length,
+              ...(scope === 'current' && { page: 'current' as const }),
+              ...(scoped.hidden > 0 && { hiddenEarlierPages: scoped.hidden }),
+              ...(options.sort && { sort: options.sort }),
               ...(pageStart && { pageStart }),
               ...(pageCrashedAt !== undefined && { pageCrashedAt }),
               ...(tabSwitch && { tabSwitch }),

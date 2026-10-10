@@ -101,7 +101,25 @@ void describe('formatNetworkDetails', () => {
       responseBody: 'x'.repeat(30000),
     });
 
-    assert.match(output, /10000 more characters \(full body: bdg details network R --json\)/);
+    assert.match(output, /10000 more characters \(full body: bdg details network R --body\)/);
+  });
+
+  void it('takes --body-max and --no-body', () => {
+    const request: NetworkRequest = {
+      requestId: 'R',
+      url: 'https://example.com/app.js',
+      method: 'GET',
+      timestamp: 0,
+      status: 200,
+      responseBody: 'x'.repeat(300),
+    };
+
+    assert.match(
+      formatNetworkDetails(request, { bodyMax: 100 }),
+      /^x{100}\n… 200 more characters \(full body: bdg details network R --body\)$/m
+    );
+    assert.match(formatNetworkDetails(request, { bodyMax: 0 }), /^x{300}$/m);
+    assert.doesNotMatch(formatNetworkDetails(request, { noBody: true }), /Response Body|xxx/);
   });
 });
 

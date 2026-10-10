@@ -7,6 +7,7 @@
 import { MAX_BLOCKED_COOKIES, MAX_NETWORK_REQUESTS, MAX_TOTAL_BODY_BYTES } from '@/constants.js';
 import type { BlockedCookie } from '@/types.js';
 import { pluralize } from '@/ui/formatting.js';
+import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 
 /**
  * A byte budget in whole megabytes.
@@ -203,4 +204,72 @@ export function harExportedMessage(result: HarExportSummary): string {
     ? 'Credentials sanitized (auth/cookie/API key/token headers, cookies, URL tokens, password and token fields of bodies and WebSocket messages are [redacted]); --include-sensitive keeps them'
     : '⚠ Includes credentials (--include-sensitive): share this file with care';
   return `✓ Exported ${result.entries} requests${filterNote} to ${result.file}\n  ${note}`;
+}
+
+/**
+ * Footer of `network list` when `--page current` (or a preset's default)
+ * left out requests of earlier pages that matched the filters.
+ *
+ * @param count - Requests hidden
+ * @returns e.g. `3 requests from earlier pages hidden (--page all)`
+ */
+export function earlierPagesHiddenNote(count: number): string {
+  return `${pluralize(count, 'request')} from earlier pages hidden (--page all)`;
+}
+
+/**
+ * Why `details network --body` has nothing to print: the body was skipped or evicted.
+ *
+ * @param reason - Why it was not captured
+ * @returns e.g. `not captured: evicted: total body budget (…)`
+ */
+export function responseBodyNotCapturedReason(reason: string): string {
+  return `not captured: ${reason}`;
+}
+
+/**
+ * Why `details network --body` has nothing to print: a WebSocket.
+ *
+ * @returns Reason text
+ */
+export function webSocketHasNoBodyReason(): string {
+  return 'a WebSocket has messages, not a body (bdg details network <id> lists them)';
+}
+
+/**
+ * Why `details network --body` has nothing to print: the response is still loading.
+ *
+ * @returns Reason text
+ */
+export function bodyStillLoadingReason(): string {
+  return 'the request is still loading';
+}
+
+/**
+ * Why `details network --body` has nothing to print: the request finished without one.
+ *
+ * @returns Reason text
+ */
+export function noResponseBodyReason(): string {
+  return 'no response body was captured (redirects, failed requests and some responses have none, and bodies are fetched just after a request finishes)';
+}
+
+/**
+ * Note after a response body `details network` cut at its cap.
+ *
+ * @param remaining - Characters left out
+ * @param requestId - Request id
+ * @returns e.g. `… 594000 more characters (full body: bdg details network 123.4 --body)`
+ */
+export function bodyCutNote(remaining: number, requestId: string): string {
+  return `… ${remaining} more characters (full body: ${sessionCommand(`bdg details network ${requestId} --body`)})`;
+}
+
+/**
+ * Hint (stderr) after `details network --body` printed a binary body.
+ *
+ * @returns Hint text
+ */
+export function base64BodyHint(): string {
+  return 'The body is binary, printed base64-encoded: pipe it through base64 -d';
 }

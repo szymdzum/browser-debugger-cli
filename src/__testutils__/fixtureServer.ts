@@ -527,6 +527,9 @@ export const REPORT_DOWNLOAD_NAME = 'bdg-fixture-report.txt';
 /** File name the `/slow-download` attachment suggests */
 export const SLOW_DOWNLOAD_NAME = 'bdg-fixture-slow.bin';
 
+/** Body of `/large-body`: an HTML document of 150 000 characters, past the details body cap */
+export const LARGE_BODY = `<!doctype html><title>Large</title><p>${'x'.repeat(150000 - 38)}`;
+
 /** Size of each half of the `/slow-download` attachment */
 const SLOW_DOWNLOAD_HALF_BYTES = 10000;
 
@@ -767,6 +770,11 @@ export async function startFixtureServer(): Promise<FixtureServer> {
         res.end(JSON.stringify({ status: 'ok' }));
       }, DELAYED_API_MS);
       req.on('close', () => clearTimeout(timer));
+      return;
+    }
+    if (req.url === '/large-body') {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(LARGE_BODY);
       return;
     }
     if (req.url === '/api/test') {

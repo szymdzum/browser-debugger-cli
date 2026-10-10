@@ -585,3 +585,39 @@ void describe('has-blocked-cookies on list previews', () => {
     assert.match(!result.valid ? (result.suggestion ?? '') : '', /has-blocked-cookies:\*/);
   });
 });
+
+void describe('page:current', () => {
+  const requests = [
+    createRequest({ requestId: 'old', navigationId: 1 }),
+    createRequest({ requestId: 'new', navigationId: 2 }),
+    createRequest({ requestId: 'untagged' }),
+  ];
+  const ids = (filter: string, currentNavigationId?: number): string[] =>
+    applyFilters(requests, parseFilterString(filter), { currentNavigationId }).map(
+      (r) => r.requestId
+    );
+
+  void it("keeps the current page's requests, by the session's navigation id", () => {
+    assert.deepEqual(ids('page:current', 2), ['new', 'untagged']);
+    assert.deepEqual(ids('page:current', 3), ['untagged']);
+  });
+
+  void it('takes the latest navigation among the requests when the session gives none', () => {
+    assert.deepEqual(ids('page:current'), ['new', 'untagged']);
+  });
+
+  void it('negated, keeps the earlier pages', () => {
+    assert.deepEqual(ids('!page:current', 2), ['old']);
+  });
+
+  void it('rejects another value with a suggestion', () => {
+    const result = validateFilterString('page:curent');
+    assert.equal(result.valid, false);
+    assert.match(!result.valid ? result.error : '', /Invalid "page" filter value: "curent"/);
+    assert.match(!result.valid ? (result.suggestion ?? '') : '', /Did you mean: current\?/);
+  });
+
+  void it('is in the help text', () => {
+    assert.match(getFilterHelpText(), /page:current/);
+  });
+});
