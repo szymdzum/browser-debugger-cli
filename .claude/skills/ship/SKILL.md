@@ -19,7 +19,7 @@ Files in this skill:
 - **Propose 4–6 issues** with one line each on why. Recommend one set; don't present a menu. A candidate you can't reproduce in a few minutes drops out of the proposal and gets a `needs repro` comment on the issue.
 - **Waves of 2–3 parallel implementers.** Issues touching the same files or output run in sequence (the second starts from the first's branch, or after it merges). Light, conflict-free changes first; docs last.
 - **Ask for merge authority** as a yes/no question: "May I merge on my own once gates 1–8 hold, or do you want to OK each PR?" A bare "OK" is not an answer; ask again. It doesn't carry over to the next session.
-- **Product decisions belong to the user:** changed defaults, contracts, exit codes. Present options with a recommendation, then wait.
+- **Product decisions belong to the user:** changed defaults, contracts, exit codes, removed `--json` fields. Present options with a recommendation, then wait. A standing "pick the recommended option" **never** covers a contract change or a third fix round; each gets its own yes/no question.
 
 ## Per-PR checklist
 
@@ -33,7 +33,7 @@ Copy one per issue into your notes and tick it off:
 - [ ] Second review, only if the fix commit is large or risky
 - [ ] Fresh-agent test on the branch (briefs.md → Tester), findings fixed in the PR
 - [ ] Gates 1–8 hold on the final head SHA
-- [ ] Merged, main CI green, worktree and branch removed, issue updated
+- [ ] Merged, main CI green, worktree and branch removed, fixture server (PID file) killed, issue updated
 - [ ] Every finding fixed or filed
 ```
 
@@ -49,11 +49,11 @@ An implementer's report ends with one fixed line: `PR <url> HEAD <sha> CI <run i
 
 When the implementer reports, spawn a fresh reviewer with the reviewer brief: the diff, the issue, and the risky areas of this change (races, failure and cleanup paths, leaks, security, contract changes, recently merged features it could break). Don't pass on the implementer's reasoning.
 
-- Findings come back as **blocking / should-fix / nit** with file:line and a scenario.
+- Findings come back as **blocking / should-fix / nit** with file:line and a scenario. A review that lists an item from your risk list under "Not checked" is incomplete: resume the reviewer for that item before you send anything on.
 - Send every finding to the **same implementer** (SendMessage, so it keeps its context): a test and a fix in the same commit (no red commit per finding), or an argued rejection. You decide disputes.
 - A **second review** only for large or risky fix commits (rollback, file handling, concurrency).
 - Every report names the SHA it looked at. A fix commit invalidates only the evidence about what it changed: re-run the review or the tester for that part, not the whole cycle.
-- **At most two fix rounds.** If findings remain after the second, stop and bring the blocker to the user instead of a third round.
+- **At most two fix rounds.** If findings remain after the second, stop and bring the blocker to the user: a third round needs an explicit yes, whatever standing approvals exist; the alternative is to file the remaining finding. Nits are fixed in the same commit as the should-fix items, never pushed on their own (every push is a full CI run).
 
 ### Fresh-agent test
 
@@ -69,7 +69,9 @@ The highest-yield step. Run it for every behaviour change (tier 2 and 3 below). 
 
 - Findings **about this change** go back to the implementer and are fixed **in the same PR**.
 - Findings about **older code** are collected for the whole round. Then **one verifier agent** (verifier brief in `briefs.md`) reproduces them all on current `main` in one pass; you group what survived into issues (one per root cause, with the command and output) in the right milestone. Don't verify 15 findings by hand, and don't file unverified ones. The verifier runs no git commands, so you prepare its checkout: `git worktree add ../bdg-verify --detach origin/main && ln -s <main checkout>/node_modules ../bdg-verify/node_modules && npm --prefix ../bdg-verify run build`, and remove it after the report (`git worktree remove ../bdg-verify`).
-- **Start the fixtures from the worktree of the branch under test** (`npx tsx src/__testutils__/serveFixtures.ts` in `../bdg-<N>`), never from another worktree or the main checkout: a tester once got a page the branch had added from a server that didn't have it.
+- **Fresh base first.** If `main` merged changes to files this PR touches since the branch was created (`git -C ../bdg-<N> log --oneline HEAD..origin/main -- <files>`), the implementer rebases **before** the fresh-agent test; otherwise the tester reports bugs `main` already fixed.
+- **For a fix that adds no new output or flag**, the tester gets the two scenarios closest to the change, not four tasks.
+- **Start the fixtures from the worktree of the branch under test** (`npx tsx src/__testutils__/serveFixtures.ts` in `../bdg-<N>`), never from another worktree or the main checkout: a tester once got a page the branch had added from a server that didn't have it. Start it as `npx tsx src/__testutils__/serveFixtures.ts & echo $! > /tmp/bdg-fixtures-<N>.pid` and kill that PID when the tester reports (one server ran for 2.5 h after its round).
 
 ### Merge
 
@@ -100,7 +102,7 @@ Merge only when **all** hold. If one fails, fix it; don't negotiate it.
    - **required:** `CI OK` passed (it aggregates changes, build, quality, contract tests and Linux smoke; Security and macOS are outside it);
    - **additionally required for this PR:** macOS smoke when the PR touches timing-sensitive paths, the repeat dispatch for tier 3 timing changes, Security Audit for dependency changes;
    - **accepted exceptions:** a failing job counts as an exception only with an issue number for the known flake and a passing re-run of that job; name both in the merge summary.
-6. **Mergeable on current `main`** (`gh pr view <n> --json mergeable`; `UNKNOWN` right after a push means re-check). After a rebase: typecheck and the affected tests re-run, no conflict markers.
+6. **Mergeable on current `main`** (`gh pr view <n> --json mergeable`; `UNKNOWN` right after a push means re-check), **and tested against it**: when `main` has merged changes to the PR's files since its last rebase, either the implementer rebases and re-runs, or you run a merge-check yourself: `tree=$(git merge-tree --write-tree origin/main <branch>)` (a conflict exits non-zero), then `git worktree add /tmp/mc-<N> $tree`, link `node_modules`, `npm run check`, the affected unit and smoke files, remove the worktree. After any rebase: typecheck and the affected tests re-run, no conflict markers.
 7. **Docs match the behaviour:** `docs/CLI_REFERENCE.md`, help text, `.claude/skills/bdg/SKILL.md`, option behaviors. `CHANGELOG.md` untouched; the PR description says what changed for users and marks changed defaults, contracts and breaking changes.
 8. **No leftovers:** no temp files in the repo, no stray agent processes, nothing **new** in `~/.bdg` or `~/Downloads` (compare with the snapshot taken before the agents ran).
 
@@ -119,7 +121,7 @@ Merge only when **all** hold. If one fails, fix it; don't negotiate it.
 - **A new test that passed on its first run** is at best a regression test. Ask what it would have caught; the report must say.
 - **"Flaky" can be a real bug.** Root-cause a flake before calling it one; several were product bugs or tests asserting wrong timing.
 - **A report without the final `PR … HEAD … CI …` line** is not done. Read the PR and CI state yourself and resume the agent.
-- **CodeQL or linters on test fixtures** (e.g. a variable named `SECRET`): rename, don't suppress.
+- **CodeQL or linters on test fixtures** (e.g. a variable named `SECRET`): rename, don't suppress. An open CodeQL alert on `main` gets an issue the day it appears; six sat there without one until the session D retro.
 
 ## Project settings
 

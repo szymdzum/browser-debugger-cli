@@ -26,7 +26,9 @@ Build only in your worktree. If another branch you depend on hasn't merged yet, 
 **Scope** (the issue's acceptance criteria, plus):
 - `<concrete expectations>`
 - `<decisions you must make and justify, and the options to choose between>`
-- Contracts: `--json` output in the `BdgResponse` envelope, additive only; exit codes from `src/utils/exitCodes.ts`; messages centralized (`src/ui/messages`, `src/errors/messages.ts`); CommandError or `{success, error}`, never both.
+- Contracts: `--json` output in the `BdgResponse` envelope, additive only; exit codes from `src/utils/exitCodes.ts`; messages centralized (`src/ui/messages`, `src/errors/messages.ts`); CommandError or `{success, error}`, never both. Removing a `--json` field or changing an exit code is not yours to decide: stop and report it as a decision.
+- Page-side code (anything `Runtime.evaluate` or `callFunctionOn` runs) gets its parameters as function arguments, never as `${…}` or `JSON.stringify` interpolated into the source (CodeQL `js/bad-code-sanitization`); the page returns keys or data, Node builds the messages.
+- Secrets: no message, warning, hint or `--json` field carries a secret's value, a fragment of it, or its length (`expectedLength`-style fields included).
 - Update the docs that describe this behaviour: `docs/CLI_REFERENCE.md`, help text, `.claude/skills/bdg/SKILL.md`, and the area table in `src/commands/optionBehaviors/<area>.ts` for non-obvious flags.
 - Don't edit `CHANGELOG.md`. The PR description is the changelog source: say what changed for users, and mark changed defaults, contracts and breaking changes (with what to do).
 - New fixture pages go in a new module in `src/__testutils__/fixturePages/`; don't edit `fixtureServer.ts`.
@@ -79,13 +81,13 @@ Scratch files go in `/tmp/review-<N>-work`. Remove the worktree at the end (`git
 - **Failure and cleanup paths:** errors, timeouts, interrupts (Ctrl-C/SIGTERM), partial failures. Does every path release what it acquired (listeners, sockets, temp files, flags)?
 - **Concurrency:** races between concurrent commands, between an event and the command that waits for it, and between a switch or rollback and late events.
 - **Resource bounds:** memory caps, output size (including token cost for agent users), file sizes.
-- **Security:** secrets in output, logs or errors; file writes (symlinks, permissions, atomicity); injection; prototype pollution.
+- **Security:** secrets in output, logs or errors, including a secret's length or a fragment; page-side code built from interpolated strings; file writes (symlinks, permissions, atomicity); injection; prototype pollution.
 - **Contracts:** is the `--json` shape additive only? Exit codes, changed defaults (does the PR description mark them as changed?), backwards compatibility.
 - **Interaction with recent work:** `<recently merged features this could break>`.
 - **Tests:** do they test the claim? Does the red commit cover the issue's reproduction and each testable acceptance criterion (the PR names the rest)? Are they deterministic (no fixed sleeps)? Did a later commit weaken an assertion from the red commit? Any **tautological** test, whose expected value is computed the way the code computes it instead of coming from the issue, a worked example or a known-good literal?
 - **Docs and PR description:** do `docs/CLI_REFERENCE.md`, help text, the bdg skill and the PR description say exactly what the code does? `CHANGELOG.md` must not be edited.
 - **Conventions (CLAUDE.md):** CommandRunner, CommandError or `{success, error}` never both, the `BdgResponse` envelope, semantic exit codes, centralized messages, option behavior keys `<command>:--flag`, TSDoc, no inline comments, no empty catch, ~30 lines per function.
-- `<change-specific risky questions>`
+- `<change-specific risky questions; for input parsing, selectors or secret handling, ask for a sweep over a matrix of inputs and report the counts, e.g. "every form field type × every fill path">`
 
 **Run** in `/tmp/review-<N>` with `export PATH="$HOME/.nvm/versions/node/v22.15.0/bin:$PATH" BDG_TEST_SESSION_PARENT=/tmp/rv-<N>-t BDG_TEST_HOME_DIR=/tmp/rv-<N>-h BDG_SESSION_DIR=/tmp/rv-<N>`: `npm run build`, `<the targeted unit tests>` and `<one targeted smoke test>`. If a claim is cheap to check by hand (`node /tmp/review-<N>/dist/index.js …`), do it.
 
@@ -101,7 +103,7 @@ They must fail on an assertion about the issue (or the CLI's real output), not o
 
 **Rules:** no `git stash`; no `pkill`/`killall`; don't touch `~/.bdg`, the worktree, or the main checkout (including its `.tmp/`). Run tests in the foreground.
 
-**Report.** The SHA you reviewed, then findings as **blocking / should-fix / nit**, each with file:line and a concrete scenario (inputs → wrong outcome). Also list what you checked and found fine. Keep it short.
+**Report.** The SHA you reviewed, then findings as **blocking / should-fix / nit**, each with file:line and a concrete scenario (inputs → wrong outcome). Also list what you checked and found fine, and under **Not checked** anything from the list above you skipped and why (the orchestrator will resume you for it). Keep it short.
 
 ## Tester brief
 Run this on the **PR branch before merging**. The tester is a fresh `general-purpose` agent playing a real user. It gets tasks, not a description of the diff: use the **Task** lines of the scenarios that touch the change's area (`scenarios.md`), plus a task for the new behaviour if no scenario covers it yet (then add it as a scenario). Its findings about this change are fixed in the same PR; findings about older code become new issues.
