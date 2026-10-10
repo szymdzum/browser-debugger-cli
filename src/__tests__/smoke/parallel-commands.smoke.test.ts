@@ -20,6 +20,9 @@ import {
 /** Rounds of parallel commands; the race showed in most rounds before the fix */
 const ROUNDS = 10;
 
+/** Parallel `dom a11y` calls per round */
+const PARALLEL_A11Y = 6;
+
 /** Result of one command */
 interface Run {
   args: string[];
@@ -92,6 +95,26 @@ void describe('Concurrent commands', () => {
         textboxIds.map((id) => ['dom', 'get', '--node-id', String(id)])
       );
       assert.deepEqual(failures, [], `round ${round}`);
+    }
+  });
+
+  void it('shows plain field values in parallel dom a11y calls', async () => {
+    await bdg(['dom', 'fill', 'input[name="email"]', 'ada@example.com']);
+    await bdg(['dom', 'fill', 'input[name="city"]', 'Paris']);
+    for (let round = 1; round <= ROUNDS; round++) {
+      const values = await Promise.all(
+        Array.from({ length: PARALLEL_A11Y }, async () => {
+          const textboxes = JSON.parse(
+            await bdg(['dom', 'a11y', 'query', 'role=textbox', '--json'])
+          ) as { data: { nodes: Array<{ value?: string }> } };
+          return textboxes.data.nodes.flatMap((node) => node.value ?? []).join(' ');
+        })
+      );
+      assert.deepEqual(
+        values.filter((value) => !/ada@example\.com .*Paris/.test(value)),
+        [],
+        `round ${round}: a plain value was masked`
+      );
     }
   });
 });
