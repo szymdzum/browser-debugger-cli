@@ -7,8 +7,9 @@
 import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { FakeObjectPage } from '@/__testutils__/fakeObjectPage.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
-import { FORM_DISCOVERY_GROUP, readFormDiscovery } from '@/runtime/dom/formDiscoveryNodes.js';
+import { formDiscoveryGroup, readFormDiscovery } from '@/runtime/dom/formDiscoveryNodes.js';
 import type { RawFormData } from '@/runtime/dom/formTypes.js';
 import type { CDPSender } from '@/telemetry/objectExpander.js';
 
@@ -151,22 +152,25 @@ function fakeCdp(options: { failDescribe?: boolean; data?: unknown } = {}): {
   return { cdp: { send }, sent };
 }
 
+/** Object group of the discovery read */
+const GROUP = 'bdg-form-discovery-test';
+
 void describe('readFormDiscovery', () => {
   void it('binds each listed field and button to its node by index', async () => {
-    const data = await readFormDiscovery(fakeCdp().cdp, 'root');
+    const data = await readFormDiscovery(fakeCdp().cdp, 'root', GROUP);
     assert.equal(data.forms[0]?.fields[0]?.backendNodeId, 101);
     assert.equal(data.forms[0]?.buttons[0]?.backendNodeId, 102);
     assert.equal(data.forms[0]?.shadowHost, 'x-login');
   });
 
   void it('names custom elements whose closed shadow root holds a visible field', async () => {
-    const data = await readFormDiscovery(fakeCdp().cdp, 'root');
+    const data = await readFormDiscovery(fakeCdp().cdp, 'root', GROUP);
     assert.deepEqual(data.closedShadowHosts, ['x-vault#pay']);
   });
 
   void it('pierces a closed shadow root to read what it holds', async () => {
     const { cdp, sent } = fakeCdp();
-    await readFormDiscovery(cdp, 'root');
+    await readFormDiscovery(cdp, 'root', GROUP);
     const described = sent.filter(
       (call) => call.method === 'DOM.describeNode' && call.params['backendNodeId'] === 301
     );
@@ -174,7 +178,7 @@ void describe('readFormDiscovery', () => {
   });
 
   void it('still returns the forms when nodes cannot be described', async () => {
-    const data = await readFormDiscovery(fakeCdp({ failDescribe: true }).cdp, 'root');
+    const data = await readFormDiscovery(fakeCdp({ failDescribe: true }).cdp, 'root', GROUP);
     assert.equal(data.forms[0]?.fields[0]?.backendNodeId, undefined);
     assert.equal(data.closedShadowHosts, undefined);
     assert.equal(data.forms.length, 1);
@@ -182,16 +186,42 @@ void describe('readFormDiscovery', () => {
 
   void it('releases the objects of the discovery', async () => {
     const { cdp, sent } = fakeCdp();
-    await readFormDiscovery(cdp, 'root');
+    await readFormDiscovery(cdp, 'root', GROUP);
     assert.deepEqual(sent.at(-1), {
       method: 'Runtime.releaseObjectGroup',
-      params: { objectGroup: FORM_DISCOVERY_GROUP },
+      params: { objectGroup: GROUP },
     });
+  });
+
+  void it('reads concurrent discoveries when one releases its objects first (#584)', async () => {
+    const [first, second] = [formDiscoveryGroup(), formDiscoveryGroup()];
+    const page = new FakeObjectPage({
+      lookupsFirst: 2,
+      hold: (method, params) => method === 'Runtime.evaluate' && params['objectGroup'] === second,
+      callResult: () => ({ result: { type: 'object', value: DATA } }),
+    });
+    const discovered = async (objectGroup: string): Promise<RawFormData> => {
+      const { result } = (await page.send('Runtime.evaluate', {
+        objectGroup,
+      })) as Protocol.Runtime.EvaluateResponse;
+      return readFormDiscovery(page, result.objectId, objectGroup);
+    };
+    const reads = await Promise.allSettled([discovered(first), discovered(second)]);
+    assert.deepEqual(
+      reads.map((read) =>
+        read.status === 'rejected' ? String(read.reason) : read.value.forms.length
+      ),
+      [1, 1]
+    );
+    assert.deepEqual(page.releasedUses, []);
   });
 
   void it('rejects a result that is not discovery data, and still releases', async () => {
     const { cdp, sent } = fakeCdp({ data: { nothing: true } });
-    await assert.rejects(readFormDiscovery(cdp, 'root'), /Unexpected form discovery response/);
+    await assert.rejects(
+      readFormDiscovery(cdp, 'root', GROUP),
+      /Unexpected form discovery response/
+    );
     assert.equal(sent.at(-1)?.method, 'Runtime.releaseObjectGroup');
   });
 });

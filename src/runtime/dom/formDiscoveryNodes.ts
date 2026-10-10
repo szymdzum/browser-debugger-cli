@@ -22,28 +22,42 @@ import { getErrorMessage } from '@/utils/errors.js';
 
 const log = createLogger('dom');
 
-/** Object group holding the discovery result and the nodes read from it */
-export const FORM_DISCOVERY_GROUP = 'bdg-form-discovery';
+/** Counter giving each discovery its own object group */
+let discoveries = 0;
 
 /** Function returning the discovery data of the script's result */
 const DATA_FUNCTION = 'function () { return this.data; }';
 
 /**
- * Run the discovery script in bdg's world, keeping its result in
- * {@link FORM_DISCOVERY_GROUP} for {@link readFormDiscovery} (released here
- * when the script threw).
+ * A new object group for one discovery, holding its result and the nodes
+ * read from it. Each discovery has its own: `dom form` commands may run
+ * concurrently, and the release of a shared group would free another
+ * discovery's result before it is read.
+ *
+ * @returns Object group name
+ */
+export function formDiscoveryGroup(): string {
+  return `bdg-form-discovery-${++discoveries}`;
+}
+
+/**
+ * Run the discovery script in bdg's world, keeping its result in the
+ * discovery's object group for {@link readFormDiscovery} (released here when
+ * the script threw).
  *
  * @param cdp - Connection to the page
+ * @param objectGroup - The discovery's object group ({@link formDiscoveryGroup})
  * @returns Evaluate response; its result is the script's `{ data, nodes, hosts }`
  */
 export async function evaluateFormDiscovery(
-  cdp: Parameters<typeof evaluateInBdgWorld>[0]
+  cdp: Parameters<typeof evaluateInBdgWorld>[0],
+  objectGroup: string
 ): Promise<Protocol.Runtime.EvaluateResponse> {
   const response = await evaluateInBdgWorld(cdp, {
     expression: FORM_DISCOVERY_SCRIPT,
-    objectGroup: FORM_DISCOVERY_GROUP,
+    objectGroup,
   });
-  if (response.exceptionDetails) await releaseDiscovery(cdp);
+  if (response.exceptionDetails) await releaseDiscovery(cdp, objectGroup);
   return response;
 }
 
@@ -55,12 +69,14 @@ export async function evaluateFormDiscovery(
  *
  * @param cdp - Connection to the page
  * @param objectId - The script's result
+ * @param objectGroup - The discovery's object group
  * @returns Discovery data
  * @throws Error when the result is not discovery data
  */
 export async function readFormDiscovery(
   cdp: CDPSender,
-  objectId: string | undefined
+  objectId: string | undefined,
+  objectGroup: string
 ): Promise<RawFormData> {
   try {
     const data = objectId ? await discoveryData(cdp, objectId) : undefined;
@@ -86,7 +102,7 @@ export async function readFormDiscovery(
       ...(closedHosts.length > 0 && { closedShadowHosts: closedHosts }),
     };
   } finally {
-    await releaseDiscovery(cdp);
+    await releaseDiscovery(cdp, objectGroup);
   }
 }
 
@@ -107,11 +123,10 @@ function logged<T>(empty: T): (error: unknown) => T {
  * Release the discovery result and the objects read from it.
  *
  * @param cdp - Connection to the page
+ * @param objectGroup - The discovery's object group
  */
-async function releaseDiscovery(cdp: CDPSender): Promise<void> {
-  await cdp
-    .send('Runtime.releaseObjectGroup', { objectGroup: FORM_DISCOVERY_GROUP })
-    .catch(logged(undefined));
+async function releaseDiscovery(cdp: CDPSender, objectGroup: string): Promise<void> {
+  await cdp.send('Runtime.releaseObjectGroup', { objectGroup }).catch(logged(undefined));
 }
 
 /**

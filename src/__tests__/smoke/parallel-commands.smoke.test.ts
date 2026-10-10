@@ -20,8 +20,8 @@ import {
 /** Rounds of parallel commands; the race showed in most rounds before the fix */
 const ROUNDS = 10;
 
-/** Parallel `dom a11y` calls per round */
-const PARALLEL_A11Y = 6;
+/** Parallel calls per round of commands that take no node id */
+const PARALLEL_CALLS = 6;
 
 /** Result of one command */
 interface Run {
@@ -65,7 +65,10 @@ async function parallelFailures(commands: string[][]): Promise<string[]> {
   const runs = await Promise.all(commands.map(run));
   return runs
     .filter((result) => result.exitCode !== 0)
-    .map((result) => `bdg ${result.args.join(' ')}: ${result.exitCode} ${result.stderr.trim()}`);
+    .map(
+      (result) =>
+        `bdg ${result.args.join(' ')}: ${result.exitCode} ${(result.stderr || result.stdout).trim()}`
+    );
 }
 
 void describe('Concurrent commands', () => {
@@ -98,12 +101,21 @@ void describe('Concurrent commands', () => {
     }
   });
 
+  void it('discovers the forms in parallel dom form calls', async () => {
+    for (let round = 1; round <= ROUNDS; round++) {
+      const failures = await parallelFailures(
+        Array.from({ length: PARALLEL_CALLS }, () => ['dom', 'form', '--json'])
+      );
+      assert.deepEqual(failures, [], `round ${round}`);
+    }
+  });
+
   void it('shows plain field values in parallel dom a11y calls', async () => {
     await bdg(['dom', 'fill', 'input[name="email"]', 'ada@example.com']);
     await bdg(['dom', 'fill', 'input[name="city"]', 'Paris']);
     for (let round = 1; round <= ROUNDS; round++) {
       const values = await Promise.all(
-        Array.from({ length: PARALLEL_A11Y }, async () => {
+        Array.from({ length: PARALLEL_CALLS }, async () => {
           const textboxes = JSON.parse(
             await bdg(['dom', 'a11y', 'query', 'role=textbox', '--json'])
           ) as { data: { nodes: Array<{ value?: string }> } };
