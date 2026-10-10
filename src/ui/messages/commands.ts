@@ -459,6 +459,25 @@ export const MINLENGTH_PLACEHOLDER = '<minlength>';
  */
 export const FILL_TOO_SHORT_WARNING = `The value is shorter than the field's minlength (${MINLENGTH_PLACEHOLDER}); the form will not submit until it is fixed`;
 
+/** Stands for the reason in {@link FILL_NOT_TYPED_WARNING} */
+export const NOT_TYPED_REASON_PLACEHOLDER = '<reason>';
+
+/**
+ * Warning shown when `dom fill` set a text field's value by script instead
+ * of typing it (other than for a cancelled `beforeinput`, which has its own
+ * warning); {@link NOT_TYPED_REASON_PLACEHOLDER} is replaced page-side by
+ * one of {@link FILL_NOT_TYPED_REASONS}.
+ */
+export const FILL_NOT_TYPED_WARNING = `The value was set by script, not typed (${NOT_TYPED_REASON_PLACEHOLDER}), so the browser does not apply minlength to it`;
+
+/** Why `dom fill` set a text field's value by script, by key */
+export const FILL_NOT_TYPED_REASONS = {
+  noFocus: 'the field did not take the focus',
+  unfocused: 'the field lost the focus before bdg typed',
+  failed: 'typing failed',
+  lost: 'the typed text did not reach the field',
+} as const;
+
 /**
  * Warning shown when a mouse press was dispatched but the target never
  * received it (e.g. a browser dialog or bubble captured the input).

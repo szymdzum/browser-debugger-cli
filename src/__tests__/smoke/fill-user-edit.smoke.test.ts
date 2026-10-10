@@ -293,11 +293,22 @@ void describe('dom fill when the page moves the focus as it types (#592)', () =>
     }
   });
 
-  void it('sets the value without typing when the field lost the focus before', async () => {
+  void it('sets the value without typing, with a warning, when the field lost the focus before', async () => {
     const { exit, output } = await fill('#mt', 'Ada');
     assert.equal(exit, 0, output);
+    assert.match(
+      output,
+      /The value was set by script, not typed \(the field lost the focus before bdg typed\), so the browser does not apply minlength to it/
+    );
     assert.equal(await valueOf('mt'), 'Ada');
     assert.equal(await valueOf('vis'), '');
+  });
+
+  void it('warns when a field that cannot take the focus gets its value by script', async () => {
+    const { exit, output } = await fill('#gone', 'Ada');
+    assert.equal(exit, 0, output);
+    assert.match(output, /not typed \(the field did not take the focus\)/);
+    assert.equal(await valueOf('gone'), 'Ada');
   });
 
   void it('fills one-digit code fields whose input moves the focus to the next', async () => {

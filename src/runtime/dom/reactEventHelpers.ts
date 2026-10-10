@@ -26,8 +26,11 @@ import {
 import { FIND_ELEMENTS_JS, LABEL_CONTROL_JS } from '@/runtime/dom/targetNode.js';
 import {
   FILL_BEFOREINPUT_CANCELLED_WARNING,
+  FILL_NOT_TYPED_REASONS,
+  FILL_NOT_TYPED_WARNING,
   FILL_TOO_SHORT_WARNING,
   MINLENGTH_PLACEHOLDER,
+  NOT_TYPED_REASON_PLACEHOLDER,
   NO_BOX_CLICK_REASON,
 } from '@/ui/messages/commands.js';
 
@@ -321,6 +324,14 @@ const FOCUSED_FIELD_JS = `(documents) => {
 }`;
 
 /**
+ * Page-side {@link FILL_NOT_TYPED_WARNING} for a reason key of
+ * {@link FILL_NOT_TYPED_REASONS}.
+ */
+const NOT_TYPED_WARNING_JS = `(reason) => ${JSON.stringify(FILL_NOT_TYPED_WARNING)}
+  .split(${JSON.stringify(NOT_TYPED_REASON_PLACEHOLDER)})
+  .join(${JSON.stringify(FILL_NOT_TYPED_REASONS)}[reason])`;
+
+/**
  * Text field types whose value `dom fill` enters as a user edit
  * ({@link REACT_FILL_SCRIPT}): those `minlength` and `maxlength` apply to.
  */
@@ -612,8 +623,10 @@ export const REACT_FILL_SCRIPT = `
       };
     }
 
-    const userEdit = value !== '' && (${DEEP_FOCUSED_JS})(el) &&
+    const userEditType = value !== '' &&
       (tagName === 'textarea' || ${JSON.stringify(USER_EDIT_TYPES)}.includes(inputType));
+    const userEdit = userEditType && (${DEEP_FOCUSED_JS})(el);
+    if (userEditType && !userEdit) warnings.push((${NOT_TYPED_WARNING_JS})('noFocus'));
     if (userEdit) {
       if (previous !== '') setValue('');
       const pending = {
@@ -695,7 +708,8 @@ export const FILL_FOCUS_CHECK_SCRIPT = `(() => {
  * `input` event nor any text (the page cancelled `beforeinput`, or the text
  * never reached it), the value is set as for other fields: the native
  * setter, `input` (after a `beforeinput` when the field got none) and
- * `change`, with the cancelled-`beforeinput` warning when it was cancelled.
+ * `change`, with the cancelled-`beforeinput` warning when it was cancelled
+ * and otherwise {@link FILL_NOT_TYPED_WARNING} saying why it was not typed.
  * `change` is also fired when the field is not blurred (a blur fires it for
  * typed text). Evaluates to {@link FILL_DONE_JS}'s result, or null when
  * nothing was pending (the page navigated).
@@ -715,6 +729,7 @@ export const FILL_INSERTED_FUNCTION = `(reason) => {
   if (!inserted) {
     const cancelled = pending.sawBeforeinput || !(${FIRE_INPUT_EVENT_JS})(el, 'beforeinput', pending.value);
     if (cancelled) pending.warnings.push(${JSON.stringify(FILL_BEFOREINPUT_CANCELLED_WARNING)});
+    if (reason || !cancelled) pending.warnings.push((${NOT_TYPED_WARNING_JS})(reason || 'lost'));
     (${SET_NATIVE_VALUE_JS})(el, pending.value);
     (${FIRE_INPUT_EVENT_JS})(el, 'input', pending.value);
   }
