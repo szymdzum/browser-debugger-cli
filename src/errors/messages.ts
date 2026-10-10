@@ -1203,10 +1203,11 @@ function submitWaitDetail(waitNavigation: boolean, blockers: SubmitBlockers): st
  * `dom submit` refused, as the browser would: the form has invalid fields.
  *
  * @param fields - Invalid fields with the browser's messages
+ * @param omitted - Invalid fields left out
  * @returns e.g. "Form has invalid fields - email: Please fill out this field."
  */
-export function invalidFormMessage(fields: InvalidField[], _omitted = 0): string {
-  return `Form has invalid fields - ${invalidFieldsText(fields)}`;
+export function invalidFormMessage(fields: InvalidField[], omitted = 0): string {
+  return `Form has invalid fields - ${invalidFieldsText(fields, omitted)}`;
 }
 
 /**

@@ -264,6 +264,8 @@ export interface ClickResult extends ActionEffects {
    * started (absent when it submitted, or did not submit a form)
    */
   submitBlocked?: InvalidField[];
+  /** Fields that blocked it, left out of `submitBlocked` (it lists the first 5) */
+  submitBlockedOmitted?: number;
 }
 
 /** A form field that fails the browser's constraint validation */

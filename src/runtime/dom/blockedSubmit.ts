@@ -11,6 +11,7 @@ import type { InvalidField } from '@/ipc/protocol/domTypes.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { raceTimeout } from '@/utils/async.js';
 import { getErrorMessage } from '@/utils/errors.js';
+import { truncateByLength } from '@/utils/strings.js';
 
 const log = createLogger('dom');
 
@@ -19,6 +20,29 @@ const log = createLogger('dom');
  * (a navigation still pending) is not reported as blocked
  */
 const READ_TIMEOUT_MS = 250;
+
+/** Invalid fields a report lists; the rest are counted */
+const MAX_REPORTED_FIELDS = 5;
+
+/** Longest field name or validation message a report shows */
+const MAX_FIELD_TEXT_LENGTH = 200;
+
+/**
+ * Whether a character is a control character (C0, DEL, C1) or a bidi
+ * override, which page text may hold.
+ *
+ * @param char - One character
+ * @returns True for those
+ */
+function isControlCharacter(char: string): boolean {
+  const code = char.charCodeAt(0);
+  return (
+    code <= 0x1f ||
+    (code >= 0x7f && code <= 0x9f) ||
+    (code >= 0x202a && code <= 0x202e) ||
+    (code >= 0x2066 && code <= 0x2069)
+  );
+}
 
 /**
  * Page-side access to a form's own members through the prototypes: a named
@@ -115,24 +139,48 @@ export interface BoundedInvalidFields {
 }
 
 /**
- * Bound a form's invalid fields for a report.
+ * A page-provided name or message on one line: control characters and
+ * line breaks become spaces, runs of whitespace one space, cut to
+ * {@link MAX_FIELD_TEXT_LENGTH} characters.
+ *
+ * @param text - Name or message from the page
+ * @returns Text for a report
+ */
+function fieldText(text: string): string {
+  const spaced = Array.from(text, (char) => (isControlCharacter(char) ? ' ' : char)).join('');
+  const line = spaced.replace(/\s+/g, ' ').trim();
+  return truncateByLength(line, MAX_FIELD_TEXT_LENGTH);
+}
+
+/**
+ * Bound a form's invalid fields for a report: the first
+ * {@link MAX_REPORTED_FIELDS}, names and messages on one line and cut
+ * ({@link fieldText}).
  *
  * @param fields - Invalid fields as the page listed them
  * @returns The fields to report, and how many were left out
  */
 export function boundInvalidFields(fields: InvalidField[]): BoundedInvalidFields {
-  return { fields, omitted: 0 };
+  return {
+    fields: fields
+      .slice(0, MAX_REPORTED_FIELDS)
+      .map((f) => ({ field: fieldText(f.field), message: fieldText(f.message) })),
+    omitted: Math.max(0, fields.length - MAX_REPORTED_FIELDS),
+  };
 }
 
 /**
  * The fields that blocked a click's submit, read from the probe the click
- * left ({@link READ_SUBMIT_PROBE_SCRIPT}) within {@link READ_TIMEOUT_MS}.
+ * left ({@link READ_SUBMIT_PROBE_SCRIPT}) within {@link READ_TIMEOUT_MS},
+ * bounded ({@link boundInvalidFields}).
  *
  * @param cdp - Connection the click script ran on
  * @returns The invalid fields, or undefined when the submit was not blocked
  *   (or the page did not answer)
  */
-export async function readBlockedSubmit(cdp: CDPConnection): Promise<InvalidField[] | undefined> {
+export async function readBlockedSubmit(
+  cdp: CDPConnection
+): Promise<BoundedInvalidFields | undefined> {
   const read = async (): Promise<InvalidField[] | undefined> => {
     try {
       const reply = (await cdp.send('Runtime.evaluate', {
@@ -145,5 +193,6 @@ export async function readBlockedSubmit(cdp: CDPConnection): Promise<InvalidFiel
       return undefined;
     }
   };
-  return raceTimeout(read(), READ_TIMEOUT_MS);
+  const fields = await raceTimeout(read(), READ_TIMEOUT_MS);
+  return fields && boundInvalidFields(fields);
 }

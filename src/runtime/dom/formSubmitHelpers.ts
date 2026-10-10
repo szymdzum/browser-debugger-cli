@@ -13,7 +13,11 @@ import {
 } from '@/errors/messages.js';
 import type { PendingRequestInfo } from '@/ipc/protocol/commands.js';
 import type { InvalidField, SubmitResult } from '@/ipc/protocol/domTypes.js';
-import { FORM_MEMBERS_JS, INVALID_FIELDS_JS } from '@/runtime/dom/blockedSubmit.js';
+import {
+  boundInvalidFields,
+  FORM_MEMBERS_JS,
+  INVALID_FIELDS_JS,
+} from '@/runtime/dom/blockedSubmit.js';
 import { DISABLED_CAUSE_JS, ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
 import { throwIfInvalidSelector } from '@/runtime/dom/formFillHelpers/shared.js';
 import { FIND_ELEMENTS_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
@@ -276,6 +280,18 @@ class SubmissionWatcher {
 }
 
 /**
+ * A form's invalid fields as {@link invalidFormMessage} takes them, bounded
+ * ({@link boundInvalidFields}).
+ *
+ * @param fields - Invalid fields as the page listed them
+ * @returns The fields to name and how many were left out
+ */
+function invalidFieldsArgs(fields: InvalidField[]): [InvalidField[], number] {
+  const bounded = boundInvalidFields(fields);
+  return [bounded.fields, bounded.omitted];
+}
+
+/**
  * Submit the target: `requestSubmit()` for a form, a real click otherwise.
  *
  * @param cdp - CDP connection
@@ -304,7 +320,7 @@ async function triggerSubmit(
     const failure: SubmitResult = {
       success: false,
       error: prepared?.invalid
-        ? invalidFormMessage(prepared.invalid)
+        ? invalidFormMessage(...invalidFieldsArgs(prepared.invalid))
         : (prepared?.error ?? 'Could not submit'),
       selector,
       clicked: false,

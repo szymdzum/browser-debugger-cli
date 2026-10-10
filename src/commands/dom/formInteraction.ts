@@ -498,6 +498,7 @@ interface ActionNotices extends ActionEffects {
   triggeredRequests?: TriggeredRequest[] | undefined;
   triggeredRequestsOmitted?: number | undefined;
   submitBlocked?: InvalidField[] | undefined;
+  submitBlockedOmitted?: number | undefined;
 }
 
 /**
@@ -535,7 +536,9 @@ function formatActionOutput(
       submitBlocked: result.submitBlocked !== undefined,
     })
   );
-  if (result.submitBlocked) fmt.text(`⚠ ${submitBlockedNote(result.submitBlocked)}`);
+  if (result.submitBlocked) {
+    fmt.text(`⚠ ${submitBlockedNote(result.submitBlocked, result.submitBlockedOmitted)}`);
+  }
   if (result.warning) fmt.text(`⚠ Warning: ${result.warning}`);
   const pausedNoted = stillChanging && result.pending?.requests !== undefined;
   if (stillChanging && result.pending) {

@@ -231,13 +231,15 @@ export function actionStatusLine(
 
 /**
  * A form's invalid fields as `dom submit`'s error and a blocked click name
- * them.
+ * them, with how many more there were.
  *
  * @param fields - Invalid fields with the browser's messages
- * @returns e.g. "email: Please fill out this field.; pin: Please fill out this field."
+ * @param omitted - Invalid fields left out
+ * @returns e.g. "email: Please fill out this field.; pin: Please fill out this field.; and 2 more"
  */
-export function invalidFieldsText(fields: InvalidField[]): string {
-  return fields.map((field) => `${field.field}: ${field.message}`).join('; ');
+export function invalidFieldsText(fields: InvalidField[], omitted = 0): string {
+  const named = fields.map((field) => `${field.field}: ${field.message}`);
+  return [...named, ...(omitted > 0 ? [`and ${omitted} more`] : [])].join('; ');
 }
 
 /**
@@ -245,10 +247,11 @@ export function invalidFieldsText(fields: InvalidField[]): string {
  * constraint validation blocked.
  *
  * @param fields - Fields that blocked it
+ * @param omitted - Fields that blocked it, left out of `fields`
  * @returns e.g. "Submit blocked: email: Please fill out this field."
  */
-export function submitBlockedNote(fields: InvalidField[], _omitted = 0): string {
-  return `Submit blocked: ${invalidFieldsText(fields)}`;
+export function submitBlockedNote(fields: InvalidField[], omitted = 0): string {
+  return `Submit blocked: ${invalidFieldsText(fields, omitted)}`;
 }
 
 /**

@@ -20,6 +20,7 @@ import {
   watchActionEffects,
   type CollectedEffects,
 } from '@/runtime/dom/actionEffects.js';
+import type { BoundedInvalidFields } from '@/runtime/dom/blockedSubmit.js';
 import { UNBIND_TARGET_SCRIPT } from '@/runtime/dom/targetNode.js';
 import { toDownloadInfo } from '@/telemetry/downloads.js';
 import { createLogger } from '@/ui/logging/index.js';
@@ -36,6 +37,7 @@ interface InteractionReport extends ActionEffects {
   triggeredRequests?: TriggeredRequest[];
   triggeredRequestsOmitted?: number;
   submitBlocked?: InvalidField[];
+  submitBlockedOmitted?: number;
 }
 
 /** How an interaction is reported */
@@ -72,7 +74,7 @@ export interface InteractionOptions {
    * only when it neither navigated nor triggered a request (see
    * {@link blockedSubmit}).
    */
-  readBlockedSubmit?: () => Promise<InvalidField[] | undefined>;
+  readBlockedSubmit?: () => Promise<BoundedInvalidFields | undefined>;
   /**
    * How to answer the dialogs opened while it runs (`--dialog`,
    * `--prompt-text`; default: the session default)
@@ -163,15 +165,19 @@ async function blockedSubmit(
   read: InteractionOptions['readBlockedSubmit'],
   changes: CollectedEffects | undefined,
   requests: CollectedRequests | undefined
-): Promise<Pick<InteractionReport, 'submitBlocked'>> {
+): Promise<Pick<InteractionReport, 'submitBlocked' | 'submitBlockedOmitted'>> {
   if (!read || changes?.navigation || changes?.work?.navigating) return {};
   if (
     (requests?.triggeredRequests.length ?? 0) > 0 ||
     (requests?.triggeredRequestsOmitted ?? 0) > 0
   )
     return {};
-  const fields = await read();
-  return fields ? { submitBlocked: fields } : {};
+  const blocked = await read();
+  if (!blocked) return {};
+  return {
+    submitBlocked: blocked.fields,
+    ...(blocked.omitted > 0 && { submitBlockedOmitted: blocked.omitted }),
+  };
 }
 
 /**
