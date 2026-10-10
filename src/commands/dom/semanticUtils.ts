@@ -7,7 +7,7 @@
  */
 
 import type { DomContext } from '@/commands/dom/helpers/index.js';
-import { MASKED_VALUE, isLabelClass } from '@/runtime/dom/elementInfo.js';
+import { MASKED_VALUE, labelClasses } from '@/runtime/dom/elementInfo.js';
 import { synthesizeA11yNode } from '@/telemetry/roleInference.js';
 import type { A11yNode } from '@/types.js';
 import { keyAttributeItems } from '@/ui/formatters/keyAttributes.js';
@@ -44,8 +44,8 @@ function buildContextText(node: A11yNode, domContext: DomContext | null): string
 
   if (domContext) {
     const tagPart = `<${domContext.tag}`;
-    const classes = (domContext.classes ?? []).filter(isLabelClass).slice(0, 3);
-    const classPart = classes.length > 0 ? `.${classes.join('.')}` : '';
+    const { shown } = labelClasses(domContext.classes ?? [], 3);
+    const classPart = shown.length > 0 ? `.${shown.join('.')}` : '';
     const previewPart = domContext.preview && !domContext.text ? ` "${domContext.preview}"` : '';
     return ` ${tagPart}${classPart}>${previewPart}`;
   }

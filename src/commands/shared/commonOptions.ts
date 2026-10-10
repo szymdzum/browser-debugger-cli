@@ -51,3 +51,8 @@ export const SELECTOR_SCOPE_HELP = `
 Selectors search the page, open shadow roots and same-origin iframes (nested ones
 included). They cannot reach into closed shadow roots or cross-origin iframes:
 use bdg dom eval --frame <frame> for those (see bdg dom frames).`;
+
+/** Help text after `dom query`'s options: how a match's classes are shown */
+export const QUERY_CLASS_HELP = `
+Each match shows its first class and how many more it has (class="px-2 +4");
+the full list is in --json (classes) and bdg dom get <index>.`;

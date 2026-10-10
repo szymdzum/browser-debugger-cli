@@ -1,5 +1,6 @@
 import { MAX_VALUE_LENGTH } from '@/constants.js';
 import type { DomFrame } from '@/ipc/protocol/commands.js';
+import { labelClasses } from '@/runtime/dom/elementInfo.js';
 import type { DomQueryResult, DomGetResult, ScreenshotResult } from '@/types.js';
 import { keyAttributeItems } from '@/ui/formatters/keyAttributes.js';
 import { capForDisplay } from '@/ui/formatters/longValues.js';
@@ -20,7 +21,7 @@ import {
  * Format DOM query results for human-readable output.
  *
  * Displays found nodes with their index, tag, identifying attributes
- * ({@link queryTagAttributes}), classes, and preview text
+ * ({@link queryTagAttributes}), first class (`class="px-2 +4"`), and preview text
  * (plus where they are when outside the viewport or hidden, e.g.
  * `(below fold)`), as many as `--limit` listed, with a note for the rest (no match is an error, exit 83).
  * One line of next commands follows; they take the match's index, so they
@@ -85,11 +86,28 @@ function queryTagAttributes(node: DomQueryResult['nodes'][number]): string[] {
     ...(node.type && { type: node.type }),
     ...(node.value !== undefined && { value: node.value }),
   };
+  const classes = node.classes ? classAttribute(node.classes) : undefined;
   return [
     ...(node.id ? [`id="${node.id}"`] : []),
     ...keyAttributeItems(node.tag ?? '', { ...identifying, ...node.attributes }),
-    ...(node.classes?.length ? [`class="${node.classes.join(' ')}"`] : []),
+    ...(classes ? [classes] : []),
   ];
+}
+
+/**
+ * The class attribute of a `dom query` match's tag: its first class
+ * ({@link labelClasses}) and how many more it has, `class="px-2 +4"`, the
+ * same count `dom inspect` shows as `(+4)`. On utility-CSS pages the full
+ * list is most of a row; `--json` (`classes`) and `dom get` keep it whole.
+ *
+ * @param classes - The match's classes
+ * @returns `class="…"`, or undefined when the match has no class to show
+ */
+function classAttribute(classes: readonly string[]): string | undefined {
+  const { shown, more } = labelClasses(classes, 1);
+  const [first] = shown;
+  if (first === undefined) return undefined;
+  return `class="${first}${more > 0 ? ` +${more}` : ''}"`;
 }
 
 /**

@@ -22,6 +22,23 @@ export function isLabelClass(name: string): boolean {
 }
 
 /**
+ * The classes an element label shows ({@link isLabelClass}): the first
+ * `limit` of them, and how many more the element has. `dom inspect` prints
+ * them as `.a.b(+3)`, `dom query` as `class="a +4"`.
+ *
+ * @param classes - The element's classes
+ * @param limit - Classes shown
+ * @returns The shown classes and the count of the rest (0 when all are shown)
+ */
+export function labelClasses(
+  classes: readonly string[],
+  limit: number
+): { shown: string[]; more: number } {
+  const labelled = classes.filter(isLabelClass);
+  return { shown: labelled.slice(0, limit), more: Math.max(0, labelled.length - limit) };
+}
+
+/**
  * Page-side `(node) => string[]`: the element's classes shown in labels
  * ({@link isLabelClass}), read without array helpers a page may replace
  */
@@ -405,7 +422,7 @@ export const ELEMENT_CONTEXT_JS = `(() => {
     return hostTexts.get(host);
   };
   const describe = (node) => node.tagName.toLowerCase() + (node.id ? '#' + node.id : '');
-  const labelClasses = ${LABEL_CLASSES_JS};
+  const shownClasses = ${LABEL_CLASSES_JS};
   return (el) => {
     const parts = [];
     for (let doc = el.ownerDocument; doc && doc.defaultView && doc.defaultView.frameElement; ) {
@@ -416,7 +433,7 @@ export const ELEMENT_CONTEXT_JS = `(() => {
     const root = el.getRootNode();
     if (root.host) {
       const host = root.host;
-      const firstClass = labelClasses(host)[0];
+      const firstClass = shownClasses(host)[0];
       const label = describe(host) + (!host.id && firstClass ? '.' + firstClass : '');
       const text = hostText(host);
       parts.push('shadow root of <' + label + (text ? ' "' + text + '"' : '') + '>');
