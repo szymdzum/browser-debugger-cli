@@ -127,7 +127,9 @@ export async function fillElement(
     if (cdpResponse.result?.value && isFillResult(cdpResponse.result.value)) {
       const result: FillOutcome = cdpResponse.result.value;
       if (!result.fileInput) {
-        const filled = result.insertText ? await insertAsUser(cdp, value, result) : result;
+        const filled = result.insertText
+          ? await insertAsUser(cdp, { selector, value }, result)
+          : result;
         return withValueMismatchWarning(await withReadBack(cdp, withFillWarnings(filled)));
       }
       const uploaded = await setFileInput(cdp, selector, value, options);
@@ -169,24 +171,28 @@ type FilledField =
  * navigated) the fill script's result stands.
  *
  * @param cdp - CDP connection
- * @param value - Text to type
+ * @param fill - The selector filled and the text to type
  * @param pending - Result of the fill script, with `insertText`
  * @returns Fill outcome
  * @throws CommandError (exit 90) when the page moved the focus and the text
- *   went to another field
+ *   went to another field; ActionScriptError when the finishing script
+ *   threw (a page API it calls was replaced)
  */
 async function insertAsUser(
   cdp: CDPConnection,
-  value: string,
+  fill: { selector: string; value: string },
   pending: FillOutcome
 ): Promise<FillOutcome> {
   const { insertText: _typed, ...result } = pending;
-  const reason = await typeText(cdp, value);
+  const reason = await typeText(cdp, fill.value);
   const response = (await cdp.send('Runtime.evaluate', {
     expression: `(${FILL_INSERTED_FUNCTION})(${reason === null ? 'true' : 'false'})`,
     returnByValue: true,
     userGesture: true,
-  })) as { result?: { value?: unknown } };
+  })) as { result?: { value?: unknown }; exceptionDetails?: Protocol.Runtime.ExceptionDetails };
+  if (response.exceptionDetails) {
+    throw new ActionScriptError('fill', exceptionSummary(response.exceptionDetails), fill.selector);
+  }
   const done = response.result?.value as FilledField | null | undefined;
   if (!done) return result;
   if (done.typedInto !== undefined) {

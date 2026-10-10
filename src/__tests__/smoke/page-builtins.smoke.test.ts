@@ -113,6 +113,11 @@ void describe('page whose replaced built-ins break action scripts', () => {
       /The page replaced built-ins bdg's fill script uses \(.*EventTarget\.prototype\.dispatchEvent.*\), and the script failed: Error: anti-bot: dispatchEvent/
     );
     assert.match(
+      await bdg(['dom', 'fill', '#guarded-text', 'abc'], 90),
+      /The page replaced built-ins bdg's fill script uses \(.*EventTarget\.prototype\.dispatchEvent.*\), and the script failed: Error: anti-bot: dispatchEvent/,
+      'a text field set by events after it lost the focus'
+    );
+    assert.match(
       await bdg(['dom', 'click', '#guarded'], 90),
       /The page replaced built-ins bdg's click script uses \(.*Element\.prototype\.getBoundingClientRect.*\), and the script failed: Error: anti-bot: getBoundingClientRect/
     );
