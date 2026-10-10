@@ -46,12 +46,12 @@ Follow [Semantic Versioning](https://semver.org/). While the version is `0.x`, a
 
 On a branch from an up-to-date `main`:
 
-1. **CHANGELOG.md**: assemble the changelog fragments (`changes/*.md`, one per merged PR; see [changes/README.md](../changes/README.md)) together with everything already under `## [Unreleased]` into the new version's section:
+1. **CHANGELOG.md**: write the new version's section from the PRs merged since the last tag. PRs don't edit `CHANGELOG.md`; their descriptions are the source.
    ```bash
-   node scripts/changelog-assemble.mjs --check                 # all fragments valid
-   node scripts/changelog-assemble.mjs --version 0.X.Y         # date defaults to today (UTC); --date YYYY-MM-DD to set it
+   gh pr list --repo szymdzum/browser-debugger-cli --state merged --base main \
+     --search "merged:>=$(git log -1 --format=%cs v0.PREV)" --limit 200 --json number,title,body
    ```
-   `## [Unreleased]` becomes `## [0.X.Y] - YYYY-MM-DD` with sections in the order Breaking, Added, Changed, Fixed, Security, Internal (fragments in file name order, after the entries that were already there); a new, empty `## [Unreleased]` stays above it and the fragment files are deleted (`git add -A changes CHANGELOG.md`). Read the result once: reorder entries within a section if a different order reads better, and check that breaking entries say what to do.
+   Move anything under `## [Unreleased]` into `## [0.X.Y] - YYYY-MM-DD`, add one user-facing entry per change (with the PR or issue number), in the order Breaking, Added, Changed, Fixed, Security, Internal, and leave an empty `## [Unreleased]` above it. Changed defaults or contracts go under Changed; breaking entries say what to do. Skip PRs users won't notice (docs-only, test-only) unless they matter to contributors (Internal).
 2. **Version**: set `"version": "0.X.Y"` in `package.json` and in the two root entries of `package-lock.json` (or `npm version 0.X.Y --no-git-tag-version`).
 3. **README.md**: update if commands, requirements or install instructions changed.
 4. Check locally:
@@ -149,7 +149,7 @@ Editing a published release does not start the workflow again.
 
 - Release from `main` only, after the release PR's CI is green
 - Keep the CHANGELOG user-focused; put breaking changes under `Breaking` and say what to do
-- Between releases, PRs add fragments to `changes/` and never edit `CHANGELOG.md`, so they don't conflict with each other
+- Between releases, PRs never edit `CHANGELOG.md`, so they don't conflict with each other; the release PR writes it from their descriptions
 - Never reuse a version number; npm does not allow republishing a version
 - Thank contributors in the release notes, including those whose ideas shipped through other PRs
 - Don't publish breaking changes as a patch version
