@@ -269,34 +269,74 @@ export const ELEMENT_STATE_JS = `(el) => {
  * {@link MASKED_VALUE} (an empty one stays empty). Fields are judged on the
  * live page (a field masked by CSS only counts) and masked in a copy
  * imported into an inert document, so the page is not changed and no custom
- * element constructor runs. A document is read from its root element, after
- * its doctype. `html` is null for other nodes (text, comments), which hold no
- * fields; `sensitive` says whether the node itself is a sensitive field.
+ * element constructor runs.
+ *
+ * The `srcdoc` of an iframe in it is HTML text: it is parsed into an inert
+ * document (nested `srcdoc` too) and its fields are judged by the same rule
+ * on the parsed elements (all of it but the CSS check, which needs a
+ * rendered page); a `srcdoc` with a masked field is replaced by the parsed
+ * document serialised, one without stays as written. The text is judged
+ * rather than the live frame because the attribute is what is printed, and
+ * the frame's scripts may have changed its document since.
+ *
+ * A document is serialised child by child: its doctype in full (public and
+ * system ids), comments before and after the root element, and the root
+ * element masked. `html` is null for other nodes (text, comments), which
+ * hold no fields; `sensitive` says whether the node itself is a sensitive field.
  */
 export const MASKED_OUTER_HTML_JS = `(node) => {
   const isSensitive = ${SENSITIVE_FIELD_JS};
-  const root = node.nodeType === 9 ? node.documentElement : node;
-  if (!root || root.nodeType !== 1) return { html: null, sensitive: false };
-  const fieldsOf = (el) => {
-    const fields = /^(input|textarea)$/.test(el.localName) ? [el] : [];
-    const inside = el.querySelectorAll('input, textarea');
-    for (let i = 0; i < inside.length; i++) fields[fields.length] = inside[i];
-    return fields;
+  const isField = (el) => /^(input|textarea)$/.test(el.localName);
+  const within = (el, selector) => {
+    const found = el.matches(selector) ? [el] : [];
+    const inside = el.querySelectorAll(selector);
+    for (let i = 0; i < inside.length; i++) found[found.length] = inside[i];
+    return found;
   };
-  const copy = root.ownerDocument.implementation.createHTMLDocument('').importNode(root, true);
-  const live = fieldsOf(root);
-  const copies = fieldsOf(copy);
-  for (let i = 0; i < live.length; i++) {
-    const target = copies[i];
-    if (!target || !isSensitive(live[i])) continue;
-    if (target.localName === 'textarea') {
-      if (target.textContent) target.textContent = '${MASKED_VALUE}';
-    } else if (target.getAttribute('value')) {
-      target.setAttribute('value', '${MASKED_VALUE}');
+  const maskValue = (field) => {
+    if (field.localName === 'textarea') {
+      if (!field.textContent) return false;
+      field.textContent = '${MASKED_VALUE}';
+      return true;
     }
-  }
-  const doctype = node.nodeType === 9 && node.doctype ? '<!DOCTYPE ' + node.doctype.name + '>' : '';
-  return { html: doctype + copy.outerHTML, sensitive: live[0] === root && isSensitive(root) };
+    if (!field.getAttribute('value')) return false;
+    field.setAttribute('value', '${MASKED_VALUE}');
+    return true;
+  };
+  const serializeDocument = (doc, htmlOf) => {
+    let html = '';
+    for (let child = doc.firstChild; child; child = child.nextSibling) {
+      if (child.nodeType === 1) html += htmlOf(child);
+      else if (child.nodeType === 10) html += new XMLSerializer().serializeToString(child);
+      else if (child.nodeType === 8) html += '<!--' + child.data + '-->';
+    }
+    return html;
+  };
+  const maskTree = (live, copy) => {
+    let masked = false;
+    const liveFields = within(live, 'input, textarea');
+    const copyFields = within(copy, 'input, textarea');
+    for (let i = 0; i < liveFields.length; i++) {
+      if (copyFields[i] && isSensitive(liveFields[i]) && maskValue(copyFields[i])) masked = true;
+    }
+    const frames = within(copy, 'iframe[srcdoc]');
+    for (let i = 0; i < frames.length; i++) {
+      const doc = new DOMParser().parseFromString(frames[i].getAttribute('srcdoc'), 'text/html');
+      if (!doc.documentElement || !maskTree(doc.documentElement, doc.documentElement)) continue;
+      frames[i].setAttribute('srcdoc', serializeDocument(doc, (el) => el.outerHTML));
+      masked = true;
+    }
+    return masked;
+  };
+  const inert = (node.ownerDocument || node).implementation.createHTMLDocument('');
+  const maskedHTML = (el) => {
+    const copy = inert.importNode(el, true);
+    maskTree(el, copy);
+    return copy.outerHTML;
+  };
+  if (node.nodeType === 9) return { html: serializeDocument(node, maskedHTML), sensitive: false };
+  if (node.nodeType !== 1) return { html: null, sensitive: false };
+  return { html: maskedHTML(node), sensitive: isField(node) && isSensitive(node) };
 }`;
 
 /**

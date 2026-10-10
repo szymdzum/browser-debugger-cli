@@ -4,7 +4,8 @@
  * `dom get --raw` (one match or `--all`) and `dom get --node-id` show the
  * value of each field `dom query` masks as `••••`, in the outer HTML and in
  * the JSON attributes, for the field itself and for fields inside the
- * element read (a form); other values stay as they are.
+ * element read (a form, the `srcdoc` of an iframe in it); other values stay
+ * as they are.
  */
 
 import * as assert from 'node:assert/strict';
@@ -177,5 +178,43 @@ void describe('Secrets in raw HTML (#583)', () => {
     assert.match(html, /^<!DOCTYPE html><html>/);
     assert.doesNotMatch(html, RAW_SECRETS);
     assert.match(html, /<input id="pass" name="pass" type="password" value="••••">/);
+  });
+
+  void it('masks secret fields in iframe srcdoc attributes, nested ones too', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}raw-frames`]);
+    const framed = await bdg(['dom', 'get', '#framed', '--raw']);
+    assert.doesNotMatch(framed, /FRAMESECRET/);
+    assert.match(framed, /srcdoc="[^"]*value=&quot;••••&quot;/);
+    assert.match(framed, /name=&quot;note&quot; value=&quot;plain&quot;/);
+    const nested = await bdg(['dom', 'get', '#nested', '--raw', '--json']);
+    assert.doesNotMatch(nested, /DEEPSECRET/);
+    assert.match(nested, /••••/);
+    const page = await bdgJson<{ result: unknown }>([
+      'dom',
+      'eval',
+      'document.querySelector("#plain-frame").outerHTML',
+    ]);
+    assert.equal(
+      (await bdg(['dom', 'get', '#plain-frame', '--raw'])).trim(),
+      page.result,
+      'a srcdoc without secrets stays as written'
+    );
+  });
+
+  void it('keeps a legacy doctype and comments before <html> when reading a document', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}raw-legacy`]);
+    const document = await bdgJson<{ result: { root: { backendNodeId: number } } }>([
+      'cdp',
+      'DOM.getDocument',
+      '--params',
+      '{"depth":0}',
+    ]);
+    const html = await bdg(['dom', 'get', '--node-id', String(document.result.root.backendNodeId)]);
+    assert.match(
+      html,
+      /^<!DOCTYPE html PUBLIC "-\/\/W3C\/\/DTD HTML 4\.01\/\/EN" "http:\/\/www\.w3\.org\/TR\/html4\/strict\.dtd"><!-- served by the fixture server --><html>/
+    );
+    assert.doesNotMatch(html, /LegacySecret/);
+    assert.match(html, /<input id="legacy-pass" type="password" value="••••">/);
   });
 });

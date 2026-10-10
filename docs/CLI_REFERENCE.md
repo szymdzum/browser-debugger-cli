@@ -370,7 +370,7 @@ bdg dom get "h1" --raw --json                # HTML as JSON
 
 `--raw` prints the first 20000 characters of each element's HTML followed by `… N more chars (use --full)`; in `--json` an `outerHTML` over 20000 characters is cut with `truncatedFrom` (its original length). `--full` prints it whole.
 
-Secret values are masked in the HTML as `dom query` masks them (same rule, see `dom query`): the `value` attribute of a sensitive input reads `value="••••"` and a sensitive textarea's text `••••`, for the element read and for the fields inside it (`dom get form --raw`), with `--raw`, `--all` and `--node-id` alike; `--json` has the masked HTML and `attributes.value: "••••"`. The page itself is not changed. There is no opt-out (`dom query` has none either): read a value with `bdg dom eval`.
+Secret values are masked in the HTML as `dom query` masks them (same rule, see `dom query`): the `value` attribute of a sensitive input reads `value="••••"` and a sensitive textarea's text `••••`, for the element read and for the fields inside it (`dom get form --raw`), also inside an iframe's `srcdoc` (judged on the parsed text, without the CSS check; a `srcdoc` with a masked field is shown re-serialised), with `--raw`, `--all` and `--node-id` alike; `--json` has the masked HTML and `attributes.value: "••••"`. The page itself is not changed. There is no opt-out (`dom query` has none either): read a value with `bdg dom eval`.
 
 **Semantic vs Raw HTML:**
 
