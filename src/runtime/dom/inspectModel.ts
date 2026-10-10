@@ -60,6 +60,8 @@ export interface InspectSources {
   props?: string[];
   /** `--no-hints` */
   hints?: false;
+  /** The element hosts a closed shadow root */
+  closedShadowRoot?: true;
 }
 
 /** What the command asked for */
@@ -283,5 +285,10 @@ export function buildInspectResult(
   const result = header(sources, request);
   if (request.propValues) return { ...result, props: request.propValues };
   const body = request.all ? { all: allFields(sources) } : groups(sources);
-  return { ...result, ...body, ...treeFields(sources.raw, request.treeLimit) };
+  return {
+    ...result,
+    ...body,
+    ...treeFields(sources.raw, request.treeLimit),
+    ...(sources.closedShadowRoot && { shadowRootMode: 'closed' as const }),
+  };
 }

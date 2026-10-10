@@ -34,6 +34,7 @@ import type { IndexSource } from '@/types.js';
 import { joinLines } from '@/ui/formatting.js';
 import {
   inspectCascadeNote,
+  inspectClosedShadowRootLine,
   inspectAnimatingBadge,
   inspectMidTransitionNote,
   inspectDarkThemeBadge,
@@ -629,17 +630,20 @@ const RULE_LINE_WIDTH = 120;
 const CASCADE_VALUE_WIDTH = 60;
 
 /**
- * The tree block.
+ * The tree block, and for a closed shadow host a line saying where the
+ * children of its shadow root are found.
  *
  * @param data - Inspect result
  * @returns Lines (none without children)
  */
 function treeBlock(data: InspectOutput): string[] {
-  if (!data.children && !data.hiddenChildren) return [];
+  const closed = data.shadowRootMode === 'closed' ? [inspectClosedShadowRootLine()] : [];
+  if (!data.children && !data.hiddenChildren) return closed;
   return [
     'tree',
     ...treeLines(data.children ?? [], data.hiddenChildren, 1),
     ...(data.moreRows ? [`  … +${data.moreRows} more`] : []),
+    ...closed,
   ];
 }
 

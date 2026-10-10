@@ -1612,6 +1612,16 @@ function childrenHint(shadowRoot?: 'open' | 'closed'): string {
 }
 
 /**
+ * Tree line of `bdg dom inspect` for an element hosting a closed shadow
+ * root, whose children the tree cannot show.
+ *
+ * @returns e.g. `shadow closed root, not shown: …`
+ */
+export function inspectClosedShadowRootLine(): string {
+  return 'shadow closed root, not shown: bdg dom a11y query, e.g. role=textbox, lists its elements by index for dom fill, dom click and dom get';
+}
+
+/**
  * Note on a screenshot scaled down to keep its image token cost bounded.
  *
  * @param originalWidth - Captured width (CSS px)

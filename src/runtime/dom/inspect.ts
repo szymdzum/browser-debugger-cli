@@ -93,6 +93,8 @@ interface RelatedNodes {
   textHolder?: number;
   fontHolder?: number;
   pseudo: Array<{ type: PseudoSource['type']; backendNodeId: number }>;
+  /** The element hosts a closed shadow root (the page-side tree cannot see into it) */
+  closedShadowRoot?: true;
 }
 
 /**
@@ -435,6 +437,7 @@ async function readSources(
     ...(params.why && { why: params.why }),
     ...(params.props && { props: expandCustomPropertyPatterns(params.props, styles.style) }),
     ...(params.hints === false && { hints: false }),
+    ...(related.closedShadowRoot && { closedShadowRoot: true }),
   };
 }
 
@@ -490,7 +493,8 @@ async function relatedNode(
 
 /**
  * The backend node ids of the element, its layout parent, its text holder
- * (with the parent of its text nodes) and its generated pseudo-elements.
+ * (with the parent of its text nodes) and its generated pseudo-elements, and
+ * whether it hosts a closed shadow root.
  *
  * @param cdp - CDP connection
  * @param objectId - The element
@@ -520,6 +524,9 @@ async function relatedNodes(
     ...(textHolder && textHolder !== node.backendNodeId && { textHolder }),
     ...(fontHolder && { fontHolder }),
     pseudo,
+    ...(node.shadowRoots?.some((root) => root.shadowRootType === 'closed') && {
+      closedShadowRoot: true,
+    }),
   };
 }
 

@@ -219,6 +219,20 @@ void describe('Forms in shadow roots', () => {
     }
   });
 
+  void it('dom inspect on a closed shadow host says where its children are', async () => {
+    assert.match(
+      await bdg(['dom', 'inspect', 'x-vault']),
+      /^shadow closed root, not shown: bdg dom a11y query, e\.g\. role=textbox, lists its elements by index/m
+    );
+    const json = JSON.parse(await bdg(['dom', 'inspect', 'x-vault', '--json'])) as {
+      data: { shadowRootMode?: string };
+    };
+    assert.equal(json.data.shadowRootMode, 'closed');
+    const open = await bdg(['dom', 'inspect', 'x-login']);
+    assert.match(open, /\(shadow root\)/);
+    assert.doesNotMatch(open, /closed root/);
+  });
+
   void it('reaches a closed shadow root field the way the notes say: a11y query, then fill by index', async () => {
     const query = JSON.parse(await bdg(['dom', 'a11y', 'query', 'role=textbox', '--json'])) as {
       data: { nodes: Array<{ index: number; backendDOMNodeId: number }> };
