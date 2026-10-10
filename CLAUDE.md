@@ -73,8 +73,8 @@ throw new CommandError(
 );
 ```
 
-### Option Behaviors (`src/commands/optionBehaviors.ts`)
-When adding commands/flags with non-obvious behaviors, register in `OPTION_BEHAVIORS`:
+### Option Behaviors (`src/commands/optionBehaviors/<area>.ts`)
+When adding commands/flags with non-obvious behaviors, add an entry to the table of the command's area (`domActions.ts`, `network.ts`, `session.ts`, ...); `src/commands/optionBehaviors.ts` merges the tables into `OPTION_BEHAVIORS`, and a new area file goes into its `BEHAVIOR_TABLES`. Keys are `<last command name>:--long-flag`; a unit test rejects keys that match no option or appear in two tables:
 ```typescript
 'commandName:--flag': {
   default: 'What happens without this flag',
@@ -153,6 +153,12 @@ All indices are 0-based everywhere (query output, `--index` option, `dom get`).
 **Do NOT include Claude Code attribution** - no footers, no Co-Authored-By.
 
 **Never auto-commit** - implement changes, show diff, wait for user approval.
+
+## Pull Requests and Changelog
+
+- **Changelog: one fragment per PR, never edit `CHANGELOG.md` directly.** Add `changes/<issue>-<slug>.md` with front matter `section: Breaking|Added|Changed|Fixed|Security|Internal` and the entry as a list item (format and examples: `changes/README.md`). CI validates fragments (`node scripts/changelog-assemble.mjs --check`); the release PR assembles them (`docs/RELEASE_PROCESS.md`).
+- **Fixture pages for smoke tests:** add a module to `src/__testutils__/fixturePages/` exporting `ROUTES: FixtureRoutes` (path → HTML) with a TSDoc header describing its pages. The fixture server picks it up; don't edit `fixtureServer.ts` for static pages.
+- **The implementer opens the PR** (draft until the gates pass), with a body that says what changed, why, and how it was verified (test commands, CI run IDs).
 
 ---
 

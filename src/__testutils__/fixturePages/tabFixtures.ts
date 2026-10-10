@@ -10,6 +10,8 @@
  * closes on its own.
  */
 
+import type { FixtureRoutes } from '@/__testutils__/fixtureRoutes.js';
+
 /** The opener */
 const TABS_HTML = `<!doctype html><title>Opener</title>
 <button id="open-popup" onclick="window.open('/tabs-popup', 'signin', 'width=420,height=520')">Sign in</button>
@@ -44,7 +46,7 @@ const TABS_SELFCLOSE_HTML = `<!doctype html><title>Self-closing</title>
 <h1 id="selfclose">Closing soon</h1>`;
 
 /** Pages by path */
-export const TAB_ROUTES: Record<string, string> = {
+export const ROUTES: FixtureRoutes = {
   '/tabs': TABS_HTML,
   '/tabs-popup': TABS_POPUP_HTML,
   '/tabs-tab': TABS_TAB_HTML,

@@ -11,7 +11,7 @@ import { describe, it } from 'node:test';
 import type { Command } from 'commander';
 
 import { generateMachineReadableHelp } from '@/commands/helpJson.js';
-import { behaviorKey, listBehaviorKeys } from '@/commands/optionBehaviors.js';
+import { BEHAVIOR_TABLES, behaviorKey, listBehaviorKeys } from '@/commands/optionBehaviors.js';
 import { buildProgram } from '@/program.js';
 
 /**
@@ -32,6 +32,12 @@ void describe('OPTION_BEHAVIORS', () => {
     const resolved = new Set(optionKeys(buildProgram()));
     const dead = listBehaviorKeys().filter((key) => !resolved.has(key));
     assert.deepEqual(dead, []);
+  });
+
+  it('no key is in two area tables', () => {
+    const keys = BEHAVIOR_TABLES.flatMap((table) => Object.keys(table));
+    const repeated = keys.filter((key, index) => keys.indexOf(key) !== index);
+    assert.deepEqual(repeated, []);
   });
 
   it('documents the root --headless, --no-headless and --all in help JSON', () => {

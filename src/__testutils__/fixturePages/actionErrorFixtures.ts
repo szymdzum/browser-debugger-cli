@@ -20,6 +20,8 @@
  * state is shown in `#controlled-state`.
  */
 
+import type { FixtureRoutes } from '@/__testutils__/fixtureRoutes.js';
+
 /** Page whose controls make errors */
 const ACTION_ERRORS_HTML = `<!doctype html><title>action errors</title>
 <button id="quiet" onclick="document.title = 'quiet clicked'">Quiet</button>
@@ -85,7 +87,7 @@ const ACTION_ERRORS_TARGET_HTML = `<!doctype html><title>action errors target</t
 <p>Target</p>`;
 
 /** Pages by path */
-export const ACTION_ERROR_ROUTES: Record<string, string> = {
+export const ROUTES: FixtureRoutes = {
   '/action-errors': ACTION_ERRORS_HTML,
   '/action-errors-target': ACTION_ERRORS_TARGET_HTML,
 };

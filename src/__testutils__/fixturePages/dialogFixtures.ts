@@ -9,6 +9,8 @@
  * loads (`window.loaded`).
  */
 
+import type { FixtureRoutes } from '@/__testutils__/fixtureRoutes.js';
+
 /** Buttons that open dialogs, and a link guarded by beforeunload */
 const DIALOGS_HTML = `<!doctype html><title>dialogs</title>
 <button id="conf" onclick="window.confirmed = confirm('Sure?')">Delete</button>
@@ -31,7 +33,7 @@ const DIALOGS_LOAD_HTML = `<!doctype html><title>dialogs on load</title>
 <script>window.loaded = confirm('Continue loading?');</script>`;
 
 /** Dialog pages by path */
-export const DIALOG_ROUTES: Record<string, string> = {
+export const ROUTES: FixtureRoutes = {
   '/dialogs': DIALOGS_HTML,
   '/dialogs-load': DIALOGS_LOAD_HTML,
   '/dialogs-load-2': DIALOGS_LOAD_HTML,

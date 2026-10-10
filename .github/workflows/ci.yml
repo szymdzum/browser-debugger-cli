@@ -169,6 +169,11 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Every fragment in changes/ (section exists, entry not empty), so a bad
+      # one fails here and not at release time. See changes/README.md.
+      - name: Validate changelog fragments
+        run: node scripts/changelog-assemble.mjs --check
+
   test:
     name: Contract Tests (Node ${{ matrix.node }})
     runs-on: ubuntu-latest

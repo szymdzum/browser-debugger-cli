@@ -29,13 +29,9 @@
  * `/downloads` links to `/report-download` (an attachment of 15 bytes, also
  * opened in a new tab by a `target=_blank` link and by `window.open()`) and
  * `/slow-download` (an attachment whose second half is held back until
- * `/slow-download/release` is requested). Pages for
- * frame order, rejections and framework listeners come from
- * `knownLimitFixtures.ts`; the `dom inspect` pages from `inspectFixtures.ts`;
- * the shadow root form pages from `shadowFormFixtures.ts`; the pages whose
- * actions throw from `actionErrorFixtures.ts`; the dialog pages from
- * `dialogFixtures.ts`; the Chrome Issues pages from `issueFixtures.ts`; the
- * pages that open tabs and windows from `tabFixtures.ts`.
+ * `/slow-download/release` is requested). More pages come from the modules
+ * in `fixturePages/` (see `fixtureRoutes.ts`): add a module there for new
+ * static pages instead of editing this file.
  */
 
 import * as fs from 'fs';
@@ -46,13 +42,8 @@ import { fileURLToPath } from 'url';
 
 import { WebSocketServer } from 'ws';
 
-import { ACTION_ERROR_ROUTES } from '@/__testutils__/actionErrorFixtures.js';
-import { DIALOG_ROUTES } from '@/__testutils__/dialogFixtures.js';
-import { INSPECT_ROUTES } from '@/__testutils__/inspectFixtures.js';
-import { ISSUE_MISSING_STYLESHEET, ISSUE_ROUTES } from '@/__testutils__/issueFixtures.js';
-import { KNOWN_LIMIT_ROUTES } from '@/__testutils__/knownLimitFixtures.js';
-import { SHADOW_FORM_ROUTES } from '@/__testutils__/shadowFormFixtures.js';
-import { TAB_ROUTES } from '@/__testutils__/tabFixtures.js';
+import { ISSUE_MISSING_STYLESHEET } from '@/__testutils__/fixturePages/issueFixtures.js';
+import { loadFixtureRoutes } from '@/__testutils__/fixtureRoutes.js';
 
 const FIXTURES_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -560,6 +551,7 @@ export interface FixtureServer {
 export async function startFixtureServer(): Promise<FixtureServer> {
   const html = fs.readFileSync(FIXTURE_HTML);
   const interactionsHtml = fs.readFileSync(INTERACTIONS_HTML);
+  const pages = await loadFixtureRoutes();
   let loginFailed = false;
   const heldDownloads = new Set<http.ServerResponse>();
   const beacons: string[] = [];
@@ -684,17 +676,10 @@ export async function startFixtureServer(): Promise<FixtureServer> {
       res.end(LAYOUT_HTML);
       return;
     }
-    const knownLimitPage =
-      KNOWN_LIMIT_ROUTES[req.url ?? ''] ??
-      INSPECT_ROUTES[req.url ?? ''] ??
-      SHADOW_FORM_ROUTES[req.url ?? ''] ??
-      ACTION_ERROR_ROUTES[req.url ?? ''] ??
-      DIALOG_ROUTES[req.url ?? ''] ??
-      ISSUE_ROUTES[req.url ?? ''] ??
-      TAB_ROUTES[req.url ?? ''];
-    if (knownLimitPage !== undefined) {
+    const page = pages.get(req.url ?? '');
+    if (page !== undefined) {
       res.writeHead(200, { 'Content-Type': 'text/html' });
-      res.end(knownLimitPage);
+      res.end(page);
       return;
     }
     if (req.url === '/eval-frames') {
