@@ -136,7 +136,7 @@ bdg() { node <absolute path to ../bdg-<N>>/dist/index.js "$@"; }
 - Clean up at the end: `bdg stop`, kill your own PIDs.
 - Run `ls -A ~/Downloads` before and after; nothing may appear there.
 
-**Report** the build you tested (`git -C <worktree> rev-parse --short HEAD`), then per task, in the scenario report format: result (works / partly / broken), ease 1–10, command counts (bdg, `dom eval`, screenshots), bugs (exact command, expected vs actual output, exit code), friction, and how you discovered the right command. Then the `~/Downloads` diff.
+**Report** the build you tested (`<head sha>`, given here), then per task, in the scenario report format: result (works / partly / broken), ease 1–10, command counts (bdg, `dom eval`, screenshots), bugs (exact command, expected vs actual output, exit code), friction, and how you discovered the right command. Then the `~/Downloads` diff.
 
 Be concise.
 
@@ -145,7 +145,7 @@ After a fresh-agent round, one agent reproduces every finding about older code o
 
 ---
 
-Verify the findings below against bdg on current `main`: the worktree `../bdg-verify` is checked out and built for you (`export PATH="$HOME/.nvm/versions/node/v22.15.0/bin:$PATH"`, `bdg() { node <absolute path to ../bdg-verify>/dist/index.js "$@"; }`, `BDG_SESSION_DIR=/tmp/verify-<date>`). Note the commit you tested (`git -C ../bdg-verify rev-parse --short HEAD`) for your report. Start the fixtures from that worktree when a finding needs them (`cd ../bdg-verify && npx tsx src/__testutils__/serveFixtures.ts & echo $!`) and kill that PID at the end. Keep **one bdg session at a time**: other agents may be running smoke suites on this machine.
+Verify the findings below against bdg on `main` at commit `<sha>`, checked out and built for you at `<absolute path of the verify worktree>` (`export PATH="$HOME/.nvm/versions/node/v22.15.0/bin:$PATH"`, `bdg() { node <absolute path of the verify worktree>/dist/index.js "$@"; }`, `BDG_SESSION_DIR=/tmp/verify-<date>`). Start the fixtures from that directory when a finding needs them (`cd <absolute path of the verify worktree> && npx tsx src/__testutils__/serveFixtures.ts & echo $!`) and kill that PID at the end. Keep **one bdg session at a time**: other agents may be running smoke suites on this machine.
 
 For each finding: run the reported command (or the closest one that makes sense), paste the real output, and, when a few minutes of reading find it, name the cause with file:line. Classify it: **reproduced** (with the exact command, output and exit code), **not reproduced** (what happened instead), **by design** (where the docs or code say so, file:line), or **duplicate of** another finding or an open issue (`gh issue list --repo szymdzum/browser-debugger-cli --search "<words>"`). Group findings that share one root cause.
 
@@ -155,4 +155,4 @@ Findings:
 
 **Rules:** no git commands, no repo edits, no `pkill`/`killall`, don't touch `~/.bdg` or `~/Downloads`; `bdg stop` at the end.
 
-**Report.** The `main` commit you tested; one block per finding with the classification, command, output, exit code and (when found) the cause with file:line; then the groups. Be concise.
+**Report.** The commit given above; one block per finding with the classification, command, output, exit code and (when found) the cause with file:line; then the groups. Be concise.

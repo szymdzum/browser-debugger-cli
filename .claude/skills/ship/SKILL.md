@@ -144,7 +144,7 @@ Merge only when **all** hold. If one fails, fix it; don't negotiate it.
 - Wait for CI, the one way (background, `timeout` ≥ 1800000 ms). Wait for each expected **workflow by name**, because the PR workflows (`CI`, `Security`) are created at different moments and a loop over "all runs of the commit" can end when the first is done and the second doesn't exist yet:
   ```bash
   R=szymdzum/browser-debugger-cli; sha=<full sha>            # PR head or merge commit
-  for wf in CI Security; do
+  for wf in CI Security; do      # a PR based on another PR's branch gets no Security run (it triggers on base main only): wait for CI alone
     until [ "$(gh run list --repo $R --commit $sha --workflow $wf --json status -q '.[0].status')" = completed ]; do sleep 60; done
   done
   gh run list --repo $R --commit $sha --json name,conclusion -q '.[]|"\(.name) \(.conclusion)"'
