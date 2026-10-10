@@ -9,7 +9,10 @@
  * navigates to `/submit-blocked-done?q=ada` (routes match the whole URL),
  * and `<x-pay>`, whose closed shadow root holds a form with a required
  * field. Every form's `submit` is noted in `window.submitted` (the GET
- * form's too, before it navigates).
+ * form's too, before it navigates). `/submit-blocked-named` has forms whose
+ * named controls shadow form members (`addEventListener`,
+ * `removeEventListener`; `noValidate`, `elements`, `checkValidity`,
+ * `isConnected`), each with required fields left empty.
  */
 
 import type { FixtureRoutes } from '@/__testutils__/fixtureRoutes.js';
@@ -49,6 +52,14 @@ const SUBMIT_BLOCKED_HTML = `<!doctype html><title>submit blocked</title>
   });
 </script>`;
 
+/** Forms whose named controls shadow the form's own members */
+const SUBMIT_BLOCKED_NAMED_HTML = `<!doctype html><title>named controls</title>
+<script>document.addEventListener('submit', (event) => event.preventDefault());</script>
+<form id="listen"><input name="addEventListener" required><input name="removeEventListener">
+  <button id="listen-go">Go</button></form>
+<form id="state"><input name="noValidate"><input name="elements" required><input name="checkValidity">
+  <input name="isConnected"><button id="state-go">Go</button></form>`;
+
 /** Where the GET form goes with its value */
 const SUBMIT_BLOCKED_DONE_HTML = '<!doctype html><title>searched</title><h1>Results</h1>';
 
@@ -56,4 +67,5 @@ const SUBMIT_BLOCKED_DONE_HTML = '<!doctype html><title>searched</title><h1>Resu
 export const ROUTES: FixtureRoutes = {
   '/submit-blocked': SUBMIT_BLOCKED_HTML,
   '/submit-blocked-done?q=ada': SUBMIT_BLOCKED_DONE_HTML,
+  '/submit-blocked-named': SUBMIT_BLOCKED_NAMED_HTML,
 };

@@ -10,7 +10,9 @@
  * Unchanged: a click that submits (also one that navigates, and one whose
  * submit handler empties a required field), a click on a `type=button`, on
  * a `formnovalidate` button, in a `novalidate` form, and a click the page
- * cancels.
+ * cancels. Forms whose named controls shadow form members
+ * (`/submit-blocked-named`: `addEventListener`, `noValidate`, `elements`…)
+ * are clicked, reported and named by `dom submit` like any other.
  *
  * Each test loads its page again (`page navigate`, which waits for the
  * load), so no test sees another's fields or focus. The checks read the
@@ -196,5 +198,35 @@ void describe('which clicks report a blocked submit', () => {
     const data = (await clickJson('#search-go')) as ClickJson & { navigation?: { url: string } };
     assert.equal(data.submitBlocked, undefined);
     assert.match(data.navigation?.url ?? '', /\/submit-blocked-done\?q=ada$/);
+  });
+});
+
+void describe('forms whose named controls shadow form members', () => {
+  /** The browser's message for an empty required field */
+  let requiredMessage: unknown;
+
+  beforeEach(async () => {
+    await bdg(['page', 'navigate', `${fixture.url}submit-blocked-named`]);
+    requiredMessage = await evaluate(
+      "document.querySelector('#listen').querySelectorAll('input')[0].validationMessage"
+    );
+  });
+
+  void it('clicks and reports a form with controls named addEventListener', async () => {
+    const data = await clickJson('#listen-go');
+    assert.deepEqual(data.submitBlocked, [{ field: 'addEventListener', message: requiredMessage }]);
+  });
+
+  void it('reports a form with controls named noValidate, elements and checkValidity', async () => {
+    const data = await clickJson('#state-go');
+    assert.deepEqual(data.submitBlocked, [{ field: 'elements', message: requiredMessage }]);
+  });
+
+  void it('dom submit names the invalid fields of such a form', async () => {
+    const output = await bdg(['dom', 'submit', '#state'], 81);
+    assert.ok(
+      output.includes(`Form has invalid fields - elements: ${String(requiredMessage)}`),
+      `no invalid field line: ${output}`
+    );
   });
 });
