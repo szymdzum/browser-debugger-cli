@@ -215,6 +215,7 @@ export async function startSession(
       viewport: options.viewport,
       colorScheme: options.colorScheme,
       dialog: options.dialog,
+      state: options.state,
     }),
   });
 
@@ -537,6 +538,30 @@ export async function pageClose(
   params: NoType<(typeof COMMANDS)['page_close']['requestSchema']>
 ): Promise<ClientResponse<'page_close'>> {
   return sendCommand('page_close', params);
+}
+
+/**
+ * Read the session's cookies and storage (values included, for the state file).
+ *
+ * @param params - Origins to read (default: the page's)
+ * @returns The state
+ */
+export async function stateSave(
+  params: NoType<(typeof COMMANDS)['state_save']['requestSchema']>
+): Promise<ClientResponse<'state_save'>> {
+  return sendCommand('state_save', params);
+}
+
+/**
+ * Restore cookies and storage into the session, then reload unless asked not to.
+ *
+ * @param params - State and whether to reload
+ * @returns What was restored (counts)
+ */
+export async function stateLoad(
+  params: NoType<(typeof COMMANDS)['state_load']['requestSchema']>
+): Promise<ClientResponse<'state_load'>> {
+  return sendCommand('state_load', params);
 }
 
 /** Run form discovery and return the raw structured form data. */

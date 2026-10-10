@@ -38,6 +38,18 @@ bdg -q dom query "a"          # -q: minimal output, no "Next:" hints
 
 Sessions run until `bdg stop` (no timeout). With an HMR dev server, start once and keep it running: the page updates itself, then re-run `dom inspect` / `console`.
 
+### Keep a Login Across Sessions
+
+`bdg stop` drops session cookies (most dev-server logins) and sessionStorage. Save the auth state once logged in, then start with it:
+
+```bash
+bdg state save /tmp/login.json                  # Cookies (session + HttpOnly), localStorage, sessionStorage of the page's origins
+bdg stop && bdg <url>/dashboard --state /tmp/login.json   # Restored before the first load: still logged in
+bdg --session other state load /tmp/login.json  # Into a running session (reloads; --no-reload to skip)
+```
+
+The file holds secrets (written 0600; keep it out of the repo). Output shows counts only. Mid-session `state load` restores storage only for origins the page has frames of; `--state` at start restores all. A missing file exits 83, a bad one 81.
+
 ### Navigate the Session Page
 
 ```bash

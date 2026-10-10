@@ -8,6 +8,7 @@ import type { IPCErrorCode } from './errors.js';
 
 import type { PageLoadingState } from '@/ipc/protocol/commands.js';
 import type { DialogAnswer, DialogInfo } from '@/ipc/protocol/domTypes.js';
+import type { AuthStateContent, StateSummary } from '@/ipc/protocol/stateTypes.js';
 import type { ColorScheme, TelemetryType, ViewportSize } from '@/types.js';
 
 /**
@@ -67,6 +68,8 @@ export interface SessionOptions {
   colorScheme?: ColorScheme;
   /** How dialogs no action chose an answer for are answered (`--dialog`). */
   dialog?: DialogAnswer;
+  /** Cookies and storage restored before the first navigation (`--state`). */
+  state?: AuthStateContent;
 }
 
 /**
@@ -101,6 +104,8 @@ export interface StartSessionResponseData {
   loading?: PageLoadingState;
   /** JavaScript dialogs answered while the session started (the page load included). */
   dialogs?: DialogInfo[];
+  /** What `--state` restored (counts only). */
+  state?: StateSummary;
   /** True if a stale session was auto-recovered before this one started. */
   recovered?: boolean;
   /** Target URL or ws URL of the stale session that was recovered, if recorded. */

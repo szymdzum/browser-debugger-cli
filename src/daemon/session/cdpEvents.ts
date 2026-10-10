@@ -14,7 +14,6 @@
  * cannot send the commands that would answer them.
  */
 
-import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -40,6 +39,7 @@ import type {
 import { cdpNotListeningError } from '@/ui/messages/cdpEvents.js';
 import { delay } from '@/utils/async.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { TEMP_FILE_FLAGS, tempPathFor } from '@/utils/safeFile.js';
 
 /** What events are subscribed on (the session's CDP connection) */
 export interface EventSource {
@@ -63,34 +63,6 @@ function onPageEvent(
  * and counted, rather than piling up in the daemon's memory.
  */
 const MAX_PENDING_WRITE_BYTES = 64 * 1024 * 1024;
-
-/** Flags of a temp file: created new (never an existing file or a symlink) */
-const TEMP_FILE_FLAGS =
-  fs.constants.O_WRONLY |
-  fs.constants.O_CREAT |
-  fs.constants.O_EXCL |
-  (fs.constants.O_NOFOLLOW ?? 0);
-
-/** Temp files created by this daemon, for unique names */
-let tempFileCount = 0;
-
-/** Longest file name most file systems allow, in bytes */
-const MAX_NAME_BYTES = 255;
-
-/**
- * Path of a new temp file next to a target: `.<name>.<pid>.<n>.tmp`, with
- * a hash of the name instead when the name leaves no room for the suffix.
- *
- * @param file - Absolute path of the target
- * @returns Temp file path
- */
-function tempPathFor(file: string): string {
-  const suffix = `.${process.pid}.${++tempFileCount}.tmp`;
-  const name = path.basename(file);
-  const fits = Buffer.byteLength(`.${name}${suffix}`) <= MAX_NAME_BYTES;
-  const stem = fits ? name : createHash('sha256').update(name).digest('hex').slice(0, 16);
-  return path.join(path.dirname(file), `.${stem}${suffix}`);
-}
 
 /**
  * An NDJSON file events are written to, one per line. They go to a new temp

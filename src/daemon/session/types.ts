@@ -1,4 +1,5 @@
 import type { DialogAnswer } from '@/ipc/protocol/domTypes.js';
+import type { AuthStateContent } from '@/ipc/protocol/stateTypes.js';
 import type { ColorScheme, TelemetryType, ViewportSize } from '@/types.js';
 
 export interface SessionConfig {
@@ -19,4 +20,6 @@ export interface SessionConfig {
   colorScheme?: ColorScheme;
   /** How dialogs no action chose an answer for are answered (`--dialog`; default accept) */
   dialog?: DialogAnswer;
+  /** Cookies and storage to restore before the first navigation (`--state`); dropped once restored */
+  state?: AuthStateContent;
 }

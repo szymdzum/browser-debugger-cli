@@ -445,6 +445,7 @@ async function sendStart(
         viewport: options.viewport,
         colorScheme: options.colorScheme,
         dialog: options.dialog,
+        state: options.state,
       }),
       interrupt
     );
@@ -598,6 +599,7 @@ function reportStartOutcome(outcome: StartOutcome, options: SessionStartOptions)
       ...(data.documentStatus !== undefined && { documentStatus: data.documentStatus }),
       ...(data.loading && { loading: data.loading }),
       ...(data.dialogs && { dialogs: data.dialogs }),
+      ...(data.state && { state: data.state }),
       port: data.port,
       ...(data.chromePid > 0 ? { chromePid: data.chromePid } : { externalChrome: true }),
       daemonPid: data.daemonPid,
@@ -610,6 +612,7 @@ function reportStartOutcome(outcome: StartOutcome, options: SessionStartOptions)
       ...(data.documentStatus !== undefined && { documentStatus: data.documentStatus }),
       ...(data.loading && { loading: data.loading }),
       ...(data.dialogs && { dialogs: data.dialogs }),
+      ...(data.state && { state: data.state }),
       ...(autoStopAt && { autoStopAt }),
       ...(session && { session }),
     };

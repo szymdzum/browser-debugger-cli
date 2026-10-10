@@ -13,6 +13,7 @@ import { registerPageCommands } from '@/commands/page.js';
 import { registerPeekCommand } from '@/commands/peek.js';
 import { registerSessionsCommand } from '@/commands/sessions.js';
 import { registerStartCommands } from '@/commands/start.js';
+import { registerStateCommands } from '@/commands/state.js';
 import { registerStatusCommand } from '@/commands/status.js';
 import { registerStopCommand } from '@/commands/stop.js';
 import { registerTailCommand } from '@/commands/tail.js';
@@ -43,6 +44,7 @@ export const commandRegistry: CommandRegistrar[] = [
   registerSessionsCommand,
   registerStopCommand,
   registerCleanupCommand,
+  registerStateCommands,
 
   addCommandGroup('Data Inspection:'),
   registerPeekCommand,

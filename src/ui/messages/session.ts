@@ -7,9 +7,11 @@
 
 import type { PageLoadingState } from '@/ipc/protocol/commands.js';
 import type { DialogInfo } from '@/ipc/protocol/domTypes.js';
+import type { StateSummary } from '@/ipc/protocol/stateTypes.js';
 import { joinLines } from '@/ui/formatting.js';
 import { dialogResultText, pageLoadingWarning } from '@/ui/messages/commands.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
+import { startStateLine } from '@/ui/messages/stateMessages.js';
 
 /**
  * Options for the landing page display.
@@ -27,19 +29,23 @@ export interface LandingPageOptions {
   session?: string;
   /** JavaScript dialogs answered while the page loaded */
   dialogs?: DialogInfo[];
+  /** What `--state` restored */
+  state?: StateSummary;
 }
 
 /**
  * Lines shown under the target in both the full and the quiet start output:
- * the session name, an HTTP error of the page, a page still loading, the
- * dialogs answered while it loaded, and when the session stops by itself.
+ * what `--state` restored, the session name, an HTTP error of the page, a
+ * page still loading, the dialogs answered while it loaded, and when the
+ * session stops by itself.
  *
  * @param options - Landing page options
  * @returns Lines (empty when there is nothing to say)
  */
 export function startNotices(options: LandingPageOptions): string[] {
-  const { documentStatus, loading, autoStopAt, session, dialogs = [] } = options;
+  const { documentStatus, loading, autoStopAt, session, dialogs = [], state } = options;
   return [
+    ...(state ? [startStateLine(state)] : []),
     ...(session
       ? [
           `Session: ${session} (pass --session ${session} or set BDG_SESSION=${session} on every command)`,
