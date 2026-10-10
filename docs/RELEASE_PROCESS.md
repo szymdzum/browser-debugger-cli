@@ -32,7 +32,7 @@ Branch protection on `main` requires one status check, exactly `CI OK` (job `ci-
 - **CI OK** passes when Build, Code Quality, Contract Tests (Node 22/24/26) and Smoke Tests all succeeded or were skipped, and fails when any of them failed or was cancelled. Matrix changes don't touch the protection settings.
 - A docs-only PR (only `*.md`, `docs/**`, `.gitignore`, `LICENSE`) skips those jobs and still gets a green **CI OK**.
 - PRs run smoke on Node 22; `main` and the nightly run use Node 22/24/26, plus macOS smoke (Node 22, Google Chrome), which is not part of **CI OK**.
-- macOS smoke can be run on any branch by hand, to investigate macOS-only failures: `gh workflow run ci.yml --ref <branch> -f name_pattern="<test name>" -f repeat=5 -f debug=true`. Session logs are uploaded as the `smoke-logs-macos` artifact.
+- macOS smoke can be run on any branch by hand, to investigate macOS-only failures: `gh workflow run ci.yml --ref <branch> -f name_pattern="<test name>" -f repeat=5 -f node=22 -f debug=true`. Session logs are uploaded as the `smoke-logs-macos` artifact.
 - The security audit (`npm audit`) is report-only: it is not part of **CI OK**, so a new advisory doesn't block unrelated merges.
 - The Release workflow refuses a tag unless the `CI OK` job passed in a CI run from a push to `main` for the tagged commit (the audit and macOS smoke don't count). Two merges in quick succession can leave the middle commit without a push run (a queued run is replaced by the newer one), so tag the head of `main`.
 

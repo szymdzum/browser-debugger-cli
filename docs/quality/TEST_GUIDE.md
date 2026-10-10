@@ -252,7 +252,7 @@ A new or changed smoke test that asserts on timing (`settled`, `pending.*`, inte
 
 ```bash
 gh workflow run ci.yml --ref <branch> \
-  -f smoke_files=src/__tests__/smoke/interactions.smoke.test.ts -f repeat=10
+  -f smoke_files=src/__tests__/smoke/interactions.smoke.test.ts -f repeat=10 -f node=22
 gh run list --workflow ci.yml --branch <branch> --limit 1
 ```
 
@@ -260,6 +260,7 @@ Input quirks:
 
 - `smoke_files` takes a space-separated list of files or plain globs (`-f smoke_files="src/__tests__/smoke/eval.smoke.test.ts src/__tests__/smoke/downloads.smoke.test.ts"`). Don't use brace globs (`{eval,downloads}`): unquoted, your own shell expands them into separate arguments before `gh` sees them; list the files instead.
 - `name_pattern` narrows to tests whose name matches.
+- `node` is the one Node version of the Linux and macOS smoke jobs: `22` (default), `24` or `26`; any other value is rejected when you dispatch. Push and nightly runs use all three.
 - `debug=true` sets `BDG_DEBUG=1` for the CLI clients too; their debug lines on stderr break every test that parses `--json` output (#510). Use it only to collect daemon logs, not for the repeat run.
 
 ## Performance

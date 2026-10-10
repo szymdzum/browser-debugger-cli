@@ -52,10 +52,10 @@ function keepSessionDirs(): boolean {
 
 /**
  * A session directory for this process under {@link sessionDirParent},
- * removed when it exits (after
- * ending a session a test left running in it, which would otherwise be
- * orphaned without its files). With `BDG_TEST_KEEP_DIRS=1` the session is
- * still ended but the directory and its logs stay.
+ * removed when it exits (after ending a session a test left running in it,
+ * which would otherwise be orphaned without its files). With
+ * `BDG_TEST_KEEP_DIRS=1` the session is still ended but the directory and
+ * its logs stay.
  *
  * @returns Absolute path
  */
