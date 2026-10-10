@@ -3,13 +3,20 @@
 #   SMOKE_FILES   space-separated test files or globs (default: all smoke tests)
 #   NAME_PATTERN  only tests whose name matches (empty = all)
 #   REPEAT        how many times to run the selection (default: 1)
+#   TEST_TIMEOUT  --test-timeout in ms (default: 300000). Node 24+ applies it
+#                 to each test; Node 22 to each test file (its child processes
+#                 run without a timeout), so it must exceed the slowest file
+#                 (eval.smoke.test.ts, about 126 s on macOS). With
+#                 --test-force-exit, a file whose timed-out test left handles
+#                 open still exits.
 # Prints the spec report. In GitHub Actions, the tests that failed are also
 # listed in the job summary, per run. Exits non-zero when any run failed.
 set -u
 SMOKE_FILES="${SMOKE_FILES:-src/__tests__/smoke/*.smoke.test.ts}"
 REPEAT="${REPEAT:-1}"
+TEST_TIMEOUT="${TEST_TIMEOUT:-300000}"
 failed_list="$(mktemp)"
-args=(--test --test-concurrency=1
+args=(--test --test-concurrency=1 --test-timeout="$TEST_TIMEOUT" --test-force-exit
   --test-reporter=spec --test-reporter-destination=stdout
   --test-reporter=./scripts/failed-tests-reporter.mjs --test-reporter-destination="$failed_list")
 if [ -n "${NAME_PATTERN:-}" ]; then args+=(--test-name-pattern "$NAME_PATTERN"); fi
