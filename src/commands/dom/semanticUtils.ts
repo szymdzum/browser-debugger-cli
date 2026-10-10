@@ -115,7 +115,11 @@ export function formatSemanticNodeWithContext(data: SemanticNodeWithContext): st
   if (domContext?.childCount !== undefined && !node.name) {
     return joinLines(
       line,
-      emptyElementLine(domContext.children ?? [], domContext.childCount, domContext.shadowChildren)
+      emptyElementLine(
+        domContext.children ?? [],
+        domContext.childCount,
+        domContext.shadowChildren ? (domContext.shadowRootMode ?? 'open') : undefined
+      )
     );
   }
   return line;

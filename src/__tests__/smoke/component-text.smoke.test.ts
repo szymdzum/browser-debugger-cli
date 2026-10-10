@@ -85,6 +85,10 @@ void describe('Text web components render themselves', () => {
     );
   });
 
+  void it('shows the open shadow root children in dom inspect, where dom get points', async () => {
+    assert.match(await bdg(['dom', 'inspect', '#close']), /^ {2}button#icon \S+ \(shadow root\)/m);
+  });
+
   void it('measures an open display: contents dialog host by what it shows', async () => {
     const output = await bdg(['dom', 'layout', '#dialog']);
     assert.match(output, /x-dialog#dialog "Dialog title Dialog body" +\d+,\d+ 240×100 +visible/);

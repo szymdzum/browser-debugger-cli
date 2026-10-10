@@ -5,7 +5,9 @@
  * open shadow roots (nested ones included), with labels resolved inside the
  * root, secret values masked and indices that `dom fill` / `dom submit`
  * accept; a component whose closed shadow root holds fields is named as not
- * inspectable. The search form a component renders when it opens is listed
+ * inspectable, with the way to reach them (`dom a11y query`, then
+ * `dom fill <index>`), which works; `dom get` on that component says its
+ * root is closed instead of pointing to `dom inspect`. The search form a component renders when it opens is listed
  * once it is open (like MDN's search modal).
  */
 
@@ -197,6 +199,25 @@ void describe('Forms in shadow roots', () => {
     );
     const output = await bdg(['dom', 'form', '--all']);
     assert.match(output, /<x-vault> has a closed shadow root/);
+    assert.match(output, /reach them with bdg dom a11y query role=textbox, then bdg dom fill/);
+  });
+
+  void it('reaches a closed shadow root field the way the notes say: a11y query, then fill by index', async () => {
+    const query = JSON.parse(await bdg(['dom', 'a11y', 'query', 'role=textbox', '--json'])) as {
+      data: { nodes: Array<{ index: number; backendDOMNodeId: number }> };
+    };
+    let cardHolder: { index: number } | undefined;
+    for (const node of query.data.nodes) {
+      const html = await bdg(['dom', 'get', '--node-id', String(node.backendDOMNodeId)]);
+      if (html.includes('name="card-holder"')) cardHolder = node;
+    }
+    assert.ok(cardHolder, 'dom a11y query lists the field in the closed root');
+    await bdg(['dom', 'get', String(cardHolder.index)]);
+    await bdg(['dom', 'fill', String(cardHolder.index), 'Ada Lovelace']);
+    const after = JSON.parse(await bdg(['dom', 'a11y', 'query', 'role=textbox', '--json'])) as {
+      data: { nodes: Array<{ index: number; value?: string }> };
+    };
+    assert.equal(after.data.nodes[cardHolder.index]?.value, 'Ada Lovelace');
   });
 
   void it('dom get on a closed shadow host names the root closed, not dom inspect (#574)', async () => {

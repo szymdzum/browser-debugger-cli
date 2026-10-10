@@ -704,11 +704,11 @@ const UNSHOWN_CHILD = /^(SCRIPT|STYLE|LINK|TEMPLATE)$/;
  * there); scripts, styles and templates are left out.
  *
  * @param ref - Node reference
- * @returns The first {@link CHILDREN_LISTED} as `tag#id.class "label"`, how many there are, and whether they are in its shadow root
+ * @returns The first {@link CHILDREN_LISTED} as `tag#id.class "label"`, how many there are, and whether they are in its shadow root (and its mode)
  */
 async function childElements(
   ref: NodeRef
-): Promise<Pick<DomContext, 'children' | 'childCount' | 'shadowChildren'>> {
+): Promise<Pick<DomContext, 'children' | 'childCount' | 'shadowChildren' | 'shadowRootMode'>> {
   const response = await callCDP('DOM.describeNode', { ...ref, depth: 2, pierce: true });
   const node = (response.data?.result as Protocol.DOM.DescribeNodeResponse | undefined)?.node;
   const shadowRoot = node?.shadowRoots?.find((root) => root.shadowRootType !== 'user-agent');
@@ -718,7 +718,10 @@ async function childElements(
   return {
     children: elements.slice(0, CHILDREN_LISTED).map(childLabel),
     childCount: elements.length,
-    ...(shadowRoot && { shadowChildren: true }),
+    ...(shadowRoot && {
+      shadowChildren: true,
+      shadowRootMode: shadowRoot.shadowRootType === 'closed' ? 'closed' : 'open',
+    }),
   };
 }
 

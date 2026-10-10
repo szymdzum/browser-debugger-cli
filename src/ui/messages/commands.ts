@@ -160,13 +160,14 @@ export function formsInFrameMessage(url: string): string {
 
 /**
  * Note on a component whose closed shadow root holds form fields: page
- * scripts cannot reach a closed root, so `bdg dom form` cannot list them.
+ * scripts cannot reach a closed root, so `bdg dom form` cannot list them;
+ * the accessibility tree holds them, and `dom fill` accepts its query indices.
  *
  * @param host - Short name of the component, e.g. `x-vault#pay`
- * @returns e.g. "<x-vault> has a closed shadow root with form fields; closed shadow roots are not inspectable, so they are not listed"
+ * @returns e.g. "<x-vault> has a closed shadow root with form fields; closed shadow roots are not inspectable, so they are not listed; reach them with bdg dom a11y query role=textbox, then bdg dom fill <index> <value>"
  */
 export function closedShadowRootMessage(host: string): string {
-  return `<${host}> has a closed shadow root with form fields; closed shadow roots are not inspectable, so they are not listed`;
+  return `<${host}> has a closed shadow root with form fields; closed shadow roots are not inspectable, so they are not listed; reach them with bdg dom a11y query role=textbox, then bdg dom fill <index> <value>`;
 }
 
 /** Readiness of a form without visible, editable fields (e.g. only a hidden token) */
@@ -1574,21 +1575,40 @@ export function elementTextLine(text: string): string {
 }
 
 /**
- * What an element without text holds, in `bdg dom get` output.
+ * What an element without text holds, in `bdg dom get` output. A closed
+ * shadow root is out of reach of selectors and `bdg dom inspect`; its
+ * elements appear in the accessibility tree, whose query indices
+ * `dom fill`, `dom click` and `dom get` accept.
  *
  * @param children - First child elements, e.g. `iframe#app`
  * @param count - Number of child elements
- * @param inShadowRoot - The children are those of its shadow root (`--raw` does not show them)
+ * @param shadowRoot - Mode of the shadow root the children are in (`--raw` does not show them); none for light children
  * @returns e.g. `No text; holds 1 element: iframe (see its HTML with --raw)`,
- *   `No text; its shadow root holds 1 element: button "Close" (see it with bdg dom inspect)`
+ *   `No text; its shadow root holds 1 element: button "Close" (see it with bdg dom inspect)`,
+ *   `No text; its closed shadow root holds 1 element: form (selectors and dom inspect cannot reach it; …)`
  */
-export function emptyElementLine(children: string[], count: number, inShadowRoot = false): string {
-  const holder = inShadowRoot ? 'its shadow root holds' : 'holds';
-  if (count === 0)
-    return `No text and no child elements${inShadowRoot ? ' in its shadow root' : ''}`;
+export function emptyElementLine(
+  children: string[],
+  count: number,
+  shadowRoot?: 'open' | 'closed'
+): string {
+  const root = shadowRoot === 'closed' ? 'its closed shadow root' : 'its shadow root';
+  if (count === 0) return `No text and no child elements${shadowRoot ? ` in ${root}` : ''}`;
   const more = count > children.length ? `, … ${count - children.length} more` : '';
-  const hint = inShadowRoot ? 'see it with bdg dom inspect' : 'see its HTML with --raw';
-  return `No text; ${holder} ${pluralize(count, 'element')}: ${children.join(', ')}${more} (${hint})`;
+  const holder = shadowRoot ? `${root} holds` : 'holds';
+  return `No text; ${holder} ${pluralize(count, 'element')}: ${children.join(', ')}${more} (${childrenHint(shadowRoot)})`;
+}
+
+/**
+ * Where to see the children named by {@link emptyElementLine}.
+ *
+ * @param shadowRoot - Mode of the shadow root they are in; none for light children
+ * @returns A command that shows them
+ */
+function childrenHint(shadowRoot?: 'open' | 'closed'): string {
+  if (shadowRoot === 'closed')
+    return 'selectors and dom inspect cannot reach it; bdg dom a11y query, e.g. role=textbox, lists its elements by index for dom fill, dom click and dom get';
+  return shadowRoot ? 'see it with bdg dom inspect' : 'see its HTML with --raw';
 }
 
 /**
