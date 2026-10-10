@@ -45,6 +45,7 @@ import { inspectElement } from '@/runtime/dom/inspect.js';
 import { inspectLayout } from '@/runtime/dom/layout.js';
 import { onScriptTarget } from '@/runtime/dom/targetNode.js';
 import { waitForCondition } from '@/runtime/dom/wait.js';
+import { readAuthState, writeAuthState } from '@/runtime/page/authState.js';
 import { sendForBdgScript } from '@/runtime/page/bdgWorld.js';
 import { emulatePage, pageAppearance, type SessionEmulation } from '@/runtime/page/emulation.js';
 import { readDocumentReadyState } from '@/runtime/page/loadingState.js';
@@ -956,6 +957,17 @@ export function createCommandRegistry(
     page_switch: async (_cdp, params) => tabControl().switchTo(params.target),
 
     page_close: async (_cdp, params) => tabControl().close(params.target),
+
+    state_save: async (cdp, params) => readAuthState(cdp, params.origins),
+
+    state_load: async (cdp, params) => {
+      const restored = await writeAuthState(cdp, params.state);
+      if (params.reload === false) return restored;
+      const reload = await navigatePage(cdp, 'reload', {
+        pendingRequests: () => store.pendingNetworkRequests.values(),
+      });
+      return { ...restored, reload };
+    },
 
     page_emulate: async (cdp, params) => {
       const emulated = await emulatePage(cdp, emulation.get(), params, emulation.set);

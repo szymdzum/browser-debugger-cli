@@ -6,6 +6,7 @@ import { Option, type Command } from 'commander';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import { handleValidationError } from '@/commands/shared/handleValidationError.js';
 import { startSessionViaDaemon } from '@/commands/shared/startHelpers.js';
+import { readStateFile } from '@/commands/shared/stateFile.js';
 import { parseDialogAnswer, positiveIntRule } from '@/commands/shared/validation.js';
 import { PORT_OPTION_DESCRIPTION } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
@@ -21,8 +22,10 @@ import {
   unknownCommandError,
 } from '@/errors/messages.js';
 import type { DialogAnswer } from '@/ipc/protocol/domTypes.js';
+import type { AuthStateContent } from '@/ipc/protocol/stateTypes.js';
 import type { ColorScheme, TelemetryType, ViewportSize } from '@/types.js';
 import { startCommandHelpMessage } from '@/ui/messages/commands.js';
+import { START_STATE_OPTION_DESCRIPTION, STATE_FILE_WARNING } from '@/ui/messages/stateMessages.js';
 import { directoryProblem } from '@/utils/directories.js';
 import { hasDisplay } from '@/utils/display.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -62,6 +65,8 @@ export interface CollectorOptions {
   colorScheme?: string;
   /** How dialogs are answered unless an action chooses: accept or dismiss. */
   dialog?: string;
+  /** State file to restore before the first navigation. */
+  state?: string;
 }
 
 /**
@@ -162,7 +167,8 @@ export function applyCollectorOptions(command: Command): Command {
     .option(
       '--mobile',
       `Emulate a phone for the session: mobile viewport (${MOBILE_VIEWPORT.width}x${MOBILE_VIEWPORT.height} unless --viewport), touch, mobile user agent`
-    );
+    )
+    .option('--state <file>', `${START_STATE_OPTION_DESCRIPTION}. ${STATE_FILE_WARNING}`);
 }
 
 /** Viewport of `--mobile` without `--viewport` (a common phone, CSS px) */
@@ -243,6 +249,7 @@ function buildSessionOptions(options: CollectorOptions): {
   viewport: ViewportSize | undefined;
   colorScheme: ColorScheme | undefined;
   dialog: DialogAnswer | undefined;
+  state: AuthStateContent | undefined;
 } {
   const maxBodySizeRule = positiveIntRule({
     name: '--max-body-size',
@@ -285,6 +292,7 @@ function buildSessionOptions(options: CollectorOptions): {
     colorScheme:
       options.colorScheme !== undefined ? parseColorScheme(options.colorScheme) : undefined,
     dialog: options.dialog !== undefined ? parseDialogAnswer(options.dialog) : undefined,
+    state: options.state !== undefined ? readStateFile(expandHome(options.state)) : undefined,
   };
 }
 

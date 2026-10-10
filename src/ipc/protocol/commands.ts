@@ -28,6 +28,12 @@ import type {
 } from '@/ipc/protocol/domTypes.js';
 import type { InspectResult } from '@/ipc/protocol/inspectTypes.js';
 import type {
+  StateLoadCommand,
+  StateLoadData,
+  StateSaveCommand,
+  StateSaveData,
+} from '@/ipc/protocol/stateTypes.js';
+import type {
   PageCloseCommand,
   PageCloseData,
   PageSwitchCommand,
@@ -534,6 +540,8 @@ export type RegistryShape = {
   page_tabs: CommandDef<PageTabsCommand, PageTabsData>;
   page_switch: CommandDef<PageSwitchCommand, PageSwitchData>;
   page_close: CommandDef<PageCloseCommand, PageCloseData>;
+  state_save: CommandDef<StateSaveCommand, StateSaveData>;
+  state_load: CommandDef<StateLoadCommand, StateLoadData>;
 };
 
 /** What `bdg page` does */
@@ -687,6 +695,8 @@ export const COMMANDS: RegistryShape = {
   dom_inspect: defineCommand(),
   dom_screenshot: defineCommand(),
   dom_wait: defineCommand(),
+  state_save: defineCommand(),
+  state_load: defineCommand(),
 };
 
 /**

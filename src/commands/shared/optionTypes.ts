@@ -414,6 +414,8 @@ export interface SessionStartOptions {
   colorScheme?: ColorScheme | undefined;
   /** How dialogs no action chose an answer for are answered (`--dialog`) */
   dialog?: DialogAnswer | undefined;
+  /** Cookies and storage to restore before the first navigation (`--state`) */
+  state?: AuthStateContent | undefined;
 }
 
 // ConsoleLevel is defined in types.ts for proper architectural layering
@@ -422,6 +424,7 @@ export type { ConsoleLevel } from '@/types.js';
 
 // Import locally for use in ConsoleCommandOptions
 import type { DialogAnswer } from '@/ipc/protocol/domTypes.js';
+import type { AuthStateContent } from '@/ipc/protocol/stateTypes.js';
 import type { ColorScheme, ConsoleLevel, ViewportSize } from '@/types.js';
 
 /**

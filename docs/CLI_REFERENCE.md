@@ -17,6 +17,7 @@ CHROME_PATH=/usr/bin/microsoft-edge bdg localhost:3000   # Launch another Chromi
 bdg localhost:3000 --viewport 1280x800       # Exact viewport (CSS px) for the whole session
 bdg localhost:3000 --color-scheme dark       # Emulate prefers-color-scheme: light or dark
 bdg localhost:3000 --dialog dismiss          # Answer JavaScript dialogs with Cancel (default: accept)
+bdg localhost:3000/admin --state login.json  # Restore cookies and storage saved by bdg state save first (see below)
 ```
 
 The start output is a few lines: the target, notices (session name, HTTP error, auto-stop), the most useful next commands and a pointer to `bdg --help`. `-q` prints one line.
@@ -106,6 +107,25 @@ bdg cleanup --session agent-2 --purge       # ... and deletes its directory (Chr
 - **Independence**: `stop`, `cleanup` and every other command act on the selected session only; `bdg cleanup` without `--session` cleans the default session, as before
 - **Crashed sessions**: `bdg sessions` also lists sessions whose daemon died: `crashed` while the Chrome bdg launched for them still runs (JSON has its `chromePid`), `stale` when only their files are left (a daemon that still runs after closing its socket is `ending`). Both come with the command that cleans them up (`cleanup` in JSON, e.g. `bdg cleanup --session p3`). A session that ended without `bdg stop` (its Chrome crashed or was closed, its page was closed, or `--timeout` was reached) is listed as `ended`, with why and when under the table (`p3 ended at 18:42:10: Chrome crashed or was closed`; JSON `endReason`: `crash`, `closed` or `timeout`, and `endedAt` in epoch ms), until the session starts again or `bdg cleanup` clears it. A directory made by an earlier build whose name differs only in case (`ALPHA`) is listed as the session `--session alpha` reaches when that is the same directory (case-insensitive file systems), with the usual `bdg cleanup --session alpha`; directories `--session` cannot reach (`--json`, or `ALPHA` on a case-sensitive file system) are listed as `stale` with an `rm -rf <path>` to remove them by hand
 - **Attaching**: `--chrome-ws-url` refuses (exit 90) a Chrome that another running bdg session launched (stopping that session would close it), and a tab another session is attached to; another tab of a shared Chrome can be attached with its page URL from `/json/list`. Sessions of this base directory are checked, and sessions of other `BDG_SESSION_DIR`s that claimed a port
+
+### Save and load auth state
+A session's Chrome profile keeps persistent cookies and localStorage across `bdg stop`, but not session cookies (no `Expires`, used by most server-side login frameworks) or sessionStorage, so a stop usually logs the page out. Save the state while logged in and load it into the next session, a named one, or another machine:
+
+```bash
+bdg state save login.json                       # ✓ Saved 3 cookies, storage of 2 origins to /abs/login.json
+bdg state save login.json --origin https://auth.example.com   # Only these origins' storage (repeatable)
+bdg stop
+bdg localhost:3000/admin --state login.json     # Restored before the first navigation: State: loaded 3 cookies, storage of 2 origins
+bdg --session other state load login.json       # Into a running session, then reload (--no-reload to skip)
+```
+
+- **File**: JSON `{ version: 1, savedAt, cookies, origins: [{ origin, localStorage, sessionStorage }] }`. `cookies` is `Network.getAllCookies` (every site, session and HttpOnly cookies included). The file holds secrets: a new file is created `0600` through a temp file renamed over the target (no symlink is followed; an existing file keeps its mode). Keep it out of version control
+- **Output**: human output and `--json` give counts and origins (`{ file, cookies, origins: [{ origin, localStorage, sessionStorage }], skipped? }`), never values
+- **Which origins**: by default every origin of the page and its same-site iframes. Storage of a cross-site iframe is partitioned under the top-level site and is listed as `skipped` (`partitioned`). `--origin` names origins instead; one the page has no frame of exits 83 (storage is read through a frame of its origin), and no file is written
+- **Loading at start** (`--state`): cookies are set, then each saved origin gets a blank document in the session tab (served by Fetch interception: nothing reaches the server and no page script runs; service workers are bypassed) to write its storage, then the tab goes back to `about:blank` with its history cleared, all before the collectors start and the target loads. Every saved origin is restored, and sessionStorage carries over to the target because it belongs to the tab. JSON `data.state` has the counts
+- **Loading mid-session** (`state load`): cookies are set; storage is written for the saved origins the page has frames of, others are listed as `skipped` (`not-on-page`; start with `--state` to restore them). Then the page reloads (JSON `reload: { url, title, status }`) unless `--no-reload`
+- Storage items are added to what is there (keys in the file win); expired cookies are skipped
+- A missing or unreadable file, invalid JSON, a missing or other `version`, or a bad cookie or origin field exits 81 with a suggestion (the field is named, its value never shown), before a session is started
 
 ## Live Monitoring
 

@@ -34,9 +34,11 @@ import type { ChromeNoticeCode, NoticeSink } from '@/errors/notices.js';
 import type { CommandName, CommandSchemas } from '@/ipc/index.js';
 import type { PageLoadingState } from '@/ipc/protocol/commands.js';
 import type { DialogInfo } from '@/ipc/protocol/domTypes.js';
+import type { StateSummary } from '@/ipc/protocol/stateTypes.js';
 import type { TabClosedSwitch } from '@/ipc/protocol/tabTypes.js';
 import type { SessionOptions } from '@/ipc/session/lifecycle.js';
 import type { StatusResponseData } from '@/ipc/session/queries.js';
+import { restoreAuthStateBeforeLoad } from '@/runtime/page/authState.js';
 import { applySessionEmulation, type SessionEmulation } from '@/runtime/page/emulation.js';
 import { readPageLoadingState } from '@/runtime/page/loadingState.js';
 import { findConflictingOwner } from '@/session/chromeOwners.js';
@@ -94,6 +96,7 @@ const PAGE_ACTIONS: ReadonlySet<CommandName> = new Set<CommandName>([
   'dom_press_key',
   'dom_scroll',
   'page_navigate',
+  'state_load',
 ]);
 
 /**
@@ -126,6 +129,8 @@ export interface SessionInfo {
   loading?: PageLoadingState;
   /** JavaScript dialogs answered while the session started (the page load included) */
   dialogs?: DialogInfo[];
+  /** What `--state` restored */
+  state?: StateSummary;
 }
 
 /** Session metadata as reported in status responses. */
@@ -180,6 +185,8 @@ export class Session {
   private loading: PageLoadingState | undefined;
   /** Dialogs answered while the session started */
   private startDialogs: DialogInfo[] = [];
+  /** What `--state` restored before the first navigation */
+  private stateRestored: StateSummary | undefined;
 
   private constructor(
     private config: SessionConfig,
@@ -317,6 +324,7 @@ export class Session {
       ...(documentStatus !== undefined && { documentStatus }),
       ...(this.loading && { loading: this.loading }),
       ...(this.startDialogs.length > 0 && { dialogs: this.startDialogs }),
+      ...(this.stateRestored && { state: this.stateRestored }),
     };
   }
 
@@ -434,11 +442,29 @@ export class Session {
     });
     this.pages.adopt(cdp, []);
     this.throwIfStopping();
+    await this.restoreState(cdp);
     await this.startCollectors(cdp);
     this.documentRequestId = await navigateToTarget(cdp, this.config, this.store, this.chrome, log);
     this.throwIfStopping();
     this.loading = await readPageLoadingState(cdp, this.store.pendingNetworkRequests.values());
     this.startDialogs = [...this.store.dialogs];
+    this.throwIfStopping();
+  }
+
+  /**
+   * Restore `--state` before the first navigation, while no collector runs
+   * (the blank documents it opens are not the page's), then forget it.
+   *
+   * @param cdp - The session tab's connection
+   */
+  private async restoreState(cdp: CDPConnection): Promise<void> {
+    const { state, ...rest } = this.config;
+    if (!state) return;
+    this.config = rest;
+    this.stateRestored = await restoreAuthStateBeforeLoad(cdp, state);
+    log.info(
+      `State restored (${this.stateRestored.cookies} cookies, ${this.stateRestored.origins.length} origins)`
+    );
     this.throwIfStopping();
   }
 
@@ -696,6 +722,7 @@ function buildConfig(url: string, port: number, options: SessionOptions): Sessio
       viewport: options.viewport,
       colorScheme: options.colorScheme,
       dialog: options.dialog,
+      state: options.state,
     }),
   };
 }
