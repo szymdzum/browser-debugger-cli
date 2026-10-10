@@ -12,6 +12,7 @@ import {
   queryMoreMatchesNote,
   queryViewportCheckedNote,
   queryNextSteps,
+  rawHtmlMaskedNote,
   screenshotGrownNote,
   screenshotScaledNote,
   viewportPositionHint,
@@ -117,7 +118,8 @@ function classAttribute(classes: readonly string[]): string | undefined {
  * Displays the outerHTML of matched elements, each cut to its first
  * {@link MAX_VALUE_LENGTH} characters with a pointer naming `--full`. For
  * single elements, shows HTML directly. For multiple elements, shows
- * numbered list with HTML for each.
+ * numbered list with HTML for each. When a secret value was masked
+ * (`masked`), a last line says so ({@link rawHtmlMaskedNote}).
  *
  * @param data - DOM get result containing array of nodes with outerHTML
  * @param options - `full` to print the HTML whole
@@ -151,15 +153,16 @@ export function formatDomGet(
   const html = (node: DomGetResult['nodes'][number]): string =>
     capForDisplay(node.outerHTML ?? '', MAX_VALUE_LENGTH, options.full);
 
+  const fmt = new OutputFormatter();
   if (nodes.length === 1) {
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return html(nodes[0]!);
+    fmt.text(html(nodes[0]!));
+  } else {
+    nodes.forEach((node, i) => {
+      fmt.text(`[${i}] ${html(node)}`);
+    });
   }
-
-  const fmt = new OutputFormatter();
-  nodes.forEach((node, i) => {
-    fmt.text(`[${i}] ${html(node)}`);
-  });
+  if (nodes.some((node) => node.masked)) fmt.text(rawHtmlMaskedNote());
 
   return fmt.build();
 }

@@ -24,6 +24,7 @@ import type {
 } from '@/ipc/protocol/domTypes.js';
 import type { InspectVisibility } from '@/ipc/protocol/inspectTypes.js';
 import type { OpenedTab, TabInfo, TabRef, TabSwitchInfo } from '@/ipc/protocol/tabTypes.js';
+import { MASKED_VALUE } from '@/runtime/dom/elementInfo.js';
 import type { DelegationNote } from '@/runtime/dom/listenerSummary.js';
 import type { WaitCondition, WaitSnapshot } from '@/runtime/dom/waitCondition.js';
 import type { DocumentRequestState, ViewportPosition } from '@/types.js';
@@ -1972,4 +1973,13 @@ export function helpJsonDetailsNote(): string {
  */
 export function moreCharsNote(count: number): string {
   return `… ${count} more chars (use --full)`;
+}
+
+/**
+ * Footer of `dom get --raw` output in which a secret value is masked.
+ *
+ * @returns The note, naming how to read a value
+ */
+export function rawHtmlMaskedNote(): string {
+  return `Secret values shown as ${MASKED_VALUE} (read them with ${sessionCommand('bdg dom eval')})`;
 }

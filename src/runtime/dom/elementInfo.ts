@@ -262,6 +262,146 @@ export const ELEMENT_STATE_JS = `(el) => {
 }`;
 
 /**
+ * Page-side outer HTML of a node as `dom get --raw` shows it, with secrets
+ * masked as {@link MASKED_VALUE} (an empty value stays empty):
+ *
+ * - the `value` attribute of each sensitive input ({@link SENSITIVE_FIELD_JS}),
+ *   the text of each sensitive textarea, and the `value` and `label`
+ *   attributes and text of each option of a sensitive select (`dom query`
+ *   masks its selected option), the node itself or inside it, also in
+ *   `<template>` content (judged on the inert elements, without the CSS
+ *   check);
+ * - all text (and option values) of a node inside a sensitive field, through
+ *   its ancestors and shadow hosts: a textarea's or option's text node, the
+ *   nodes Chrome keeps in a field's user-agent shadow root to show its value
+ *   (reachable by node id), and that shadow root itself;
+ * - the fields of an iframe's `srcdoc`, which is HTML text: it is parsed into
+ *   an inert document (nested `srcdoc` too) and judged by the same rule on
+ *   the parsed elements (all of it but the CSS check, which needs a rendered
+ *   page). A `srcdoc` with a masked field is replaced by the parsed markup
+ *   serialised (its body's, unless it had its own doctype, html, head or
+ *   body tags); one without stays as written. The text is judged rather
+ *   than the live frame because the attribute is what is printed.
+ *
+ * Fields are judged on the live page (a field masked by CSS only counts) and
+ * masked in a copy imported into an inert document, so the page is not
+ * changed and no custom element constructor runs. A document is serialised
+ * child by child (its doctype in full, comments around the root element),
+ * a shadow root or text node from its copy. `html` is null for other nodes
+ * (comments, doctypes), which hold no fields; `attributes` are an element's
+ * attributes as printed (`[name, value, ...]`, masked), and `masked` says
+ * whether a value was replaced.
+ */
+export const MASKED_OUTER_HTML_JS = `(node) => {
+  const isSensitive = ${SENSITIVE_FIELD_JS};
+  const isSecretField = (el) => el.nodeType === 1 && /^(input|textarea|select)$/.test(el.localName) && isSensitive(el);
+  let masked = false;
+  const within = (el, selector) => {
+    const found = el.nodeType === 1 && el.matches(selector) ? [el] : [];
+    const inside = el.querySelectorAll(selector);
+    for (let i = 0; i < inside.length; i++) found[found.length] = inside[i];
+    return found;
+  };
+  const maskOptions = (container) => {
+    let changed = false;
+    const options = within(container, 'option');
+    for (let i = 0; i < options.length; i++) {
+      for (const name of ['value', 'label']) {
+        if (!options[i].getAttribute(name)) continue;
+        options[i].setAttribute(name, '${MASKED_VALUE}');
+        changed = true;
+      }
+      if (!options[i].textContent) continue;
+      options[i].textContent = '${MASKED_VALUE}';
+      changed = true;
+    }
+    return changed;
+  };
+  const maskValue = (field) => {
+    if (field.localName === 'select') return maskOptions(field);
+    if (field.localName === 'textarea') {
+      if (!field.textContent) return false;
+      field.textContent = '${MASKED_VALUE}';
+      return true;
+    }
+    if (!field.getAttribute('value')) return false;
+    field.setAttribute('value', '${MASKED_VALUE}');
+    return true;
+  };
+  const maskText = (copy) => {
+    const walker = copy.ownerDocument.createTreeWalker(copy, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      if (!walker.currentNode.data) continue;
+      walker.currentNode.data = '${MASKED_VALUE}';
+      masked = true;
+    }
+  };
+  const insideSecret = (target) => {
+    const up = (n) => (n.nodeType === 11 ? n.host : n.parentNode);
+    for (let n = up(target); n; n = up(n)) if (isSecretField(n)) return true;
+    return false;
+  };
+  const serializeDocument = (doc, htmlOf) => {
+    let html = '';
+    for (let child = doc.firstChild; child; child = child.nextSibling) {
+      if (child.nodeType === 1) html += htmlOf(child);
+      else if (child.nodeType === 10) html += new XMLSerializer().serializeToString(child);
+      else if (child.nodeType === 8) html += '<!--' + child.data + '-->';
+    }
+    return html;
+  };
+  const maskTree = (live, copy) => {
+    let changed = false;
+    const liveFields = within(live, 'input, textarea, select');
+    const copyFields = within(copy, 'input, textarea, select');
+    for (let i = 0; i < liveFields.length; i++) {
+      if (copyFields[i] && isSecretField(liveFields[i]) && maskValue(copyFields[i])) changed = true;
+    }
+    const templates = within(copy, 'template');
+    for (let i = 0; i < templates.length; i++) {
+      if (maskTree(templates[i].content, templates[i].content)) changed = true;
+    }
+    const frames = within(copy, 'iframe[srcdoc]');
+    for (let i = 0; i < frames.length; i++) {
+      const source = frames[i].getAttribute('srcdoc');
+      const doc = new DOMParser().parseFromString(source, 'text/html');
+      if (!doc.documentElement || !maskTree(doc.documentElement, doc.documentElement)) continue;
+      const whole = /<(!doctype|html|head|body)[\\s>\\/]/i.test(source);
+      frames[i].setAttribute('srcdoc', whole ? serializeDocument(doc, (el) => el.outerHTML) : doc.head.innerHTML + doc.body.innerHTML);
+      changed = true;
+    }
+    if (changed) masked = true;
+    return changed;
+  };
+  const inert = (node.ownerDocument || node).implementation.createHTMLDocument('');
+  const copyOf = (live) => {
+    const copy = inert.importNode(live, true);
+    maskTree(live, copy);
+    return copy;
+  };
+  if (node.nodeType === 9) {
+    const html = serializeDocument(node, (el) => copyOf(el).outerHTML);
+    return { html: html, attributes: null, masked: masked };
+  }
+  const secret = node.nodeType === 1 || node.nodeType === 3 || node.nodeType === 11 ? insideSecret(node) : false;
+  if (node.nodeType === 1) {
+    const copy = copyOf(node);
+    if (secret && maskOptions(copy)) masked = true;
+    if (secret) maskText(copy);
+    const attributes = [];
+    for (let i = 0; i < copy.attributes.length; i++) attributes.push(copy.attributes[i].name, copy.attributes[i].value);
+    return { html: copy.outerHTML, attributes: attributes, masked: masked };
+  }
+  if (node.nodeType !== 3 && node.nodeType !== 11) return { html: null, attributes: null, masked: false };
+  const holder = inert.createElement('div');
+  const children = node.nodeType === 3 ? [node] : node.childNodes;
+  for (let i = 0; i < children.length; i++) holder.appendChild(inert.importNode(children[i], true));
+  if (node.nodeType === 11) maskTree(node, holder);
+  if (secret) maskText(holder);
+  return { html: holder.innerHTML, attributes: null, masked: masked };
+}`;
+
+/**
  * Page-side short description of an element: tag, id and up to two classes
  * ({@link LABEL_CLASSES_JS}), e.g. `button#save.primary.large`.
  */

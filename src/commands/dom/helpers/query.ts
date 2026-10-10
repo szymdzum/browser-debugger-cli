@@ -44,6 +44,7 @@ import {
   ELEMENT_STATE_JS,
   ELEMENT_TEXT_JS,
   ELEMENT_TEXT_LENGTH,
+  MASKED_OUTER_HTML_JS,
   textPreview,
   labelClasses,
 } from '@/runtime/dom/elementInfo.js';
@@ -111,15 +112,50 @@ async function describeNode(ref: NodeRef): Promise<Protocol.DOM.Node | null> {
   return (response.data?.result as Protocol.DOM.DescribeNodeResponse | undefined)?.node ?? null;
 }
 
+/** What {@link MASKED_OUTER_HTML_JS} reads */
+interface MaskedOuterHTML {
+  html: string | null;
+  attributes: string[] | null;
+  masked: boolean;
+}
+
+/** A node as `dom get --raw` shows it */
+interface MaskedNode {
+  outerHTML: string | undefined;
+  attributes: Record<string, string>;
+  masked: boolean;
+}
+
 /**
- * Get a node's outer HTML.
+ * A node's outer HTML and attributes with secrets masked
+ * ({@link MASKED_OUTER_HTML_JS}), as `dom query` masks them. Elements,
+ * documents, shadow roots and text are read in the page; comments and
+ * doctypes, which hold no fields, with `DOM.getOuterHTML`. A node the page
+ * cannot read gets no HTML and no attributes rather than unmasked ones.
  *
  * @param ref - Node reference
- * @returns Outer HTML, or undefined if unavailable
+ * @returns Outer HTML (undefined if unavailable), attributes, and whether a value was masked
  */
-async function getOuterHTML(ref: NodeRef): Promise<string | undefined> {
+async function maskedNode(ref: NodeRef): Promise<MaskedNode> {
+  const read = (await callOnNode(
+    ref,
+    `function () { return (${MASKED_OUTER_HTML_JS})(this); }`
+  )) as Partial<MaskedOuterHTML> | undefined;
+  if (!read) {
+    log.debug(`No masked outer HTML for ${JSON.stringify(ref)}`);
+    return { outerHTML: undefined, attributes: {}, masked: false };
+  }
+  if (typeof read.html === 'string') {
+    return {
+      outerHTML: read.html,
+      attributes: unpackAttributes(read.attributes ?? undefined),
+      masked: read.masked === true,
+    };
+  }
   const response = await callCDP('DOM.getOuterHTML', ref);
-  return (response.data?.result as Protocol.DOM.GetOuterHTMLResponse | undefined)?.outerHTML;
+  const outerHTML = (response.data?.result as Protocol.DOM.GetOuterHTMLResponse | undefined)
+    ?.outerHTML;
+  return { outerHTML, attributes: {}, masked: false };
 }
 
 /** Counter giving each query its own object group (queries may run concurrently) */
@@ -643,25 +679,43 @@ interface TextAndState {
  * @returns Element text and state, empty when the node cannot be read
  */
 async function elementTextAndState(ref: NodeRef, full: boolean): Promise<TextAndState> {
-  const objectGroup = `bdg-text-${process.pid}-${++queryCount}`;
+  const value = (await callOnNode(
+    ref,
+    `function (full) { return { text: (${ELEMENT_TEXT_JS})(this, full), state: (${ELEMENT_STATE_JS})(this) }; }`,
+    [full]
+  )) as Partial<TextAndState> | undefined;
+  return {
+    text: typeof value?.text === 'string' ? value.text : '',
+    state: value?.state ?? {},
+  };
+}
+
+/**
+ * Call a page-side function on a node (as `this`) and read its result by value.
+ *
+ * @param ref - Node reference
+ * @param functionDeclaration - Function source
+ * @param args - Arguments passed by value
+ * @returns The result, or undefined when the node cannot be resolved
+ */
+async function callOnNode(
+  ref: NodeRef,
+  functionDeclaration: string,
+  args: unknown[] = []
+): Promise<unknown> {
+  const objectGroup = `bdg-node-${process.pid}-${++queryCount}`;
   const resolved = await callBdgScript('DOM.resolveNode', { ...ref, objectGroup });
   const objectId = (resolved.data?.result as Protocol.DOM.ResolveNodeResponse | undefined)?.object
     .objectId;
-  if (!objectId) return { text: '', state: {} };
+  if (!objectId) return undefined;
   try {
     const response = await callCDP('Runtime.callFunctionOn', {
       objectId,
-      functionDeclaration: `function (full) { return { text: (${ELEMENT_TEXT_JS})(this, full), state: (${ELEMENT_STATE_JS})(this) }; }`,
-      arguments: [{ value: full }],
+      functionDeclaration,
+      arguments: args.map((value) => ({ value })),
       returnByValue: true,
     });
-    const value = (
-      response.data?.result as { result?: { value?: Partial<TextAndState> } } | undefined
-    )?.result?.value;
-    return {
-      text: typeof value?.text === 'string' ? value.text : '',
-      state: value?.state ?? {},
-    };
+    return (response.data?.result as { result?: { value?: unknown } } | undefined)?.result?.value;
   } finally {
     await callCDP('Runtime.releaseObjectGroup', { objectGroup });
   }
@@ -802,7 +856,8 @@ async function selectForGet(selector: string, options: DomGetOptions): Promise<N
 }
 
 /**
- * Get full details (attributes, outer HTML) for `bdg dom get --raw`.
+ * Get full details (attributes, outer HTML) for `bdg dom get --raw`, with
+ * the values of secret fields masked as `dom query` masks them.
  *
  * @param options - Selector (with nth/all) or a backend node id
  * @returns Node details; `nodeId` is the backend node id
@@ -846,15 +901,15 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
         EXIT_CODES.RESOURCE_NOT_FOUND
       );
     }
-    const attributes = unpackAttributes(desc.attributes);
+    const { outerHTML, attributes, masked } = await maskedNode(ref);
     const classes = elementClasses(attributes);
-    const outerHTML = await getOuterHTML(ref);
     return {
       nodeId: desc.backendNodeId,
       tag: desc.nodeName.toLowerCase(),
       ...(Object.keys(attributes).length > 0 && { attributes }),
       classes,
       ...(outerHTML && { outerHTML }),
+      ...(masked && { masked: true as const }),
     };
   });
 
