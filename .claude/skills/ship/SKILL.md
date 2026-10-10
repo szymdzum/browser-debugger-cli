@@ -18,7 +18,7 @@ Files in this skill:
 - **Only verified issues go in.** Verified means **one command you have already run** that shows the user's exact symptom on `main`: a bdg invocation on a fixture page or real site, a test, or a script. It must be deterministic, or for timing bugs reproduce at a rate you can debug against (loop it, add load). Record the command and its output in the issue; it becomes the red commit's first test. Behaviour that can't be run (dead code, a wrong doc) may be confirmed with file:line instead. No command and no file:line: verify first or ask.
 - **Propose 4–6 issues** with one line each on why. Recommend one set; don't present a menu. A candidate you can't reproduce in a few minutes drops out of the proposal and gets a `needs repro` comment on the issue.
 - **Waves of 2–3 parallel implementers.** Issues touching the same files or output run in sequence (the second starts from the first's branch, or after it merges). Light, conflict-free changes first; docs last.
-- **Ask for merge authority:** merge on green, or the user's OK per PR. It doesn't carry over to the next session.
+- **Ask for merge authority** as a yes/no question: "May I merge on my own once gates 1–8 hold, or do you want to OK each PR?" A bare "OK" is not an answer; ask again. It doesn't carry over to the next session.
 - **Product decisions belong to the user:** changed defaults, contracts, exit codes. Present options with a recommendation, then wait.
 
 ## Per-PR checklist
@@ -41,7 +41,9 @@ Copy one per issue into your notes and tick it off:
 
 Spawn one implementer per issue with the implementer brief. Fill in scope, decisions and the files other agents are working on; the brief carries the rules (red commit first, no `CHANGELOG.md` edits, forbidden commands).
 
-Run subagents so the user can watch them (in this runtime: `run_in_background: false`) and with a **fresh context** (`general-purpose` / `code-reviewer`, never a fork of this conversation); between steps give the user one line on what is happening and where (`git status --short` in the agent's worktree is enough). Background runs are for your own CI polls only, each with a timeout.
+**Implementers run in the background**, so a finished one gets its review while the others still work (on the first plan, a wave of three held a ready PR for 40 minutes). Keep the user informed instead: one line at each step change (started, red commit, draft PR, report in), and `git status --short` of the worktree when asked. **Reviewers and testers run in the foreground**: they take 1–5 minutes and the next step waits on them. Every subagent gets a **fresh context** (`general-purpose` / `code-reviewer`, never a fork of this conversation).
+
+An implementer's report ends with one fixed line: `PR <url> HEAD <sha> CI <run id> <conclusion>`. No such line means the work isn't done. If an agent stops without it, don't wait: read the PR and CI state yourself (`gh pr view`, `gh pr checks`) and resume the agent with what's missing.
 
 ### Review
 
@@ -66,7 +68,8 @@ The highest-yield step. Run it for every behaviour change (tier 2 and 3 below). 
 | 3 high risk | session lifecycle, Chrome launch, files on disk, concurrency, security, contracts | fresh reviewer + second review of the fix commit | yes, plus the interrupt scenario (S08) when relevant | yes, plus repeat=10 for timing |
 
 - Findings **about this change** go back to the implementer and are fixed **in the same PR**.
-- Findings about **older code** become a verified issue in the right milestone.
+- Findings about **older code** are collected for the whole round. Then **one verifier agent** (verifier brief in `briefs.md`) reproduces them all on current `main` in one pass; you group what survived into issues (one per root cause, with the command and output) in the right milestone. Don't verify 15 findings by hand, and don't file unverified ones.
+- **Start the fixtures from the worktree of the branch under test** (`npx tsx src/__testutils__/serveFixtures.ts` in `../bdg-<N>`), never from another worktree or the main checkout: a tester once got a page the branch had added from a server that didn't have it.
 
 ### Merge
 
@@ -92,7 +95,7 @@ Merge only when **all** hold. If one fails, fix it; don't negotiate it.
 1. **Review resolved.** Every blocking and should-fix finding fixed or rejected with a reason you accept; nits fixed or filed.
 2. **Fresh-agent test done** on the branch (features and behaviour changes), its findings about this change fixed in the PR.
 3. **Red commit verified.** The first commit holds only the tests for the issue's reproduction and each **testable** acceptance criterion (plus fixtures and `not implemented` skeletons); the PR says which criteria are measurements or docs and how they were checked, and the reviewer ran them on it: they fail on an assertion about the issue, not a build or import error. Exempt: docs-only, pure refactors covered by existing tests, CI/tooling (the PR says which). Review-fix commits carry their test with the fix. Self-reported "it failed before" doesn't count.
-4. **Timing-sensitive tests** passed the CI repeat dispatch with repeat ≥ 10 on Linux and macOS. CI or environment changes (browser, runner, tooling): the full smoke suite with repeat ≥ 3.
+4. **Timing-sensitive tests** passed the CI repeat dispatch with repeat ≥ 10 on Linux and macOS. CI or environment changes (browser, runner, tooling): the full smoke suite with repeat ≥ 3 on **Node 22 only** (`-f node=22`); the full Node matrix only when the change touches the Node runtime or `package.json` engines.
 5. **CI on the final head commit** (`gh pr view <n> --json headRefOid` matches what you checked; never `--watch`), in three classes:
    - **required:** `CI OK` passed (it aggregates changes, build, quality, contract tests and Linux smoke; Security and macOS are outside it);
    - **additionally required for this PR:** macOS smoke when the PR touches timing-sensitive paths, the repeat dispatch for tier 3 timing changes, Security Audit for dependency changes;
@@ -103,7 +106,7 @@ Merge only when **all** hold. If one fails, fix it; don't negotiate it.
 
 ## Keep the books
 
-- **After each merge:** update roadmap #466 (done / new / moved).
+- **Roadmap #466:** one update at the end of the session (done / new / moved), not after every merge; re-read the body right before editing, GitHub ticks tasklist items on its own.
 - **Fix or file:** every finding from any step is fixed now or filed as a verified issue. Never only "out of scope" in a PR body or summary.
 - **Reporting:** one line at each step change (agent started, report in, review sent back, test started), a summary at merges, real problems and decisions. Don't relay every background notification or stale watcher.
 - **Releases** only when the user decides (`docs/RELEASE_PROCESS.md`), never at the end of a session by default.
@@ -115,7 +118,7 @@ Merge only when **all** hold. If one fails, fix it; don't negotiate it.
 - **A rebase after the agent's last test run:** re-run typecheck and the affected tests before merging.
 - **A new test that passed on its first run** is at best a regression test. Ask what it would have caught; the report must say.
 - **"Flaky" can be a real bug.** Root-cause a flake before calling it one; several were product bugs or tests asserting wrong timing.
-- **Interim "waiting for CI" reports** are not done. Wait for the final report.
+- **A report without the final `PR … HEAD … CI …` line** is not done. Read the PR and CI state yourself and resume the agent.
 - **CodeQL or linters on test fixtures** (e.g. a variable named `SECRET`): rename, don't suppress.
 
 ## Project settings
@@ -138,8 +141,16 @@ Merge only when **all** hold. If one fails, fix it; don't negotiate it.
 - Smoke, one file: `npx tsx --test --test-concurrency=1 src/__tests__/smoke/<file>.smoke.test.ts`. Integration: `./tests/run-all-tests.sh --integration`.
 - CI repeat (Linux and macOS): `gh workflow run ci.yml --repo szymdzum/browser-debugger-cli --ref <branch> -f smoke_files='<space-separated paths>' -f repeat=10 -f node=22`. `node` picks the one Node version of the smoke jobs (22, 24 or 26; push and nightly run all three). No brace globs, no `debug=true` (#510).
 - You (not subagents) run long suites in the background with a one-line status and a timeout; never block silently for minutes.
+- Wait for CI, the one way (background, `timeout` ≥ 1800000 ms):
+  ```bash
+  R=szymdzum/browser-debugger-cli; sha=<full sha>            # PR head or merge commit
+  until gh run list --repo $R --commit $sha --json status -q '.[].status' | rg -q . \
+     && ! gh run list --repo $R --commit $sha --json status -q '.[].status' | rg -q 'queued|in_progress|waiting|pending|requested'; do sleep 60; done
+  gh run list --repo $R --commit $sha --json name,conclusion -q '.[]|"\(.name) \(.conclusion)"'
+  ```
+  For a PR also run `gh pr checks <n>` once at the end (it lists the jobs, not just the workflows). A loop that waits on "no pending line" alone can end before the runs have even been created.
 
 ### Forbidden
-- `git stash`; broad `pkill`/`killall`/`pkill -P` (kill only PIDs you started).
+- `git stash`; `git commit --no-verify` or any other hook bypass; broad `pkill`/`killall`/`pkill -P` (kill only PIDs you started).
 - Touching `~/.bdg`, other worktrees or the main checkout from an agent; leaving files in `~/Downloads`.
 - Committing in the main checkout without being asked (implementers commit and push in their own worktree; their brief grants that); AI attribution; relaying an npm OTP through chat; releasing unless the user decides.

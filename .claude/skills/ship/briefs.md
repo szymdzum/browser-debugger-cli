@@ -6,6 +6,7 @@ Self-contained prompts for the subagents. Fill in the `<…>` parts and send the
 - Implementer brief (`general-purpose` agent, own worktree, opens a draft PR)
 - Reviewer brief (fresh `code-reviewer` agent, diff only)
 - Tester brief (fresh `general-purpose` agent, the fresh-agent test on the PR branch)
+- Verifier brief (fresh `general-purpose` agent, reproduces a round's older-code findings on `main`)
 
 ## Implementer brief
 Fill in the `<…>` parts; the rest is bdg's settings already. Keep it self-contained: the implementer has no context beyond this text and the repo. Spawn it as a `general-purpose` agent.
@@ -36,7 +37,7 @@ Build only in your worktree. If another branch you depend on hasn't merged yet, 
 - Run them on that commit. They must fail **for the right reason**: an assertion about the issue, or the CLI's real output (unknown flag, wrong result). Not a build error or a missing import; for a new command or flag, drive the CLI or an existing entry point so the test fails on behaviour.
 - A unit test for a new module or function may import it if the red commit also adds its **empty skeleton** (the signature, throwing `not implemented`); the next commit fills it in. Otherwise drive the CLI.
 - Then fix in later commits. Don't weaken the red commit's assertions in the fix; if a test was wrong, fix it in a separate commit and say why in your report.
-- A test that passed on its first run is a regression test: say in your report what it protects against.
+- A test that passed on its first run is a regression test: say in your report what it protects against. Tests added after the fix are welcome when you say why (a case the review raised, a mutation check that showed a gap).
 - No red commit for docs-only changes, pure refactors covered by existing tests, or CI/tooling changes; say which applies.
 - Tests must be deterministic. Wait for an observable event (a log line, a request, a DOM change, a file), never a fixed sleep. If anything is timing-sensitive, dispatch `gh workflow run ci.yml --repo szymdzum/browser-debugger-cli --ref <branch> -f smoke_files='<space-separated paths>' -f repeat=10 -f node=22` (no brace globs, no `debug=true`) and report the run ID.
 - Collect before/after evidence: real command output or a measurement on a fixture page (`npx tsx src/__testutils__/serveFixtures.ts`) or a real site.
@@ -44,13 +45,14 @@ Build only in your worktree. If another branch you depend on hasn't merged yet, 
 **Verify**
 - Environment, at the start of every shell call: `export PATH="$HOME/.nvm/versions/node/v22.15.0/bin:$PATH" BDG_TEST_SESSION_PARENT=/tmp/bt-<N> BDG_TEST_HOME_DIR=/tmp/bt-<N>-h` (yours alone; other agents have their own; each test process gets its own session dir under the parent), `BDG_SESSION_DIR=/tmp/bdg-<N>-manual` for manual runs. `node_modules` is a symlink to the main checkout: don't `npm install` through it; if your change touches `package-lock.json`, run `npm ci` in your worktree instead of the symlink.
 - Run `npm run check`, `npm test`, `npm run build`, and the affected smoke files (`npx tsx --test --test-concurrency=1 src/__tests__/smoke/<file>.smoke.test.ts`). CI runs the full smoke suite. Run every suite in the **foreground** (a background run is lost when your turn ends; the report must contain its exit line).
-- You commit and push in your worktree; this brief grants that. Push over SSH: `git push -u git@github.com:szymdzum/browser-debugger-cli.git <branch>`.
+- You commit and push in your worktree; this brief grants that. Push over SSH: `git push -u git@github.com:szymdzum/browser-debugger-cli.git <branch>`. If you must rewrite a pushed branch, use `git push --force-with-lease=<branch>:<old sha> git@github.com:szymdzum/browser-debugger-cli.git <branch>` (plain `--force-with-lease` refuses on a URL remote); never force-push after the PR has a review.
 - Open a **draft PR** (`gh pr create --draft --head <branch> --repo szymdzum/browser-debugger-cli`; `--head` is needed after a push to the SSH URL) with a full body: what changed for users, before/after, verification with run IDs, decisions you made, and known limits. Link the issue (`Closes #N`).
-- **Don't return before the draft PR is open.** An interim report ("waiting for tests", "waiting for CI") is not a result; finish the checks first.
+- **Don't return before the draft PR is open and CI has a result.** Your report's **last line** is exactly `PR <url> HEAD <sha> CI <run id> <conclusion>`; a report without it is treated as unfinished.
 - No AI attribution in commits or the PR.
 
 **Rules**
 - No `git stash`. The stash list is shared across worktrees.
+- No `git commit --no-verify`, `--no-gpg-sign` or any other hook bypass. If a hook fails, fix what it reports.
 - No `pkill`, `killall` or `pkill -P`. Kill only PIDs you started.
 - Never touch `~/.bdg`, other worktrees, or the main checkout (including its `.tmp/`). Nothing may land in `~/Downloads`.
 - Other agents are working in parallel on `<their areas and files>`. Stay out of those, and keep your edits to shared files (registries, docs) minimal and additive.
@@ -104,7 +106,7 @@ They must fail on an assertion about the issue (or the CLI's real output), not o
 ## Tester brief
 Run this on the **PR branch before merging**. The tester is a fresh `general-purpose` agent playing a real user. It gets tasks, not a description of the diff: use the **Task** lines of the scenarios that touch the change's area (`scenarios.md`), plus a task for the new behaviour if no scenario covers it yet (then add it as a scenario). Its findings about this change are fixed in the same PR; findings about older code become new issues.
 
-Build the branch first in its worktree (`npm run build` in `../bdg-<N>`, Node pinned), and start the fixtures if the tasks need them (`npx tsx src/__testutils__/serveFixtures.ts`).
+Build the branch first in its worktree (`npm run build` in `../bdg-<N>`, Node pinned), and start the fixtures **from that same worktree** if the tasks need them (`cd ../bdg-<N> && npx tsx src/__testutils__/serveFixtures.ts`): a server started elsewhere serves another branch's pages.
 
 ---
 
@@ -137,3 +139,21 @@ bdg() { node <absolute path to ../bdg-<N>>/dist/index.js "$@"; }
 **Report** the build you tested (`git -C <worktree> rev-parse --short HEAD`), then per task, in the scenario report format: result (works / partly / broken), ease 1–10, command counts (bdg, `dom eval`, screenshots), bugs (exact command, expected vs actual output, exit code), friction, and how you discovered the right command. Then the `~/Downloads` diff.
 
 Be concise.
+
+## Verifier brief
+After a fresh-agent round, one agent reproduces every finding about older code on current `main`, so issues are filed only for what really happens. Spawn it as a `general-purpose` agent, in the foreground.
+
+---
+
+Verify the findings below against bdg on current `main` (worktree `<path to a main worktree>`, built; `export PATH="$HOME/.nvm/versions/node/v22.15.0/bin:$PATH"`, `BDG_SESSION_DIR=/tmp/verify-<date>`). Start the fixtures from that worktree when a finding needs them (`npx tsx src/__testutils__/serveFixtures.ts`).
+
+For each finding: run the reported command (or the closest one that makes sense), paste the real output, and classify it: **reproduced** (with the exact command, output and exit code), **not reproduced** (what happened instead), **by design** (where the docs or code say so, file:line), or **duplicate of** another finding or an open issue (`gh issue list --repo szymdzum/browser-debugger-cli --search "<words>"`). Group findings that share one root cause.
+
+Findings:
+1. `<finding as the tester wrote it>`
+2. `<…>`
+
+**Rules:** no git commands, no repo edits, no `pkill`/`killall`, don't touch `~/.bdg` or `~/Downloads`; `bdg stop` at the end.
+
+**Report.** One block per finding with the classification, command, output and exit code; then the groups. Be concise.
+

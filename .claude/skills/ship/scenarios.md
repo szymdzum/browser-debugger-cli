@@ -20,7 +20,7 @@ Every feature or behaviour-change PR runs the scenarios that touch its area on t
    ```
    Agents run `node <worktree>/dist/index.js`, never a globally linked `bdg` (it may be another version). Don't rebuild a `dist` other agents are using.
 2. **Isolate the session directory**: every agent gets its own `BDG_SESSION_DIR=/tmp/bdg-round-<date>-<agent>` (short: socket paths have a length limit). Never use `~/.bdg`.
-3. **Start the fixtures** when a scenario uses them, and pass the printed URLs to the agents:
+3. **Start the fixtures from the worktree of the branch under test** when a scenario uses them, and pass the printed URLs to the agents:
    ```bash
    npx tsx src/__testutils__/serveFixtures.ts    # fixture server + blocked cookie servers; Ctrl-C stops them
    ```
