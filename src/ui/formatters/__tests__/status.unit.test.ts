@@ -117,3 +117,21 @@ void describe('network headers', () => {
     assert.match(formatNetworkHeaders({ ...data, method: 'POST' }), /^Status: POST pending$/m);
   });
 });
+
+void describe('status of the --dialog session default (#553)', () => {
+  void it('shows a dismiss default as a line and in JSON', () => {
+    const metadata: SessionMetadata = { ...external, dialog: 'dismiss' };
+    assert.equal(formatStatusAsJson(metadata, process.pid).dialog, 'dismiss');
+    assert.match(
+      formatSessionStatus(metadata, process.pid),
+      /Dialogs:\s+dismiss \(session default\)/
+    );
+  });
+
+  void it('leaves out the built-in accept', () => {
+    const metadata: SessionMetadata = { ...external, dialog: 'accept' };
+    assert.equal(formatStatusAsJson(metadata, process.pid).dialog, undefined);
+    assert.doesNotMatch(formatSessionStatus(metadata, process.pid), /Dialogs:/);
+    assert.doesNotMatch(formatSessionStatus(external, process.pid), /Dialogs:/);
+  });
+});

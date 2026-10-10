@@ -7,6 +7,7 @@
 
 import * as fs from 'fs';
 
+import type { DialogAnswer } from '@/ipc/protocol/domTypes.js';
 import type { ColorScheme, TelemetryType, ViewportSize } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
@@ -34,6 +35,8 @@ export interface SessionMetadata {
   viewport?: ViewportSize | undefined;
   /** `prefers-color-scheme` the page is emulated with (`--color-scheme`) */
   colorScheme?: ColorScheme | undefined;
+  /** How dialogs no action chose an answer for are answered (`--dialog`) */
+  dialog?: DialogAnswer | undefined;
 }
 
 /**

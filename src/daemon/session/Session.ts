@@ -33,6 +33,7 @@ import { chromeInUseBySessionError, unknownSessionCommandMessage } from '@/error
 import type { ChromeNoticeCode, NoticeSink } from '@/errors/notices.js';
 import type { CommandName, CommandSchemas } from '@/ipc/index.js';
 import type { PageLoadingState } from '@/ipc/protocol/commands.js';
+import type { DialogInfo } from '@/ipc/protocol/domTypes.js';
 import type { TabClosedSwitch } from '@/ipc/protocol/tabTypes.js';
 import type { SessionOptions } from '@/ipc/session/lifecycle.js';
 import type { StatusResponseData } from '@/ipc/session/queries.js';
@@ -123,6 +124,8 @@ export interface SessionInfo {
   documentStatus?: number;
   /** The page had not finished loading when the readiness wait ended */
   loading?: PageLoadingState;
+  /** JavaScript dialogs answered while the session started (the page load included) */
+  dialogs?: DialogInfo[];
 }
 
 /** Session metadata as reported in status responses. */
@@ -175,6 +178,8 @@ export class Session {
   private started = false;
   private documentRequestId: string | undefined;
   private loading: PageLoadingState | undefined;
+  /** Dialogs answered while the session started */
+  private startDialogs: DialogInfo[] = [];
 
   private constructor(
     private config: SessionConfig,
@@ -311,6 +316,7 @@ export class Session {
       ...(target?.title && { targetTitle: target.title }),
       ...(documentStatus !== undefined && { documentStatus }),
       ...(this.loading && { loading: this.loading }),
+      ...(this.startDialogs.length > 0 && { dialogs: this.startDialogs }),
     };
   }
 
@@ -333,6 +339,7 @@ export class Session {
         webSocketDebuggerUrl: target?.webSocketDebuggerUrl,
         viewport: this.config.viewport,
         colorScheme: this.config.colorScheme,
+        dialog: this.config.dialog,
       }),
     };
   }
@@ -431,6 +438,7 @@ export class Session {
     this.documentRequestId = await navigateToTarget(cdp, this.config, this.store, this.chrome, log);
     this.throwIfStopping();
     this.loading = await readPageLoadingState(cdp, this.store.pendingNetworkRequests.values());
+    this.startDialogs = [...this.store.dialogs];
     this.throwIfStopping();
   }
 

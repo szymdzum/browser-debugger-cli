@@ -53,7 +53,7 @@ import {
   pointerScrollText,
   actionErrorText,
   actionStatusLine,
-  dialogConsoleText,
+  dialogResultText,
   downloadText,
   openedTabText,
   tabClosedText,
@@ -79,7 +79,7 @@ const STRICT_OPTION_HELP =
 function dialogOption(): Option {
   return new Option(
     '--dialog <answer>',
-    'Answer dialogs this action opens (alert, confirm, prompt, beforeunload) with accept or dismiss (default: the session default, accept unless bdg <url> --dialog)'
+    'Answer dialogs this action opens (alert, confirm, prompt, beforeunload) with accept or dismiss, in any case (default: the session default, accept unless bdg <url> --dialog)'
   );
 }
 
@@ -91,7 +91,7 @@ function dialogOption(): Option {
 function promptTextOption(): Option {
   return new Option(
     '--prompt-text <text>',
-    'Text prompt() dialogs this action opens get (accepts them; default "")'
+    "Text prompt() dialogs this action opens get (accepts them; default: the prompt's default value, as OK gives)"
   );
 }
 
@@ -577,7 +577,7 @@ function formatActionOutput(
   }
   for (const dialog of result.dialogs ?? []) {
     fmt.blank();
-    fmt.text(`Dialog: ${dialogConsoleText(dialog, { labelled: true })}`);
+    fmt.text(dialogResultText(dialog));
   }
   return fmt;
 }

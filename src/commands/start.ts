@@ -157,7 +157,7 @@ export function applyCollectorOptions(command: Command): Command {
     )
     .option(
       '--dialog <answer>',
-      'Answer JavaScript dialogs (alert, confirm, prompt) with accept (OK) or dismiss (Cancel) for the session, page loads included (default: accept); a DOM action can choose otherwise with its own --dialog'
+      'Answer JavaScript dialogs (alert, confirm, prompt) with accept (OK) or dismiss (Cancel), in any case, for the session, page loads included (default: accept; an accepted prompt gets its default value); a DOM action can choose otherwise with its own --dialog'
     )
     .option(
       '--mobile',

@@ -34,6 +34,7 @@ import type {
 import type { PageCloseData, PageSwitchData, PageTabsData } from '@/ipc/protocol/tabTypes.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import {
+  dialogResultText,
   PAGE_ACTION_DESCRIPTIONS,
   PAGE_ACTION_DONE,
   PAGE_CLOSE_DESCRIPTION,
@@ -79,6 +80,7 @@ function formatPageResult(result: PageNavigationResult): string {
     );
   if (result.warning) fmt.text(`⚠ ${result.warning}`);
   if (result.loading) fmt.text(`⚠ ${pageLoadingWarning(result.loading)}`);
+  for (const dialog of result.dialogs ?? []) fmt.text(dialogResultText(dialog));
   return fmt.build();
 }
 

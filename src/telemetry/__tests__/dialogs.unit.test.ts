@@ -107,7 +107,52 @@ void describe('DialogAnswers', () => {
   });
 });
 
+void describe('DialogAnswers - prompt default value (#554)', () => {
+  void it('gives an accepted prompt its default value, as OK does, when no text was chosen', () => {
+    const answers = new DialogAnswers();
+    assert.deepEqual(answers.reply('prompt', 'Ada'), { accept: true, promptText: 'Ada' });
+    assert.deepEqual(answers.reply('prompt', ''), { accept: true, promptText: '' });
+    answers.setActionChoice({ dialog: 'accept' });
+    assert.deepEqual(answers.reply('prompt', 'Ada'), { accept: true, promptText: 'Ada' });
+  });
+
+  void it('prefers the chosen prompt text, and sends none for a dismissed prompt', () => {
+    const answers = new DialogAnswers();
+    answers.setActionChoice({ promptText: 'Bob' });
+    assert.deepEqual(answers.reply('prompt', 'Ada'), { accept: true, promptText: 'Bob' });
+    answers.setActionChoice({ dialog: 'dismiss' });
+    assert.deepEqual(answers.reply('prompt', 'Ada'), { accept: false });
+  });
+});
+
 void describe('startDialogHandling', () => {
+  void it("answers an accepted prompt with the page's default value", async () => {
+    const cdp = new MockCDP();
+    const seen: DialogInfo[] = [];
+    const stop = await startDialogHandling(
+      cdp as unknown as CDPConnection,
+      new DialogAnswers(),
+      (dialog) => seen.push(dialog)
+    );
+
+    cdp.emit('Page.javascriptDialogOpening', {
+      type: 'prompt',
+      message: 'Name?',
+      defaultPrompt: 'Ada',
+      url: 'x',
+    });
+    await settle();
+    stop();
+
+    assert.deepEqual(seen, [
+      { type: 'prompt', message: 'Name?', answer: 'accepted', promptText: 'Ada' },
+    ]);
+    assert.deepEqual(
+      cdp.sent.filter((call) => call.method === 'Page.handleJavaScriptDialog').map((c) => c.params),
+      [{ accept: true, promptText: 'Ada' }]
+    );
+  });
+
   void it('answers each dialog as chosen and reports the answer', async () => {
     const cdp = new MockCDP();
     const answers = new DialogAnswers();

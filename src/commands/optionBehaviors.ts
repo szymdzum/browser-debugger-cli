@@ -44,16 +44,17 @@ const NO_WAIT_TRIGGERED_REQUESTS =
 /** How an action's `--dialog` answers the dialogs it opens */
 const ACTION_DIALOG_BEHAVIOR: OptionBehavior = {
   default:
-    'Dialogs the action opens get the session default: accepted (OK; prompts get "") unless bdg <url> --dialog dismiss; beforeunload is always accepted',
+    'Dialogs the action opens get the session default: accepted (OK; a prompt gets its default value, "" without one) unless bdg <url> --dialog dismiss; beforeunload is always accepted',
   whenEnabled:
-    'accept (OK) or dismiss (Cancel: confirm() returns false, prompt() null) for alert, confirm, prompt and beforeunload dialogs opened while the action runs, its network wait included; dismissing beforeunload cancels the navigation (the page stays). Other values exit 81 with a suggestion; --dialog dismiss with --prompt-text exits 81',
+    'accept (OK) or dismiss (Cancel: confirm() returns false, prompt() null) for alert, confirm, prompt and beforeunload dialogs opened while the action runs, its network wait included; dismissing beforeunload cancels the navigation (the page stays); an accepted prompt without --prompt-text gets its default value, as OK does. Case does not matter (Dismiss works). Other values exit 81 with a suggestion (ok/yes: accept, cancel/no: dismiss); --dialog dismiss with --prompt-text exits 81',
   automaticBehavior:
     'Results list them as Dialog: confirm() dismissed: "Sure?" (JSON dialogs [{ type, message, answer: accepted|dismissed, promptText }]). The choice resets when the action returns: a dialog a page timer opens later gets the session default. Actions run one at a time, so it never applies to another action, but a bdg dom eval or bdg cdp call running at the same time shares it. Not with hover --off',
 };
 
 /** How an action's `--prompt-text` answers the prompt() dialogs it opens */
 const ACTION_PROMPT_TEXT_BEHAVIOR: OptionBehavior = {
-  default: 'Accepted prompt() dialogs get "" (the session default may dismiss them)',
+  default:
+    'Accepted prompt() dialogs get their default value, as OK does ("" without one; the session default may dismiss them)',
   whenEnabled:
     'prompt() dialogs the action opens are accepted with this text, also when the session default is dismiss; JSON dialogs[].promptText and the human line ((answered "…") show it. Other dialogs keep their answer',
 };
@@ -564,11 +565,11 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
 
   'bdg:--dialog': {
     default:
-      'JavaScript dialogs are accepted as they open (OK; prompt() gets ""), so they never block the page',
+      'JavaScript dialogs are accepted as they open (OK; prompt() gets its default value, "" without one), so they never block the page',
     whenEnabled:
-      'accept or dismiss (Cancel: confirm() returns false, prompt() null) for every alert, confirm and prompt dialog of the session, page loads and navigations included, unless the running DOM action chose otherwise with its own --dialog/--prompt-text. Other values exit 81 with a suggestion',
+      'accept or dismiss (Cancel: confirm() returns false, prompt() null) for every alert, confirm and prompt dialog of the session, page loads and navigations included, unless the running DOM action chose otherwise with its own --dialog/--prompt-text. Case does not matter (Dismiss works). Other values exit 81 with a suggestion (ok/yes: accept, cancel/no: dismiss)',
     automaticBehavior:
-      'beforeunload dialogs are still accepted (navigation is never blocked); only a DOM action given --dialog dismiss cancels one. With console telemetry each dialog is also a console message ("confirm() dialog dismissed: …"). Applies to an attached Chrome (--chrome-ws-url) too, as bdg always answered its dialogs there: those of the session page are answered as they open, so a person using that browser does not get to answer them; other tabs are left alone',
+      'beforeunload dialogs are still accepted (navigation is never blocked); only a DOM action given --dialog dismiss cancels one. Dialogs answered while the page loads are listed in the output of bdg <url> and page navigate/reload/back/forward (Dialog: confirm() dismissed: "…", JSON dialogs), and bdg status shows a dismiss default (Dialogs: dismiss (session default), JSON dialog). With console telemetry each dialog is also a console message ("confirm() dialog dismissed: …"). Applies to an attached Chrome (--chrome-ws-url) too, as bdg always answered its dialogs there: those of the session page are answered as they open, so a person using that browser does not get to answer them; other tabs are left alone',
   },
 
   'bdg:--chrome-ws-url': {

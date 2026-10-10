@@ -16,6 +16,7 @@ import type {
 import type {
   ClickResult,
   DialogChoice,
+  DialogInfo,
   DownloadInfo,
   FillResult,
   LayoutResult,
@@ -552,6 +553,8 @@ export interface PageNavigationResult {
   warning?: string;
   /** The new document had not finished loading within the wait (absent once complete) */
   loading?: PageLoadingState;
+  /** JavaScript dialogs answered while the command ran (a confirm the page opened as it loaded) */
+  dialogs?: DialogInfo[];
 }
 
 /** A request the page is still waiting for */

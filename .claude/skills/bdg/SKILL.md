@@ -90,7 +90,7 @@ bdg dom wait '.toast' --text 'Saved'           # Also --visible, --gone, --load
 
 Actions wait for the requests they start; `--no-wait` returns at once.
 
-JavaScript dialogs never block: they are accepted (prompts get "") and listed as `Dialog: confirm() accepted: "Sure?"` (JSON `dialogs[].answer`). To test the Cancel path or type into a prompt, answer them per action, or set the session default at start:
+JavaScript dialogs never block: they are accepted (a prompt gets its default value, as OK gives) and listed as `Dialog: confirm() accepted: "Sure?"` (JSON `dialogs[].answer`), also in the output of `bdg <url>` and `page navigate`/`reload` for dialogs the page opened while loading. To test the Cancel path or type into a prompt, answer them per action, or set the session default at start:
 
 ```bash
 bdg dom click "#delete" --dialog dismiss       # confirm() returns false; resets after the action

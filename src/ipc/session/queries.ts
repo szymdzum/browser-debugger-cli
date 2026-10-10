@@ -7,7 +7,7 @@
 import type { IPCMessage } from './lifecycle.js';
 import type { PageState, SessionActivity } from './types.js';
 
-import type { DownloadInfo } from '@/ipc/protocol/domTypes.js';
+import type { DialogAnswer, DownloadInfo } from '@/ipc/protocol/domTypes.js';
 import type { TabClosedSwitch } from '@/ipc/protocol/tabTypes.js';
 import type { ColorScheme, NetworkRequest, TelemetryType, ViewportSize } from '@/types.js';
 
@@ -47,6 +47,8 @@ export interface StatusResponseData {
     viewport?: ViewportSize;
     /** `prefers-color-scheme` the page is emulated with (`--color-scheme`) */
     colorScheme?: ColorScheme;
+    /** How dialogs no action chose an answer for are answered (`--dialog`) */
+    dialog?: DialogAnswer;
   };
   /** Session activity metrics. */
   activity?: SessionActivity;
