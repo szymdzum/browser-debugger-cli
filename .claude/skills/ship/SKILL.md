@@ -41,7 +41,7 @@ Copy one per issue into your notes and tick it off:
 
 Spawn one implementer per issue with the implementer brief. Fill in scope, decisions and the files other agents are working on; the brief carries the rules (red commit first, no `CHANGELOG.md` edits, forbidden commands).
 
-Run subagents in the **foreground** (`run_in_background: false`), so the user sees them work; between steps give the user one line on what is happening and where (`git status --short` in the agent's worktree is enough). Background runs are for your own CI polls only.
+Run subagents so the user can watch them (in this runtime: `run_in_background: false`) and with a **fresh context** (`general-purpose` / `code-reviewer`, never a fork of this conversation); between steps give the user one line on what is happening and where (`git status --short` in the agent's worktree is enough). Background runs are for your own CI polls only, each with a timeout.
 
 ### Review
 
@@ -50,10 +50,20 @@ When the implementer reports, spawn a fresh reviewer with the reviewer brief: th
 - Findings come back as **blocking / should-fix / nit** with file:line and a scenario.
 - Send every finding to the **same implementer** (SendMessage, so it keeps its context): a test and a fix in the same commit (no red commit per finding), or an argued rejection. You decide disputes.
 - A **second review** only for large or risky fix commits (rollback, file handling, concurrency).
+- Every report names the SHA it looked at. A fix commit invalidates only the evidence about what it changed: re-run the review or the tester for that part, not the whole cycle.
+- **At most two fix rounds.** If findings remain after the second, stop and bring the blocker to the user instead of a third round.
 
 ### Fresh-agent test
 
-The highest-yield step. Run it for every feature or behaviour change; skip it only for tiny fixes and docs. Use the tester brief with the scenarios from `scenarios.md` that touch the change's area.
+The highest-yield step. Run it for every behaviour change (tier 2 and 3 below). Use the tester brief with the scenarios from `scenarios.md` that touch the change's area.
+
+### Verification tiers
+
+| Tier | What | Review | Fresh-agent test | Red commit |
+|---|---|---|---|---|
+| 1 docs / tooling / tiny fix (no change to output, flags, exit codes or timing) | docs, CI, refactor under existing tests, a typo in a message | fresh reviewer | no | no (the PR says why) |
+| 2 behaviour change | new or changed output, flag, hint, default | fresh reviewer | yes | yes |
+| 3 high risk | session lifecycle, Chrome launch, files on disk, concurrency, security, contracts | fresh reviewer + second review of the fix commit | yes, plus the interrupt scenario (S08) when relevant | yes, plus repeat=10 for timing |
 
 - Findings **about this change** go back to the implementer and are fixed **in the same PR**.
 - Findings about **older code** become a verified issue in the right milestone.
@@ -63,10 +73,14 @@ The highest-yield step. Run it for every feature or behaviour change; skip it on
 When every gate below holds:
 
 ```bash
-gh pr ready <n> --repo szymdzum/browser-debugger-cli
-gh pr merge <n> --repo szymdzum/browser-debugger-cli --merge --subject "<PR title> (#<n>)"
-gh run list --repo szymdzum/browser-debugger-cli --branch main --limit 3   # until the push run is done, macOS included
-git worktree remove --force ../bdg-<N> && git branch -D <branch>          # GitHub deletes the remote branch
+R=szymdzum/browser-debugger-cli
+sha=$(gh pr view <n> --repo $R --json headRefOid -q .headRefOid)          # the SHA the gates were checked on
+gh pr ready <n> --repo $R
+gh pr merge <n> --repo $R --merge --match-head-commit $sha --subject "<PR title> (#<n>)"
+m=$(gh pr view <n> --repo $R --json mergeCommit -q .mergeCommit.oid)
+gh run list --repo $R --branch main --json headSha,name,status,conclusion -q ".[]|select(.headSha==\"$m\")"   # until done, macOS included
+git -C ../bdg-<N> status --short                                          # anything modified or untracked that matters? look before you remove
+git worktree remove ../bdg-<N> && git branch -D <branch>                  # no --force; GitHub deletes the remote branch
 ```
 
 A red `main` is fixed before any new work. Close the issue, or comment with what's left, if the PR didn't.
@@ -79,10 +93,13 @@ Merge only when **all** hold. If one fails, fix it; don't negotiate it.
 2. **Fresh-agent test done** on the branch (features and behaviour changes), its findings about this change fixed in the PR.
 3. **Red commit verified.** The first commit holds only the tests for the issue's reproduction and each **testable** acceptance criterion (plus fixtures and `not implemented` skeletons); the PR says which criteria are measurements or docs and how they were checked, and the reviewer ran them on it: they fail on an assertion about the issue, not a build or import error. Exempt: docs-only, pure refactors covered by existing tests, CI/tooling (the PR says which). Review-fix commits carry their test with the fix. Self-reported "it failed before" doesn't count.
 4. **Timing-sensitive tests** passed the CI repeat dispatch with repeat ≥ 10 on Linux and macOS. CI or environment changes (browser, runner, tooling): the full smoke suite with repeat ≥ 3.
-5. **`CI OK` green on the final head commit:** `gh pr checks <n>` with no `fail` or `pending` line (never `--watch`), and the head SHA matches what you checked (`gh pr view <n> --json headRefOid`). macOS smoke runs on timing-sensitive PRs; it isn't part of `CI OK` but must be green or a known, filed flake.
+5. **CI on the final head commit** (`gh pr view <n> --json headRefOid` matches what you checked; never `--watch`), in three classes:
+   - **required:** `CI OK` passed (it aggregates changes, build, quality, contract tests and Linux smoke; Security and macOS are outside it);
+   - **additionally required for this PR:** macOS smoke when the PR touches timing-sensitive paths, the repeat dispatch for tier 3 timing changes, Security Audit for dependency changes;
+   - **accepted exceptions:** a failing job counts as an exception only with an issue number for the known flake and a passing re-run of that job; name both in the merge summary.
 6. **Mergeable on current `main`** (`gh pr view <n> --json mergeable`; `UNKNOWN` right after a push means re-check). After a rebase: typecheck and the affected tests re-run, no conflict markers.
 7. **Docs match the behaviour:** `docs/CLI_REFERENCE.md`, help text, `.claude/skills/bdg/SKILL.md`, option behaviors. `CHANGELOG.md` untouched; the PR description says what changed for users and marks changed defaults, contracts and breaking changes.
-8. **No leftovers:** no temp files in the repo, no stray agent processes, nothing in `~/.bdg` or `~/Downloads`.
+8. **No leftovers:** no temp files in the repo, no stray agent processes, nothing **new** in `~/.bdg` or `~/Downloads` (compare with the snapshot taken before the agents ran).
 
 ## Keep the books
 
@@ -96,7 +113,7 @@ Merge only when **all** hold. If one fails, fix it; don't negotiate it.
 
 - **Shared registries** conflict between parallel PRs. Fixture pages: a new module in `src/__testutils__/fixturePages/` exporting `ROUTES`, never an edit to `fixtureServer.ts`. Option behaviors: the area table in `src/commands/optionBehaviors/<area>.ts`.
 - **A rebase after the agent's last test run:** re-run typecheck and the affected tests before merging.
-- **A new test that passed on its first run** tests nothing yet. Ask what it would have caught.
+- **A new test that passed on its first run** is at best a regression test. Ask what it would have caught; the report must say.
 - **"Flaky" can be a real bug.** Root-cause a flake before calling it one; several were product bugs or tests asserting wrong timing.
 - **Interim "waiting for CI" reports** are not done. Wait for the final report.
 - **CodeQL or linters on test fixtures** (e.g. a variable named `SECRET`): rename, don't suppress.
@@ -113,15 +130,16 @@ Merge only when **all** hold. If one fails, fix it; don't negotiate it.
 ### Environment
 - Node: `export PATH="$HOME/.nvm/versions/node/v22.15.0/bin:$PATH"` at the start of every shell call (no `.nvmrc`; the default Node may be too new).
 - Worktrees: `git worktree add ../bdg-<N> -b <type>/<slug> origin/main`, then `ln -s <main checkout>/node_modules ../bdg-<N>/node_modules`. Each builds its own `dist`; never rebuild one other agents use.
-- Tests: `BDG_TEST_SESSION_DIR` and `BDG_TEST_HOME_DIR` under `/tmp` (socket paths are too long otherwise). Manual sessions: `BDG_SESSION_DIR=/tmp/...`.
+- Tests: `BDG_TEST_SESSION_DIR=/tmp/bt-<N>-s` and `BDG_TEST_HOME_DIR=/tmp/bt-<N>-h`, **one pair per worktree** (socket paths are too long without the override, and two agents sharing a value share sessions). Manual sessions: `BDG_SESSION_DIR=/tmp/...`.
+- `node_modules` is a symlink to the main checkout: never `npm install` through it; a PR that changes `package-lock.json` runs its own `npm ci` in the worktree instead.
 
 ### Commands
 - Check `npm run check` (release: `npm run check:enhanced`), unit `npm test`, build `npm run build`.
 - Smoke, one file: `npx tsx --test --test-concurrency=1 src/__tests__/smoke/<file>.smoke.test.ts`. Integration: `./tests/run-all-tests.sh --integration`.
 - CI repeat (Linux and macOS): `gh workflow run ci.yml --repo szymdzum/browser-debugger-cli --ref <branch> -f smoke_files='<space-separated paths>' -f repeat=10`. No brace globs, no `debug=true` (#510).
-- Run long suites in the background with a one-line status; never block silently for minutes.
+- You (not subagents) run long suites in the background with a one-line status and a timeout; never block silently for minutes.
 
 ### Forbidden
 - `git stash`; broad `pkill`/`killall`/`pkill -P` (kill only PIDs you started).
 - Touching `~/.bdg`, other worktrees or the main checkout from an agent; leaving files in `~/Downloads`.
-- Committing without being asked; AI attribution; relaying an npm OTP through chat; releasing unless the user decides.
+- Committing in the main checkout without being asked (implementers commit and push in their own worktree; their brief grants that); AI attribution; relaying an npm OTP through chat; releasing unless the user decides.

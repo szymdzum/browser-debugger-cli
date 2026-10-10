@@ -35,7 +35,7 @@ Every feature or behaviour-change PR runs the scenarios that touch its area on t
 6. **Interrupts**: to test Ctrl-C, send SIGINT to the `node` PID of that bdg command directly (`kill -INT <pid>`), not through a shell function or a process group. Kill only PIDs you started; no `pkill`/`killall`.
 7. **Clean up**: `bdg stop` in each session directory (`BDG_SESSION_DIR=… node dist/index.js stop`), stop the fixture server, remove the `/tmp/bdg-round-*` directories once the reports are in.
 
-Pair each round with your own manual runs of the same scenarios: agents report friction, you check correctness.
+Re-run by hand the scenarios that came back partly, broken or ambiguous: agents report friction, you check correctness. A clean `works` with a bug-free report needs no repeat.
 
 ## Report format
 

@@ -42,9 +42,9 @@ Build only in your worktree. If another branch you depend on hasn't merged yet, 
 - Collect before/after evidence: real command output or a measurement on a fixture page (`npx tsx src/__testutils__/serveFixtures.ts`) or a real site.
 
 **Verify**
-- Environment, at the start of every shell call: `export PATH="$HOME/.nvm/versions/node/v22.15.0/bin:$PATH"`, `BDG_TEST_SESSION_DIR` and `BDG_TEST_HOME_DIR` under `/tmp` (short paths), `BDG_SESSION_DIR=/tmp/...` for manual runs.
+- Environment, at the start of every shell call: `export PATH="$HOME/.nvm/versions/node/v22.15.0/bin:$PATH" BDG_TEST_SESSION_DIR=/tmp/bt-<N>-s BDG_TEST_HOME_DIR=/tmp/bt-<N>-h` (yours alone; other agents have their own), `BDG_SESSION_DIR=/tmp/bdg-<N>-manual` for manual runs. `node_modules` is a symlink to the main checkout: don't `npm install` through it; if your change touches `package-lock.json`, run `npm ci` in your worktree instead of the symlink.
 - Run `npm run check`, `npm test`, `npm run build`, and the affected smoke files (`npx tsx --test --test-concurrency=1 src/__tests__/smoke/<file>.smoke.test.ts`). CI runs the full smoke suite. Run every suite in the **foreground** (a background run is lost when your turn ends; the report must contain its exit line).
-- Push over SSH: `git push -u git@github.com:szymdzum/browser-debugger-cli.git <branch>`.
+- You commit and push in your worktree; this brief grants that. Push over SSH: `git push -u git@github.com:szymdzum/browser-debugger-cli.git <branch>`.
 - Open a **draft PR** (`gh pr create --draft --head <branch> --repo szymdzum/browser-debugger-cli`; `--head` is needed after a push to the SSH URL) with a full body: what changed for users, before/after, verification with run IDs, decisions you made, and known limits. Link the issue (`Closes #N`).
 - **Don't return before the draft PR is open.** An interim report ("waiting for tests", "waiting for CI") is not a result; finish the checks first.
 - No AI attribution in commits or the PR.
@@ -62,7 +62,12 @@ The reviewer must be a **fresh agent** that hasn't seen the implementation discu
 
 ---
 
-Review `<branch>` in the worktree `../bdg-<N>` (bdg). Diff it against `origin/main`, and don't modify the worktree. Put scratch files in `/tmp/review-<N>`.
+Review commits `<base sha>..<head sha>` of branch `<branch>` (bdg; the implementer's worktree is `../bdg-<N>`, don't modify it). `<base sha>` is the merge base with `origin/main`, or the tip of the unmerged branch this PR builds on, so you don't review someone else's change. Work in a worktree of your own:
+```
+git -C ../bdg-<N> worktree add /tmp/review-<N> <head sha>
+ln -s <main checkout>/node_modules /tmp/review-<N>/node_modules
+```
+Scratch files go in `/tmp/review-<N>-work`. Remove the worktree at the end (`git -C ../bdg-<N> worktree remove --force /tmp/review-<N>`).
 
 **Context.** Issue `<#N>` (`gh issue view <N> --repo szymdzum/browser-debugger-cli`). The change:
 - `<3–8 bullets: what it claims to do, including design choices>`
@@ -80,7 +85,7 @@ Review `<branch>` in the worktree `../bdg-<N>` (bdg). Diff it against `origin/ma
 - **Conventions (CLAUDE.md):** CommandRunner, CommandError or `{success, error}` never both, the `BdgResponse` envelope, semantic exit codes, centralized messages, option behavior keys `<command>:--flag`, TSDoc, no inline comments, no empty catch, ~30 lines per function.
 - `<change-specific risky questions>`
 
-**Run** with `export PATH="$HOME/.nvm/versions/node/v22.15.0/bin:$PATH"` and `BDG_TEST_SESSION_DIR`/`BDG_TEST_HOME_DIR`/`BDG_SESSION_DIR` under `/tmp`: `npm run build`, `<the targeted unit tests>` and `<one targeted smoke test>`. If a claim is cheap to check by hand (`node ../bdg-<N>/dist/index.js …`), do it.
+**Run** in `/tmp/review-<N>` with `export PATH="$HOME/.nvm/versions/node/v22.15.0/bin:$PATH" BDG_TEST_SESSION_DIR=/tmp/rv-<N>-s BDG_TEST_HOME_DIR=/tmp/rv-<N>-h BDG_SESSION_DIR=/tmp/rv-<N>`: `npm run build`, `<the targeted unit tests>` and `<one targeted smoke test>`. If a claim is cheap to check by hand (`node /tmp/review-<N>/dist/index.js …`), do it.
 
 **Check the red commit.** `git -C ../bdg-<N> log --oneline <base>..HEAD` (`<base>`: `origin/main`, or the unmerged branch this one builds on): the first commit of this PR is `test: …` and holds only tests, fixture pages and `not implemented` skeletons. Run its tests on that commit, in a worktree of your own:
 ```
@@ -94,7 +99,7 @@ They must fail on an assertion about the issue (or the CLI's real output), not o
 
 **Rules:** no `git stash`; no `pkill`/`killall`; don't touch `~/.bdg`, the worktree, or the main checkout (including its `.tmp/`). Run tests in the foreground.
 
-**Report.** Findings as **blocking / should-fix / nit**, each with file:line and a concrete scenario (inputs → wrong outcome). Also list what you checked and found fine. Keep it short.
+**Report.** The SHA you reviewed, then findings as **blocking / should-fix / nit**, each with file:line and a concrete scenario (inputs → wrong outcome). Also list what you checked and found fine. Keep it short.
 
 ## Tester brief
 Run this on the **PR branch before merging**. The tester is a fresh `general-purpose` agent playing a real user. It gets tasks, not a description of the diff: use the **Task** lines of the scenarios that touch the change's area (`scenarios.md`), plus a task for the new behaviour if no scenario covers it yet (then add it as a scenario). Its findings about this change are fixed in the same PR; findings about older code become new issues.
@@ -129,6 +134,6 @@ bdg() { node <absolute path to ../bdg-<N>>/dist/index.js "$@"; }
 - Clean up at the end: `bdg stop`, kill your own PIDs.
 - Run `ls -A ~/Downloads` before and after; nothing may appear there.
 
-**Report**, per task, in the scenario report format: result (works / partly / broken), ease 1–10, command counts (bdg, `dom eval`, screenshots), bugs (exact command, expected vs actual output, exit code), friction, and how you discovered the right command. Then the `~/Downloads` diff.
+**Report** the build you tested (`git -C <worktree> rev-parse --short HEAD`), then per task, in the scenario report format: result (works / partly / broken), ease 1–10, command counts (bdg, `dom eval`, screenshots), bugs (exact command, expected vs actual output, exit code), friction, and how you discovered the right command. Then the `~/Downloads` diff.
 
 Be concise.
