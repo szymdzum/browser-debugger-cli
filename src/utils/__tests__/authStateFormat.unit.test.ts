@@ -122,6 +122,28 @@ void describe('state file format', () => {
     assertInvalid(fileText({ version: SECRET }), /version must be the number 1/);
   });
 
+  it('suggests saving in a session where you are logged in, not the selected one', () => {
+    const previous = process.env['BDG_SESSION'];
+    process.env['BDG_SESSION'] = 'n2';
+    try {
+      for (const text of ['{', fileText({ version: 2 })]) {
+        assert.throws(
+          () => parseStateFile(text, 's.json'),
+          (error: unknown) => {
+            assert.ok(error instanceof CommandError);
+            const suggestion = String(error.metadata.suggestion);
+            assert.ok(!suggestion.includes('--session'), suggestion);
+            assert.match(suggestion, /bdg state save <file> in a session where you are logged in/);
+            return true;
+          }
+        );
+      }
+    } finally {
+      if (previous === undefined) delete process.env['BDG_SESSION'];
+      else process.env['BDG_SESSION'] = previous;
+    }
+  });
+
   it('rejects another version, naming the one it reads', () => {
     assertInvalid(
       fileText({ version: 2 }),

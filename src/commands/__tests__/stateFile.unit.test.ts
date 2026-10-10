@@ -34,12 +34,16 @@ const STATE: AuthStateContent = {
  * @param file - Path
  * @param reason - Pattern the message must match
  */
-function assertUnreadable(file: string, reason: RegExp): void {
+function assertUnreadable(
+  file: string,
+  reason: RegExp,
+  exitCode: number = EXIT_CODES.INVALID_ARGUMENTS
+): void {
   assert.throws(
     () => readStateFile(file),
     (error: unknown) => {
       assert.ok(error instanceof CommandError);
-      assert.equal(error.exitCode, EXIT_CODES.INVALID_ARGUMENTS);
+      assert.equal(error.exitCode, exitCode);
       assert.match(error.message, reason);
       assert.ok(error.metadata.suggestion);
       return true;
@@ -87,9 +91,13 @@ void describe('state files', { skip: process.platform === 'win32' }, () => {
     });
   });
 
-  it('exits 81 for a missing file, a directory and bad JSON', () => {
+  it('exits 83 for a missing file, 81 for a directory and bad JSON', () => {
     const dir = makeTempDir('bdg-state-');
-    assertUnreadable(path.join(dir, 'missing.json'), /does not exist/);
+    assertUnreadable(
+      path.join(dir, 'missing.json'),
+      /does not exist/,
+      EXIT_CODES.RESOURCE_NOT_FOUND
+    );
     assertUnreadable(dir, /is a directory/);
     const bad = path.join(dir, 'bad.json');
     fs.writeFileSync(bad, '{');

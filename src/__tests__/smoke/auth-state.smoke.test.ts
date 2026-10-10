@@ -360,32 +360,32 @@ void describe('auth state save and load', () => {
     assert.ok(!fs.existsSync(path.join(fileDir, 'other.json')), 'no file written');
   });
 
-  void it('exits 81 with a suggestion for a bad file or --state with --chrome-ws-url, before starting anything', async () => {
+  void it('exits 81 for a bad file or --state with --chrome-ws-url, 83 for a missing file, before starting anything', async () => {
     const bad = path.join(fileDir, 'bad.json');
     fs.writeFileSync(bad, '{"version": 1, "cookies": "LS-SECRET-A"}');
     const notJson = path.join(fileDir, 'not.json');
     fs.writeFileSync(notJson, 'LS-SECRET-A');
-    for (const [command, args] of [
-      ['state', ['load', bad, '--session', 'other']],
-      ['state', ['load', notJson, '--session', 'other']],
-      ['state', ['load', path.join(fileDir, 'missing.json'), '--session', 'other']],
-      [`${fixture.a}/secure`, ['--headless', '--session', 'fresh', '--state', notJson]],
-      [
-        `${fixture.a}/secure`,
-        [
-          '--chrome-ws-url',
-          'ws://127.0.0.1:9/devtools/browser/x',
-          '--session',
-          'fresh',
-          '--state',
-          stateFile,
-        ],
-      ],
-    ] as const) {
-      const result = await bdgJson<{ exitCode: number; suggestion?: string }>(command, [...args]);
-      assert.equal(result.exitCode, 81, result.output);
+    const missing = path.join(fileDir, 'missing.json');
+    const attach = ['--chrome-ws-url', 'ws://127.0.0.1:9/devtools/browser/x'];
+    const cases: Array<[string, string[], number]> = [
+      ['state', ['load', bad, '--session', 'other'], 81],
+      ['state', ['load', notJson, '--session', 'other'], 81],
+      ['state', ['load', missing, '--session', 'other'], 83],
+      [`${fixture.a}/secure`, ['--headless', '--session', 'fresh', '--state', notJson], 81],
+      [`${fixture.a}/secure`, ['--headless', '--session', 'fresh', '--state', missing], 83],
+      [`${fixture.a}/secure`, [...attach, '--session', 'fresh', '--state', stateFile], 81],
+    ];
+    for (const [command, args, exitCode] of cases) {
+      const result = await bdgJson<{ exitCode: number; suggestion?: string }>(command, args);
+      assert.equal(result.exitCode, exitCode, result.output);
       assert.ok(result.envelope.suggestion, 'has a suggestion');
       assertNoValues(result.output);
+      if (args.includes('fresh')) {
+        assert.ok(
+          !result.envelope.suggestion?.includes('--session fresh'),
+          `no suggestion for a session that is not running: ${result.envelope.suggestion}`
+        );
+      }
     }
     assert.ok(
       !fs.existsSync(path.join(sessionBaseDir, 'sessions', 'fresh', 'daemon.sock')),

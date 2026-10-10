@@ -109,7 +109,7 @@ bdg cleanup --session agent-2 --purge       # ... and deletes its directory (Chr
 - **Attaching**: `--chrome-ws-url` refuses (exit 90) a Chrome that another running bdg session launched (stopping that session would close it), and a tab another session is attached to; another tab of a shared Chrome can be attached with its page URL from `/json/list`. Sessions of this base directory are checked, and sessions of other `BDG_SESSION_DIR`s that claimed a port
 
 ### Save and load auth state
-A session's Chrome profile keeps persistent cookies and localStorage across `bdg stop`, but not session cookies (no `Expires`, used by most server-side login frameworks) or sessionStorage, so a stop usually logs the page out. Save the state while logged in and load it into the next session, a named one, or another machine:
+A session's Chrome profile keeps persistent cookies and localStorage across `bdg stop`, but not session cookies (no `Expires`, used by most server-side login frameworks) or sessionStorage, so a stop usually logs the page out. Save the state while logged in and load it into the next session, a named one, or another machine. Counts are of the origins in the file, empty ones included (`storage of 1 origin (empty)` when none holds items):
 
 ```bash
 bdg state save login.json                       # ✓ Saved 3 cookies, storage of 2 origins to /abs/login.json
@@ -125,7 +125,7 @@ bdg --session other state load login.json       # Into a running session, then r
 - **Loading at start** (`--state`): cookies are set, then each saved origin gets a blank document in the session tab (served by Fetch interception: nothing reaches the server and no page script runs; service workers are bypassed) to write its storage, then the tab goes back to `about:blank` with its history cleared, all before the collectors start and the target loads. Every saved origin is restored, and sessionStorage carries over to the target because it belongs to the tab. JSON `data.state` has the counts. An `http://` origin Chrome loads over https (HSTS, HTTPS-First) is skipped (`skipped: upgraded-to-https`, its storage would be another origin's) instead of failing the start. `--state` with `--chrome-ws-url` exits 81 before attaching, since it would walk your own tab through the saved origins and clear its history: attach, then run `bdg state load <file>`
 - **Loading mid-session** (`state load`): cookies are set; storage is written for the saved origins the page has frames of, others are listed as `skipped` (`not-on-page`; start with `--state` to restore them). Then the page reloads (JSON `reload: { url, title, status }`) unless `--no-reload`. With `--chrome-ws-url` it writes the cookies and storage into the attached browser's own profile and reloads your tab (unless `--no-reload`)
 - Storage items are added to what is there (keys in the file win); expired cookies are skipped
-- A missing or unreadable file, a FIFO or other non-regular file, a file over 50 MB, invalid JSON, a missing or other `version`, or a bad cookie or origin field exits 81 with a suggestion (the field is named, its value never shown), before a session is started
+- A file that does not exist exits 83 (`RESOURCE_NOT_FOUND`) with a suggestion. An unreadable file, a FIFO or other non-regular file, a file over 50 MB, invalid JSON, a missing or other `version`, or a bad cookie or origin field exits 81 with a suggestion (the field is named, its value never shown), before a session is started
 
 ## Live Monitoring
 

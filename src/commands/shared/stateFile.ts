@@ -38,11 +38,16 @@ const READ_FLAGS = fs.constants.O_RDONLY | (fs.constants.O_NONBLOCK ?? 0);
  *
  * @param file - Path given
  * @param reason - Why
- * @throws CommandError (81)
+ * @param exitCode - Exit code (default 81)
+ * @throws CommandError
  */
-function unreadable(file: string, reason: string): never {
+function unreadable(
+  file: string,
+  reason: string,
+  exitCode: number = EXIT_CODES.INVALID_ARGUMENTS
+): never {
   const err = invalidStateFileError(file, reason);
-  throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
+  throw new CommandError(err.message, { suggestion: err.suggestion }, exitCode);
 }
 
 /**
@@ -50,7 +55,8 @@ function unreadable(file: string, reason: string): never {
  *
  * @param file - Path given
  * @returns Its text
- * @throws CommandError (81) when it cannot be opened, is not a regular file or is too large
+ * @throws CommandError (83) when it does not exist, (81) when it cannot be opened, is not a
+ *   regular file or is too large
  */
 function readRegularFile(file: string): string {
   let fd: number;
@@ -58,7 +64,11 @@ function readRegularFile(file: string): string {
     fd = fs.openSync(file, READ_FLAGS);
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code ?? '';
-    unreadable(file, READ_PROBLEMS[code] ?? 'it cannot be read');
+    unreadable(
+      file,
+      READ_PROBLEMS[code] ?? 'it cannot be read',
+      code === 'ENOENT' ? EXIT_CODES.RESOURCE_NOT_FOUND : EXIT_CODES.INVALID_ARGUMENTS
+    );
   }
   try {
     const stat = fs.fstatSync(fd);
@@ -80,8 +90,8 @@ function readRegularFile(file: string): string {
  *
  * @param file - Path given
  * @returns Cookies and origins
- * @throws CommandError (81) when it cannot be read, is not a regular file of
- *   at most 50 MB, or is not a valid state file
+ * @throws CommandError (83) when it does not exist, (81) when it cannot be read, is
+ *   not a regular file of at most 50 MB, or is not a valid state file
  */
 export function readStateFile(file: string): AuthStateContent {
   return parseStateFile(readRegularFile(file), file);

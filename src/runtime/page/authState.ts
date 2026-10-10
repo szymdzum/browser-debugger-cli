@@ -295,9 +295,13 @@ export async function writeAuthState(cdp: Sender, state: AuthStateContent): Prom
   const skipped: SkippedOrigin[] = [];
   for (const origin of state.origins) {
     const key = keys.get(origin.origin);
+    if (!hasItems(origin)) {
+      restored.push(origin);
+      continue;
+    }
     if (key === undefined) {
       const reason = partitioned.has(origin.origin) ? 'partitioned' : 'not-on-page';
-      if (hasItems(origin)) skipped.push({ origin: origin.origin, reason });
+      skipped.push({ origin: origin.origin, reason });
       continue;
     }
     await writeOrigin(cdp, key, origin);
@@ -446,14 +450,15 @@ export async function restoreAuthStateBeforeLoad(
   state: AuthStateContent
 ): Promise<StateSummary> {
   const cookies = await setCookies(cdp, state.cookies);
-  const origins = state.origins.filter(hasItems);
   const restored: OriginStorage[] = [];
   const skipped: SkippedOrigin[] = [];
-  if (origins.length > 0) {
+  if (state.origins.some(hasItems)) {
     const stop = await serveBlankDocuments(cdp);
     try {
-      for (const origin of origins) {
-        if (await openOrigin(cdp, origin.origin)) {
+      for (const origin of state.origins) {
+        if (!hasItems(origin)) {
+          restored.push(origin);
+        } else if (await openOrigin(cdp, origin.origin)) {
           await writeOrigin(cdp, `${origin.origin}/`, origin);
           restored.push(origin);
         } else {
@@ -467,6 +472,8 @@ export async function restoreAuthStateBeforeLoad(
     await cdp
       .send('Page.resetNavigationHistory')
       .catch((error: unknown) => log.debug(`History not cleared: ${getErrorMessage(error)}`));
+  } else {
+    restored.push(...state.origins);
   }
   return { ...summarizeState({ cookies: [], origins: restored }, skipped), cookies };
 }

@@ -15,6 +15,12 @@ import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 export const STATE_FILE_WARNING =
   'The file holds secrets (session cookies, tokens in storage): it is written readable by its owner only (0600); keep it out of version control and shared folders';
 
+/**
+ * How to write a state file. Not tied to the selected session: it may not
+ * be running yet (`bdg <url> --state x --session n2`).
+ */
+const SAVE_HINT = 'Write one with: bdg state save <file> in a session where you are logged in';
+
 /** Description of the `state` command group */
 export const STATE_DESCRIPTION =
   'Save and load browser auth state: cookies (session and HttpOnly ones included), localStorage and sessionStorage';
@@ -77,7 +83,8 @@ function skippedLines(skipped: SkippedOrigin[] | undefined): string[] {
 export function stateCountsText(summary: StateSummary): string {
   const cookies = `${summary.cookies} cookie${summary.cookies === 1 ? '' : 's'}`;
   const n = summary.origins.length;
-  return `${cookies}, storage of ${n} origin${n === 1 ? '' : 's'}`;
+  const empty = n > 0 && summary.origins.every((o) => o.localStorage + o.sessionStorage === 0);
+  return `${cookies}, storage of ${n} origin${n === 1 ? '' : 's'}${empty ? ' (empty)' : ''}`;
 }
 
 /**
@@ -137,7 +144,7 @@ export function startStateLine(summary: StateSummary): string {
 export function invalidStateFileError(file: string, reason: string): ErrorWithSuggestion {
   return {
     message: `Cannot load state from ${file}: ${reason}`,
-    suggestion: `Give a file written by: ${sessionCommand('bdg state save <file>')} (JSON with version, cookies and origins)`,
+    suggestion: `Give a file written by bdg state save (JSON with version, cookies and origins). ${SAVE_HINT}`,
   };
 }
 
@@ -156,7 +163,7 @@ export function unsupportedStateVersionError(
 ): ErrorWithSuggestion {
   return {
     message: `Cannot load state from ${file}: version ${version} is not supported (this bdg reads version ${supported})`,
-    suggestion: `Save it again with this bdg: ${sessionCommand('bdg state save <file>')}`,
+    suggestion: `Save it again with this bdg. ${SAVE_HINT}`,
   };
 }
 
@@ -203,7 +210,7 @@ export function stateWithChromeWsUrlError(file: string): ErrorWithSuggestion {
   return {
     message:
       '--state cannot be used with --chrome-ws-url (restoring before the first load would navigate your own tab through the saved origins and clear its history)',
-    suggestion: `Start without --chrome-ws-url to restore it into bdg's own Chrome, or attach first and run: ${sessionCommand(`bdg state load ${file}`)} (it writes into that Chrome's profile and reloads the tab)`,
+    suggestion: `Start without --chrome-ws-url to restore it into bdg's own Chrome, or attach first, then run bdg state load ${file} in that session (it writes into that Chrome's profile and reloads the tab)`,
   };
 }
 
@@ -216,6 +223,6 @@ export function stateWithChromeWsUrlError(file: string): ErrorWithSuggestion {
 export function stateCookiesRefusedError(reason: string): ErrorWithSuggestion {
   return {
     message: `Chrome refused the cookies of the state file: ${reason}`,
-    suggestion: `Save the state again with: ${sessionCommand('bdg state save <file>')}`,
+    suggestion: `Save the state again. ${SAVE_HINT}`,
   };
 }

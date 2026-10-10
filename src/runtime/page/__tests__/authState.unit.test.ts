@@ -11,6 +11,7 @@ import { describe, it } from 'node:test';
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { AuthStateContent } from '@/ipc/protocol/stateTypes.js';
 import { restoreAuthStateBeforeLoad } from '@/runtime/page/authState.js';
+import { stateCountsText } from '@/ui/messages/stateMessages.js';
 
 /** A fake page connection */
 interface FakeConnection {
@@ -121,5 +122,18 @@ void describe('restoreAuthStateBeforeLoad', () => {
       storageKey: 'http://a.example/',
       isLocalStorage: true,
     });
+  });
+
+  void it('counts an origin saved without items, like state save does, without opening it', async () => {
+    const fake = fakeConnection(() => ({}));
+    const summary = await restoreAuthStateBeforeLoad(fake.cdp, {
+      cookies: [],
+      origins: [{ origin: 'https://a.example', localStorage: {}, sessionStorage: {} }],
+    });
+    assert.deepEqual(summary.origins, [
+      { origin: 'https://a.example', localStorage: 0, sessionStorage: 0 },
+    ]);
+    assert.ok(!fake.sent.some((s) => s.method === 'Page.navigate'), 'nothing to open');
+    assert.equal(stateCountsText(summary), '0 cookies, storage of 1 origin (empty)');
   });
 });
