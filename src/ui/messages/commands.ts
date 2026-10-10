@@ -33,6 +33,7 @@ import {
   buildSessionManagementReminder,
 } from '@/ui/formatters/helpFormatters.js';
 import { formatBytes, formatDuration, joinLines, pluralize, truncateUrl } from '@/ui/formatting.js';
+import { fetchPausedNote } from '@/ui/messages/cdpEvents.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { truncateByLength } from '@/utils/strings.js';
 
@@ -167,19 +168,25 @@ export function closedShadowRootMessage(host: string): string {
   return `<${host}> has a closed shadow root with form fields; closed shadow roots are not inspectable, so they are not listed`;
 }
 
+/** Readiness of a form without visible, editable fields (e.g. only a hidden token) */
+export const NO_VISIBLE_FIELDS = 'no visible fields to fill';
+
 /**
- * Readiness at the end of the `bdg dom form` summary.
+ * Readiness at the end of the `bdg dom form` summary. A form without
+ * visible, editable fields is not called ready: nothing on it was checked.
  *
- * @param summary - Whether the form is ready, how many fields are filled and
- *   required, and the labels of the empty ones
- * @returns e.g. "READY to submit", "NOT ready (no fields filled)"
+ * @param summary - Whether the form is ready, how many fields it has, are
+ *   filled and required, and the labels of the empty ones
+ * @returns e.g. "READY to submit", "NOT ready (no fields filled)", "no visible fields to fill"
  */
 export function formReadinessMessage(summary: {
   readyToSubmit: boolean;
+  totalFields: number;
   filledFields: number;
   requiredTotal: number;
   emptyFieldLabels: string[];
 }): string {
+  if (summary.totalFields === 0) return NO_VISIBLE_FIELDS;
   if (!summary.readyToSubmit) {
     return summary.filledFields === 0 ? 'NOT ready (no fields filled)' : 'NOT ready';
   }
@@ -213,15 +220,22 @@ export function actionStatusLine(
 
 /**
  * Note under the status line of an action that returned while the page was
- * still changing.
+ * still changing; while Fetch interception is on, pending requests may be
+ * paused by it, which the note says.
  *
  * @param action - What returned, e.g. "click", "key press"
  * @param pending - What the page was still working on
+ * @param fetchInterception - Fetch interception is on
  * @returns e.g. "The page was still changing when the click returned (2 requests pending); wait for the result with bdg dom wait <selector>"
  */
-export function stillChangingNote(action: string, pending: PendingChanges): string {
+export function stillChangingNote(
+  action: string,
+  pending: PendingChanges,
+  fetchInterception = false
+): string {
+  const paused = fetchInterception ? `, ${fetchPausedNote()}` : '';
   const parts = [
-    pending.requests !== undefined && `${pluralize(pending.requests, 'request')} pending`,
+    pending.requests !== undefined && `${pluralize(pending.requests, 'request')} pending${paused}`,
     pending.navigation && 'a new page still loading',
     pending.loading !== undefined && `loading indicator ${pending.loading} shown`,
     pending.domChanging && 'DOM still changing',

@@ -155,6 +155,12 @@ export interface ActionEffects {
   settled?: false;
   /** What the page was still working on (with `settled: false`) */
   pending?: PendingChanges;
+  /**
+   * Fetch interception was on (`bdg cdp Fetch.enable`) while requests the
+   * action triggered were still pending: they may be paused until answered
+   * (`bdg cdp --events Fetch.requestPaused`); absent otherwise
+   */
+  fetchInterception?: true;
   /** All built-ins the page replaced that bdg's action scripts use (when the warning mentions them) */
   replacedBuiltins?: string[];
   /** Downloads that began during the action (absent when none did) */

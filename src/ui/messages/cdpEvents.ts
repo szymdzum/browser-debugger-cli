@@ -38,6 +38,25 @@ export const FETCH_ENABLE_NOTE =
   'Fetch.continueRequest, Fetch.fulfillRequest or Fetch.failRequest. bdg cdp Fetch.disable releases them all.';
 
 /**
+ * Why requests may stay pending while Fetch interception is on, and where
+ * to see the paused ones.
+ *
+ * @returns e.g. "possibly paused by Fetch interception: bdg cdp --events Fetch.requestPaused"
+ */
+export function fetchPausedNote(): string {
+  return `possibly paused by Fetch interception: ${sessionCommand('bdg cdp --events Fetch.requestPaused')}`;
+}
+
+/**
+ * Line under a list with pending requests while Fetch interception is on.
+ *
+ * @returns e.g. "Pending requests possibly paused by Fetch interception: bdg cdp --events Fetch.requestPaused"
+ */
+export function pendingRequestsPausedNote(): string {
+  return `Pending requests ${fetchPausedNote()}`;
+}
+
+/**
  * Cause named when a command times out while Fetch interception is on.
  *
  * @returns Message part and suggestion

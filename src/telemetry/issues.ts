@@ -86,6 +86,23 @@ interface IssueReport {
   groupByKind?: boolean;
 }
 
+/** HTTP response of a request, as bdg's network telemetry recorded it */
+export interface RecordedResponse {
+  status: number;
+  statusText?: string;
+}
+
+/**
+ * Look up a request in bdg's network telemetry, by id when Chrome gives one,
+ * else by URL.
+ *
+ * @returns Its response, or undefined when unknown or not answered yet
+ */
+export type ResponseLookup = (request: {
+  requestId?: string;
+  url: string;
+}) => RecordedResponse | undefined;
+
 /** A report as converted from Chrome's details (the code is added after) */
 type ConvertedReport = Omit<IssueReport, 'issue'> & {
   issue: Omit<IssueReport['issue'], 'code'>;
@@ -95,7 +112,10 @@ type ConvertedReport = Omit<IssueReport, 'issue'> & {
  * The report of each kind bdg keeps, from Chrome's details (undefined: dropped).
  */
 const CONVERTERS: Partial<
-  Record<Protocol.Audits.InspectorIssueCode, (details: IssueDetails) => ConvertedReport | undefined>
+  Record<
+    Protocol.Audits.InspectorIssueCode,
+    (details: IssueDetails, responses?: ResponseLookup) => ConvertedReport | undefined
+  >
 > = {
   QuirksModeIssue: ({ quirksModeIssueDetails: d }) =>
     d && {
@@ -112,11 +132,15 @@ const CONVERTERS: Partial<
       }),
     };
   },
-  StylesheetLoadingIssue: ({ stylesheetLoadingIssueDetails: d }) =>
+  StylesheetLoadingIssue: ({ stylesheetLoadingIssueDetails: d }, responses) =>
     d && {
       issue: {
         type: d.styleSheetLoadingIssueReason,
-        text: stylesheetIssueText(d.styleSheetLoadingIssueReason, d.failedRequestInfo),
+        text: stylesheetIssueText(
+          d.styleSheetLoadingIssueReason,
+          d.failedRequestInfo,
+          httpError(d.failedRequestInfo, responses)
+        ),
         source: sourceOf(d.sourceCodeLocation),
       },
     },
@@ -163,13 +187,33 @@ const CONVERTERS: Partial<
 };
 
 /**
+ * The HTTP error a failed request got, when bdg's network telemetry has it.
+ *
+ * @param failed - Request Chrome names as failed
+ * @param responses - Lookup in the network telemetry
+ * @returns Its response when the status is an HTTP error (400 or above)
+ */
+function httpError(
+  failed: Protocol.Audits.FailedRequestInfo | undefined,
+  responses: ResponseLookup | undefined
+): RecordedResponse | undefined {
+  if (!failed || !responses) return undefined;
+  const response = responses({
+    ...(failed.requestId !== undefined && { requestId: failed.requestId }),
+    url: failed.url,
+  });
+  return response && response.status >= 400 ? response : undefined;
+}
+
+/**
  * The report of an issue, if its kind is one bdg keeps.
  *
  * @param issue - Issue Chrome reported
+ * @param responses - Lookup of requests in the network telemetry
  * @returns Report with a one-line reason (capped), or undefined when dropped
  */
-function toReport(issue: InspectorIssue): IssueReport | undefined {
-  const converted = CONVERTERS[issue.code]?.(issue.details);
+function toReport(issue: InspectorIssue, responses?: ResponseLookup): IssueReport | undefined {
+  const converted = CONVERTERS[issue.code]?.(issue.details, responses);
   if (!converted) return undefined;
   return {
     ...converted,
@@ -181,10 +225,14 @@ function toReport(issue: InspectorIssue): IssueReport | undefined {
  * The issue as bdg keeps it, if its kind is one bdg keeps.
  *
  * @param issue - Issue Chrome reported
+ * @param responses - Lookup of requests in the network telemetry
  * @returns The issue (on its one element, if any), or undefined when dropped
  */
-export function toPageIssue(issue: InspectorIssue): PageIssue | undefined {
-  const report = toReport(issue);
+export function toPageIssue(
+  issue: InspectorIssue,
+  responses?: ResponseLookup
+): PageIssue | undefined {
+  const report = toReport(issue, responses);
   return report && newPageIssue(report);
 }
 
@@ -261,11 +309,12 @@ export class PageIssueLog {
    * Add an issue Chrome reported.
    *
    * @param issue - Issue
+   * @param responses - Lookup of requests in the network telemetry
    * @returns The issue it was recorded in, with the element newly recorded
    *   (to describe), or undefined when dropped or a repeat
    */
-  add(issue: InspectorIssue): Recorded {
-    const report = toReport(issue);
+  add(issue: InspectorIssue, responses?: ResponseLookup): Recorded {
+    const report = toReport(issue, responses);
     if (!report) return undefined;
     return report.groupByKind
       ? this.addToKind(`${issue.code}|${report.issue.type}`, report)
@@ -410,18 +459,21 @@ function describeNode(typed: TypedCDPConnection, { node, attribute }: RecordedNo
  *
  * @param cdp - CDP connection to the page
  * @param issues - Issue log (cleared on each main-frame navigation)
+ * @param responses - Lookup of requests in bdg's network telemetry, to name
+ *   the HTTP status of a stylesheet that failed to load
  * @returns Cleanup that stops collecting
  */
 export async function startIssueCollection(
   cdp: CDPConnection,
-  issues: PageIssueLog
+  issues: PageIssueLog,
+  responses?: ResponseLookup
 ): Promise<CleanupFunction> {
   const registry = new CDPHandlerRegistry();
   const typed = new TypedCDPConnection(cdp);
 
   registry.registerTyped(typed, 'Audits.issueAdded', ({ issue }, sessionId) => {
     if (sessionId !== undefined) return;
-    const recorded = issues.add(issue)?.recorded;
+    const recorded = issues.add(issue, responses)?.recorded;
     if (recorded) describeNode(typed, recorded);
   });
   registry.registerTyped(typed, 'Page.frameNavigated', ({ frame }, sessionId) => {

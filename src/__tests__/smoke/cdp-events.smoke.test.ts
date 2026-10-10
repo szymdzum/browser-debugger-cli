@@ -171,6 +171,47 @@ void describe('bdg cdp events', () => {
     assert.deepEqual(stopped.body.data.stopped, ['Fetch.requestPaused']);
   });
 
+  void it('says pending requests may be paused by Fetch interception, in actions and peek (#554)', async () => {
+    const enabled = await cdp([
+      'Fetch.enable',
+      '--params',
+      JSON.stringify({ patterns: [{ urlPattern: '*api/test*' }] }),
+    ]);
+    assert.equal(enabled.exitCode, 0, enabled.stderr);
+    await evaluate(
+      "const b = document.createElement('button'); b.id = 'paused'; b.textContent = 'Load'; b.onclick = () => fetch('/api/test'); document.body.append(b); 1"
+    );
+    const note = /possibly paused by Fetch interception: bdg cdp --events Fetch\.requestPaused/;
+    try {
+      const clicked = await runCommand('dom', ['click', '#paused'], { timeout: 60000 });
+      assert.equal(clicked.exitCode, 0, clicked.stderr);
+      assert.match(clicked.stdout, note);
+
+      const peek = await runCommand('peek', ['--network'], { timeout: 60000 });
+      assert.match(peek.stdout, note);
+      const peekJson = await runCommand('peek', ['--json'], { timeout: 60000 });
+      const data = (JSON.parse(peekJson.stdout) as Envelope<{ fetchInterception?: boolean }>).data;
+      assert.equal(data.fetchInterception, true);
+    } finally {
+      assert.equal((await cdp(['Fetch.disable'])).exitCode, 0);
+    }
+  });
+
+  void it('hints dom eval, not dom query, for a plain Runtime.evaluate (#554)', async () => {
+    const outputs: string[] = [];
+    for (let call = 0; call < 2; call++) {
+      const result = await runCommand(
+        'cdp',
+        ['Runtime.evaluate', '--params', '{"expression":"document.title"}'],
+        { timeout: 60000 }
+      );
+      assert.equal(result.exitCode, 0, result.stderr);
+      outputs.push(`${result.stdout}${result.stderr}`);
+    }
+    assert.match(outputs[1] ?? '', /Consider using 'bdg dom eval <javascript>'/);
+    assert.doesNotMatch(outputs.join('\n'), /bdg dom query/);
+  });
+
   void it('returns the partial events with complete: false when --until never comes', async () => {
     const collected = await cdp<{ complete: boolean; events: unknown[]; result: unknown }>([
       'Runtime.evaluate',

@@ -115,7 +115,7 @@ const CASES: IssueCase[] = [
     code: 'GenericIssue',
     type: 'FormLabelForMatchesNonExistingIdError',
     elements: 1,
-    line: /^• Label's for attribute matches no element id.* → label\[for="missing"\]$/,
+    line: /^• <label for> points at no element: .* → label\[for="missing"\]$/,
   },
   {
     path: 'issues/duplicate-ids',
@@ -128,7 +128,7 @@ const CASES: IssueCase[] = [
     path: 'issues/import',
     code: 'StylesheetLoadingIssue',
     type: 'RequestFailed',
-    line: /^• Stylesheet failed to load: http:\/\/127\.0\.0\.1:\d+\/issues\/missing\.css .* → import:\d+:\d+$/,
+    line: /^• Stylesheet failed to load: http:\/\/127\.0\.0\.1:\d+\/issues\/missing\.css \(404 Not Found\) → import:\d+:\d+$/,
   },
   {
     path: 'issues/csp-eval',

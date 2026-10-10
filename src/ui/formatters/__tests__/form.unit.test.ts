@@ -6,7 +6,7 @@
 import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { DiscoveredForm, FormDiscoveryResult } from '@/types.js';
+import type { DiscoveredForm, FormDiscoveryResult, FormField } from '@/types.js';
 import { formatFormDiscovery } from '@/ui/formatters/form.js';
 
 /**
@@ -56,6 +56,33 @@ function result(
 ): FormDiscoveryResult {
   return { formCount: forms.length, selectedForm: 0, forms, ...extra };
 }
+
+void describe('formatFormDiscovery summary', () => {
+  void it('says a form with only hidden fields has none visible instead of READY to submit (#554)', () => {
+    const hidden: FormField = {
+      index: 0,
+      formIndex: 0,
+      selector: 'input[name="token"]',
+      type: 'text',
+      inputType: 'hidden',
+      label: 'token',
+      name: 'token',
+      required: false,
+      disabled: false,
+      readOnly: false,
+      hidden: true,
+      native: true,
+      state: 'filled',
+      value: 'abc',
+      validation: { valid: true, confidence: 'high' },
+      command: 'bdg dom fill 0 "<value>"',
+      selectorCommand: '',
+    };
+    const output = formatFormDiscovery(result([form({ fields: [hidden] })]));
+    assert.match(output, /^Summary: no visible fields to fill \(1 hidden\)$/m);
+    assert.doesNotMatch(output, /READY|0\/0 fields filled/);
+  });
+});
 
 void describe('formatFormDiscovery shadow roots', () => {
   void it('marks a form in a shadow root with its host', () => {

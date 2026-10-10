@@ -1053,6 +1053,20 @@ void describe('DOM interactions', () => {
     );
   });
 
+  void it('says a form whose only field is hidden has no visible fields, not READY (#554)', async () => {
+    const show = async (field: string): Promise<string> => {
+      const html = `<form action="/search">${field}<button>Search</button></form>`;
+      await evaluate(`document.body.innerHTML = ${JSON.stringify(html)}; 1`);
+      return bdg(['dom', 'form']);
+    };
+    const cssHidden = await show('<input name="q" style="display:none">');
+    assert.match(cssHidden, /^Summary: no visible fields to fill \(1 hidden\)$/m);
+    assert.doesNotMatch(cssHidden, /READY/);
+    const typeHidden = await show('<input type="hidden" name="t" value="1">');
+    assert.match(typeHidden, /^Summary: no visible fields to fill$/m, 'type=hidden is no field');
+    assert.doesNotMatch(typeHidden, /READY/);
+  });
+
   void it('acts on a11y query indices and says which list an index refers to', async () => {
     await evaluate(`document.body.innerHTML = ${JSON.stringify(A11Y_INDEX_HTML)}; 1`);
     await takeEvents();

@@ -21,9 +21,9 @@ export const FORM_ERROR_TEXTS: Partial<Record<GenericIssueErrorType, string>> = 
     'Form field has neither id nor name: autofill and form data cannot identify it',
   FormAriaLabelledByToNonExistingIdError: 'aria-labelledby points at an id that does not exist',
   FormLabelHasNeitherForNorNestedInputError:
-    'Label has no for attribute and no field inside: it labels nothing',
+    'Label has no for attribute and no field inside: no field is linked to it',
   FormLabelForMatchesNonExistingIdError:
-    "Label's for attribute matches no element id: it labels nothing",
+    '<label for> points at no element: no element has the id its for attribute names',
 };
 
 /** Reasons of the element content-model errors */
@@ -50,18 +50,25 @@ export function quirksModeIssueText(limited: boolean): string {
 }
 
 /**
- * Reason of a stylesheet that was not loaded.
+ * Reason of a stylesheet that was not loaded: the HTTP error status the
+ * server answered, when known, rather than Chrome's failure message (which
+ * reads `net::ERR_ABORTED` for a 404).
  *
  * @param reason - Chrome's reason
  * @param failed - The failed request, if that was the reason
- * @returns Reason
+ * @param response - Its HTTP error response, from bdg's network telemetry
+ * @returns Reason, e.g. `Stylesheet failed to load: https://x/a.css (404 Not Found)`
  */
 export function stylesheetIssueText(
   reason: Protocol.Audits.StyleSheetLoadingIssueReason,
-  failed?: Protocol.Audits.FailedRequestInfo
+  failed?: Protocol.Audits.FailedRequestInfo,
+  response?: { status: number; statusText?: string }
 ): string {
   if (reason === 'LateImportRule') return '@import after other rules is ignored';
-  const why = failed?.failureMessage ? ` (${failed.failureMessage})` : '';
+  const failure = response
+    ? [response.status, response.statusText].filter(Boolean).join(' ')
+    : failed?.failureMessage;
+  const why = failure ? ` (${failure})` : '';
   return `Stylesheet failed to load: ${failed?.url ?? 'unknown URL'}${why}`;
 }
 

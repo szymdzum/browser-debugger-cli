@@ -4,7 +4,7 @@ import {
   MIME_TYPE_RULES,
   RESOURCE_TYPE_ABBREVIATIONS,
 } from '@/constants.js';
-import type { BdgOutput } from '@/types.js';
+import type { BdgOutput, ConsoleMessage, NetworkRequest } from '@/types.js';
 import { buildSuccessResponse, stringifyEnvelope } from '@/ui/OutputBuilder.js';
 import { capMessageText, formatTimestamp } from '@/ui/formatters/console/shared.js';
 import { capForDisplay } from '@/ui/formatters/longValues.js';
@@ -14,6 +14,7 @@ import {
   getRequestState,
 } from '@/ui/formatters/requestStatus.js';
 import { OutputFormatter, truncateUrl, truncateText } from '@/ui/formatting.js';
+import { pendingRequestsPausedNote } from '@/ui/messages/cdpEvents.js';
 import {
   downloadsSummary,
   moreCharsNote,
@@ -26,6 +27,7 @@ import { networkEvictedNote } from '@/ui/messages/networkMessages.js';
 import {
   PREVIEW_EMPTY_STATES,
   PREVIEW_HEADERS,
+  PREVIOUS_PAGE_MARKER,
   compactTipsMessage,
   verboseCommandsMessage,
 } from '@/ui/messages/preview.js';
@@ -110,6 +112,11 @@ export function formatPreview(output: BdgOutput, options: PreviewOptions): strin
   return formatPreviewHumanReadable(output, options);
 }
 
+/** Flag on a request or console message of an earlier page load than the current one */
+interface PreviousPageFlag {
+  previousPage?: true;
+}
+
 /**
  * Data payload of `peek --json` / `tail --json` (goes in the envelope's `data`).
  */
@@ -119,14 +126,72 @@ export interface PreviewJsonData {
   target: BdgOutput['target'];
   partial?: boolean;
   totals?: BdgOutput['totals'];
+  /** Navigation id of the page currently loaded (items of earlier ones have `previousPage`) */
+  currentNavigationId?: number;
+  /** Fetch interception is on: pending requests may be paused by it */
+  fetchInterception?: true;
   /** When the page's renderer crashed (epoch ms), while it is not loaded again */
   pageCrashedAt?: number;
   /** Downloads that began during the session, oldest first */
   downloads?: BdgOutput['downloads'];
   /** The session's latest move to another tab */
   tabSwitch?: BdgOutput['tabSwitch'];
-  network?: BdgOutput['data']['network'];
-  console?: BdgOutput['data']['console'];
+  network?: Array<NetworkRequest & PreviousPageFlag> | undefined;
+  console?: Array<ConsoleMessage & PreviousPageFlag> | undefined;
+}
+
+/**
+ * Whether an item was recorded on an earlier page load than the current one
+ * (or on another tab before a switch, which starts a new navigation id).
+ * `peek` shows the whole session (unlike `console`, which shows the current
+ * page), so such items are marked rather than left out.
+ *
+ * @param item - Request or console message
+ * @param currentNavigationId - Navigation id of the page currently loaded
+ * @returns True for an item of a previous page
+ */
+function isPreviousPage(
+  item: { navigationId?: number | undefined },
+  currentNavigationId: number | undefined
+): boolean {
+  return (
+    currentNavigationId !== undefined &&
+    item.navigationId !== undefined &&
+    item.navigationId < currentNavigationId
+  );
+}
+
+/**
+ * The item with `previousPage: true` when it is of an earlier page load.
+ *
+ * @param item - Request or console message
+ * @param currentNavigationId - Navigation id of the page currently loaded
+ * @returns The item, flagged if needed
+ */
+function withPreviousPageFlag<T extends { navigationId?: number | undefined }>(
+  item: T,
+  currentNavigationId: number | undefined
+): T & PreviousPageFlag {
+  return isPreviousPage(item, currentNavigationId) ? { ...item, previousPage: true } : item;
+}
+
+/**
+ * Whether Fetch interception may be holding a shown request of the
+ * current page (earlier pages' requests are not continued by it).
+ *
+ * @param output - Preview output
+ * @param requests - Requests shown
+ * @returns True when interception is on and a shown current-page request is pending
+ */
+function mayHavePausedRequests(output: BdgOutput, requests: NetworkRequest[]): boolean {
+  return (
+    output.fetchInterception === true &&
+    requests.some(
+      (request) =>
+        getRequestState(request) === 'pending' &&
+        !isPreviousPage(request, output.currentNavigationId)
+    )
+  );
 }
 
 /**
@@ -143,19 +208,29 @@ export function buildPreviewJsonData(output: BdgOutput, options: PreviewOptions)
   const last = <T>(items: T[] | undefined): T[] | undefined =>
     items && options.last > 0 ? items.slice(-options.last) : items;
 
+  const current = output.currentNavigationId;
   return {
     timestamp: output.timestamp,
     duration: output.duration,
     target: output.target,
     ...(output.partial !== undefined && { partial: output.partial }),
     ...(output.totals && { totals: output.totals }),
+    ...(current !== undefined && { currentNavigationId: current }),
+    ...(output.fetchInterception && { fetchInterception: output.fetchInterception }),
     ...(output.pageCrashedAt !== undefined && { pageCrashedAt: output.pageCrashedAt }),
     ...(output.downloads && { downloads: output.downloads }),
     ...(output.tabSwitch && { tabSwitch: output.tabSwitch }),
-    ...(pick('network') && output.data.network && { network: last(output.data.network) }),
+    ...(pick('network') &&
+      output.data.network && {
+        network: last(output.data.network)?.map((request) =>
+          withPreviousPageFlag(request, current)
+        ),
+      }),
     ...(pick('console') &&
       output.data.console && {
-        console: last(output.data.console)?.map((message) => capMessageText(message, options.full)),
+        console: last(output.data.console)?.map((message) =>
+          withPreviousPageFlag(capMessageText(message, options.full), current)
+        ),
       }),
   };
 }
@@ -255,9 +330,11 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
           const typeAbbr = getResourceTypeAbbr(req.resourceType, req.mimeType);
           const status = getRequestState(req) === 'pending' ? 'PND' : formatRequestStatus(req);
           const url = truncateUrl(req.url, 50);
-          return `[${req.requestId}] [${typeAbbr}] ${status} ${req.method} ${url}`;
+          const marker = previousPageSuffix(req, output);
+          return `[${req.requestId}] [${typeAbbr}] ${status} ${req.method} ${url}${marker}`;
         });
         fmt.list(networkLines, 2);
+        if (mayHavePausedRequests(output, requests)) fmt.text(`  ⚠ ${pendingRequestsPausedNote()}`);
       }
       fmt.blank();
     }
@@ -278,7 +355,7 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
       } else {
         const consoleLines = messages.map((msg) => {
           const prefix = msg.type.toUpperCase().padEnd(5);
-          return `${prefix} ${compactConsoleText(msg.text, options.full)}`;
+          return `${prefix} ${previousPagePrefix(msg, output)}${compactConsoleText(msg.text, options.full)}`;
         });
         fmt.list(consoleLines, 2);
       }
@@ -297,6 +374,28 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
   }
 
   return fmt.build();
+}
+
+/**
+ * Marker after a request of an earlier page load.
+ *
+ * @param request - Request shown
+ * @param output - Preview output with the current navigation id
+ * @returns ` (previous page)`, or empty
+ */
+function previousPageSuffix(request: NetworkRequest, output: BdgOutput): string {
+  return isPreviousPage(request, output.currentNavigationId) ? ` ${PREVIOUS_PAGE_MARKER}` : '';
+}
+
+/**
+ * Marker before a console message of an earlier page load.
+ *
+ * @param message - Message shown
+ * @param output - Preview output with the current navigation id
+ * @returns `(previous page) `, or empty
+ */
+function previousPagePrefix(message: ConsoleMessage, output: BdgOutput): string {
+  return isPreviousPage(message, output.currentNavigationId) ? `${PREVIOUS_PAGE_MARKER} ` : '';
 }
 
 /**
@@ -384,7 +483,9 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
           const isFailed = state === 'failed' || (req.status ?? 0) >= 400;
           const statusColor = state === 'pending' ? 'PND' : isFailed ? 'ERR' : 'OK';
           const status = state === 'failed' ? 'FAILED' : formatRequestStatus(req);
-          fmt.text(`${statusColor} ${status} ${req.method} ${req.url}`);
+          fmt.text(
+            `${statusColor} ${status} ${req.method} ${req.url}${previousPageSuffix(req, output)}`
+          );
           const reason = failureReason(req);
           if (reason) fmt.text(`  Error: ${reason}`);
 
@@ -398,6 +499,7 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
             `  ID: ${req.requestId} (use '${sessionCommand(`bdg details network ${req.requestId}`)}' for full details)`
           );
         });
+        if (mayHavePausedRequests(output, requests)) fmt.text(`⚠ ${pendingRequestsPausedNote()}`);
       }
       fmt.blank();
     }
@@ -419,7 +521,7 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
         messages.forEach((msg) => {
           const icon = msg.type === 'error' ? 'ERR' : msg.type === 'warning' ? 'WARN' : 'INFO';
           fmt.text(
-            `${icon} [${msg.type}] ${capForDisplay(msg.text, MAX_CONSOLE_TEXT_LENGTH, options.full)}`
+            `${icon} [${msg.type}] ${previousPagePrefix(msg, output)}${capForDisplay(msg.text, MAX_CONSOLE_TEXT_LENGTH, options.full)}`
           );
         });
       }

@@ -295,6 +295,8 @@ export interface BdgOutput {
   };
   /** Navigation id of the page currently loaded (live previews) */
   currentNavigationId?: number;
+  /** Fetch interception is on: pending requests may be paused by it (live previews; absent when off) */
+  fetchInterception?: true;
   /** When the page's renderer crashed (epoch ms), while it is not loaded again */
   pageCrashedAt?: number;
   /** Downloads that began during the session, oldest first (live previews) */

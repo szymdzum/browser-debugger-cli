@@ -186,7 +186,7 @@ void describe('toPageIssue', () => {
       EVAL_BLOCKED,
       SUMMARY_BUTTON,
       cookieIssue(),
-    ].map(toPageIssue);
+    ].map((issue) => toPageIssue(issue));
 
     assert.deepEqual(
       kept.map((issue) => [issue?.code, issue?.type]),
@@ -214,6 +214,36 @@ void describe('toPageIssue', () => {
     assert.deepEqual(toPageIssue(SUMMARY_BUTTON)?.nodes, [{ backendNodeId: 40 }]);
   });
 
+  void it("shows a failed stylesheet's HTTP error status instead of Chrome's net::ERR_ABORTED", () => {
+    const asked: Array<{ requestId?: string; url: string }> = [];
+    const issue = toPageIssue(FAILED_IMPORT, (request) => {
+      asked.push(request);
+      return { status: 404, statusText: 'Not Found' };
+    });
+    assert.equal(
+      issue?.text,
+      'Stylesheet failed to load: http://localhost/missing.css (404 Not Found)'
+    );
+    assert.deepEqual(asked, [{ url: 'http://localhost/missing.css' }]);
+  });
+
+  void it("keeps Chrome's reason when the request is unknown or did not fail with an HTTP error", () => {
+    const unknown = toPageIssue(FAILED_IMPORT, () => undefined);
+    const ok = toPageIssue(FAILED_IMPORT, () => ({ status: 200 }));
+    for (const issue of [unknown, ok]) {
+      assert.equal(
+        issue?.text,
+        'Stylesheet failed to load: http://localhost/missing.css (net::ERR_ABORTED)'
+      );
+    }
+  });
+
+  void it('words a label whose for matches no id without saying it labels nothing (dom form may name a field from it, #554)', () => {
+    const text = toPageIssue(LABEL_FOR_MISSING)?.text ?? '';
+    assert.doesNotMatch(text, /labels nothing/);
+    assert.match(text, /^<label for> points at no element/);
+  });
+
   void it('drops noisy kinds: performance, lazy load, third-party phaseout, federated auth, deprecations', () => {
     const noisy: InspectorIssue[] = [
       {
@@ -226,7 +256,7 @@ void describe('toPageIssue', () => {
       cookieIssue({ cookieWarningReasons: ['WarnThirdPartyPhaseout'], cookieExclusionReasons: [] }),
     ];
     assert.deepEqual(
-      noisy.map(toPageIssue),
+      noisy.map((issue) => toPageIssue(issue)),
       noisy.map(() => undefined)
     );
   });
@@ -394,6 +424,15 @@ void describe('startIssueCollection', () => {
     cdp.emit('Audits.issueAdded', { issue: LABEL_FOR_MISSING });
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(log.issues[0]?.nodes?.[0]?.description, 'label[for="missing"]');
+  });
+
+  void it("names a failed stylesheet's HTTP status from the session's requests", async () => {
+    const cdp = new MockCDP();
+    const log = new PageIssueLog();
+    await startIssueCollection(cdp as unknown as CDPConnection, log, () => ({ status: 404 }));
+
+    cdp.emit('Audits.issueAdded', { issue: FAILED_IMPORT });
+    assert.match(log.issues[0]?.text ?? '', /missing\.css \(404\)$/);
   });
 
   void it("clears the previous page's issues on a main-frame navigation only", async () => {

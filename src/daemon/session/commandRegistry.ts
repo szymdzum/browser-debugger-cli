@@ -636,6 +636,7 @@ export function createCommandRegistry(
         },
         activeTelemetry: store.activeTelemetry,
         currentNavigationId: store.getCurrentNavigationId?.() ?? 0,
+        ...(store.fetchInterceptionEnabled && { fetchInterception: true as const }),
         ...(store.pageCrashedAt !== undefined && { pageCrashedAt: store.pageCrashedAt }),
         network: recentNetwork,
         console: recentConsole,
@@ -743,7 +744,7 @@ export function createCommandRegistry(
 
       const detectionResult = params.isolated
         ? { shouldShow: false, pattern: undefined }
-        : patternDetector.trackCommand(params.method);
+        : patternDetector.trackCommand(params.method, params.params);
       let hint: HintDetails | undefined;
 
       if (detectionResult.shouldShow && detectionResult.pattern) {

@@ -258,6 +258,18 @@ void describe('effect output', () => {
     );
   });
 
+  void it('says pending requests may be paused while Fetch interception is on (#554)', () => {
+    assert.equal(
+      stillChangingNote('click', { requests: 1 }, true),
+      'The page was still changing when the click returned (1 request pending, possibly paused by Fetch interception: bdg cdp --events Fetch.requestPaused); wait for the result with bdg dom wait <selector>'
+    );
+    assert.doesNotMatch(
+      stillChangingNote('click', { domChanging: true }, true),
+      /Fetch/,
+      'only pending requests can be paused'
+    );
+  });
+
   void it('names shown elements with their text', () => {
     assert.equal(
       shownElementText({ text: 'name: user2 View profile', element: 'div.figcaption' }),

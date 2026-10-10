@@ -8,7 +8,12 @@ import { hideHeadlessUserAgent } from '@/runtime/page/userAgent.js';
 import { startConsoleCollection } from '@/telemetry/console.js';
 import { startDialogHandling } from '@/telemetry/dialogs.js';
 import { prepareDOMCollection } from '@/telemetry/dom.js';
-import { PageIssueLog, startIssueCollection } from '@/telemetry/issues.js';
+import {
+  PageIssueLog,
+  startIssueCollection,
+  type RecordedResponse,
+  type ResponseLookup,
+} from '@/telemetry/issues.js';
 import { startNavigationTracking } from '@/telemetry/navigation.js';
 import { startNetworkCollection, startWebSocketCollection } from '@/telemetry/network.js';
 import { pageCrashedCommandError, startCrashTracking } from '@/telemetry/pageCrash.js';
@@ -19,6 +24,28 @@ import { filterDefined } from '@/utils/objects.js';
 
 /** Delay before reading the title after a same-document navigation */
 const TITLE_REFRESH_DELAY_MS = 300;
+
+/**
+ * Lookup of a request's response in the session's network telemetry: by id,
+ * else the latest request of the URL (pending ones included, as a request
+ * Chrome is still finishing has its response already).
+ *
+ * @param store - Telemetry store
+ * @returns Lookup for the Chrome Issues
+ */
+function responseLookup(store: TelemetryStore): ResponseLookup {
+  return ({ requestId, url }) => {
+    const pending = [...store.pendingNetworkRequests.values()].map((entry) => entry.request);
+    const requests = [...store.networkRequests, ...pending];
+    const byId =
+      requestId === undefined ? undefined : requests.find((r) => r.requestId === requestId);
+    const request = byId ?? requests.findLast((r) => r.url === url);
+    if (request?.status === undefined) return undefined;
+    const response: RecordedResponse = { status: request.status };
+    if (request.statusText) response.statusText = request.statusText;
+    return response;
+  };
+}
 
 /**
  * Keep the store's target URL and title in sync with the page.
@@ -240,7 +267,7 @@ export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
       telemetry: 'console',
       start({ cdp, store, pageStart }) {
         if (pageStart?.kind === 'switched') store.pageIssues = new PageIssueLog();
-        return startIssueCollection(cdp, store.pageIssues);
+        return startIssueCollection(cdp, store.pageIssues, responseLookup(store));
       },
     },
     {
