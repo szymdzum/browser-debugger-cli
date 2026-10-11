@@ -1,7 +1,8 @@
 /**
- * State files on disk (#454): a new file is readable by its owner only, an
- * existing file keeps its mode, a symlink at the path is replaced (its
- * destination untouched), and a missing or unreadable file exits 81.
+ * State files on disk (#454, #624): the file is readable by its owner only,
+ * also when it replaces an existing one of another mode; a symlink at the
+ * path is replaced (its destination untouched), and a missing or unreadable
+ * file exits 81.
  */
 
 import assert from 'node:assert/strict';
@@ -61,14 +62,16 @@ void describe('state files', { skip: process.platform === 'win32' }, () => {
     assert.deepEqual(fs.readdirSync(path.dirname(file)), ['s.json'], 'no temp file left');
   });
 
-  it('keeps the mode of an existing file', async () => {
-    const file = path.join(makeTempDir('bdg-state-'), 's.json');
-    fs.writeFileSync(file, 'old');
-    fs.chmodSync(file, 0o640);
-    await writeStateFile(file, STATE);
-    assert.equal(fs.statSync(file).mode & 0o777, 0o640);
-    assert.deepEqual(readStateFile(file), STATE);
-  });
+  for (const mode of [0o644, 0o600, 0o640]) {
+    it(`writes 0600 over an existing ${mode.toString(8)} file (#624)`, async () => {
+      const file = path.join(makeTempDir('bdg-state-'), 's.json');
+      fs.writeFileSync(file, 'old');
+      fs.chmodSync(file, mode);
+      await writeStateFile(file, STATE);
+      assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+      assert.deepEqual(readStateFile(file), STATE);
+    });
+  }
 
   it('replaces a symlink instead of writing through it', async () => {
     const dir = makeTempDir('bdg-state-');

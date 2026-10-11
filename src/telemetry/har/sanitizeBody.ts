@@ -17,6 +17,10 @@
  *
  * Only JSON syntax is understood: single-quoted strings, unquoted keys,
  * JSONP and `name:value` header lines (STOMP `passcode:`) are not.
+ *
+ * In an HTML body the values of secret form controls are replaced
+ * ({@link redactHtmlFields}, the rule `dom get --raw` applies on the page);
+ * the rest of the HTML, inline scripts included, stays as captured.
  */
 
 import { createLogger } from '@/ui/logging/index.js';
@@ -53,6 +57,28 @@ const JSON_MIME = /json|event-stream/i;
  */
 const DECODABLE_MIME =
   /^(?:application\/octet-stream|binary\/octet-stream|application\/x-www-form-urlencoded|text\/event-stream)?$|json/i;
+
+/** Content-Types (without parameters) of HTML bodies, whose secret form-control values are masked */
+const HTML_MIME = /^(?:text\/html|application\/xhtml\+xml)$/i;
+
+/** Start of an `<input>` or `<textarea>` tag of any case (`$1` the name); a fresh copy per scan */
+const CONTROL_START = /<(input|textarea)\b/gi;
+
+/** End tag of a `<textarea>`, any case; a fresh copy per scan */
+const TEXTAREA_END = /<\/textarea\s*>/gi;
+
+/**
+ * One attribute of a tag: `$1` the name; `$2`, `$3` or `$4` the value
+ * (double-quoted, single-quoted, or unquoted up to whitespace or `>`, as
+ * browsers read it: `value=a<b` is `a<b`), none for a bare attribute
+ */
+const ATTRIBUTE = /([^\s"'<>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
+
+/** HTML whitespace, which ends an unquoted attribute value */
+const WHITESPACE = /[ \t\n\r\f]/;
+
+/** An `autocomplete` token that names a card, one-time code or password field */
+const SECRET_AUTOCOMPLETE = /(^|\s)(cc-[a-z-]+|one-time-code|current-password|new-password)(\s|$)/i;
 
 /**
  * An auth scheme (any case, as RFC 7235 allows) followed on the same line by
@@ -99,6 +125,46 @@ interface JsonScan {
   depth: number;
   /** Text written instead of a credential (inside a JSON string for JWTs) */
   placeholder: string;
+}
+
+/**
+ * An attribute of a form control, as parsed from its tag.
+ */
+interface ParsedAttribute {
+  /** Name, lowercased */
+  name: string;
+  /** Value as written (entities kept); empty for a bare attribute */
+  value: string;
+  /** Index of the value's first character in the attribute text, when it has one */
+  valueStart: number;
+}
+
+/**
+ * State of a scan of HTML text.
+ */
+interface HtmlScan {
+  /** Text scanned */
+  text: string;
+  /** Unchanged slices and replacements written so far */
+  parts: string[];
+  /** End of the text copied into `parts` */
+  copied: number;
+  /** Text written instead of each value */
+  placeholder: string;
+  /** Index from which no closing quote of each kind was found (none is found later either) */
+  noQuoteFrom: Record<string, number>;
+  /** Index from which no `</textarea>` was found */
+  noTextareaEndFrom: number;
+}
+
+/**
+ * Where a tag ends.
+ */
+interface TagEnd {
+  /** Index of the closing `>`; none for a tag broken by a `<` or an unclosed quote */
+  close?: number;
+  /** Index the scan goes on from */
+  resume: number;
 }
 
 /**
@@ -185,9 +251,12 @@ export function redactPairs(
  * @param mimeType - Content-Type of the body (empty for a WebSocket message)
  * @param placeholder - Text written instead of each credential value
  * @returns Body with credential values replaced; the text unchanged when
- *   there were none or it is neither JSON, a form nor multipart
+ *   there were none or it is neither JSON, a form, multipart nor HTML
  */
 export function redactBody(text: string, mimeType: string, placeholder = REDACTED): string {
+  if (HTML_MIME.test(baseType(mimeType))) {
+    return redactHtmlFields(redactJwts(text, placeholder), placeholder);
+  }
   if (/multipart\/form-data/i.test(mimeType)) return redactMultipart(text, mimeType, placeholder);
   if (/x-www-form-urlencoded/i.test(mimeType)) {
     return redactPairs(text, isSensitiveName, placeholder);
@@ -196,6 +265,223 @@ export function redactBody(text: string, mimeType: string, placeholder = REDACTE
   if (FORM_BODY.test(text)) return redactPairs(text, isSensitiveName, placeholder);
   if (JSON_MIME.test(mimeType)) return redactJsonText(text, 0, placeholder);
   return redactJwts(text, placeholder);
+}
+
+/**
+ * Replace the values of secret form controls in an HTML body (#634): every
+ * non-empty `value` attribute of an `<input>` that is `type=password` or
+ * `type=hidden`, has a card, one-time code or password `autocomplete`, or
+ * whose `name`, `id` or `autocomplete` is a secret name
+ * ({@link isSensitiveName}, the rule `dom get --raw` applies on the page),
+ * and the non-empty content of a `<textarea>` judged the same way. The rest
+ * of the HTML, inline scripts included, stays byte for byte.
+ *
+ * The HTML is scanned as text, not parsed, in one linear pass: tags of any
+ * case, attributes in any order, quoted (entities kept), single-quoted or
+ * unquoted values (a `<` in an unquoted value is part of it), `>` inside
+ * quotes and tags split over lines are understood. A tag broken by a `<`
+ * where an attribute name would be, or by an unclosed quote, is not judged,
+ * and the scan goes on from that `<` (a quote or end tag not found once is
+ * not looked for again, so a hostile body of a million tag starts is still
+ * one pass). A `<select>`'s options, and a control written inside a script
+ * string or comment (masked too), are its limits.
+ *
+ * @param text - HTML text
+ * @param placeholder - Text written instead of each value
+ * @returns The HTML with those values replaced; the text unchanged when it
+ *   has no secret control
+ */
+export function redactHtmlFields(text: string, placeholder = REDACTED): string {
+  const scan: HtmlScan = {
+    text,
+    parts: [],
+    copied: 0,
+    placeholder,
+    noQuoteFrom: { '"': Infinity, "'": Infinity },
+    noTextareaEndFrom: Infinity,
+  };
+  const start = new RegExp(CONTROL_START.source, CONTROL_START.flags);
+  let match = start.exec(text);
+  while (match !== null) {
+    const attributesStart = match.index + match[0].length;
+    const isTextarea = (match[1] ?? '').toLowerCase() === 'textarea';
+    start.lastIndex = scanControl(scan, attributesStart, isTextarea);
+    match = start.exec(text);
+  }
+  if (scan.parts.length === 0) return text;
+  scan.parts.push(text.slice(scan.copied));
+  return scan.parts.join('');
+}
+
+/**
+ * Judge one control whose tag starts at an index and replace its value(s).
+ *
+ * @param scan - Scan state
+ * @param attributesStart - Index after the tag name
+ * @param isTextarea - Whether it is a `<textarea>` (its content is the value)
+ * @returns Index the scan goes on from
+ */
+function scanControl(scan: HtmlScan, attributesStart: number, isTextarea: boolean): number {
+  const end = tagEnd(scan, attributesStart);
+  if (end.close === undefined) return end.resume;
+  const attributes = scan.text.slice(attributesStart, end.close);
+  if (!isTextarea) {
+    const redacted = redactInputValues(attributes, scan.placeholder);
+    if (redacted !== undefined) replaceHtml(scan, attributesStart, end.close, redacted);
+    return end.resume;
+  }
+  const contentStart = end.close + 1;
+  const endTag = textareaEnd(scan, contentStart);
+  if (endTag === undefined) return contentStart;
+  if (endTag.index > contentStart && isSecretControl(parseAttributes(attributes))) {
+    replaceHtml(scan, contentStart, endTag.index, scan.placeholder);
+  }
+  return endTag.index + endTag[0].length;
+}
+
+/**
+ * Walk a tag's attributes to its closing `>`, honouring quotes and unquoted
+ * values (which run to whitespace or `>`, so a `<` in one is not a tag).
+ *
+ * @param scan - Scan state
+ * @param from - Index after the tag name
+ * @returns The closing index, or where to go on from when the tag is broken
+ */
+function tagEnd(scan: HtmlScan, from: number): TagEnd {
+  const { text } = scan;
+  let index = from;
+  let afterEquals = false;
+  let inUnquotedValue = false;
+  while (index < text.length) {
+    const char = text[index] ?? '';
+    if (char === '>') return { close: index, resume: index + 1 };
+    const space = WHITESPACE.test(char);
+    if (inUnquotedValue) {
+      if (space) inUnquotedValue = false;
+      index++;
+      continue;
+    }
+    if (char === '<') return { resume: index };
+    if (char === '=') {
+      afterEquals = true;
+      index++;
+      continue;
+    }
+    if (char !== '"' && char !== "'") {
+      if (afterEquals && !space) inUnquotedValue = true;
+      afterEquals = afterEquals && space;
+      index++;
+      continue;
+    }
+    afterEquals = false;
+    const closing =
+      index + 1 >= (scan.noQuoteFrom[char] ?? Infinity) ? -1 : text.indexOf(char, index + 1);
+    if (closing === -1) {
+      scan.noQuoteFrom[char] = Math.min(scan.noQuoteFrom[char] ?? Infinity, index + 1);
+      const next = text.indexOf('<', from);
+      return { resume: next === -1 ? text.length : next };
+    }
+    index = closing + 1;
+  }
+  return { resume: text.length };
+}
+
+/**
+ * The `</textarea>` end tag at or after an index.
+ *
+ * @param scan - Scan state
+ * @param from - Index after the start tag
+ * @returns Its match, or undefined when there is none
+ */
+function textareaEnd(scan: HtmlScan, from: number): RegExpExecArray | undefined {
+  if (from >= scan.noTextareaEndFrom) return undefined;
+  const end = new RegExp(TEXTAREA_END.source, TEXTAREA_END.flags);
+  end.lastIndex = from;
+  const match = end.exec(scan.text);
+  if (match === null) scan.noTextareaEndFrom = from;
+  return match ?? undefined;
+}
+
+/**
+ * Write a replacement instead of the text between two indices.
+ *
+ * @param scan - Scan state
+ * @param start - Index of the first character replaced
+ * @param end - Index after the last
+ * @param replacement - Text written instead
+ */
+function replaceHtml(scan: HtmlScan, start: number, end: number, replacement: string): void {
+  scan.parts.push(scan.text.slice(scan.copied, start), replacement);
+  scan.copied = end;
+}
+
+/**
+ * Replace the non-empty `value` attributes of an `<input>` when the control
+ * holds a secret.
+ *
+ * @param attributes - Attribute text of the tag
+ * @param placeholder - Text written instead of each value
+ * @returns The attribute text with its values replaced (quotes kept), or
+ *   undefined when the control is not a secret or has no value
+ */
+function redactInputValues(attributes: string, placeholder: string): string | undefined {
+  const parsed = parseAttributes(attributes);
+  if (!isSecretControl(parsed)) return undefined;
+  let redacted = attributes;
+  let changed = false;
+  for (const attribute of [...parsed].reverse()) {
+    if (attribute.name !== 'value' || attribute.value === '') continue;
+    const end = attribute.valueStart + attribute.value.length;
+    redacted = `${redacted.slice(0, attribute.valueStart)}${placeholder}${redacted.slice(end)}`;
+    changed = true;
+  }
+  return changed ? redacted : undefined;
+}
+
+/**
+ * The media type of a Content-Type, without its parameters.
+ *
+ * @param mimeType - Content-Type as captured
+ * @returns e.g. `text/html` for `text/html; charset=utf-8`
+ */
+function baseType(mimeType: string): string {
+  return mimeType.split(';')[0]?.trim() ?? '';
+}
+
+/**
+ * Parse the attributes of a tag.
+ *
+ * @param attributes - Attribute text of the tag
+ * @returns Attributes in order, names lowercased
+ */
+function parseAttributes(attributes: string): ParsedAttribute[] {
+  const parsed: ParsedAttribute[] = [];
+  for (const match of attributes.matchAll(ATTRIBUTE)) {
+    const value = match[2] ?? match[3] ?? match[4] ?? '';
+    const quoted = match[2] !== undefined || match[3] !== undefined;
+    parsed.push({
+      name: (match[1] ?? '').toLowerCase(),
+      value,
+      valueStart: match.index + match[0].length - value.length - (quoted ? 1 : 0),
+    });
+  }
+  return parsed;
+}
+
+/**
+ * Whether a form control holds a secret: by type, autocomplete, name or id
+ * (the first of each attribute counts, as in HTML).
+ *
+ * @param attributes - Parsed attributes
+ * @returns True for a password, hidden, card, one-time code or secret-named control
+ */
+function isSecretControl(attributes: ParsedAttribute[]): boolean {
+  const first = (name: string): string =>
+    attributes.find((attribute) => attribute.name === name)?.value ?? '';
+  if (/^\s*(?:password|hidden)\s*$/i.test(first('type'))) return true;
+  const autocomplete = first('autocomplete');
+  if (SECRET_AUTOCOMPLETE.test(autocomplete)) return true;
+  return isSensitiveName([first('name'), first('id'), autocomplete].join(' '));
 }
 
 /**
@@ -210,7 +496,7 @@ export function redactBody(text: string, mimeType: string, placeholder = REDACTE
  *   not decodable text or held no credentials
  */
 export function redactBase64Body(base64: string, mimeType: string, placeholder = REDACTED): string {
-  if (!DECODABLE_MIME.test(mimeType.split(';')[0]?.trim() ?? '')) return base64;
+  if (!DECODABLE_MIME.test(baseType(mimeType))) return base64;
   return redactBase64Text(base64, (text) => redactBody(text, mimeType, placeholder));
 }
 

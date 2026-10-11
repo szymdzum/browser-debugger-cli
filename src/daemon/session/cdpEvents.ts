@@ -64,12 +64,19 @@ function onPageEvent(
  */
 const MAX_PENDING_WRITE_BYTES = 64 * 1024 * 1024;
 
+/** Mode of an `--out` file: it holds unredacted events, so readable by its owner only */
+const OUT_FILE_MODE = 0o600;
+
 /**
  * An NDJSON file events are written to, one per line. They go to a new temp
  * file next to the target, renamed over it only on {@link commit}, so a
  * failed collection never truncates or deletes a file the user had there.
- * An existing regular file keeps its mode; a symlink at the target is
- * replaced by the file (its destination is left as it was).
+ * The events are written as sent (unredacted), so the file is readable by
+ * its owner only ({@link OUT_FILE_MODE}), also when it replaces an existing
+ * file of another mode: the temp file is created 0600 and the rename
+ * replaces the inode, so the old mode does not carry over and nothing is
+ * chmod-ed before the collection succeeded (#624). A symlink at the target
+ * is replaced by the file (its destination is left as it was).
  */
 class NdjsonFile {
   count = 0;
@@ -102,10 +109,15 @@ class NdjsonFile {
     try {
       const target = await fs.promises.stat(file).catch(() => undefined);
       if (target?.isDirectory()) throw Object.assign(new Error('directory'), { code: 'EISDIR' });
-      const existing = await fs.promises.lstat(file).catch(() => undefined);
       await fs.promises.mkdir(path.dirname(file), { recursive: true });
-      const handle = await fs.promises.open(temp, TEMP_FILE_FLAGS, 0o666);
-      if (existing?.isFile()) await handle.chmod(existing.mode & 0o7777);
+      const handle = await fs.promises.open(temp, TEMP_FILE_FLAGS, OUT_FILE_MODE);
+      try {
+        await handle.chmod(OUT_FILE_MODE);
+      } catch (error) {
+        await handle.close().catch(() => undefined);
+        await fs.promises.rm(temp, { force: true });
+        throw error;
+      }
       return new NdjsonFile(file, temp, handle.createWriteStream(), maxPendingBytes);
     } catch (error) {
       throw outputPathError(file, error, '.ndjson');

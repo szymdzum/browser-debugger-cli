@@ -176,7 +176,7 @@ export function localProxyNote(): string {
  * @returns Comment naming what was redacted and the flag that keeps it
  */
 export function harSanitizedComment(): string {
-  return 'Sanitized by bdg: values of auth, cookie, API key, token and session headers, cookies, user:pass@ and credential query parameters in URLs, password/token/secret fields of JSON and form request and response bodies and WebSocket messages (also truncated JSON, JSON encoded in strings, socket.io, SockJS, server-sent events, NDJSON, and base64 bodies and binary messages that are UTF-8 text), and any JWT (also inside longer strings and form values) are [redacted] in place (by name, so some harmless values are too); everything else stays byte for byte. Not sanitized: other binary data, text that is not JSON or a form, and non-JSON syntax (single quotes, unquoted keys, JSONP, bare values with spaces); a body that could not be sanitized is [redacted] whole. Export with --include-sensitive to keep everything';
+  return 'Sanitized by bdg: values of auth, cookie, API key, token and session headers, cookies, user:pass@ and credential query parameters in URLs, password/token/secret fields of JSON and form request and response bodies and WebSocket messages (also truncated JSON, JSON encoded in strings, socket.io, SockJS, server-sent events, NDJSON, and base64 bodies and binary messages that are UTF-8 text), the values of password, hidden and secret-named form controls in HTML bodies, and any JWT (also inside longer strings and form values) are [redacted] in place (by name, so some harmless values are too); everything else stays byte for byte. Not sanitized: other binary data, text that is not JSON, a form or HTML, the rest of an HTML body (inline-script tokens are kept), and non-JSON syntax (single quotes, unquoted keys, JSONP, bare values with spaces); a body that could not be sanitized is [redacted] whole. Export with --include-sensitive to keep everything';
 }
 
 /**
@@ -221,7 +221,7 @@ export interface HarExportSummary {
 export function harExportedMessage(result: HarExportSummary): string {
   const filterNote = result.filtered ? ' (filtered)' : '';
   const note = result.sanitized
-    ? 'Credentials sanitized (auth/cookie/API key/token headers, cookies, URL credentials and tokens, password and token fields of bodies and WebSocket messages are [redacted]); --include-sensitive keeps them'
+    ? 'Credentials sanitized (auth/cookie/API key/token headers, cookies, URL credentials and tokens, password and token fields of bodies and WebSocket messages, secret form-control values of HTML bodies are [redacted]; HTML bodies keep inline-script tokens); --include-sensitive keeps them'
     : '⚠ Includes credentials (--include-sensitive): share this file with care';
   return `✓ Exported ${result.entries} requests${filterNote} to ${result.file}\n  ${note}`;
 }

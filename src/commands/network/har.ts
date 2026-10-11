@@ -20,7 +20,11 @@ import { applyFilters, parseFilterString } from '@/telemetry/filterDsl.js';
 import { buildHAR } from '@/telemetry/har/builder.js';
 import type { HAR } from '@/telemetry/har/types.js';
 import { createLogger } from '@/ui/logging/index.js';
-import { harExportedMessage, type HarExportSummary } from '@/ui/messages/networkMessages.js';
+import {
+  harExportedMessage,
+  includeSensitiveWarning,
+  type HarExportSummary,
+} from '@/ui/messages/networkMessages.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { VERSION } from '@/utils/version.js';
 
@@ -106,7 +110,7 @@ const filterDslOption = new Option(
  */
 const includeSensitiveOption = new Option(
   '--include-sensitive',
-  'Keep credentials (auth/cookie/API key headers, cookie values, URL credentials and tokens, password and token body fields); redacted by default'
+  'Keep credentials (auth/cookie/API key headers, cookie values, URL credentials and tokens, password and token body fields, secret form-control values of HTML bodies); redacted by default'
 );
 
 /**
@@ -146,7 +150,13 @@ export function registerHarCommand(networkCmd: Command): void {
             { version: VERSION, ...(chromeVersion && { chromeVersion }) },
             { includeSensitive }
           );
-          if (outputPath === STDOUT_PATH) return { success: true, data: har };
+          if (outputPath === STDOUT_PATH) {
+            return {
+              success: true,
+              data: har,
+              ...(includeSensitive && { warning: includeSensitiveWarning() }),
+            };
+          }
 
           const file = await writeOutputFile(
             outputPath,
