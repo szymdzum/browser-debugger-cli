@@ -528,7 +528,7 @@ export function mouseEvents(
 const PRESS_PROBE_PEEK_SCRIPT = `(() => {
   const probe = window.__bdgPressProbe;
   if (!probe) return { reached: true };
-  return { reached: probe.reached || probe.hidden, landedOn: probe.landedOn, replaced: !probe.clicked && probe.detached() };
+  return { reached: probe.reached || probe.hidden, landedOn: probe.landedOn, replaced: !probe.clicked && probe.replaced() };
 })()`;
 
 /** {@link PRESS_PROBE_PEEK_SCRIPT}, then stops the probe */

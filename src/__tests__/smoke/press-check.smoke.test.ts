@@ -174,6 +174,19 @@ void describe('Press check', () => {
     assert.deepEqual(await evaluate('window.clicks'), ['Swap pressed']);
   });
 
+  for (const id of ['gone-pointerdown', 'gone-mousedown', 'gone-pointerup', 'option']) {
+    void it(`does not report ${id}, which unmounts on press after its handler ran (#641)`, async () => {
+      const output = await bdg(['dom', 'click', `#${id}`, '--strict', '--json']);
+      const data = (JSON.parse(output) as { data: ClickJson }).data;
+      assert.equal(data.warning, undefined, output);
+      const clicks = (await evaluate('window.clicks')) as string[];
+      assert.ok(
+        clicks.some((entry) => entry === `${id} ran`),
+        JSON.stringify(clicks)
+      );
+    });
+  }
+
   void it('still counts a button that re-renders itself after its click (#641)', async () => {
     const strict = await bdg(['dom', 'click', await buttonIndex('Rerender'), '--strict', '--json']);
     const data = (JSON.parse(strict) as { data: ClickJson }).data;

@@ -803,9 +803,10 @@ export const FILL_READ_BACK_SCRIPT = `(() => {
  * A hover first notes what is hidden around the element
  * ({@link REVEAL_SNAPSHOT_JS}), so its result can say what it revealed. For
  * a press, a probe (`window.__bdgPressProbe`) records whether the press
- * reaches the element, whether a `click` reached it and whether it is still
- * attached afterwards (a press that removed the element and got no click is
- * not a click, #641), and otherwise which element it landed on: a browser
+ * reaches the element, whether a `click` reached it and whether the page
+ * replaced it by a like-for-like element (same tag, parent and label, at the press
+ * point; not a sibling that moved under the mouse) without a click (#641); one that unmounts with nothing like it
+ * there acted on the press and is not reported, and otherwise which element it landed on: a browser
  * dialog or bubble can swallow input while the page looks normal. It
  * listens on the window and on each shadow root around the element, since
  * an event path seen from outside a closed root stops at its host (#582);
@@ -1009,7 +1010,19 @@ export const CLICK_ELEMENT_SCRIPT = `
       const path = event.composedPath();
       if (path.indexOf(el) !== -1 || closedHosts.indexOf(path[0]) !== -1) probe.clicked = true;
     };
-    probe.detached = () => !el.isConnected;
+    const parentAtPress = el.parentNode;
+    const hitScope = typeof el.getRootNode().elementFromPoint === 'function' ? el.getRootNode() : el.ownerDocument;
+    probe.replaced = () => {
+      if (el.isConnected) return false;
+      const hit = hitScope.elementFromPoint(area.left + area.width / 2, area.top + area.height / 2);
+      for (let n = hit; n; n = n.parentNode) {
+        if (n === el || !n.isConnected || n.parentNode !== parentAtPress || n.localName !== el.localName) continue;
+        const was = (el.textContent || '').trim();
+        const now = (n.textContent || '').trim();
+        if (was === now || (was && now && (was.startsWith(now) || now.startsWith(was)))) return true;
+      }
+      return false;
+    };
     listenOn.forEach((target) => {
       target.addEventListener('pointerdown', markReached, true);
       target.addEventListener('mousedown', markReached, true);

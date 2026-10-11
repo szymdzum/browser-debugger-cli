@@ -15,7 +15,7 @@
  * `Under`, in `<x-under>`'s closed root and
  * covered by `div#outer-shield` in the document, and the light `#light`,
  * covered by `div#light-shield`. `#rerender` (`Rerender`) replaces itself right after its click
- * ran, so a click that arrived must still count as clicked (#641). `#park` is a corner to rest the mouse on
+ * ran, so a click that arrived must still count as clicked (#641). `#gone-pointerdown`, `#gone-mousedown` and `#gone-pointerup` remove themselves on that event, and `#option` inserts a `picked` span and removes itself on `pointerdown`: handlers that ran and unmounted, which are no replacement (#641). `#park` is a corner to rest the mouse on
  * before the page loads again, so no shield appears before a click moves
  * the mouse. Every button counts its clicks in `window.clicks`.
  */
@@ -41,6 +41,12 @@ const PRESS_CHECK_HTML = `<!doctype html><title>press check</title>
   <x-under></x-under>
   <button id="light">Light</button>
   <div id="rerender-host"><button id="rerender">Rerender</button></div>
+  <div id="unmounts">
+    <button id="gone-pointerdown">GonePointerdown</button>
+    <button id="gone-mousedown">GoneMousedown</button>
+    <button id="gone-pointerup">GonePointerup</button>
+    <ul id="options"><li><button id="option">Option</button></li></ul>
+  </div>
 </main>
 <p id="log"></p>
 <script>
@@ -145,6 +151,21 @@ const PRESS_CHECK_HTML = `<!doctype html><title>press check</title>
   rerender.addEventListener('click', () => {
     window.clicks.push('Rerender clicked');
     document.getElementById('rerender-host').innerHTML = '<button>Rerendered</button>';
+  });
+  for (const [id, type] of [['gone-pointerdown', 'pointerdown'], ['gone-mousedown', 'mousedown'], ['gone-pointerup', 'pointerup']]) {
+    const button = document.getElementById(id);
+    button.addEventListener(type, () => {
+      window.clicks.push(id + ' ran');
+      button.remove();
+    });
+  }
+  const option = document.getElementById('option');
+  option.addEventListener('pointerdown', () => {
+    window.clicks.push('option ran');
+    const picked = document.createElement('span');
+    picked.textContent = 'picked';
+    option.parentNode.append(picked);
+    option.remove();
   });
   const light = document.getElementById('light');
   count(light);
