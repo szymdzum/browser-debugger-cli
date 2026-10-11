@@ -12,9 +12,9 @@ import { optionNotFoundError } from '@/errors/messages.js';
 
 void describe('optionNotFoundError', () => {
   void it('names the option and lists the options of an ordinary select', () => {
-    assert.deepEqual(optionNotFoundError({ count: 2, value: 'xl', options: ['s', 'm'] }), {
+    assert.deepEqual(optionNotFoundError({ count: 2, value: 'xl', options: ['s', 'm (Medium)'] }), {
       message: 'Option not found: xl',
-      suggestion: 'Available options: s, m',
+      suggestion: 'Available options: s, m (Medium)',
     });
   });
 

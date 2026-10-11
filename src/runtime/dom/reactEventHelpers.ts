@@ -487,7 +487,7 @@ export const REACT_FILL_SCRIPT = `
   const optionNotFound = (missing, options) =>
     (${FILL_SECRET_JS})(el)
       ? { count: options.length }
-      : { count: options.length, value: missing, options: options.slice(0, 10).map((o) => o.value || o.text.trim()) };
+      : { count: options.length, value: missing, options: options.slice(0, 10).map((o) => { const label = o.text.trim(); return !o.value || o.value === label ? (o.value || label) : o.value + ' (' + label + ')'; }) };
   const multiple = allMatches.length > 1 && typeof index !== 'number'
     ? allMatches.length + ' elements match; filled the first (use --index or a more specific selector)'
     : '';
