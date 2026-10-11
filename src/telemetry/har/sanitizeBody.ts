@@ -1,6 +1,9 @@
 /**
  * Credential redaction in request and response bodies, WebSocket text
- * messages and `name=value` lists, for sanitized HAR exports (see sanitize.ts).
+ * messages and `name=value` lists, for sanitized HAR exports (see sanitize.ts)
+ * and the masked output of `details network` (networkMasking.ts). Each
+ * replaces a credential value with a placeholder it is given
+ * (`[redacted]` in a HAR, `••••` on screen).
  *
  * Matching is by field name only (`isSensitiveName`, the rule DOM masking
  * shares), so it over-redacts: any primitive whose name looks like a
@@ -60,9 +63,6 @@ const DOT = 0x2e;
 /** Levels of JSON encoded in string values that are decoded */
 const MAX_ENCODED_DEPTH = 3;
 
-/** {@link REDACTED} as a JSON string */
-const REDACTED_STRING = JSON.stringify(REDACTED);
-
 /** Strict UTF-8 decoder that keeps a BOM */
 const UTF8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
@@ -84,6 +84,8 @@ interface JsonScan {
   lineEnd: number;
   /** Levels of string encoding around the text */
   depth: number;
+  /** Text written instead of a credential (inside a JSON string for JWTs) */
+  placeholder: string;
 }
 
 /**
@@ -168,16 +170,19 @@ export function redactPairs(
  *
  * @param text - Body text
  * @param mimeType - Content-Type of the body (empty for a WebSocket message)
+ * @param placeholder - Text written instead of each credential value
  * @returns Body with credential values replaced; the text unchanged when
  *   there were none or it is neither JSON, a form nor multipart
  */
-export function redactBody(text: string, mimeType: string): string {
-  if (/multipart\/form-data/i.test(mimeType)) return redactMultipart(text, mimeType);
-  if (/x-www-form-urlencoded/i.test(mimeType)) return redactPairs(text, isSensitiveName, REDACTED);
-  if (JSON_LIKE_START.test(text)) return redactJsonText(text, 0);
-  if (FORM_BODY.test(text)) return redactPairs(text, isSensitiveName, REDACTED);
-  if (JSON_MIME.test(mimeType)) return redactJsonText(text, 0);
-  return redactJwts(text, REDACTED);
+export function redactBody(text: string, mimeType: string, placeholder = REDACTED): string {
+  if (/multipart\/form-data/i.test(mimeType)) return redactMultipart(text, mimeType, placeholder);
+  if (/x-www-form-urlencoded/i.test(mimeType)) {
+    return redactPairs(text, isSensitiveName, placeholder);
+  }
+  if (JSON_LIKE_START.test(text)) return redactJsonText(text, 0, placeholder);
+  if (FORM_BODY.test(text)) return redactPairs(text, isSensitiveName, placeholder);
+  if (JSON_MIME.test(mimeType)) return redactJsonText(text, 0, placeholder);
+  return redactJwts(text, placeholder);
 }
 
 /**
@@ -187,10 +192,11 @@ export function redactBody(text: string, mimeType: string): string {
  *
  * @param base64 - Body as base64
  * @param mimeType - Content-Type of the body
+ * @param placeholder - Text written instead of each credential value
  * @returns The redacted body re-encoded, or the input unchanged when it was
  *   not decodable text or held no credentials
  */
-export function redactBase64Body(base64: string, mimeType: string): string {
+export function redactBase64Body(base64: string, mimeType: string, placeholder = REDACTED): string {
   if (!DECODABLE_MIME.test(mimeType.split(';')[0]?.trim() ?? '')) return base64;
   let decoded: string;
   try {
@@ -199,7 +205,7 @@ export function redactBase64Body(base64: string, mimeType: string): string {
     log.debug(`Base64 body is not UTF-8: ${getErrorMessage(error)}`);
     return base64;
   }
-  const redacted = redactBody(decoded, mimeType);
+  const redacted = redactBody(decoded, mimeType, placeholder);
   return redacted === decoded ? base64 : Buffer.from(redacted, 'utf8').toString('base64');
 }
 
@@ -224,14 +230,18 @@ function decodeName(name: string): string {
  *
  * @param text - Body text
  * @param mimeType - Content-Type with the boundary
+ * @param placeholder - Text written instead of each credential value
  * @returns Body with credential part values replaced
  */
-function redactMultipart(text: string, mimeType: string): string {
+function redactMultipart(text: string, mimeType: string, placeholder: string): string {
   const match = /boundary=(?:"([^"]+)"|([^;\s]+))/i.exec(mimeType);
   const boundary = match?.[1] ?? match?.[2];
   if (!boundary) return text;
   const delimiter = `--${boundary}`;
-  return text.split(delimiter).map(redactPart).join(delimiter);
+  return text
+    .split(delimiter)
+    .map((part) => redactPart(part, placeholder))
+    .join(delimiter);
 }
 
 /**
@@ -239,15 +249,16 @@ function redactMultipart(text: string, mimeType: string): string {
  * the JWTs in it.
  *
  * @param part - Text between two boundary delimiters
+ * @param placeholder - Text written instead of the value or each JWT
  * @returns The part, or the part with its value or JWTs replaced
  */
-function redactPart(part: string): string {
+function redactPart(part: string, placeholder: string): string {
   const headerEnd = part.indexOf('\r\n\r\n');
   if (headerEnd === -1) return part;
   const name = /;\s*name="([^"]*)"/i.exec(part.slice(0, headerEnd))?.[1];
-  if (name === undefined || !isSensitiveName(name)) return redactJwts(part, REDACTED);
+  if (name === undefined || !isSensitiveName(name)) return redactJwts(part, placeholder);
   const valueEnd = part.endsWith('\r\n') ? part.length - 2 : part.length;
-  return `${part.slice(0, headerEnd + 4)}${REDACTED}${part.slice(valueEnd)}`;
+  return `${part.slice(0, headerEnd + 4)}${placeholder}${part.slice(valueEnd)}`;
 }
 
 /**
@@ -260,10 +271,11 @@ function redactPart(part: string): string {
  *
  * @param text - Text holding JSON, possibly truncated or framed
  * @param depth - Levels of string encoding around the text
- * @returns Text with credential values replaced by `"[redacted]"`; the text
- *   unchanged when there were none
+ * @param placeholder - Text written (as a JSON string) instead of each credential value
+ * @returns Text with credential values replaced by the placeholder string;
+ *   the text unchanged when there were none
  */
-function redactJsonText(text: string, depth: number): string {
+function redactJsonText(text: string, depth: number, placeholder: string): string {
   const scan: JsonScan = {
     text,
     parts: [],
@@ -272,6 +284,7 @@ function redactJsonText(text: string, depth: number): string {
     key: undefined,
     lineEnd: -1,
     depth,
+    placeholder,
   };
   let index = 0;
   while (index < text.length) index = scanToken(scan, index);
@@ -318,7 +331,7 @@ function scanString(scan: JsonScan, start: number): number {
   if (isFollowedByColon(scan.text, end)) {
     scan.key = isSensitiveName(keyName(scan.text, start, end));
   } else if (takeValue(scan)) {
-    replaceValue(scan, start, end, REDACTED_STRING);
+    replaceValue(scan, start, end, JSON.stringify(scan.placeholder));
   } else {
     const encoded = redactEncodedJson(scan, start, end);
     if (encoded === undefined) redactStringJwts(scan, start, end);
@@ -337,7 +350,7 @@ function scanString(scan: JsonScan, start: number): number {
 function redactStringJwts(scan: JsonScan, start: number, end: number): void {
   const contentEnd = end - 1 > start && scan.text[end - 1] === '"' ? end - 1 : end;
   const content = scan.text.slice(start + 1, contentEnd);
-  const redacted = redactJwts(content, REDACTED);
+  const redacted = redactJwts(content, scan.placeholder);
   if (redacted !== content) replaceValue(scan, start + 1, contentEnd, redacted);
 }
 
@@ -357,7 +370,9 @@ function scanBare(scan: JsonScan, index: number): number {
   const end = index + bare.length;
   const isLiteral = /^[-\d]/.test(bare) || bare === 'true' || bare === 'false' || bare === 'null';
   if (!isLiteral && scan.key !== true) return end;
-  if (takeValue(scan) && bare !== 'null') replaceValue(scan, index, end, REDACTED_STRING);
+  if (takeValue(scan) && bare !== 'null') {
+    replaceValue(scan, index, end, JSON.stringify(scan.placeholder));
+  }
   return end;
 }
 
@@ -470,7 +485,7 @@ function redactEncodedJson(scan: JsonScan, start: number, end: number): string |
     return undefined;
   }
   if (!JSON_LIKE_START.test(decoded)) return undefined;
-  const redacted = redactJsonText(decoded, scan.depth + 1);
+  const redacted = redactJsonText(decoded, scan.depth + 1, scan.placeholder);
   return redacted === decoded ? undefined : JSON.stringify(redacted);
 }
 

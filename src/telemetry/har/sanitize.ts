@@ -16,6 +16,10 @@
  * JSON, form or event-stream, and binary WebSocket messages always; those
  * that are not UTF-8 text, and other binary bodies, are kept. A body or
  * message the sanitizer fails on is replaced whole by {@link REDACTED}.
+ *
+ * The rules (which headers, URL parameters and body fields are credentials)
+ * are shared with the masked output of `details network`, `network headers`
+ * and `network document` (networkMasking.ts), which writes `••••` instead.
  */
 
 import type { Content, Cookie, Entry, Header, QueryParam, WebSocketMessage } from './types.js';
@@ -52,8 +56,11 @@ const SENSITIVE_CUSTOM_HEADER = /^x-.*(key|token|secret|auth)/i;
 const SENSITIVE_HEADER_SEGMENT =
   /(^|-)(api-?key|apikey|token|secret|jwt|subscription-key|session(-?id)?)(-|$)/i;
 
-/** Headers whose values are URLs that may carry credential parameters */
-const URL_HEADERS = new Set(['location', 'referer']);
+/**
+ * Headers whose values are URLs that may carry credential parameters
+ * (`:path` is the path and query of an HTTP/2 request)
+ */
+const URL_HEADERS = new Set(['location', 'referer', ':path']);
 
 /**
  * The user info of a URL (`user:pass@`) after its scheme (or the `//` of a
@@ -148,7 +155,7 @@ function redactWebSocketMessage(message: WebSocketMessage): WebSocketMessage {
  * @param name - Header name (any case)
  * @returns True for auth, cookie, API key, token, secret and session headers
  */
-function isSensitiveHeader(name: string): boolean {
+export function isSensitiveHeader(name: string): boolean {
   return (
     SENSITIVE_HEADERS.has(name.toLowerCase()) ||
     SENSITIVE_CUSTOM_HEADER.test(name) ||
@@ -165,9 +172,19 @@ function isSensitiveHeader(name: string): boolean {
  */
 function redactHeader(header: Header): Header {
   if (isSensitiveHeader(header.name)) return { ...header, value: REDACTED };
-  if (!URL_HEADERS.has(header.name.toLowerCase())) return header;
+  if (!isUrlHeader(header.name)) return header;
   const value = redactUrl(header.value);
   return value === header.value ? header : { ...header, value };
+}
+
+/**
+ * Whether a header's value is a URL whose credentials are redacted.
+ *
+ * @param name - Header name (any case)
+ * @returns True for `Location`, `Referer` and `:path`
+ */
+export function isUrlHeader(name: string): boolean {
+  return URL_HEADERS.has(name.toLowerCase());
 }
 
 /**
@@ -207,17 +224,18 @@ function redactQueryParam(param: QueryParam): QueryParam {
  * flow), leaving the rest byte for byte.
  *
  * @param captured - URL (empty for none)
- * @returns URL without user info, credential values replaced by the
- *   URL-encoded {@link REDACTED}
+ * @param placeholder - Value written instead of each credential, as written
+ *   in the URL (default: the URL-encoded {@link REDACTED})
+ * @returns URL without user info, credential values replaced
  */
-function redactUrl(captured: string): string {
+export function redactUrl(captured: string, placeholder = URL_REDACTED): string {
   const url = captured.replace(URL_USER_INFO, '$1');
   const hash = url.indexOf('#');
   const beforeHash = hash === -1 ? url : url.slice(0, hash);
   const fragment =
-    hash === -1 ? '' : `#${redactPairs(url.slice(hash + 1), isSensitiveParam, URL_REDACTED)}`;
+    hash === -1 ? '' : `#${redactPairs(url.slice(hash + 1), isSensitiveParam, placeholder)}`;
   const question = beforeHash.indexOf('?');
   if (question === -1) return beforeHash + fragment;
-  const query = redactPairs(beforeHash.slice(question + 1), isSensitiveParam, URL_REDACTED);
+  const query = redactPairs(beforeHash.slice(question + 1), isSensitiveParam, placeholder);
   return `${beforeHash.slice(0, question)}?${query}${fragment}`;
 }

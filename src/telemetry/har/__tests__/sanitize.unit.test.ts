@@ -344,6 +344,14 @@ void describe('HAR sanitization: URLs', () => {
     assert.equal(header(entry.request.headers, 'Referer'), expected);
   });
 
+  test('redacts credential parameters in the :path of an HTTP/2 request', () => {
+    const entry = entryFor({
+      ...LOGIN_REQUEST,
+      requestHeaders: { ':path': '/callback?code=SECRET&state=xyz' },
+    });
+    assert.equal(header(entry.request.headers, ':path'), '/callback?code=%5Bredacted%5D&state=xyz');
+  });
+
   test('leaves URLs without sensitive parameters alone', () => {
     const url = 'https://example.com/search?q=zipcode&keyword=a%20b';
     assert.equal(entryFor({ ...LOGIN_REQUEST, url }).request.url, url);
