@@ -94,7 +94,15 @@ class CommandTimeoutError extends Error {
 }
 
 /**
- * Run a promise with a timeout, clearing the timer either way.
+ * Longest delay Node's `setTimeout` takes (about 24.8 days): a longer one,
+ * or one that is not a number, fires after 1 ms.
+ */
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
+/**
+ * Run a promise with a timeout, clearing the timer either way. A timeout
+ * longer than {@link MAX_TIMER_DELAY_MS} (it can come from a client's
+ * request) waits that long rather than firing at once.
  *
  * @param promise - Work to wait for
  * @param timeoutMs - Timeout in milliseconds
@@ -103,11 +111,12 @@ class CommandTimeoutError extends Error {
  * @throws Error when the timeout elapses first
  */
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  const delay = timeoutMs <= MAX_TIMER_DELAY_MS ? timeoutMs : MAX_TIMER_DELAY_MS;
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(
-      () => reject(new CommandTimeoutError(`${label} timeout (${timeoutMs / 1000}s)`)),
-      timeoutMs
+      () => reject(new CommandTimeoutError(`${label} timeout (${delay / 1000}s)`)),
+      delay
     );
   });
   try {
