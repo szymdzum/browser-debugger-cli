@@ -17,6 +17,10 @@
  *
  * Only JSON syntax is understood: single-quoted strings, unquoted keys,
  * JSONP and `name:value` header lines (STOMP `passcode:`) are not.
+ *
+ * In an HTML body the values of secret form controls are replaced
+ * ({@link redactHtmlFields}, the rule `dom get --raw` applies on the page);
+ * the rest of the HTML, inline scripts included, stays as captured.
  */
 
 import { createLogger } from '@/ui/logging/index.js';
@@ -53,6 +57,34 @@ const JSON_MIME = /json|event-stream/i;
  */
 const DECODABLE_MIME =
   /^(?:application\/octet-stream|binary\/octet-stream|application\/x-www-form-urlencoded|text\/event-stream)?$|json/i;
+
+/** Content-Types (without parameters) of HTML bodies, whose secret form-control values are masked */
+const HTML_MIME = /^(?:text\/html|application\/xhtml\+xml)$/i;
+
+/**
+ * An `<input>` tag of any case; its attributes may span lines and hold `>`
+ * inside quotes. `$1` is the attribute text
+ */
+const INPUT_TAG = /<input\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+
+/**
+ * A `<textarea>` element of any case, up to its end tag: `$1` is the
+ * attribute text, `$2` the content
+ */
+const TEXTAREA = /<textarea\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/textarea\s*>/gi;
+
+/**
+ * One attribute of a tag: `$1` the name; `$2`, `$3` or `$4` the value
+ * (double-quoted, single-quoted or unquoted), none for a bare attribute
+ */
+const ATTRIBUTE = /([^\s"'<>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+
+/** An `autocomplete` token that names a card, one-time code or password field */
+const SECRET_AUTOCOMPLETE = /(^|\s)(cc-[a-z-]+|one-time-code|current-password|new-password)(\s|$)/i;
+
+/** Length of `<input` or `<textarea`, the part of a tag before its attributes */
+const INPUT_PREFIX = '<input'.length;
+const TEXTAREA_PREFIX = '<textarea'.length;
 
 /**
  * An auth scheme (any case, as RFC 7235 allows) followed on the same line by
@@ -99,6 +131,18 @@ interface JsonScan {
   depth: number;
   /** Text written instead of a credential (inside a JSON string for JWTs) */
   placeholder: string;
+}
+
+/**
+ * An attribute of a form control, as parsed from its tag.
+ */
+interface ParsedAttribute {
+  /** Name, lowercased */
+  name: string;
+  /** Value as written (entities kept); empty for a bare attribute */
+  value: string;
+  /** Index of the value's first character in the attribute text, when it has one */
+  valueStart: number;
 }
 
 /**
@@ -185,9 +229,12 @@ export function redactPairs(
  * @param mimeType - Content-Type of the body (empty for a WebSocket message)
  * @param placeholder - Text written instead of each credential value
  * @returns Body with credential values replaced; the text unchanged when
- *   there were none or it is neither JSON, a form nor multipart
+ *   there were none or it is neither JSON, a form, multipart nor HTML
  */
 export function redactBody(text: string, mimeType: string, placeholder = REDACTED): string {
+  if (HTML_MIME.test(baseType(mimeType))) {
+    return redactHtmlFields(redactJwts(text, placeholder), placeholder);
+  }
   if (/multipart\/form-data/i.test(mimeType)) return redactMultipart(text, mimeType, placeholder);
   if (/x-www-form-urlencoded/i.test(mimeType)) {
     return redactPairs(text, isSensitiveName, placeholder);
@@ -199,15 +246,121 @@ export function redactBody(text: string, mimeType: string, placeholder = REDACTE
 }
 
 /**
- * Mask the values of secret form controls in an HTML body (#634).
+ * Replace the values of secret form controls in an HTML body (#634): every
+ * non-empty `value` attribute of an `<input>` that is `type=password` or
+ * `type=hidden`, has a card, one-time code or password `autocomplete`, or
+ * whose `name`, `id` or `autocomplete` is a secret name
+ * ({@link isSensitiveName}, the rule `dom get --raw` applies on the page),
+ * and the non-empty content of a `<textarea>` judged the same way. The rest
+ * of the HTML, inline scripts included, stays byte for byte.
+ *
+ * The HTML is scanned as text, not parsed: tags of any case, attributes in
+ * any order, quoted (entities kept), single-quoted or unquoted values, and
+ * tags split over lines are understood; a `<select>`'s options, a control
+ * written inside a script string or comment (masked too), and a tag broken
+ * by an unclosed quote are its limits.
  *
  * @param text - HTML text
  * @param placeholder - Text written instead of each value
- * @returns The HTML with those values replaced
+ * @returns The HTML with those values replaced; the text unchanged when it
+ *   has no secret control
  */
 export function redactHtmlFields(text: string, placeholder = REDACTED): string {
-  void placeholder;
-  return text;
+  if (!/<(?:input|textarea)\b/i.test(text)) return text;
+  return text
+    .replace(INPUT_TAG, (tag: string, attributes: string) =>
+      redactInputValues(tag, attributes, placeholder)
+    )
+    .replace(TEXTAREA, (element: string, attributes: string, content: string) =>
+      redactTextareaContent(element, attributes, content, placeholder)
+    );
+}
+
+/**
+ * The media type of a Content-Type, without its parameters.
+ *
+ * @param mimeType - Content-Type as captured
+ * @returns e.g. `text/html` for `text/html; charset=utf-8`
+ */
+function baseType(mimeType: string): string {
+  return mimeType.split(';')[0]?.trim() ?? '';
+}
+
+/**
+ * Parse the attributes of a tag.
+ *
+ * @param attributes - Attribute text of the tag
+ * @returns Attributes in order, names lowercased
+ */
+function parseAttributes(attributes: string): ParsedAttribute[] {
+  const parsed: ParsedAttribute[] = [];
+  for (const match of attributes.matchAll(ATTRIBUTE)) {
+    const value = match[2] ?? match[3] ?? match[4] ?? '';
+    const quoted = match[2] !== undefined || match[3] !== undefined;
+    parsed.push({
+      name: (match[1] ?? '').toLowerCase(),
+      value,
+      valueStart: match.index + match[0].length - value.length - (quoted ? 1 : 0),
+    });
+  }
+  return parsed;
+}
+
+/**
+ * Whether a form control holds a secret: by type, autocomplete, name or id
+ * (the first of each attribute counts, as in HTML).
+ *
+ * @param attributes - Parsed attributes
+ * @returns True for a password, hidden, card, one-time code or secret-named control
+ */
+function isSecretControl(attributes: ParsedAttribute[]): boolean {
+  const first = (name: string): string =>
+    attributes.find((attribute) => attribute.name === name)?.value ?? '';
+  if (/^\s*(?:password|hidden)\s*$/i.test(first('type'))) return true;
+  const autocomplete = first('autocomplete');
+  if (SECRET_AUTOCOMPLETE.test(autocomplete)) return true;
+  return isSensitiveName([first('name'), first('id'), autocomplete].join(' '));
+}
+
+/**
+ * Replace the non-empty `value` attributes of an `<input>` tag when the
+ * control holds a secret.
+ *
+ * @param tag - The whole tag
+ * @param attributes - Its attribute text
+ * @param placeholder - Text written instead of each value
+ * @returns The tag, with its values replaced (quotes kept) when it is a secret control
+ */
+function redactInputValues(tag: string, attributes: string, placeholder: string): string {
+  const parsed = parseAttributes(attributes);
+  if (!isSecretControl(parsed)) return tag;
+  let redacted = attributes;
+  for (const attribute of [...parsed].reverse()) {
+    if (attribute.name !== 'value' || attribute.value === '') continue;
+    const end = attribute.valueStart + attribute.value.length;
+    redacted = `${redacted.slice(0, attribute.valueStart)}${placeholder}${redacted.slice(end)}`;
+  }
+  return `${tag.slice(0, INPUT_PREFIX)}${redacted}>`;
+}
+
+/**
+ * Replace the content of a `<textarea>` when it holds a secret.
+ *
+ * @param element - The whole element
+ * @param attributes - Its attribute text
+ * @param content - Its content
+ * @param placeholder - Text written instead of the content
+ * @returns The element, with its content replaced when it is a non-empty secret control
+ */
+function redactTextareaContent(
+  element: string,
+  attributes: string,
+  content: string,
+  placeholder: string
+): string {
+  if (content === '' || !isSecretControl(parseAttributes(attributes))) return element;
+  const contentStart = TEXTAREA_PREFIX + attributes.length + 1;
+  return `${element.slice(0, contentStart)}${placeholder}${element.slice(contentStart + content.length)}`;
 }
 
 /**
@@ -222,7 +375,7 @@ export function redactHtmlFields(text: string, placeholder = REDACTED): string {
  *   not decodable text or held no credentials
  */
 export function redactBase64Body(base64: string, mimeType: string, placeholder = REDACTED): string {
-  if (!DECODABLE_MIME.test(mimeType.split(';')[0]?.trim() ?? '')) return base64;
+  if (!DECODABLE_MIME.test(baseType(mimeType))) return base64;
   return redactBase64Text(base64, (text) => redactBody(text, mimeType, placeholder));
 }
 

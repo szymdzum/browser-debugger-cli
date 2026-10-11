@@ -106,7 +106,7 @@ const filterDslOption = new Option(
  */
 const includeSensitiveOption = new Option(
   '--include-sensitive',
-  'Keep credentials (auth/cookie/API key headers, cookie values, URL credentials and tokens, password and token body fields); redacted by default'
+  'Keep credentials (auth/cookie/API key headers, cookie values, URL credentials and tokens, password and token body fields, secret form-control values of HTML bodies); redacted by default'
 );
 
 /**

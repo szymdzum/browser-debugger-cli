@@ -34,7 +34,7 @@ export function jsonOption(): Option {
 export function includeSensitiveOption(): Option {
   return new Option(
     '--include-sensitive',
-    'Show credentials as captured (auth/cookie/API key/token headers, cookie values, URL credentials and tokens, password and token fields of bodies and WebSocket messages); masked as •••• by default'
+    'Show credentials as captured (auth/cookie/API key/token headers, cookie values, URL credentials and tokens, password and token fields of bodies and WebSocket messages, secret form-control values of HTML bodies); masked as •••• by default'
   );
 }
 
