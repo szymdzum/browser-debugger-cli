@@ -25,6 +25,20 @@ export function jsonOption(): Option {
 }
 
 /**
+ * Create the `--include-sensitive` flag of `details network`,
+ * `network headers` and `network document`, which show credentials masked
+ * by default.
+ *
+ * @returns Commander Option instance for --include-sensitive
+ */
+export function includeSensitiveOption(): Option {
+  return new Option(
+    '--include-sensitive',
+    'Show credentials as captured (auth/cookie/API key/token headers, cookie values, URL credentials and tokens, password and token fields of bodies and WebSocket messages); masked as •••• by default'
+  );
+}
+
+/**
  * `--network` together with `--console` asks for both sections, which is what
  * neither flag shows; clear both so the output is not empty.
  *

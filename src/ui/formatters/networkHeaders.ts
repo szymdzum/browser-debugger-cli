@@ -7,15 +7,23 @@
 import type { SessionNetworkHeadersData } from '@/ipc/protocol/commands.js';
 import { formatRequestStatus } from '@/ui/formatters/requestStatus.js';
 import { OutputFormatter } from '@/ui/formatting.js';
-import { headerRepeatedNote } from '@/ui/messages/networkMessages.js';
+import { headerRepeatedNote, networkSecretsMaskedNote } from '@/ui/messages/networkMessages.js';
+
+/**
+ * `network headers` and `network document` result (the `data` of `--json`).
+ */
+export type NetworkHeadersOutput = SessionNetworkHeadersData & {
+  /** A credential in the URL or headers was shown as `••••` (no `--include-sensitive`) */
+  masked?: true;
+};
 
 /**
  * Format network request headers for display.
  *
- * @param data - Network headers data from the session
+ * @param data - Network headers data, masked unless `--include-sensitive`
  * @returns Formatted string for console output
  */
-export function formatNetworkHeaders(data: SessionNetworkHeadersData): string {
+export function formatNetworkHeaders(data: NetworkHeadersOutput): string {
   const fmt = new OutputFormatter();
 
   fmt.text('Network Request Headers').separator('━', 60).blank();
@@ -43,6 +51,7 @@ export function formatNetworkHeaders(data: SessionNetworkHeadersData): string {
   }
 
   fmt.text(`Request ID: ${data.requestId}`);
+  if (data.masked) fmt.blank().text(networkSecretsMaskedNote());
 
   return fmt.build();
 }

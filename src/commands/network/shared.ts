@@ -6,8 +6,8 @@
 
 import type { Command } from 'commander';
 
-import { runCommand } from '@/commands/shared/CommandRunner.js';
-import { jsonOption } from '@/commands/shared/commonOptions.js';
+import { runCommand, type CommandResult } from '@/commands/shared/CommandRunner.js';
+import { includeSensitiveOption, jsonOption } from '@/commands/shared/commonOptions.js';
 import type {
   NetworkCookiesCommandOptions,
   NetworkHeadersCommandOptions,
@@ -16,10 +16,13 @@ import { CommandError } from '@/errors/index.js';
 import { operationFailedError } from '@/errors/messages.js';
 import { getHARData, callCDP, getNetworkHeaders } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
+import type { SessionNetworkHeadersData } from '@/ipc/protocol/commands.js';
 import { validateFilterString } from '@/telemetry/filterDsl.js';
+import { maskHeaderFields } from '@/telemetry/networkMasking.js';
 import type { NetworkRequest } from '@/types.js';
-import type { Cookie } from '@/ui/formatters/index.js';
+import type { Cookie, NetworkHeadersOutput } from '@/ui/formatters/index.js';
 import { formatCookies, formatNetworkHeaders } from '@/ui/formatters/index.js';
+import { includeSensitiveWarning } from '@/ui/messages/networkMessages.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -70,6 +73,23 @@ export function validateFilterOption(filterString: string): void {
     { suggestion: err.suggestion },
     EXIT_CODES.INVALID_ARGUMENTS
   );
+}
+
+/**
+ * The headers `network headers` and `network document` show: credentials
+ * masked, or as captured with a warning (`--include-sensitive`).
+ *
+ * @param data - URL and headers from the session
+ * @param includeSensitive - Whether `--include-sensitive` was given
+ * @returns Command result
+ */
+function headersResult(
+  data: SessionNetworkHeadersData,
+  includeSensitive: boolean | undefined
+): CommandResult<NetworkHeadersOutput> {
+  if (includeSensitive) return { success: true, data, warning: includeSensitiveWarning() };
+  const { value, masked } = maskHeaderFields(data);
+  return { success: true, data: { ...value, ...(masked && { masked: true as const }) } };
 }
 
 /**
@@ -127,6 +147,7 @@ export function registerHeadersCommand(networkCmd: Command): void {
     .description('Show HTTP headers (defaults to current main document)')
     .option('--header <name>', 'Filter to specific header name')
     .addOption(jsonOption())
+    .addOption(includeSensitiveOption())
     .addHelpText(
       'after',
       '\nNote: Without [id], shows headers for the current main document.\n      If the page has navigated, this will be the latest navigation, not the original URL.'
@@ -152,10 +173,7 @@ export function registerHeadersCommand(networkCmd: Command): void {
             };
           }
 
-          return {
-            success: true,
-            data: response.data,
-          };
+          return headersResult(response.data, opts.includeSensitive);
         },
         options,
         formatNetworkHeaders
@@ -174,6 +192,7 @@ export function registerDocumentCommand(networkCmd: Command): void {
     .description('Show main HTML document request details (alias for headers without ID)')
     .option('--header <name>', 'Filter to specific header name')
     .addOption(jsonOption())
+    .addOption(includeSensitiveOption())
     .action(async (options: NetworkHeadersCommandOptions) => {
       await runCommand(
         async (opts) => {
@@ -194,10 +213,7 @@ export function registerDocumentCommand(networkCmd: Command): void {
             };
           }
 
-          return {
-            success: true,
-            data: response.data,
-          };
+          return headersResult(response.data, opts.includeSensitive);
         },
         options,
         formatNetworkHeaders
