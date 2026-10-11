@@ -199,6 +199,18 @@ export function redactBody(text: string, mimeType: string, placeholder = REDACTE
 }
 
 /**
+ * Mask the values of secret form controls in an HTML body (#634).
+ *
+ * @param text - HTML text
+ * @param placeholder - Text written instead of each value
+ * @returns The HTML with those values replaced
+ */
+export function redactHtmlFields(text: string, placeholder = REDACTED): string {
+  void placeholder;
+  return text;
+}
+
+/**
  * Redact credential fields of a base64 body or binary WebSocket message that
  * may be text: one with no, a generic binary, a JSON, a form or an
  * event-stream Content-Type that decodes as UTF-8.

@@ -260,22 +260,73 @@ void describe('collectEvents', () => {
     );
   });
 
-  void it('keeps the mode of an existing --out file', async () => {
-    const dir = fs.mkdtempSync(path.join(tmpDir, 'mode-'));
-    const file = path.join(dir, 'secret.ndjson');
-    fs.writeFileSync(file, 'old\n', { mode: 0o600 });
-    fs.chmodSync(file, 0o600);
-    const source = new FakeSource();
-    await collectEvents(
-      source,
-      () => {
-        source.emit('A.b', { n: 1 });
-        return Promise.resolve({});
-      },
-      { events: ['A.b'], timeoutMs: 10, out: file }
+  void it(
+    'writes a new --out file 0600 (#624)',
+    { skip: process.platform === 'win32' },
+    async () => {
+      const file = path.join(fs.mkdtempSync(path.join(tmpDir, 'mode-')), 'new.ndjson');
+      const source = new FakeSource();
+      await collectEvents(
+        source,
+        () => {
+          source.emit('A.b', { n: 1 });
+          return Promise.resolve({});
+        },
+        { events: ['A.b'], timeoutMs: 10, out: file }
+      );
+      assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+    }
+  );
+
+  for (const mode of [0o644, 0o600]) {
+    void it(
+      `writes 0600 over an existing ${mode.toString(8)} --out file (#624)`,
+      { skip: process.platform === 'win32' },
+      async () => {
+        const dir = fs.mkdtempSync(path.join(tmpDir, 'mode-'));
+        const file = path.join(dir, 'secret.ndjson');
+        fs.writeFileSync(file, 'old\n');
+        fs.chmodSync(file, mode);
+        const source = new FakeSource();
+        await collectEvents(
+          source,
+          () => {
+            source.emit('A.b', { n: 1 });
+            return Promise.resolve({});
+          },
+          { events: ['A.b'], timeoutMs: 10, out: file }
+        );
+        assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+        assert.deepEqual(strayFiles(dir, ['secret.ndjson']), []);
+      }
     );
-    assert.equal(fs.statSync(file).mode & 0o777, 0o600);
-  });
+  }
+
+  void it(
+    'replaces a symlink at --out by a 0600 file, leaving its destination (#624)',
+    { skip: process.platform === 'win32' },
+    async () => {
+      const dir = fs.mkdtempSync(path.join(tmpDir, 'link-'));
+      const victim = path.join(dir, 'victim.txt');
+      fs.writeFileSync(victim, 'untouched');
+      fs.chmodSync(victim, 0o644);
+      const file = path.join(dir, 'link.ndjson');
+      fs.symlinkSync(victim, file);
+      const source = new FakeSource();
+      await collectEvents(
+        source,
+        () => {
+          source.emit('A.b', { n: 1 });
+          return Promise.resolve({});
+        },
+        { events: ['A.b'], timeoutMs: 10, out: file }
+      );
+      assert.equal(fs.readFileSync(victim, 'utf8'), 'untouched');
+      assert.equal(fs.statSync(victim).mode & 0o777, 0o644);
+      assert.ok(fs.lstatSync(file).isFile());
+      assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+    }
+  );
 
   void it('writes to a target whose name leaves no room for the temp suffix', async () => {
     const dir = fs.mkdtempSync(path.join(tmpDir, 'long-'));
@@ -539,6 +590,26 @@ void describe('CdpEventListener', () => {
     assert.equal(read.count, 1);
     assert.equal(fs.readFileSync(file, 'utf8').trimEnd().split('\n').length, 1);
   });
+
+  for (const existing of [undefined, 0o644, 0o600]) {
+    void it(
+      `--events --out writes 0600 over ${existing === undefined ? 'a new file' : `an existing ${existing.toString(8)} file`} (#624)`,
+      { skip: process.platform === 'win32' },
+      async () => {
+        const source = new FakeSource();
+        const listener = new CdpEventListener();
+        listener.listen(source, ['A.b']);
+        source.emit('A.b', { n: 1 });
+        const file = path.join(fs.mkdtempSync(path.join(tmpDir, 'read-mode-')), 'events.ndjson');
+        if (existing !== undefined) {
+          fs.writeFileSync(file, 'old\n');
+          fs.chmodSync(file, existing);
+        }
+        await listener.read({ action: 'read', out: file });
+        assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+      }
+    );
+  }
 
   void it('unlisten stops listening and discards the buffer', async () => {
     const source = new FakeSource();
