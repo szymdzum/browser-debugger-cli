@@ -662,7 +662,7 @@ function queryNode(
   const { backendNodeId, context, text, state, inViewport, clippedBy } = element;
   const attributes = unpackAttributes(element.attributes);
   const classes = elementClasses(attributes);
-  const preview = textPreview(text);
+  const preview = state.sensitive ? '' : textPreview(text);
   const tag = element.tag.toLowerCase();
   const keys = keyAttributes(tag, attributes, state);
   return {
@@ -758,7 +758,8 @@ async function callOnNode(
 
 /**
  * Get DOM context (tag, classes, key attributes, text preview) for a node: a one-line
- * preview, and up to {@link ELEMENT_TEXT_LENGTH} characters of text when it
+ * preview (none for a sensitive field: a secret select's text is its
+ * options, #625), and up to {@link ELEMENT_TEXT_LENGTH} characters of text when it
  * is longer (all of it with `full`).
  *
  * @param ref - Node reference
@@ -778,7 +779,8 @@ export async function getDomContext(
   const full = options.full === true;
   const attributes = unpackAttributes(desc.attributes);
   const classes = elementClasses(attributes);
-  const { text, state } = await elementTextAndState(ref, full);
+  const { text: readText, state } = await elementTextAndState(ref, full);
+  const text = state.sensitive ? '' : readText;
   const preview = textPreview(text);
   const longer = textPreview(text, full ? Number.POSITIVE_INFINITY : ELEMENT_TEXT_LENGTH);
   const tag = desc.nodeName.toLowerCase();
@@ -790,7 +792,7 @@ export async function getDomContext(
     ...(state.sensitive && { sensitive: true }),
     ...(preview && { preview }),
     ...(longer !== preview && { text: longer }),
-    ...(!preview && (await childElements(ref))),
+    ...(!preview && !state.sensitive && (await childElements(ref))),
   };
 }
 

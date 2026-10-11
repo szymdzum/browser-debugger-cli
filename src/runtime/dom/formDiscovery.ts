@@ -377,7 +377,7 @@ export const FORM_DISCOVERY_SCRIPT = `
     const secret = isSecret(element);
     return Array.from(element.options).map(opt => ({
       value: secret ? '' : opt.value,
-      label: opt.textContent.trim(),
+      label: secret ? '${MASKED_VALUE}' : opt.textContent.trim(),
       selected: secret ? false : opt.selected
     }));
   }
