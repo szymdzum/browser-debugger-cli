@@ -61,9 +61,11 @@ export class AtomicFileWriter {
   /**
    * Write data to a file atomically (asynchronous).
    *
-   * Creates a unique temporary file, writes the data, then atomically renames it to the target path.
+   * Creates a unique temporary file (exclusively: an existing file or symlink at that path is an
+   * error, never written through), writes the data, then atomically renames it to the target path.
    * This ensures the target file is never in a partially written state and prevents corruption
-   * from concurrent writes by different processes.
+   * from concurrent writes by different processes. A symlink at the target path is replaced, not
+   * followed.
    *
    * @param filePath - Target file path
    * @param data - Data to write
@@ -81,6 +83,7 @@ export class AtomicFileWriter {
     try {
       await fs.promises.writeFile(tmpPath, data, {
         encoding: options.encoding ?? 'utf-8',
+        flag: 'wx',
         ...(options.mode !== undefined && { mode: options.mode }),
       });
       await fs.promises.rename(tmpPath, filePath);

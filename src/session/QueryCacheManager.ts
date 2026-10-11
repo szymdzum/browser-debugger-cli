@@ -20,13 +20,14 @@
  */
 
 import { existsSync } from 'fs';
-import { readFile, rm, writeFile } from 'fs/promises';
+import { readFile, rm } from 'fs/promises';
 import { join } from 'path';
 
 import { getSessionDir } from '@/session/paths.js';
 import type { DomQueryResult, IndexSource } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
+import { AtomicFileWriter } from '@/utils/atomicFile.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
 const log = createLogger('session');
@@ -36,6 +37,9 @@ const log = createLogger('session');
  * per-connection node ids that are meaningless to later commands.
  */
 const CACHE_VERSION = 2;
+
+/** Mode of the cache file: only the user can read it (it holds element previews) */
+const CACHE_FILE_MODE = 0o600;
 
 /**
  * Selector recorded for `dom form` results (fields carry their own selectors).
@@ -111,7 +115,9 @@ export class QueryCacheManager {
   }
 
   /**
-   * Store a query result.
+   * Store a query result. The file is replaced in one step (a temporary
+   * file in the session directory, then a rename), so a command reading it
+   * meanwhile sees the previous list or this one, never a partial file.
    *
    * @param result - Query result whose nodes carry backend node ids
    * @param document - Identity of the page document queried
@@ -121,10 +127,10 @@ export class QueryCacheManager {
   async set(result: DomQueryResult, document?: string): Promise<void> {
     try {
       const cachePath = this.getCachePath();
-      await writeFile(
+      await AtomicFileWriter.writeAsync(
         cachePath,
         JSON.stringify({ version: CACHE_VERSION, ...result, ...(document && { document }) }),
-        'utf-8'
+        { mode: CACHE_FILE_MODE }
       );
       log.debug(`Cached ${result.nodes.length} query results to ${cachePath}`);
     } catch (error) {
