@@ -174,7 +174,14 @@ void describe('Press check', () => {
     assert.deepEqual(await evaluate('window.clicks'), ['Swap pressed']);
   });
 
-  for (const id of ['gone-pointerdown', 'gone-mousedown', 'gone-pointerup', 'option']) {
+  for (const id of [
+    'gone-pointerdown',
+    'gone-mousedown',
+    'gone-pointerup',
+    'option',
+    'item-1',
+    'follow',
+  ]) {
     void it(`does not report ${id}, which unmounts on press after its handler ran (#641)`, async () => {
       const output = await bdg(['dom', 'click', `#${id}`, '--strict', '--json']);
       const data = (JSON.parse(output) as { data: ClickJson }).data;

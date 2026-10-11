@@ -803,11 +803,14 @@ export const FILL_READ_BACK_SCRIPT = `(() => {
  * A hover first notes what is hidden around the element
  * ({@link REVEAL_SNAPSHOT_JS}), so its result can say what it revealed. For
  * a press, a probe (`window.__bdgPressProbe`) records whether the press
- * reaches the element, whether a `click` reached it and whether the page
- * replaced it by a like-for-like element (same tag, parent and label, at the press
- * point; not a sibling that moved under the mouse) without a click (#641); one that unmounts with nothing like it
- * there acted on the press and is not reported, and otherwise which element it landed on: a browser
- * dialog or bubble can swallow input while the page looks normal. It
+ * reaches the element, and otherwise which element it landed on: a browser
+ * dialog or bubble can swallow input while the page looks normal. The probe
+ * also records whether a `click` reached the element. A press that reached it
+ * but got no click counts as replaced (#641) when the element left the page
+ * and an element with the same tag, parent and trimmed text is now at the
+ * press point (a re-render on `pointerdown`). An element that merely unmounts
+ * on press, a sibling that slides under the mouse, and a replacement with a
+ * different label are not reported, since the handler may have acted. The probe
  * listens on the window and on each shadow root around the element, since
  * an event path seen from outside a closed root stops at its host (#582);
  * the deepest listener the press got to decides. A press seen last at a
@@ -1019,7 +1022,7 @@ export const CLICK_ELEMENT_SCRIPT = `
         if (n === el || !n.isConnected || n.parentNode !== parentAtPress || n.localName !== el.localName) continue;
         const was = (el.textContent || '').trim();
         const now = (n.textContent || '').trim();
-        if (was === now || (was && now && (was.startsWith(now) || now.startsWith(was)))) return true;
+        if (was === now) return true;
       }
       return false;
     };

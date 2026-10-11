@@ -15,7 +15,7 @@
  * `Under`, in `<x-under>`'s closed root and
  * covered by `div#outer-shield` in the document, and the light `#light`,
  * covered by `div#light-shield`. `#rerender` (`Rerender`) replaces itself right after its click
- * ran, so a click that arrived must still count as clicked (#641). `#gone-pointerdown`, `#gone-mousedown` and `#gone-pointerup` remove themselves on that event, and `#option` inserts a `picked` span and removes itself on `pointerdown`: handlers that ran and unmounted, which are no replacement (#641). `#park` is a corner to rest the mouse on
+ * ran, so a click that arrived must still count as clicked (#641). `#gone-pointerdown`, `#gone-mousedown` and `#gone-pointerup` remove themselves on that event, and `#option` inserts a `picked` span and removes itself on `pointerdown`: handlers that ran and unmounted, which are no replacement (#641). `#item-1` removes itself on `pointerdown` while its sibling `Item 10` slides under the mouse, and `#follow` is replaced on `pointerdown` by a `Following` button: label-changing cases that are not reported. `Swap` re-renders an identical button, as a React remount does. `#park` is a corner to rest the mouse on
  * before the page loads again, so no shield appears before a click moves
  * the mouse. Every button counts its clicks in `window.clicks`.
  */
@@ -45,6 +45,9 @@ const PRESS_CHECK_HTML = `<!doctype html><title>press check</title>
     <button id="gone-pointerdown">GonePointerdown</button>
     <button id="gone-mousedown">GoneMousedown</button>
     <button id="gone-pointerup">GonePointerup</button>
+    <button id="item-1">Item 1</button>
+    <button id="item-10">Item 10</button>
+    <button id="follow">Follow</button>
     <ul id="options"><li><button id="option">Option</button></li></ul>
   </div>
 </main>
@@ -89,7 +92,7 @@ const PRESS_CHECK_HTML = `<!doctype html><title>press check</title>
       const root = closedRoot(this, '<button>Swap</button>');
       root.querySelector('button').addEventListener('pointerdown', () => {
         window.clicks.push('Swap pressed');
-        root.innerHTML = '<button>Swapped</button>';
+        root.innerHTML = '<button>Swap</button>';
         count(root.querySelector('button'));
       });
     }
@@ -159,6 +162,17 @@ const PRESS_CHECK_HTML = `<!doctype html><title>press check</title>
       button.remove();
     });
   }
+  document.getElementById('item-1').addEventListener('pointerdown', (event) => {
+    window.clicks.push('item-1 ran');
+    event.currentTarget.remove();
+  });
+  const follow = document.getElementById('follow');
+  follow.addEventListener('pointerdown', () => {
+    window.clicks.push('follow ran');
+    const following = document.createElement('button');
+    following.textContent = 'Following';
+    follow.replaceWith(following);
+  });
   const option = document.getElementById('option');
   option.addEventListener('pointerdown', () => {
     window.clicks.push('option ran');
