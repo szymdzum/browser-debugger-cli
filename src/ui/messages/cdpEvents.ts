@@ -20,6 +20,7 @@ export const CDP_EVENTS_HELP = [
   '      10 MB; oldest dropped and counted); with a method, listen before calling it',
   '  bdg cdp --events [<Event>[,...]] [--wait <s>] [--clear] [--out <file>]   read and remove them',
   '  bdg cdp --unlisten                          stop and discard the buffer',
+  '  Cookies and auth headers arrive only in Network.requestWillBeSentExtraInfo.',
   '  Only events of the session page are kept (not of attached iframe/worker sessions).',
   '  Trace: bdg cdp Tracing.start, act, then bdg cdp Tracing.end --collect Tracing.dataCollected \\',
   '      --until Tracing.tracingComplete --out trace.ndjson',
