@@ -4,6 +4,8 @@
  * it and where they live (iframes, shadow roots).
  */
 
+import { SENSITIVE_NAME_JS } from '@/utils/sensitiveNames.js';
+
 /**
  * A class that is a fragment of a declaration-like class attribute
  * (`class="brush: html"` has the class `brush:`), left out of labels.
@@ -186,31 +188,21 @@ export const ELEMENT_TEXT_JS = `(el, full) => {
 export const MASKED_VALUE = '••••';
 
 /**
- * Regular expression source (case-insensitive) matching names of fields that
- * hold a password, one-time code, PIN, social security number or card data:
- * `password`, `passwd`, `pwd`, `passcode`, `passphrase`, `otp`, `pin`, `ssn`
- * (these three as whole words), `cvv`, `cvc`, `card_number`, `cardNo` (whole
- * words). Shared
- * by the page-side {@link SENSITIVE_FIELD_JS} and HAR sanitization.
- */
-export const SENSITIVE_NAME_SOURCE =
-  'passw|passwd|pwd|passcode|passphrase|(^|[^a-z])(otp|pin|ssn)([^a-z]|$)|cvv|cvc|card[-_]?(num(ber)?|no)([^a-z]|$)';
-
-/**
  * Page-side check whether a form control holds a secret whose value must
  * never leave the page: a password field (live type or type attribute), a
  * field shown masked by CSS (`-webkit-text-security` other than `none`),
  * one whose `autocomplete` names a password, a payment card (`cc-*`) or a
- * one-time code, or a field named like a password, one-time code, PIN, SSN
- * or card data ({@link SENSITIVE_NAME_SOURCE}), which
+ * one-time code, or a field whose name, id or autocomplete is a secret name
+ * ({@link SENSITIVE_NAME_JS}, the rule HAR sanitising shares: passwords,
+ * one-time codes, PINs, card data, keys, tokens, secrets, sessions), which
  * covers a password field switched to text by a "show password" button.
  */
 export const SENSITIVE_FIELD_JS = `(el) => {
+  const isSensitiveName = ${SENSITIVE_NAME_JS};
   const autocomplete = el.getAttribute('autocomplete') || '';
   if (/(^|\\s)(cc-[a-z-]+|one-time-code|current-password|new-password)(\\s|$)/i.test(autocomplete)) return true;
   if (el.type === 'password' || /^password$/i.test(el.getAttribute('type') || '')) return true;
-  const names = [el.getAttribute('name'), el.id, autocomplete].join(' ');
-  if (/${SENSITIVE_NAME_SOURCE}/i.test(names)) return true;
+  if (isSensitiveName([el.getAttribute('name'), el.id, autocomplete].join(' '))) return true;
   try {
     const security = el.ownerDocument.defaultView.getComputedStyle(el).getPropertyValue('-webkit-text-security');
     return Boolean(security) && security !== 'none';

@@ -1,21 +1,62 @@
 /**
- * Names of fields that hold secrets: one rule for DOM masking and HAR
- * sanitising (#622). Not implemented yet: these delegate to the two rules
- * they replace.
+ * Names of fields that hold secrets: the one rule DOM masking (page side,
+ * `SENSITIVE_FIELD_JS`) and HAR sanitising (Node side, field, parameter and
+ * cookie names) share, so the two cannot drift apart (#622).
+ *
+ * A name matches when, case-insensitively and with camelCase split into
+ * words (`apiKey` → `api_Key`), it contains one of {@link SENSITIVE_NAME_TERMS}.
+ * Short or common words only count as whole words (between non-letters or
+ * at the ends), so `pass`, `pw`, `pin` and `auth` match `user_pass`,
+ * `pw1`, `userPin` and `X-Auth` but not `passport`, `compass`, `opinion`
+ * or `author`. A bare `key` or `code` does not count (`keyword`, `zipcode`,
+ * a search key); `api_key`, `private_key`, `access_key`, `auth_code` do.
  */
-
-import { SENSITIVE_NAME_SOURCE } from '@/runtime/dom/elementInfo.js';
-import { isSensitiveField } from '@/telemetry/har/sanitizeBody.js';
 
 /**
- * Whether a field, parameter or header name looks like it holds a secret.
+ * Regular expression source matching any of a few words as a whole word
+ * (between non-letters, or at the start or end of the name).
  *
- * @param name - Name
- * @returns True for secret names
+ * @param words - Alternatives, e.g. `pass|pw`
+ * @returns Regular expression source
  */
-export function isSensitiveName(name: string): boolean {
-  return isSensitiveField(name);
+function wholeWord(words: string): string {
+  return `(^|[^a-z])(${words})([^a-z]|$)`;
 }
 
-/** Page-side `(name) => boolean`: {@link isSensitiveName} */
-export const SENSITIVE_NAME_JS = `(name) => /${SENSITIVE_NAME_SOURCE}/i.test(String(name))`;
+/**
+ * Regular expression sources (case-insensitive) of secret names, one per
+ * kind: passwords and one-time codes, card data and identity numbers,
+ * keys and tokens, session and request credentials.
+ */
+export const SENSITIVE_NAME_TERMS: readonly string[] = [
+  'passw|pwd|passcode|passphrase',
+  wholeWord('pass|pw|otp|totp|pin|ssn|auth|sid'),
+  'cvv|cvc',
+  'card[-_]?(num(ber)?|no)([^a-z]|$)',
+  'token|secret(?!ar)|credential|jwt|bearer|oauth',
+  '(api|private|access)[-_]?key',
+  'authoriz|auth[-_]?code|code[-_]?verifier',
+  'session|cookie|csrf|xsrf|refresh|signature',
+];
+
+/** {@link SENSITIVE_NAME_TERMS} as one regular expression, for names with camelCase split */
+const SENSITIVE_NAME = new RegExp(SENSITIVE_NAME_TERMS.join('|'), 'i');
+
+/**
+ * Whether a field, form, body or query parameter name looks like it holds a
+ * secret (see the module comment).
+ *
+ * @param name - Name as written
+ * @returns True for password, one-time code, card, key, token, secret,
+ *   session and other credential names
+ */
+export function isSensitiveName(name: string): boolean {
+  return SENSITIVE_NAME.test(name.replace(/([a-z])([A-Z])/g, '$1_$2'));
+}
+
+/**
+ * Page-side `(name) => boolean`: {@link isSensitiveName}, for scripts that
+ * run in the page. The constant rule is compiled into the script as a
+ * regular expression literal; no page or user data is.
+ */
+export const SENSITIVE_NAME_JS = `(name) => ${String(SENSITIVE_NAME)}.test(String(name).replace(/([a-z])([A-Z])/g, '$1_$2'))`;

@@ -22,12 +22,12 @@ import type { Content, Cookie, Entry, Header, QueryParam, WebSocketMessage } fro
 
 import {
   REDACTED,
-  isSensitiveField,
   redactBase64Body,
   redactBody,
   redactOrReplaceWhole,
   redactPairs,
 } from '@/telemetry/har/sanitizeBody.js';
+import { isSensitiveName } from '@/utils/sensitiveNames.js';
 
 /** {@link REDACTED} as written in a URL */
 const URL_REDACTED = encodeURIComponent(REDACTED);
@@ -177,10 +177,10 @@ function redactCookie(cookie: Cookie): Cookie {
  * Whether a URL query or fragment parameter holds a credential.
  *
  * @param name - Decoded parameter name
- * @returns True for credential field names, `code`, `sig` and `key`
+ * @returns True for secret names ({@link isSensitiveName}), `code`, `sig` and `key`
  */
 function isSensitiveParam(name: string): boolean {
-  return isSensitiveField(name) || SENSITIVE_URL_PARAM.test(name);
+  return isSensitiveName(name) || SENSITIVE_URL_PARAM.test(name);
 }
 
 /**

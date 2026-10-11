@@ -9,7 +9,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { SENSITIVE_NAME_SOURCE } from '@/runtime/dom/elementInfo.js';
 import { buildHAR } from '@/telemetry/har/builder.js';
 import { redactOrReplaceWhole } from '@/telemetry/har/sanitizeBody.js';
 import type { Entry, HAR } from '@/telemetry/har/types.js';
@@ -900,25 +899,6 @@ void describe('HAR sanitization: credential names', () => {
       assert.equal(exportedResponse(`{"${name}":"v"}`), `{"${name}":"v"}`);
     });
   }
-
-  test('form masking shares passphrase, PIN, SSN and card number names', () => {
-    const masked = new RegExp(SENSITIVE_NAME_SOURCE, 'i');
-    for (const name of ['passphrase', 'pin', 'card-pin', 'ssn', 'card_number', 'cardNum']) {
-      assert.ok(masked.test(name), name);
-    }
-    for (const name of [
-      'spinner',
-      'opinion',
-      'cardholder',
-      'refresh',
-      'cardNotes',
-      'card_nonce',
-      'discard_note',
-      'userPin',
-    ]) {
-      assert.ok(!masked.test(name), name);
-    }
-  });
 });
 
 void describe('HAR sanitization: log comment', () => {
