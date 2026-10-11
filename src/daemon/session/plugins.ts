@@ -85,12 +85,12 @@ function trackCurrentPage(cdp: CDPConnection, store: TelemetryStore, logger: Log
     })
     .catch((error: unknown) => logger.debug(`No frame tree: ${getErrorMessage(error)}`));
   const cleanups = [
-    cdp.on<{ frame: { id: string; parentId?: string; url: string } }>(
+    cdp.on<{ frame: { id: string; parentId?: string; url: string; urlFragment?: string } }>(
       'Page.frameNavigated',
       ({ frame }) => {
         if (frame.parentId !== undefined) return;
         mainFrameId = frame.id;
-        update({ url: frame.url, title: '' });
+        update({ url: frame.url + (frame.urlFragment ?? ''), title: '' });
       }
     ),
     cdp.on<{ frameId: string; url: string }>('Page.navigatedWithinDocument', (params) => {
