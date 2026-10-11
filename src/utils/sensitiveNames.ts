@@ -33,6 +33,7 @@ export const SENSITIVE_NAME_TERMS: readonly string[] = [
   wholeWord('pass|pw|otp|totp|pin|ssn|auth|sid'),
   'cvv|cvc',
   'card[-_]?(num(ber)?|no)([^a-z]|$)',
+  '(^|[^a-z])cc[-_]?(num(ber)?|no)([^a-z]|$)|credit[-_]?card',
   'token|secret(?!ar)|credential|jwt|bearer|oauth',
   '(api|private|access)[-_]?key',
   'authoriz|auth[-_]?code|code[-_]?verifier',

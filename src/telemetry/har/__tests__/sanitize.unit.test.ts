@@ -377,6 +377,25 @@ void describe('HAR sanitization: URLs', () => {
       'https://example.com/x?mail=a@b.c'
     );
   });
+
+  test('strips user info from a scheme-relative Location', () => {
+    const entry = entryFor({
+      ...LOGIN_REQUEST,
+      status: 302,
+      responseHeaders: { Location: '//u:p@example.com/next' },
+    });
+    assert.equal(header(entry.response.headers, 'Location'), '//example.com/next');
+    assert.equal(entry.response.redirectURL, '//example.com/next');
+  });
+
+  test('leaves a path or query holding @ alone', () => {
+    const entry = entryFor({
+      ...LOGIN_REQUEST,
+      status: 302,
+      responseHeaders: { Location: '/users/@ann?to=a@b.c' },
+    });
+    assert.equal(header(entry.response.headers, 'Location'), '/users/@ann?to=a@b.c');
+  });
 });
 
 void describe('HAR sanitization: short password names (#622)', () => {

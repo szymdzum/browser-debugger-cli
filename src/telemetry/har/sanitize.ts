@@ -56,10 +56,11 @@ const SENSITIVE_HEADER_SEGMENT =
 const URL_HEADERS = new Set(['location', 'referer']);
 
 /**
- * The user info of a URL (`user:pass@`) after its scheme: everything up to
- * the last `@` before the path, query or fragment starts
+ * The user info of a URL (`user:pass@`) after its scheme (or the `//` of a
+ * scheme-relative URL): everything up to the last `@` before the path,
+ * query or fragment starts
  */
-const URL_USER_INFO = /^([a-z][a-z\d+.-]*:\/\/)[^/?#]*@/i;
+const URL_USER_INFO = /^((?:[a-z][a-z\d+.-]*:)?\/\/)[^/?#]*@/i;
 
 /** Query parameter names that hold credentials in URLs only (OAuth codes, signed URLs, API keys) */
 const SENSITIVE_URL_PARAM = /^(code|sig|key)$/i;

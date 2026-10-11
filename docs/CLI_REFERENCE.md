@@ -452,11 +452,11 @@ A numeric argument (`bdg dom get 0`, `bdg dom click 3`, `bdg dom screenshot out.
 One list decides which field names hold secrets, for DOM masking (`dom query`, `dom get` incl. `--raw` and `--node-id`, `dom form`, `dom a11y`, `dom inspect`, the `dom fill` echo) and for the HAR export's body, form and URL parameter redaction. A name counts when, case-insensitively and with camelCase split into words (`apiKey` is `api_Key`), it contains:
 
 - anywhere in the name: `passw`, `pwd`, `passcode`, `passphrase`, `cvv`, `cvc`, `token`, `secret` (not `secretary`), `credential`, `jwt`, `bearer`, `oauth`, `api_key`/`apikey`/`api-key`, `private_key`, `access_key`, `authoriz`, `auth_code`, `code_verifier`, `session`, `cookie`, `csrf`, `xsrf`, `refresh`, `signature`
-- as a whole word (between non-letters or at an end): `pass`, `pw`, `otp`, `totp`, `pin`, `ssn`, `auth`, `sid`, and `card_number`/`cardNo`
+- as a whole word (between non-letters or at an end): `pass`, `pw`, `otp`, `totp`, `pin`, `ssn`, `auth`, `sid`, `card_number`/`cardNo` and `cc_number`/`cc-num`/`ccNo`; plus `creditcard`/`credit_card` anywhere
 
 | Masked | Shown |
 |---|---|
-| `pass`, `user_pass`, `userPass`, `pass1`, `pw`, `userPW`, `passcode`, `api_key`, `apiKey`, `x_api_key`, `client_secret`, `csrf_token`, `authenticity_token`, `_token`, `otp`, `otpCode`, `pin`, `userPin` | `passport`, `compass`, `bypass`, `passenger`, `keyword`, `monkey`, `key`, `code`, `zipcode`, `pincode`, `spinner`, `opinion`, `author`, `sidebar`, `cardholder`, `secretary` |
+| `pass`, `user_pass`, `userPass`, `pass1`, `pw`, `userPW`, `passcode`, `api_key`, `apiKey`, `x_api_key`, `client_secret`, `csrf_token`, `authenticity_token`, `_token`, `otp`, `otpCode`, `pin`, `userPin`, `cc-number`, `ccnum`, `credit_card_number` | `passport`, `compass`, `bypass`, `passenger`, `keyword`, `monkey`, `key`, `code`, `zipcode`, `pincode`, `spinner`, `opinion`, `author`, `sidebar`, `cardholder`, `secretary`, `cc`, `accent`, `success`, `credit_limit` |
 | over-masked (ordinary names with a credential word): `tokenizer`, `tokenCount`, `sessionLength`, `refreshInterval`, `cookie_consent`, `csrfEnabled`, `signature` (a forum signature too), `boarding_pass` | a secret under another name (`hash`, `license_key`, `mot_de_passe`) |
 
 Masking hides only what bdg prints: read a masked field with `bdg dom eval` (`bdg dom eval 'document.querySelector("#api-key").value'`), keep everything in a HAR with `--include-sensitive`. The list is `SENSITIVE_NAME_TERMS` in `src/utils/sensitiveNames.ts`.
@@ -1284,7 +1284,7 @@ bdg network har --include-sensitive full.har
   - `Authorization`, `Proxy-Authorization`, `Authentication`, `Cookie`, `Set-Cookie`, `X-*-Key`/`X-*-Token`/`X-*-Secret`/`X-*-Auth*` headers and headers with an `api-key`, `apikey`, `token`, `secret`, `jwt`, `subscription-key` or `session(-id)` segment (`WWW-Authenticate` is kept)
   - every cookie value
   - credential query and fragment parameters (`access_token`, `id_token`, `code`, `sig`, `key`, secret field names) in the request URL, `queryString`, `redirectURL` and `Location`/`Referer` headers (`%5Bredacted%5D` in URLs)
-  - the user info of those URLs: `http://bob:pw@host/` is written `http://host/` (removed whole, as a user name may itself be a token)
+  - the user info of those URLs: `http://bob:pw@host/` is written `http://host/` (`//bob:pw@host/` too) (removed whole, as a user name may itself be a token)
   - credential fields of JSON (every primitive under such a name, at any depth), form-urlencoded (also when sent as `text/plain`, Rails-style `user[password]` names included) and multipart request bodies
   - the same fields of response bodies (`{"access_token":"[redacted]","expires_in":3600}`) and of WebSocket messages (`_webSocketMessages`); also truncated JSON, JSON encoded in a string value (`{"variables":"{\"password\":\"[redacted]\"}"}`, up to 3 levels), socket.io (`42["auth",{"token":"[redacted]"}]`, `42/chat,[…]`, `451-[…]`, Engine.io v3 `45:42[…]`) and SockJS (`a["…"]`) packets, server-sent events and NDJSON; base64 bodies with no, a generic (`application/octet-stream`), JSON, form or `text/event-stream` type and binary WebSocket messages are decoded when they are UTF-8 text, redacted and encoded again
   - any whole JWT (`eyJ….….…`) under any name: in a JSON string value (`"Bearer [redacted]"`, `"https://a/cb#id_token=[redacted]&state=1"`, only the JWT is replaced), a form or URL parameter value, a multipart part or a text body

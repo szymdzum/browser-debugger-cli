@@ -142,6 +142,7 @@ void describe('ELEMENT_STATE_JS secrets', () => {
       ['name', 'client_secret'],
       ['name', 'pass'],
       ['name', 'pw'],
+      ['name', 'cc-number'],
       ['id', 'apiKey'],
     ] as const) {
       const state = stateOf({
