@@ -518,7 +518,7 @@ void describe('DOM interactions', () => {
     ]);
     assert.match(
       await bdg(['dom', 'click', '#hidden-behind']),
-      /covered by another element \(div#shield\)/
+      /under transparent div#shield \(clicks land on it\)/
     );
   });
 
@@ -818,7 +818,7 @@ void describe('DOM interactions', () => {
     assert.match(first, /Element: +input\.toggle in li "Write report"/);
     assert.match(
       await bdg(['dom', 'click', '#behind']),
-      /^⚠ Element Clicked \(no visible effect observed: no DOM change, requests or navigation within 300 ms\)\n⚠ Warning: Element is covered by another element/
+      /^⚠ Element Clicked \(no visible effect observed: no DOM change, requests or navigation within 300 ms\)\n⚠ Warning: Element is under transparent div \(clicks land on it\)/
     );
     assert.match(
       await bdg(['dom', 'click', '#cancel']),
@@ -1251,10 +1251,26 @@ void describe('DOM interactions', () => {
     );
   });
 
+  void it('words the same cover alike in action errors and dom layout (#641)', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}effects`]);
+    const wording = /under transparent div#cover \(clicks land on it\)/;
+    assert.match(await bdg(['dom', 'hover', '#covered', '--strict'], 90), wording);
+    assert.match(await bdg(['dom', 'click', '#covered', '--strict'], 90), wording);
+    assert.match(await bdg(['dom', 'layout', '#covered']), wording);
+  });
+
+  void it('describes what --strict replaces on click and hover (#641)', async () => {
+    for (const command of ['click', 'hover']) {
+      const help = await bdg(['dom', command, '--help']);
+      assert.doesNotMatch(help, /instead of using DOM events/);
+      assert.match(help, /warn/);
+    }
+  });
+
   void it('refuses with --strict what a user could not click or hover', async () => {
     await bdg(['page', 'navigate', `${fixture.url}effects`]);
     const refused = await bdg(['dom', 'click', '#covered', '--strict'], 90);
-    assert.match(refused, /covered by another element \(div#cover\)/);
+    assert.match(refused, /under transparent div#cover \(clicks land on it\)/);
     assert.match(refused, /bdg dom layout '#covered'/);
     const hover = JSON.parse(await bdg(['dom', 'hover', '#covered', '--strict', '--json'], 90)) as {
       success: boolean;
@@ -1265,7 +1281,7 @@ void describe('DOM interactions', () => {
 
     await bdg(['dom', 'query', '#covered']);
     const byIndex = await bdg(['dom', 'click', '0', '--strict'], 90);
-    assert.match(byIndex, /covered by another element \(div#cover\)/);
+    assert.match(byIndex, /under transparent div#cover \(clicks land on it\)/);
     assert.match(byIndex, /bdg dom layout 0,/, 'an index names the index, not a selector (#603)');
     assert.doesNotMatch(byIndex, /__bdg_bound_target__/);
     const hoverByIndex = JSON.parse(await bdg(['dom', 'hover', '0', '--strict', '--json'], 90)) as {

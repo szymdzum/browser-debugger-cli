@@ -114,7 +114,6 @@ void describe('Press check', () => {
 
   for (const [name, why] of [
     ['Deep', 'two closed roots deep'],
-    ['Swap', 'whose root re-renders on pointerdown'],
     ['Guarded', 'whose press the page stops on document'],
     ['Open', 'in an open root'],
   ] as const) {
@@ -138,7 +137,10 @@ void describe('Press check', () => {
       const data = await clickJson(index);
       assert.equal(data.method, 'mouse');
       assert.match(data.warning ?? '', NOT_REACHED, JSON.stringify(data));
-      assert.match(data.warning ?? '', new RegExp(`the press landed on ${shield}$`));
+      assert.match(
+        data.warning ?? '',
+        new RegExp(`the press landed on ${shield}; see what is in the way with bdg dom layout`)
+      );
       assert.equal(data.effect, undefined, 'the shield reacted: the click had an effect');
       assert.equal(await evaluate('window.shieldPresses'), 1);
       assert.deepEqual(await evaluate('window.clicks'), []);
@@ -153,6 +155,51 @@ void describe('Press check', () => {
       );
     });
   }
+
+  void it('names a next step in the missed-press warning without --strict (#641)', async () => {
+    const index = await buttonIndex('Under');
+    const data = await clickJson(index);
+    assert.match(data.warning ?? '', NOT_REACHED, JSON.stringify(data));
+    assert.match(data.warning ?? '', new RegExp(`bdg dom layout ${index}`), JSON.stringify(data));
+  });
+
+  void it('does not count a button replaced on pointerdown as clicked (#641)', async () => {
+    const index = await buttonIndex('Swap');
+    const data = await clickJson(index);
+    assert.match(data.warning ?? '', NOT_REACHED, JSON.stringify(data));
+    await bdg(['dom', 'hover', '#park']);
+    await bdg(['page', 'navigate', `${fixture.url}press-check`]);
+    const output = await bdg(['dom', 'click', await buttonIndex('Swap'), '--strict'], 90);
+    assert.match(output, /replaced/);
+    assert.deepEqual(await evaluate('window.clicks'), ['Swap pressed']);
+  });
+
+  for (const id of [
+    'gone-pointerdown',
+    'gone-mousedown',
+    'gone-pointerup',
+    'option',
+    'item-1',
+    'follow',
+  ]) {
+    void it(`does not report ${id}, which unmounts on press after its handler ran (#641)`, async () => {
+      const output = await bdg(['dom', 'click', `#${id}`, '--strict', '--json']);
+      const data = (JSON.parse(output) as { data: ClickJson }).data;
+      assert.equal(data.warning, undefined, output);
+      const clicks = (await evaluate('window.clicks')) as string[];
+      assert.ok(
+        clicks.some((entry) => entry === `${id} ran`),
+        JSON.stringify(clicks)
+      );
+    });
+  }
+
+  void it('still counts a button that re-renders itself after its click (#641)', async () => {
+    const strict = await bdg(['dom', 'click', await buttonIndex('Rerender'), '--strict', '--json']);
+    const data = (JSON.parse(strict) as { data: ClickJson }).data;
+    assert.equal(data.warning, undefined, strict);
+    assert.deepEqual(await evaluate('window.clicks'), ['Rerender clicked']);
+  });
 
   void it('suggests bdg dom layout <index> when --strict refuses a missed press on an index (#603)', async () => {
     const index = await buttonIndex('Shielded');

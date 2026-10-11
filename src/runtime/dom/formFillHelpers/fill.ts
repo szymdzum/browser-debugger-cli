@@ -18,7 +18,9 @@ import {
   clickTargetDetachedError,
   unexpectedResponseFormatError,
   operationFailedError,
+  layoutNextStep,
   pressNotReceivedError,
+  pressTargetReplacedError,
   textTypedElsewhereError,
   unreachableElementError,
   optionNotFoundError,
@@ -49,8 +51,10 @@ import { FIND_ELEMENTS_JS, LABEL_CONTROL_JS, selectorArgs } from '@/runtime/dom/
 import { callFunctionInMainWorld } from '@/runtime/page/bdgWorld.js';
 import { createLogger } from '@/ui/logging/index.js';
 import {
-  CLICK_NOT_RECEIVED_WARNING,
   clickLandedElsewhereWarning,
+  clickNotReceivedWarning,
+  clickTargetReplacedWarning,
+  coverText,
   POINTER_ACTION_DONE,
   POINTER_ACTION_NOUN,
   domClickFallbackWarning,
@@ -514,23 +518,38 @@ export function mouseEvents(
 }
 
 /**
- * Page script that stops the press probe installed by CLICK_ELEMENT_SCRIPT
- * and evaluates to whether the mouse press reached the target and, when it
- * did not, the element it landed on (if the page saw it at all).
+ * Page script that reads the press probe installed by CLICK_ELEMENT_SCRIPT:
+ * whether the mouse press reached the target, when it did not the element it
+ * landed on (if the page saw it at all), and whether the target got no click
+ * and is gone from the page (`replaced`). Evaluated once right after the
+ * press (it leaves the probe in place), and once at the end (it stops the
+ * probe).
  */
+const PRESS_PROBE_PEEK_SCRIPT = `(() => {
+  const probe = window.__bdgPressProbe;
+  if (!probe) return { reached: true };
+  return { reached: probe.reached || probe.hidden, landedOn: probe.landedOn, replaced: !probe.clicked && probe.replaced() };
+})()`;
+
+/** {@link PRESS_PROBE_PEEK_SCRIPT}, then stops the probe */
 const PRESS_PROBE_READ_SCRIPT = `(() => {
+  const outcome = ${PRESS_PROBE_PEEK_SCRIPT};
   const probe = window.__bdgPressProbe;
   delete window.__bdgPressProbe;
-  if (!probe) return { reached: true };
-  probe.stop();
-  return { reached: probe.reached, landedOn: probe.landedOn };
+  if (probe) probe.stop();
+  return outcome;
 })()`;
+
+/** Longest bdg waits to read whether the target got its click after a press */
+const PRESS_SETTLE_TIMEOUT_MS = 300;
 
 /** Whether a mouse press reached its target, and where it landed instead */
 interface PressOutcome {
   reached: boolean;
   /** The element the press landed on, when it missed and the page saw it */
   landedOn?: string;
+  /** The press reached the element but it left the page without getting a click */
+  replaced?: true;
 }
 
 /**
@@ -541,22 +560,49 @@ interface PressOutcome {
  * press that the page provably never saw is reported.
  *
  * @param cdp - CDP connection
+ * @param stop - Also stop the probe (the last read)
  * @returns Outcome; not reached only when the target received no pointerdown/mousedown
  */
-async function readPressProbe(cdp: CDPConnection): Promise<PressOutcome> {
+async function readPressProbe(cdp: CDPConnection, stop: boolean): Promise<PressOutcome> {
   try {
-    const response = (await cdp.send('Runtime.evaluate', {
-      expression: PRESS_PROBE_READ_SCRIPT,
+    const read = cdp.send('Runtime.evaluate', {
+      expression: stop ? PRESS_PROBE_READ_SCRIPT : PRESS_PROBE_PEEK_SCRIPT,
       returnByValue: true,
-    })) as { result?: { value?: { reached?: unknown; landedOn?: unknown } } };
-    const value = response.result?.value;
-    if (value?.reached !== false) return { reached: true };
+    });
+    const response = (await (stop ? withinSettleTime(read) : read)) as {
+      result?: { value?: { reached?: unknown; landedOn?: unknown; replaced?: unknown } };
+    } | null;
+    const value = response?.result?.value;
+    if (value?.reached !== false) {
+      return value?.replaced === true ? { reached: true, replaced: true } : { reached: true };
+    }
     return typeof value.landedOn === 'string'
       ? { reached: false, landedOn: value.landedOn }
       : { reached: false };
   } catch (error) {
     log.debug(`Press probe not read: ${getErrorMessage(error)}`);
     return { reached: true };
+  }
+}
+
+/**
+ * Wait for a page evaluation after a press, but not for a page that is
+ * navigating away (its evaluations wait until the new page commits, which
+ * `--no-wait` must not): a navigation shows the click did something.
+ *
+ * @param pending - The evaluation
+ * @returns Its response, or null when it took longer than {@link PRESS_SETTLE_TIMEOUT_MS}
+ */
+async function withinSettleTime<T>(pending: Promise<T>): Promise<T | null> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), PRESS_SETTLE_TIMEOUT_MS);
+  });
+  pending.catch((error: unknown) => log.debug(`Late press probe read: ${getErrorMessage(error)}`));
+  try {
+    return await Promise.race([pending, timeout]);
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -568,20 +614,21 @@ async function readPressProbe(cdp: CDPConnection): Promise<PressOutcome> {
  * @returns False only when the target received no pointerdown/mousedown
  */
 export async function pressReachedTarget(cdp: CDPConnection): Promise<boolean> {
-  return (await readPressProbe(cdp)).reached;
+  return (await readPressProbe(cdp, true)).reached;
 }
 
 /**
  * Dispatch real mouse events for an action, checking after the first press
- * that the target received it. With `stopIfMissed`, a press that missed is
- * only released (no further presses). If dispatching fails first, the press
+ * that the target received it, and after all of them that it was not removed
+ * without getting a click (`replaced`). With `stopIfMissed`, a press that
+ * missed is only released (no further presses). If dispatching fails first, the press
  * probe is still removed from the page.
  *
  * @param cdp - CDP connection
  * @param action - What to do
  * @param point - Page coordinates
  * @param stopIfMissed - Stop after releasing a press that missed (--strict)
- * @returns Whether the first press reached the target, and where it landed otherwise
+ * @returns Whether the first press reached the target, where it landed otherwise, and whether the target was replaced
  */
 async function dispatchMouseAction(
   cdp: CDPConnection,
@@ -595,14 +642,16 @@ async function dispatchMouseAction(
       await cdp.send('Input.dispatchMouseEvent', event);
       if (event['type'] === 'mouseReleased' && outcome?.reached === false && stopIfMissed) break;
       if (event['type'] === 'mousePressed' && outcome === undefined) {
-        outcome = await readPressProbe(cdp);
+        outcome = await readPressProbe(cdp, false);
       }
     }
   } catch (error) {
-    if (outcome === undefined) await readPressProbe(cdp);
+    await readPressProbe(cdp, true);
     throw error;
   }
-  return outcome ?? { reached: true };
+  if (outcome === undefined) return { reached: true };
+  const settled = await readPressProbe(cdp, true);
+  return outcome.reached ? settled : outcome;
 }
 
 /**
@@ -617,6 +666,7 @@ type LocatedClick = ClickOutcome & {
   y?: number;
   hittable?: boolean;
   obstruction?: string | null;
+  cover?: { by: string; transparent: boolean };
 };
 
 /**
@@ -648,15 +698,17 @@ function releaseClickTarget(cdp: CDPConnection): void {
 function refuseUnreachable(
   result: ClickResult,
   action: PointerAction,
-  why: { obstruction: string | null } | { missed: PressOutcome },
+  why: { reason: string | null } | { missed: PressOutcome },
   listIndex: number | undefined
 ): never {
   const target = { selector: result.selector ?? '', element: result.element, listIndex };
   const verb = POINTER_ACTION_NOUN[action];
   const err =
     'missed' in why
-      ? pressNotReceivedError(target, verb, why.missed.landedOn)
-      : unreachableElementError(target, why.obstruction, verb);
+      ? why.missed.replaced
+        ? pressTargetReplacedError(target, verb)
+        : pressNotReceivedError(target, verb, why.missed.landedOn)
+      : unreachableElementError(target, why.reason, verb);
   throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.RESOURCE_CONFLICT);
 }
 
@@ -685,13 +737,26 @@ async function performClick(
   strict: boolean,
   listIndex?: number
 ): Promise<ClickOutcome> {
-  const { x, y, hittable, obstruction, ...result } = located;
+  const { x, y, hittable, obstruction, cover, ...result } = located;
   if (!result.success) return result;
+  const reason = cover ? coverText(cover.by, cover.transparent) : obstruction;
 
   if (hittable && x !== undefined && y !== undefined) {
     const press = await dispatchMouseAction(cdp, action, { x, y }, strict);
     releaseClickTarget(cdp);
-    if (!press.reached && strict) refuseUnreachable(result, action, { missed: press }, listIndex);
+    const replaced = press.replaced === true && action !== 'right';
+    if ((!press.reached || replaced) && strict) {
+      refuseUnreachable(
+        result,
+        action,
+        { missed: replaced ? { ...press, replaced: true } : press },
+        listIndex
+      );
+    }
+    const nextStep = layoutNextStep({
+      selector: result.selector ?? '',
+      listIndex,
+    });
     return withMultipleMatchesWarning<ClickResult>(
       {
         ...result,
@@ -700,9 +765,10 @@ async function performClick(
         ...(!press.reached && {
           warning:
             press.landedOn === undefined
-              ? CLICK_NOT_RECEIVED_WARNING
-              : clickLandedElsewhereWarning(press.landedOn),
+              ? clickNotReceivedWarning(nextStep)
+              : clickLandedElsewhereWarning(press.landedOn, nextStep),
         }),
+        ...(press.reached && replaced && { warning: clickTargetReplacedWarning() }),
       },
       result.selectedIndex,
       `${POINTER_ACTION_DONE[action].toLowerCase()} the first visible one`
@@ -711,7 +777,7 @@ async function performClick(
 
   if (strict) {
     releaseClickTarget(cdp);
-    refuseUnreachable(result, action, { obstruction: obstruction ?? null }, listIndex);
+    refuseUnreachable(result, action, { reason: reason ?? null }, listIndex);
   }
   const response = (await cdp.send('Runtime.evaluate', {
     expression: domFallbackScript(action),
@@ -727,7 +793,7 @@ async function performClick(
     );
   }
   return withMultipleMatchesWarning<ClickResult>(
-    { ...result, action, method: 'dom', warning: domClickFallbackWarning(obstruction) },
+    { ...result, action, method: 'dom', warning: domClickFallbackWarning(reason) },
     result.selectedIndex,
     `${POINTER_ACTION_DONE[action].toLowerCase()} the first visible one`
   );

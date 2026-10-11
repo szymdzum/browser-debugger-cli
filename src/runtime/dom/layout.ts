@@ -107,6 +107,20 @@ const SAME_CLICK_TARGET_JS = `(node, hit) => {
 }`;
 
 /**
+ * Page-side function expression: whether an element paints nothing of its
+ * own (no background, image, shadow or text), so a click on it lands on it
+ * while the page shows what is below. Shared by `dom layout` and the click
+ * script, so both call the same cover transparent.
+ */
+export const PAINTS_NOTHING_JS = `(node) => {
+    const s = node.ownerDocument.defaultView.getComputedStyle(node);
+    const clearColor = (c) => c === 'transparent' || /^rgba\\(.*,\\s*0\\)$/.test(c);
+    const ownText = Array.from(node.childNodes).some((n) => n.nodeType === 3 && n.data.trim() !== '');
+    const replaced = /^(img|video|canvas|iframe|embed|object|input|textarea|select)$/.test(node.localName);
+    return !replaced && clearColor(s.backgroundColor) && s.backgroundImage === 'none' && s.boxShadow === 'none' && !ownText;
+  }`;
+
+/**
  * Page function: layout of the matches of `selector` and its `parts`
  * ({@link selectorArgs}), or of `this` element for a `null` selector (all
  * up to `limit`, or the one at `index`), and of the top-level page. Every
@@ -196,13 +210,7 @@ const LAYOUT_JS = `function (selector, parts, index, limit) {
     }
     return best;
   };
-  const paintsNothing = (node) => {
-    const s = node.ownerDocument.defaultView.getComputedStyle(node);
-    const clearColor = (c) => c === 'transparent' || /^rgba\\(.*,\\s*0\\)$/.test(c);
-    const ownText = Array.from(node.childNodes).some((n) => n.nodeType === 3 && n.data.trim() !== '');
-    const replaced = /^(img|video|canvas|iframe|embed|object|input|textarea|select)$/.test(node.localName);
-    return !replaced && clearColor(s.backgroundColor) && s.backgroundImage === 'none' && s.boxShadow === 'none' && !ownText;
-  };
+  const paintsNothing = ${PAINTS_NOTHING_JS};
   const overlayOf = (hit, node) => {
     let overlay = hit;
     for (let p = hit.parentElement || (hit.parentNode && hit.parentNode.host); p && p !== p.ownerDocument.body && !encloses(p, node); p = p.parentElement || (p.parentNode && p.parentNode.host)) {

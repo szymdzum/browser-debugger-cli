@@ -23,6 +23,7 @@ import {
   MASKED_VALUE,
   SENSITIVE_FIELD_JS,
 } from '@/runtime/dom/elementInfo.js';
+import { PAINTS_NOTHING_JS } from '@/runtime/dom/layout.js';
 import { FIND_ELEMENTS_JS, LABEL_CONTROL_JS } from '@/runtime/dom/targetNode.js';
 import { FILL_BEFOREINPUT_CANCELLED_WARNING, NO_BOX_CLICK_REASON } from '@/ui/messages/commands.js';
 
@@ -803,7 +804,13 @@ export const FILL_READ_BACK_SCRIPT = `(() => {
  * ({@link REVEAL_SNAPSHOT_JS}), so its result can say what it revealed. For
  * a press, a probe (`window.__bdgPressProbe`) records whether the press
  * reaches the element, and otherwise which element it landed on: a browser
- * dialog or bubble can swallow input while the page looks normal. It
+ * dialog or bubble can swallow input while the page looks normal. The probe
+ * also records whether a `click` reached the element. A press that reached it
+ * but got no click counts as replaced (#641) when the element left the page
+ * and an element with the same tag, parent and trimmed text is now at the
+ * press point (a re-render on `pointerdown`). An element that merely unmounts
+ * on press, a sibling that slides under the mouse, and a replacement with a
+ * different label are not reported, since the handler may have acted. The probe
  * listens on the window and on each shadow root around the element, since
  * an event path seen from outside a closed root stops at its host (#582);
  * the deepest listener the press got to decides. A press seen last at a
@@ -960,14 +967,16 @@ export const CLICK_ELEMENT_SCRIPT = `
   const y = point.y;
   const hittable = hasSize && point.hittable;
   const describe = ${ELEMENT_DESCRIPTION_JS};
-  const coveredBy = () => {
+  const paintsNothing = ${PAINTS_NOTHING_JS};
+  const coverAtCenter = () => {
     const root = el.getRootNode();
     const hit = (typeof root.elementFromPoint === 'function' ? root : el.ownerDocument)
       .elementFromPoint(area.left + area.width / 2, area.top + area.height / 2);
-    return hit && !el.contains(hit) ? ' (' + describe(hit) + ')' : '';
+    return hit && !el.contains(hit) ? { by: describe(hit), transparent: paintsNothing(hit) } : null;
   };
   const style = view.getComputedStyle(el);
   let obstruction = null;
+  let cover = null;
   if (style.display === 'contents') obstruction = ${JSON.stringify(NO_BOX_CLICK_REASON)};
   else if (style.display === 'none' || el.getClientRects().length === 0) obstruction = 'not rendered (display: none)';
   else if (style.visibility === 'hidden') obstruction = 'hidden (visibility: hidden)';
@@ -976,14 +985,15 @@ export const CLICK_ELEMENT_SCRIPT = `
   else if (!hasSize) obstruction = 'zero-size';
   else if (!hittable) {
     const collapsed = (${ANCESTOR_CLIP_JS})(el, rect, describe).collapsed;
-    obstruction = collapsed ? 'hidden (' + collapsed + ')' : 'covered by another element' + coveredBy();
+    cover = collapsed ? null : coverAtCenter();
+    obstruction = collapsed ? 'hidden (' + collapsed + ')' : cover ? null : 'covered by another element';
   }
 
   if (action === 'hover') (${REVEAL_SNAPSHOT_JS})(el);
   const submitProbe = (action === 'click' || action === 'double') && (${SUBMIT_PROBE_JS})(el);
 
   if (hittable && action !== 'hover') {
-    const probe = { reached: false, landedOn: null, hidden: false };
+    const probe = { reached: false, landedOn: null, hidden: false, clicked: false };
     const listenOn = [view];
     const closedHosts = [];
     for (let root = el.getRootNode(); root.nodeType === 11 && root.host; root = root.host.getRootNode()) {
@@ -999,14 +1009,33 @@ export const CLICK_ELEMENT_SCRIPT = `
         if (!probe.landedOn && path[0] && path[0].nodeType === 1) probe.landedOn = describe(path[0]);
       }
     };
+    const markClicked = (event) => {
+      const path = event.composedPath();
+      if (path.indexOf(el) !== -1 || closedHosts.indexOf(path[0]) !== -1) probe.clicked = true;
+    };
+    const parentAtPress = el.parentNode;
+    const hitScope = typeof el.getRootNode().elementFromPoint === 'function' ? el.getRootNode() : el.ownerDocument;
+    probe.replaced = () => {
+      if (el.isConnected) return false;
+      const hit = hitScope.elementFromPoint(area.left + area.width / 2, area.top + area.height / 2);
+      for (let n = hit; n; n = n.parentNode) {
+        if (n === el || !n.isConnected || n.parentNode !== parentAtPress || n.localName !== el.localName) continue;
+        const was = (el.textContent || '').trim();
+        const now = (n.textContent || '').trim();
+        if (was === now) return true;
+      }
+      return false;
+    };
     listenOn.forEach((target) => {
       target.addEventListener('pointerdown', markReached, true);
       target.addEventListener('mousedown', markReached, true);
+      target.addEventListener('click', markClicked, true);
     });
     probe.stop = () => {
       listenOn.forEach((target) => {
         target.removeEventListener('pointerdown', markReached, true);
         target.removeEventListener('mousedown', markReached, true);
+        target.removeEventListener('click', markClicked, true);
       });
       probe.reached = probe.reached || probe.hidden;
     };
@@ -1024,6 +1053,7 @@ export const CLICK_ELEMENT_SCRIPT = `
     y: y,
     hittable: hittable,
     obstruction: obstruction,
+    cover: cover || undefined,
     scrolledBy: scrolledBy.x !== 0 || scrolledBy.y !== 0 ? scrolledBy : undefined,
     submitProbe: submitProbe || undefined
   };

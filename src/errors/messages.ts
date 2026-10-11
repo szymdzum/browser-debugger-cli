@@ -2051,7 +2051,7 @@ export function actionBrokenByPageError(
  * reach the element (covered, hidden, zero-size, pointer-events: none).
  *
  * @param target - Selector and element description, as the click located it, and the index the user gave for a listed element
- * @param reason - Why the mouse could not reach it, e.g. "covered by another element (div#shield)"
+ * @param reason - Why the mouse could not reach it, e.g. "covered by div#shield"
  * @param verb - What was refused, e.g. "click", "hover"
  * @returns Message naming the obstruction, and how to inspect it
  */
@@ -2115,6 +2115,32 @@ export function pressNotReceivedError(
     message: `Did not ${verb} ${element}: the press did not reach the element (it was sent, but ${where}) (--strict)`,
     suggestion: `Check the page with ${sessionCommand('bdg dom screenshot page.png')} and ${sessionCommand(`bdg dom layout ${elementArgument(target)}`)}`,
   };
+}
+
+/**
+ * A mouse press refused under `--strict` because the page replaced the
+ * element while the mouse was pressed, so it got no click.
+ *
+ * @param target - Selector and element description, as the click located it
+ * @param verb - What was refused, e.g. "click"
+ * @returns Message, and how to check what the press did
+ */
+export function pressTargetReplacedError(target: ActedElement, verb: string): ErrorWithSuggestion {
+  const element = target.element ?? target.selector;
+  return {
+    message: `Did not ${verb} ${element}: the page replaced it while the mouse was pressed, so it got no click (the press was sent) (--strict)`,
+    suggestion: `Check what the page did with ${sessionCommand('bdg dom screenshot page.png')}, and find the element again before acting on it`,
+  };
+}
+
+/**
+ * The command that shows what is in the way of an element a press missed.
+ *
+ * @param target - Selector, and the index the user gave for a listed element
+ * @returns e.g. `bdg dom layout 6`
+ */
+export function layoutNextStep(target: ActedElement): string {
+  return sessionCommand(`bdg dom layout ${elementArgument(target)}`);
 }
 
 /**
