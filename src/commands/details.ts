@@ -1,7 +1,7 @@
 import { Option, type Command } from 'commander';
 
 import { runCommand, type CommandResult } from '@/commands/shared/CommandRunner.js';
-import { jsonOption } from '@/commands/shared/commonOptions.js';
+import { includeSensitiveOption, jsonOption } from '@/commands/shared/commonOptions.js';
 import type { DetailsCommandOptions } from '@/commands/shared/optionTypes.js';
 import { integerOption } from '@/commands/shared/validation.js';
 import type { DetailsResult } from '@/commands/types.js';
@@ -13,10 +13,16 @@ import {
 } from '@/errors/messages.js';
 import { getDetails } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
+import { maskNetworkRequest, type Masked } from '@/telemetry/networkMasking.js';
 import { capResponseBody, missingBodyReason } from '@/telemetry/responseBody.js';
 import type { NetworkRequest } from '@/types.js';
 import { formatNetworkDetails, formatConsoleDetails } from '@/ui/formatters/details.js';
-import { base64BodyHint, bodyCutHint } from '@/ui/messages/networkMessages.js';
+import {
+  base64BodyHint,
+  bodyCutHint,
+  includeSensitiveWarning,
+  networkSecretsMaskedNote,
+} from '@/ui/messages/networkMessages.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { validateDetailsItem } from '@/utils/typeGuards.js';
@@ -36,6 +42,8 @@ interface NetworkBodyResult {
   /** `--body-max` cut the body */
   bodyTruncated?: true;
   mimeType?: string;
+  /** A credential in the body was shown as `••••` (no `--include-sensitive`) */
+  masked?: true;
 }
 
 type DetailsOutput = DetailsResult | NetworkBodyResult;
@@ -51,10 +59,11 @@ type DetailsOutput = DetailsResult | NetworkBodyResult;
 function formatDetails(data: DetailsOutput, options: DetailsCommandOptions): string {
   if (data.type === 'network-body') return data.body;
   if (data.type === 'network') {
-    return formatNetworkDetails(data.item, {
+    const details = formatNetworkDetails(data.item, {
       noBody: options.body === false,
       bodyMax: options.bodyMax,
     });
+    return data.masked ? `${details}\n\n${networkSecretsMaskedNote()}` : details;
   }
   return formatConsoleDetails(data.item);
 }
@@ -74,17 +83,27 @@ function throwInvalid(error: { message: string; suggestion: string }): never {
 }
 
 /**
- * Check the body options: network only, and `--body-max` needs a body.
+ * The network-only option given, if any.
+ *
+ * @param options - Command options
+ * @returns e.g. `--body`, or undefined when none was given
+ */
+function networkOnlyOption(options: DetailsCommandOptions): string | undefined {
+  if (options.body === true) return '--body';
+  if (options.body === false) return '--no-body';
+  if (options.bodyMax !== undefined) return '--body-max';
+  return options.includeSensitive ? '--include-sensitive' : undefined;
+}
+
+/**
+ * Check the network options: network only, and `--body-max` needs a body.
  *
  * @param options - Command options
  * @throws CommandError (exit 81) for a combination that does not apply
  */
 function validateBodyOptions(options: DetailsCommandOptions): void {
-  const flag = options.body === true ? '--body' : options.body === false ? '--no-body' : undefined;
-  if (options.type === 'console') {
-    const used = flag ?? (options.bodyMax !== undefined ? '--body-max' : undefined);
-    if (used) throwInvalid(networkOnlyDetailsOptionError(used));
-  }
+  const used = options.type === 'console' ? networkOnlyOption(options) : undefined;
+  if (used) throwInvalid(networkOnlyDetailsOptionError(used));
   if (options.body === false && options.bodyMax !== undefined) {
     throwInvalid(conflictingOptionsError('--no-body', '--body-max'));
   }
@@ -93,14 +112,16 @@ function validateBodyOptions(options: DetailsCommandOptions): void {
 /**
  * The response body alone (`--body`): whole unless `--body-max` is given.
  *
- * @param request - Captured request
+ * @param request - Captured request, masked unless `--include-sensitive`
  * @param bodyMax - `--body-max` (default: all)
- * @returns Body result, with a hint for a base64 body
+ * @param masked - Whether a credential in the response body was masked
+ * @returns Body result, with hints for a base64, cut or masked body
  * @throws CommandError (exit 83) when the request has no body to print
  */
 function bodyOnly(
   request: NetworkRequest,
-  bodyMax: number | undefined
+  bodyMax: number | undefined,
+  masked: boolean
 ): CommandResult<NetworkBodyResult> {
   const reason = missingBodyReason(request);
   if (reason !== undefined) {
@@ -118,6 +139,7 @@ function bodyOnly(
       ? [bodyCutHint(body.length, capped.bodyLength)]
       : []),
     ...(request.responseBodyBase64 ? [base64BodyHint()] : []),
+    ...(masked ? [networkSecretsMaskedNote()] : []),
   ];
   return {
     success: true,
@@ -131,14 +153,16 @@ function bodyOnly(
       ...(request.responseBodyBase64 && { base64Encoded: true as const }),
       ...(capped.bodyTruncated && { bodyTruncated: true as const }),
       ...(request.mimeType !== undefined && { mimeType: request.mimeType }),
+      ...(masked && { masked: true as const }),
     },
   };
 }
 
 /**
- * The network request as `details network` shows it: the response body cut
- * at the cap in `--json` (human output cuts it in the formatter), the body
- * alone with `--body`.
+ * The network request as `details network` shows it: credentials masked
+ * (unless `--include-sensitive`, which warns), the response body cut at the
+ * cap in `--json` (human output cuts it in the formatter), the body alone
+ * with `--body`.
  *
  * @param request - Captured request
  * @param options - Command options
@@ -148,11 +172,34 @@ function networkDetails(
   request: NetworkRequest,
   options: DetailsCommandOptions
 ): CommandResult<DetailsOutput> {
-  if (options.body === true) return bodyOnly(request, options.bodyMax);
+  const shown = options.includeSensitive
+    ? { value: request, masked: false }
+    : maskNetworkRequest(request);
+  const result =
+    options.body === true
+      ? bodyOnly(shown.value, options.bodyMax, shown.value.responseBody !== request.responseBody)
+      : detailsResult(shown, options);
+  return options.includeSensitive ? { ...result, warning: includeSensitiveWarning() } : result;
+}
+
+/**
+ * The request details, the response body cut at the cap in `--json`.
+ *
+ * @param shown - Captured request, masked unless `--include-sensitive`
+ * @param options - Command options
+ * @returns Command result
+ */
+function detailsResult(
+  shown: Masked<NetworkRequest>,
+  options: DetailsCommandOptions
+): CommandResult<DetailsOutput> {
   const item = options.json
-    ? capResponseBody(request, { noBody: options.body === false, bodyMax: options.bodyMax })
-    : request;
-  return { success: true, data: { type: 'network', item } };
+    ? capResponseBody(shown.value, { noBody: options.body === false, bodyMax: options.bodyMax })
+    : shown.value;
+  return {
+    success: true,
+    data: { type: 'network', item, ...(shown.masked && { masked: true as const }) },
+  };
 }
 
 /**
@@ -177,6 +224,7 @@ export function registerDetailsCommand(program: Command): void {
         'Network: characters of the response body to show (default 20000; 0 = all)'
       ).argParser(integerOption(0))
     )
+    .addOption(includeSensitiveOption())
     .action(async (type: string, id: string, options: DetailsCommandOptions) => {
       options.type = type as 'network' | 'console';
       options.id = id;

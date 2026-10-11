@@ -1,8 +1,20 @@
 /**
- * Option behaviors of `bdg network` (list, details, har).
+ * Option behaviors of `bdg network` (list, details, har, headers, document).
  */
 
 import { FOLLOW_BEHAVIOR, type BehaviorTable } from '@/commands/optionBehaviors/shared.js';
+
+/** What `details network`, `network headers` and `network document` mask by default (#615) */
+const MASKED_OUTPUT_DEFAULT =
+  'Credentials are shown as "••••" (human and --json; field and header names and the JSON shape stay): Cookie and Set-Cookie values (cookie names and attributes such as HttpOnly; Path=/ kept), Authorization and Proxy-Authorization (the scheme kept: Bearer ••••), Authentication, X-*key/token/secret/auth headers, headers with an api-key/token/secret/jwt/session segment and headers named like a secret field (X-Password, Sid, Cookie2); user:pass@ and credential query/fragment parameters (secret field names plus code, sig, key) in the request URL, redirect URL and Location, Referer, :path, Content-Location, Refresh and Link headers; a JWT in any header; secret-named fields of urlencoded, JSON (any depth) and multipart request bodies, of JSON response bodies (access_token, id_token...) and of WebSocket messages (in plain-text messages, a token-shaped credential after Bearer or Basic of any case: a word of 6+ token characters with a digit, symbol or inner capital, so bearer abc123 is masked and Basic information is not); any JWT. The rules are those of the default HAR export (network har) and the secret field names DOM masking uses. A footer line (JSON masked: true; with --body a hint on stderr) says when something was masked';
+
+/** What `--include-sensitive` does on the commands that mask by default */
+const MASKED_OUTPUT_ENABLED =
+  'Shows every value as captured; a warning (JSON warning) says the output holds credentials';
+
+/** Hidden behaviors of masked network output */
+const MASKED_OUTPUT_AUTOMATIC =
+  'Matching is by name, so it over-masks harmless values under credential-looking names (tokenCount) and keeps credentials under other names. Everything not masked stays byte for byte, so the output is still good for debugging; Size, decodedBodyLength, encodedDataLength and the Content-Length header describe the captured body, not the masked one. HTML document bodies, network list/status URLs and network getCookies are not masked';
 
 /** Behaviors by registry key */
 export const NETWORK_BEHAVIORS: BehaviorTable = {
@@ -53,12 +65,27 @@ export const NETWORK_BEHAVIORS: BehaviorTable = {
     tokenImpact:
       'details network --json used to inline the whole body (614 KB for the github.com document); the 20000 default keeps it near 25 KB',
   },
+  'details:--include-sensitive': {
+    default: MASKED_OUTPUT_DEFAULT,
+    whenEnabled: MASKED_OUTPUT_ENABLED,
+    automaticBehavior: `${MASKED_OUTPUT_AUTOMATIC}. With --body the masked body is what is printed and cut (bodyLength counts the masked body); masked: true and the stderr note only when the body itself had a credential. Network only (details console exits 81)`,
+  },
+  'headers:--include-sensitive': {
+    default: MASKED_OUTPUT_DEFAULT,
+    whenEnabled: MASKED_OUTPUT_ENABLED,
+    automaticBehavior: MASKED_OUTPUT_AUTOMATIC,
+  },
+  'document:--include-sensitive': {
+    default: MASKED_OUTPUT_DEFAULT,
+    whenEnabled: MASKED_OUTPUT_ENABLED,
+    automaticBehavior: MASKED_OUTPUT_AUTOMATIC,
+  },
   'har:--include-sensitive': {
     default:
-      'The HAR is sanitized: values become "[redacted]" for Authorization, Proxy-Authorization, Authentication, Cookie and Set-Cookie headers, X-*key/token/secret/auth headers and headers with an api-key/apikey/token/secret/jwt/subscription-key/session(-id) segment (www-authenticate is kept); every cookie value; query and fragment parameters named like credentials (plus code, sig, key) in the request URL, queryString, redirectURL and Location/Referer headers ("%5Bredacted%5D" in URLs), and the user info of those URLs (http://bob:pw@host/ written http://host/, scheme-relative //bob:pw@host/ too); and fields with a secret field name (the list DOM masking uses: password/pass/pw/token/secret/api_key/session/signature/bearer/cookie/csrf/refresh/auth/sid/pin/otp/ssn/card-number) of JSON (primitives at any depth under such a name), form-urlencoded (also sniffed when the Content-Type says otherwise, user[password] names too) and multipart request and response bodies (an access_token/refresh_token/id_token login response too) and of WebSocket messages, also in truncated JSON, JSON encoded in string values (3 levels), socket.io and SockJS packets, server-sent events, NDJSON, base64 bodies with no, a generic, JSON, form or event-stream type and binary WebSocket messages that are UTF-8 text; any whole JWT (eyJ…) in a JSON string, form or URL value, multipart part or text body (only the JWT is replaced). camelCase names count as words (userPin). JSON is edited in place, not re-serialized: everything but the replaced values (64-bit numbers, formatting, duplicate keys, a BOM or )]}\' prefix) stays byte for byte. Header, cookie and parameter names, cookie attributes, headersSize, bodySize and content.size stay; log.comment and JSON sanitized: true say so',
+      'The HAR is sanitized: values become "[redacted]" for Authorization, Proxy-Authorization, Authentication, Cookie and Set-Cookie headers, X-*key/token/secret/auth headers, headers with an api-key/apikey/token/secret/jwt/subscription-key/session(-id) segment and headers named like a secret field (X-Password, Sid, Cookie2) (www-authenticate, access-control-allow-credentials, signature-input and accept-signature are kept); a JWT in any other header; every cookie value; query and fragment parameters named like credentials (plus code, sig, key) in the request URL, queryString, redirectURL and Location/Referer/:path/Content-Location/Refresh/Link headers ("%5Bredacted%5D" in URLs), and the user info of those URLs (http://bob:pw@host/ written http://host/, scheme-relative //bob:pw@host/ too); and fields with a secret field name (the list DOM masking uses: password/pass/pw/token/secret/api_key/session/signature/bearer/cookie/csrf/refresh/auth/sid/pin/otp/ssn/card-number) of JSON (primitives at any depth under such a name), form-urlencoded (also sniffed when the Content-Type says otherwise, user[password] names too) and multipart request and response bodies (an access_token/refresh_token/id_token login response too) and of WebSocket messages (in plain-text ones a token-shaped credential after Bearer or Basic, any case), also in truncated JSON, JSON encoded in string values (3 levels), socket.io and SockJS packets, server-sent events, NDJSON, base64 bodies with no, a generic, JSON, form or event-stream type and binary WebSocket messages that are UTF-8 text; any whole JWT (eyJ…) in a JSON string, form or URL value, multipart part or text body (only the JWT is replaced). camelCase names count as words (userPin). JSON is edited in place, not re-serialized: everything but the replaced values (64-bit numbers, formatting, duplicate keys, a BOM or )]}\' prefix) stays byte for byte. Header, cookie and parameter names, cookie attributes, headersSize, bodySize and content.size stay; log.comment and JSON sanitized: true say so',
     whenEnabled:
       'Writes every captured value (JSON sanitized: false); human output warns that the file holds credentials',
     automaticBehavior:
-      'Matching is by name, so it over-redacts: harmless values under credential-looking names (tokenCount: 5, sessionLength, refreshInterval, cookieConsent) are replaced too, and credentials under other names are kept. Only JSON syntax is understood: single-quoted strings, unquoted keys, JSONP, STOMP passcode: header lines and bare values with spaces ({"token":abc def}, a non-JWT token after Bearer in text) are not (fully) redacted. A body the sanitizer fails on is replaced whole by [redacted]. Unlike Chrome DevTools, which drops these headers and empties cookies, names are kept so the HAR still shows a request was authenticated. Kept as captured: other binary (base64) bodies, binary WebSocket messages that are not UTF-8, and text that is not JSON or a form (apart from JWTs); a WebSocket message cut at 100 KB has _truncatedFrom. HAR files are written readable by their owner only (0600). network headers and network getCookies always show real values',
+      'Matching is by name, so it over-redacts: harmless values under credential-looking names (tokenCount: 5, sessionLength, refreshInterval, cookieConsent) are replaced too, and credentials under other names are kept. Only JSON syntax is understood: single-quoted strings, unquoted keys, JSONP, STOMP passcode: header lines and bare values with spaces ({"token":abc def}, a non-JWT token after Bearer in text) are not (fully) redacted. A body the sanitizer fails on is replaced whole by [redacted]. Unlike Chrome DevTools, which drops these headers and empties cookies, names are kept so the HAR still shows a request was authenticated. Kept as captured: other binary (base64) bodies, binary WebSocket messages that are not UTF-8, and text that is not JSON or a form (apart from JWTs); a WebSocket message cut at 100 KB has _truncatedFrom. HAR files are written readable by their owner only (0600). details network, network headers and network document mask the same values as •••• (their own --include-sensitive); network getCookies always shows real values',
   },
 };

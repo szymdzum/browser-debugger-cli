@@ -217,6 +217,7 @@ void describe('Full headers and cookies', () => {
     const data = await runJson<{ responseHeaders: Record<string, string> }>('network', [
       'headers',
       cookieRequestId,
+      '--include-sensitive',
     ]);
     const setCookie = Object.entries(data.responseHeaders).find(
       ([name]) => name.toLowerCase() === 'set-cookie'
@@ -233,6 +234,7 @@ void describe('Full headers and cookies', () => {
     const data = await runJson<{ requestHeaders: Record<string, string> }>('network', [
       'headers',
       after?.requestId ?? '',
+      '--include-sensitive',
     ]);
     const cookie = Object.entries(data.requestHeaders).find(
       ([name]) => name.toLowerCase() === 'cookie'

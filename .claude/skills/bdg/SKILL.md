@@ -166,6 +166,10 @@ bdg network list --filter "status-code:>=400 domain:api.*"   # DevTools DSL: sta
 bdg network list --sort size --last 5         # 5 heaviest requests (--sort duration: slowest; --page current|all; DSL page:current)
 bdg details network <id>                      # Headers, timing, body (cut at 20000 chars; --json bodyTruncated/bodyLength); Blocked Cookies: set rejected / not sent + reason
 bdg details network <id> --no-body            # Metadata only; --body prints just the whole raw body (pipe to jq); --body-max <chars>
+bdg network headers <id>                      # Headers only (no id: main document; also bdg network document)
+# details network / network headers / network document mask credentials as ••••: cookie values, Authorization (Bearer ••••),
+# API key/token headers, URL tokens, password/token fields of bodies and WebSocket messages (JSON masked: true).
+# --include-sensitive shows them as captured (with a warning); names and everything else stay as captured.
 bdg network list --filter "has-blocked-cookies:*"   # "Logged out after this request?" Rows end ⚠ cookie blocked; value = kind, reason, or one of the first 5 names
 bdg network getCookies
 bdg console --level error                     # Errors on the current page

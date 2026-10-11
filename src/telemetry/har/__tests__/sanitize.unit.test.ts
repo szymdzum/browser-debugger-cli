@@ -344,6 +344,86 @@ void describe('HAR sanitization: URLs', () => {
     assert.equal(header(entry.request.headers, 'Referer'), expected);
   });
 
+  test('redacts credential parameters in the :path of an HTTP/2 request', () => {
+    const entry = entryFor({
+      ...LOGIN_REQUEST,
+      requestHeaders: { ':path': '/callback?code=SECRET&state=xyz' },
+    });
+    assert.equal(header(entry.request.headers, ':path'), '/callback?code=%5Bredacted%5D&state=xyz');
+  });
+
+  test('redacts headers named like a secret field, Link URLs and JWTs in any header', () => {
+    const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl';
+    const entry = entryFor({
+      ...LOGIN_REQUEST,
+      requestHeaders: { 'X-Password': 'p1', Sid: 's1', Cookie2: 'k1', 'X-Debug': jwt },
+      responseHeaders: {
+        'Access-Control-Allow-Credentials': 'true',
+        Link: '</a?token=T1>; rel="next"',
+        Refresh: '0; url=/cb?code=C1',
+      },
+    });
+    assert.equal(header(entry.request.headers, 'X-Password'), REDACTED);
+    assert.equal(header(entry.request.headers, 'Sid'), REDACTED);
+    assert.equal(header(entry.request.headers, 'Cookie2'), REDACTED);
+    assert.equal(header(entry.request.headers, 'X-Debug'), REDACTED);
+    assert.equal(header(entry.response.headers, 'Access-Control-Allow-Credentials'), 'true');
+    assert.equal(header(entry.response.headers, 'Link'), '</a?token=%5Bredacted%5D>; rel="next"');
+    assert.equal(header(entry.response.headers, 'Refresh'), '0; url=/cb?code=%5Bredacted%5D');
+  });
+
+  test('redacts Bearer credentials in a plain-text WebSocket message', () => {
+    const entry = entryFor({
+      ...LOGIN_REQUEST,
+      resourceType: 'WebSocket',
+      webSocket: {
+        frames: [{ timestamp: 1, direction: 'sent', opcode: 1, payloadData: 'Bearer WB1-S615' }],
+      },
+    });
+    assert.deepEqual(
+      entry._webSocketMessages?.map((m) => m.data),
+      [`Bearer ${REDACTED}`]
+    );
+  });
+
+  test('redacts Bearer and Basic credentials of any case, never prose', () => {
+    const messages = [
+      'bearer abc123',
+      'BEARER Xy_99zz',
+      'basic dXNlcjpwYXNz',
+      'Basic information',
+      'bearer of bad news',
+      'Basic plan rocks',
+      'Bearer\nnext1234',
+      'Bearer abc',
+    ];
+    const entry = entryFor({
+      ...LOGIN_REQUEST,
+      resourceType: 'WebSocket',
+      webSocket: {
+        frames: messages.map((payloadData, i) => ({
+          timestamp: i,
+          direction: 'sent' as const,
+          opcode: 1,
+          payloadData,
+        })),
+      },
+    });
+    assert.deepEqual(
+      entry._webSocketMessages?.map((m) => m.data),
+      [
+        `bearer ${REDACTED}`,
+        `BEARER ${REDACTED}`,
+        `basic ${REDACTED}`,
+        'Basic information',
+        'bearer of bad news',
+        'Basic plan rocks',
+        'Bearer\nnext1234',
+        'Bearer abc',
+      ]
+    );
+  });
+
   test('leaves URLs without sensitive parameters alone', () => {
     const url = 'https://example.com/search?q=zipcode&keyword=a%20b';
     assert.equal(entryFor({ ...LOGIN_REQUEST, url }).request.url, url);

@@ -5,6 +5,7 @@
  */
 
 import { MAX_BLOCKED_COOKIES, MAX_NETWORK_REQUESTS, MAX_TOTAL_BODY_BYTES } from '@/constants.js';
+import { MASKED_VALUE } from '@/runtime/dom/elementInfo.js';
 import type { BlockedCookie } from '@/types.js';
 import { pluralize } from '@/ui/formatting.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
@@ -176,6 +177,25 @@ export function localProxyNote(): string {
  */
 export function harSanitizedComment(): string {
   return 'Sanitized by bdg: values of auth, cookie, API key, token and session headers, cookies, user:pass@ and credential query parameters in URLs, password/token/secret fields of JSON and form request and response bodies and WebSocket messages (also truncated JSON, JSON encoded in strings, socket.io, SockJS, server-sent events, NDJSON, and base64 bodies and binary messages that are UTF-8 text), and any JWT (also inside longer strings and form values) are [redacted] in place (by name, so some harmless values are too); everything else stays byte for byte. Not sanitized: other binary data, text that is not JSON or a form, and non-JSON syntax (single quotes, unquoted keys, JSONP, bare values with spaces); a body that could not be sanitized is [redacted] whole. Export with --include-sensitive to keep everything';
+}
+
+/**
+ * Footer of `details network`, `network headers` and `network document`
+ * output in which a credential was masked (also the hint of `--body`).
+ *
+ * @returns The note, naming the flag that shows the values
+ */
+export function networkSecretsMaskedNote(): string {
+  return `Credentials shown as ${MASKED_VALUE} (--include-sensitive shows them)`;
+}
+
+/**
+ * Warning of network output run with `--include-sensitive`.
+ *
+ * @returns Warning text
+ */
+export function includeSensitiveWarning(): string {
+  return 'Output includes credentials (--include-sensitive): share it with care';
 }
 
 /**

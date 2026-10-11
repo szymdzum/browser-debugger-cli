@@ -178,6 +178,8 @@ export type DetailsCommandOptions = BaseOptions & {
   body?: boolean;
   /** `--body-max`: characters of the response body to show (0 = all) */
   bodyMax?: number;
+  /** `--include-sensitive`: show credentials as captured instead of masked */
+  includeSensitive?: boolean;
 };
 
 /** Options for DOM query command */
@@ -373,7 +375,11 @@ export type NetworkHarCommandOptions = BaseOptions & {
 };
 
 /** Options for network headers command */
-export type NetworkHeadersCommandOptions = BaseOptions & { header?: string };
+export type NetworkHeadersCommandOptions = BaseOptions & {
+  header?: string;
+  /** `--include-sensitive`: show credentials as captured instead of masked */
+  includeSensitive?: boolean;
+};
 
 /**
  * Options for session start command.

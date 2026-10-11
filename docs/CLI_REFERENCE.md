@@ -189,8 +189,22 @@ bdg details network <requestId>     # Full request/response; response body cut a
 bdg details network <id> --body     # Only the response body, whole and raw (pipe it: | jq .)
 bdg details network <id> --no-body  # Headers and timing, no response body
 bdg details network <id> --body-max 2000   # Cut the body at 2000 characters (0 = whole)
+bdg details network <id> --include-sensitive   # Credentials as captured (masked as •••• by default)
 bdg details console <index>         # Full console message with args
 ```
+
+**Credentials are masked by default** in `details network`, `network headers` and `network document`, human and `--json`: each value becomes `••••`, field and header names and the JSON shape stay, and everything else stays as captured, so the output is still good for debugging:
+
+```text
+Authorization: Bearer ••••
+Cookie: pre=••••; sid=••••
+Set-Cookie: sid=••••; Path=/; HttpOnly
+Referer: https://app.example.com/cb?code=••••&state=ok
+user=tom&password=••••
+{"access_token":"••••","expires_in":3600}
+```
+
+What is masked is what the default HAR export redacts (see `network har` below; same rules, `••••` instead of `[redacted]`): `Cookie` and `Set-Cookie` values (cookie names and attributes kept), `Authorization` and `Proxy-Authorization` (scheme kept), API key, token, CSRF and session headers and headers named like a secret field (`X-Password`, `Sid`, `Cookie2`); `user:pass@` and credential query and fragment parameters in the request URL, the redirect URL and `Location`, `Referer`, `:path`, `Content-Location`, `Refresh` and `Link` headers; a JWT in any header; fields with a [secret field name](#secret-field-names) in urlencoded, JSON (any depth) and multipart request bodies, JSON response bodies and WebSocket messages; a token-shaped credential after `Bearer`/`Basic` (any case, same line) in plain-text WebSocket messages (`Basic information` is prose and stays); any JWT. The output says when something was masked: a last line `Credentials shown as •••• (--include-sensitive shows them)` (with `--body`, on stderr) and `masked: true` in `--json` `data`. `--include-sensitive` shows every value as captured, with a warning (`Warning: Output includes credentials (--include-sensitive): share it with care`; `warning` in the `--json` envelope). With `--body` the masked body is the one printed and cut (`bodyLength` counts it), and `masked: true` and the note appear only when the body itself had a credential. `Size`, `decodedBodyLength`, `encodedDataLength` and the `Content-Length` header describe the captured body, not the masked one. Not masked: HTML document bodies, URLs in `network list`, `peek` and `status`, and `network getCookies`.
 
 The response body is cut at 20000 characters by default, in text (`… 594000 more characters (full body: bdg details network <id> --body)`) and in `--json` (`bodyTruncated: true` and `bodyLength`, the whole length, on the item), so a large HTML document stays near 25 KB instead of hundreds. `--body-max <chars>` changes the cap (0 keeps the whole body); base64 bodies are cut on a whole 4-character group. `--no-body` leaves the response body out of both outputs (the request body and `bodyNotCaptured` stay). `--body` prints only the response body, whole, for piping: no newline is added, and control characters are escaped only when stdout is a terminal; a binary body comes base64-encoded (`base64 -d` decodes it; a hint on stderr says so), and `--json` gives `data: { type: "network-body", requestId, body, bodyLength, base64Encoded?, bodyTruncated?, mimeType? }`. A request with no body to print exits 83 with the reason: not captured (skipped or evicted, see below), still loading, a WebSocket (it has messages), the response has no body (HEAD, 204, 205, 304), or none captured (redirects, failed requests). `--body --body-max N` prints the first N characters and says so on stderr (`body cut at N of M characters (--body-max 0 for all)`), so stdout stays clean for piping. These options apply to `details network` only (exit 81 for `details console`), and `--no-body` with `--body-max` exits 81.
 
@@ -450,7 +464,7 @@ A numeric argument (`bdg dom get 0`, `bdg dom click 3`, `bdg dom screenshot out.
 
 ### Secret field names
 
-One list decides which field names hold secrets, for DOM masking (`dom query`, `dom get` incl. `--raw` and `--node-id`, `dom form`, `dom a11y`, `dom inspect`, the `dom fill` echo) and for the HAR export's body, form and URL parameter redaction. A name counts when, case-insensitively and with camelCase split into words (`apiKey` is `api_Key`), it contains:
+One list decides which field names hold secrets, for DOM masking (`dom query`, `dom get` incl. `--raw` and `--node-id`, `dom form`, `dom a11y`, `dom inspect`, the `dom fill` echo), for the HAR export's body, form and URL parameter redaction, and for the network output masking of `details network`, `network headers` and `network document`. A name counts when, case-insensitively and with camelCase split into words (`apiKey` is `api_Key`), it contains:
 
 - anywhere in the name: `passw`, `pwd`, `passcode`, `passphrase`, `cvv`, `cvc`, `token`, `secret` (not `secretary`), `credential`, `jwt`, `bearer`, `oauth`, `api_key`/`apikey`/`api-key`, `private_key`, `access_key`, `authoriz`, `auth_code`, `code_verifier`, `session`, `cookie`, `csrf`, `xsrf`, `refresh`, `signature`
 - as a whole word (between non-letters or at an end): `pass`, `pw`, `otp`, `totp`, `pin`, `ssn`, `auth`, `sid`, `card_number`/`cardNo` and `cc_number`/`cc-num`/`ccNo`; plus `creditcard`/`credit_card` anywhere
@@ -460,7 +474,7 @@ One list decides which field names hold secrets, for DOM masking (`dom query`, `
 | `pass`, `user_pass`, `userPass`, `pass1`, `pw`, `userPW`, `passcode`, `api_key`, `apiKey`, `x_api_key`, `client_secret`, `csrf_token`, `authenticity_token`, `_token`, `otp`, `otpCode`, `pin`, `userPin`, `cc-number`, `ccnum`, `credit_card_number` | `passport`, `compass`, `bypass`, `passenger`, `keyword`, `monkey`, `key`, `code`, `zipcode`, `pincode`, `spinner`, `opinion`, `author`, `sidebar`, `cardholder`, `secretary`, `cc`, `accent`, `success`, `credit_limit` |
 | over-masked (ordinary names with a credential word): `tokenizer`, `tokenCount`, `sessionLength`, `refreshInterval`, `cookie_consent`, `csrfEnabled`, `signature` (a forum signature too), `boarding_pass` | a secret under another name (`hash`, `license_key`, `mot_de_passe`) |
 
-Masking hides only what bdg prints: read a masked field with `bdg dom eval` (`bdg dom eval 'document.querySelector("#api-key").value'`), keep everything in a HAR with `--include-sensitive`. The list is `SENSITIVE_NAME_TERMS` in `src/utils/sensitiveNames.ts`.
+Masking hides only what bdg prints: read a masked field with `bdg dom eval` (`bdg dom eval 'document.querySelector("#api-key").value'`), keep everything in a HAR, or show it in `details network`, `network headers` and `network document`, with `--include-sensitive`. The list is `SENSITIVE_NAME_TERMS` in `src/utils/sensitiveNames.ts`.
 
 ### Event Listeners
 
@@ -1282,12 +1296,12 @@ bdg network har --include-sensitive full.har
 - Valid HAR 1.2 format compatible with Chrome DevTools and HAR Viewer
 - Includes all request/response data (URLs, methods, headers, bodies)
 - **Sanitized by default**, like Chrome DevTools' export since Chrome 130. Values become `[redacted]` for:
-  - `Authorization`, `Proxy-Authorization`, `Authentication`, `Cookie`, `Set-Cookie`, `X-*-Key`/`X-*-Token`/`X-*-Secret`/`X-*-Auth*` headers and headers with an `api-key`, `apikey`, `token`, `secret`, `jwt`, `subscription-key` or `session(-id)` segment (`WWW-Authenticate` is kept)
+  - `Authorization`, `Proxy-Authorization`, `Authentication`, `Cookie`, `Set-Cookie`, `X-*-Key`/`X-*-Token`/`X-*-Secret`/`X-*-Auth*` headers, headers with an `api-key`, `apikey`, `token`, `secret`, `jwt`, `subscription-key` or `session(-id)` segment, and headers named like a [secret field](#secret-field-names) (`X-Password`, `X-Pass`, `Sid`, `X-Credential`, `Cookie2`) (`WWW-Authenticate`, `Access-Control-Allow-Credentials`, `Signature-Input` and `Accept-Signature` are kept)
   - every cookie value
-  - credential query and fragment parameters (`access_token`, `id_token`, `code`, `sig`, `key`, secret field names) in the request URL, `queryString`, `redirectURL` and `Location`/`Referer` headers (`%5Bredacted%5D` in URLs)
+  - credential query and fragment parameters (`access_token`, `id_token`, `code`, `sig`, `key`, secret field names) in the request URL, `queryString`, `redirectURL` and `Location`/`Referer`/`:path`/`Content-Location`/`Refresh`/`Link` headers (`%5Bredacted%5D` in URLs), and a JWT in any other header
   - the user info of those URLs: `http://bob:pw@host/` is written `http://host/` (`//bob:pw@host/` too) (removed whole, as a user name may itself be a token)
   - credential fields of JSON (every primitive under such a name, at any depth), form-urlencoded (also when sent as `text/plain`, Rails-style `user[password]` names included) and multipart request bodies
-  - the same fields of response bodies (`{"access_token":"[redacted]","expires_in":3600}`) and of WebSocket messages (`_webSocketMessages`); also truncated JSON, JSON encoded in a string value (`{"variables":"{\"password\":\"[redacted]\"}"}`, up to 3 levels), socket.io (`42["auth",{"token":"[redacted]"}]`, `42/chat,[…]`, `451-[…]`, Engine.io v3 `45:42[…]`) and SockJS (`a["…"]`) packets, server-sent events and NDJSON; base64 bodies with no, a generic (`application/octet-stream`), JSON, form or `text/event-stream` type and binary WebSocket messages are decoded when they are UTF-8 text, redacted and encoded again
+  - the same fields of response bodies (`{"access_token":"[redacted]","expires_in":3600}`) and of WebSocket messages (`_webSocketMessages`; in a message that is neither JSON nor a form, a token-shaped credential after `Bearer` or `Basic` of any case too, so `bearer abc123` is redacted and `Basic information` is not); also truncated JSON, JSON encoded in a string value (`{"variables":"{\"password\":\"[redacted]\"}"}`, up to 3 levels), socket.io (`42["auth",{"token":"[redacted]"}]`, `42/chat,[…]`, `451-[…]`, Engine.io v3 `45:42[…]`) and SockJS (`a["…"]`) packets, server-sent events and NDJSON; base64 bodies with no, a generic (`application/octet-stream`), JSON, form or `text/event-stream` type and binary WebSocket messages are decoded when they are UTF-8 text, redacted and encoded again
   - any whole JWT (`eyJ….….…`) under any name: in a JSON string value (`"Bearer [redacted]"`, `"https://a/cb#id_token=[redacted]&state=1"`, only the JWT is replaced), a form or URL parameter value, a multipart part or a text body
 
   Credential field names are the [secret field names](#secret-field-names) DOM masking uses; bare `code` and `key` count only in URLs.
@@ -1347,6 +1361,12 @@ bdg network headers <request-id> --header content-type
 # JSON output for scripting
 bdg network headers --json
 bdg network headers --header content-security-policy --json | jq '.data.responseHeaders | to_entries[0].value'
+
+# Main document headers (same as network headers without an id)
+bdg network document
+
+# Credentials as captured (masked as •••• by default)
+bdg network headers <request-id> --include-sensitive
 ```
 
 **Smart Defaults:**
@@ -1362,8 +1382,9 @@ bdg network headers --header content-security-policy --json | jq '.data.response
   - Request headers (alphabetically sorted)
   - Request ID for correlation with `bdg peek` output
 - **JSON format** (`--json` flag):
-  - Structured data with `url`, `requestId`, `method`, `status?`, `statusText?`, `errorText?`, `requestHeaders`, `responseHeaders`
+  - Structured data with `url`, `requestId`, `method`, `status?`, `statusText?`, `errorText?`, `requestHeaders`, `responseHeaders`, `masked?`
   - Ideal for scripting and automation
+- **Credentials masked** (both formats): `Cookie`/`Set-Cookie` values, `Authorization` (scheme kept: `Bearer ••••`), API key, token and CSRF headers, and credentials in the URL and in `Location`/`Referer` are `••••`, as in `details network` (see [Get full details](#get-full-details)); a last line (`masked: true` in JSON) says so, and `--include-sensitive` shows them with a warning
 
 **Use Cases:**
 - Security auditing (CSP, HSTS, X-Frame-Options headers)
