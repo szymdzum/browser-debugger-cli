@@ -57,7 +57,9 @@ import {
   POINTER_ACTION_DONE,
   POINTER_ACTION_NOUN,
   pointerScrollText,
-  actionErrorText,
+  actionErrorRows,
+  activatedText,
+  controlChangeText,
   actionStatusLine,
   dialogResultText,
   downloadText,
@@ -65,6 +67,8 @@ import {
   tabClosedText,
   moreErrorsText,
   moreMessagesText,
+  formSubmittedText,
+  hiddenTrackerErrorsText,
   newMessageText,
   pageNavigationText,
   shownElementText,
@@ -510,8 +514,11 @@ interface ActionNotices extends ActionEffects {
  * "⚠ Element Clicked (with warnings)" with the warning right below it,
  * "⚠ Element Clicked (page still changing)" with what it was still working
  * on, "⚠ Element Clicked (submit blocked)" with the fields that blocked it, or "⚠ Element Clicked (no visible effect: …)"), the details, what
- * changed on the page (`Page:` navigation, `New text:` messages, `Shown:`
- * elements), the console errors it caused (`Errors:`), then the network
+ * changed on the page (`Page:` navigation, a `Form submitted` line,
+ * a `Button changed:` line for the pressed button's own change, `Activated:` for an
+ * element a key clicked, `New text:` messages, `Shown:` elements), the
+ * console errors (rows with the same text and short source merged, plus how
+ * many came from filtered trackers) it caused (`Errors:`), then the network
  * requests it triggered, the downloads it started, the tabs it opened
  * (`Opened:`), the session's tab closing (`Tab closed:`) and the dialogs it
  * caused. No request list is shown when there were none (JSON has an empty
@@ -556,6 +563,9 @@ function formatActionOutput(
   fmt.blank();
   fmt.keyValueList(details, keyWidth);
   if (result.navigation) fmt.keyValue('Page', pageNavigationText(result.navigation), keyWidth);
+  if (result.submitted) fmt.text(formSubmittedText(result.submitted));
+  if (result.controlChange) fmt.text(controlChangeText(result.controlChange));
+  if (result.activated) fmt.keyValue('Activated', activatedText(result.activated), keyWidth);
   listRows(
     fmt,
     'New text',
@@ -570,8 +580,9 @@ function formatActionOutput(
     fmt,
     'Errors',
     [
-      ...(result.errors ?? []).map(actionErrorText),
+      ...actionErrorRows(result.errors ?? []),
       ...(result.moreErrors ? [moreErrorsText(result.moreErrors)] : []),
+      ...(result.hiddenTrackerErrors ? [hiddenTrackerErrorsText(result.hiddenTrackerErrors)] : []),
     ],
     keyWidth
   );

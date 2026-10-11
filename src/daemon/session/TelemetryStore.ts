@@ -32,6 +32,8 @@ export class TelemetryStore {
    * `consoleMessages[i]` in the session is `consoleDropped + i`
    */
   consoleDropped = 0;
+  /** The session runs without the default tracking filters (`--all`) */
+  includeAll = false;
   /** Chrome Issues of the page currently loaded */
   /** Chrome Issues of the session tab's page (a new log for each tab the session moves to) */
   pageIssues = new PageIssueLog();

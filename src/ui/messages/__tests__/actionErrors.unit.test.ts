@@ -5,12 +5,33 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { actionErrorText, moreErrorsText } from '@/ui/messages/commands.js';
+import { actionErrorRows, moreErrorsText } from '@/ui/messages/commands.js';
 
-void describe('actionErrorText', () => {
+/**
+ * The row of one error.
+ *
+ * @param error - Reported error
+ * @returns Its row
+ */
+function actionErrorRow(error: Parameters<typeof actionErrorRows>[0][number]): string | undefined {
+  return actionErrorRows([error])[0];
+}
+
+void describe('actionErrorRows', () => {
+  void it('merges errors whose text and short source are the same, counting the sources', () => {
+    assert.deepEqual(
+      actionErrorRows([
+        { text: 'beacon failed', source: 'https://a.test/one/event?a=1:1:9', count: 1 },
+        { text: 'beacon failed', source: 'https://a.test/two/event?b=2:1:9', count: 1 },
+        { text: 'other', count: 1 },
+      ]),
+      ['[2x] beacon failed (event:1:9, 2 sources)', 'other']
+    );
+  });
+
   void it('names the file, line and column of the source', () => {
     assert.equal(
-      actionErrorText({
+      actionErrorRow({
         text: 'Uncaught Error: handler exploded',
         source: 'http://app.test/js/app.js:3:142',
         count: 1,
@@ -20,26 +41,26 @@ void describe('actionErrorText', () => {
   });
 
   void it('counts repeats like bdg console', () => {
-    assert.equal(actionErrorText({ text: 'boom', count: 2 }), '[2x] boom');
+    assert.equal(actionErrorRow({ text: 'boom', count: 2 }), '[2x] boom');
   });
 
   void it('names the host for a page URL ending in a slash', () => {
     assert.equal(
-      actionErrorText({ text: 'boom', source: 'https://app.test/:3:142', count: 1 }),
+      actionErrorRow({ text: 'boom', source: 'https://app.test/:3:142', count: 1 }),
       'boom (app.test:3:142)'
     );
   });
 
   void it('leaves out a query that contains slashes', () => {
     assert.equal(
-      actionErrorText({ text: 'boom', source: 'https://app.test/a?next=/x/y:3:1', count: 1 }),
+      actionErrorRow({ text: 'boom', source: 'https://app.test/a?next=/x/y:3:1', count: 1 }),
       'boom (a:3:1)'
     );
   });
 
   void it('names the file of a failed load without a position', () => {
     assert.equal(
-      actionErrorText({
+      actionErrorRow({
         text: 'Failed to load resource',
         source: 'https://app.test/api/items',
         count: 1,

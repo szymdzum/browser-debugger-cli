@@ -822,7 +822,7 @@ void describe('DOM interactions', () => {
     );
     assert.match(
       await bdg(['dom', 'click', '#cancel']),
-      /^⚠ Element Clicked \(no visible effect observed: no DOM change, requests or navigation within 300 ms\)\n\nSelector: +#cancel\nElement: +button#cancel\.btn\.btn_secondary "Cancel"/
+      /^✓ Element Clicked\n\nSelector: +#cancel\nElement: +button#cancel\.btn\.btn_secondary "Cancel"\n[^]*Form submitted \(cancelled by the page\): form#checkout/
     );
   });
 

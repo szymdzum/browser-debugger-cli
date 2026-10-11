@@ -502,6 +502,10 @@ export async function startNetworkCollection(
       record(hop);
     }
 
+    if (shouldExcludeDomain(params.request.url, includeAll)) {
+      evictions.trackersExcluded = (evictions.trackersExcluded ?? 0) + 1;
+      return;
+    }
     if (shouldFilterRequest(params.request.url, includeAll, networkInclude, networkExclude)) {
       return;
     }

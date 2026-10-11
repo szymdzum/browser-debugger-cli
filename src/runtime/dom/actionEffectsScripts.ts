@@ -55,7 +55,15 @@ const REVEAL_BUDGET_MS = 8;
 const NEAR_CONTAINERS =
   'form, [role="form"], [role="search"], dialog, [role="dialog"], [role="combobox"]';
 
-/** Added elements reported wherever they are: popups and messages */
+/**
+ * Added elements a click or key press reports wherever they are: the page's
+ * own announcements, elements with a dialog or alert/status role. Class
+ * words, other popups and `aria-live` regions count near the target only,
+ * so a toast or a live score ticking elsewhere is not attributed to a press.
+ */
+const PRESS_POPUP_ROLES = /^(dialog|alertdialog|alert|status)$/;
+
+/** Added elements a hover reports wherever they are: popups and messages */
 const POPUP_ROLES = /^(tooltip|menu|listbox|dialog|alert|alertdialog|status)$/;
 
 /** Messages kept per snapshot (after filtering) */
@@ -243,9 +251,14 @@ const NEAR_SCOPE_JS = `(target) => {
 
 /**
  * Page-side list of the elements an action showed: elements added during
- * the watch inside the target's container ({@link NEAR_SCOPE_JS}) or, anywhere,
- * popups and messages (tooltip, menu, listbox, dialog, alert and status
- * roles, `aria-live`, message-like classes), plus, after a hover, the
+ * the watch inside the target's container ({@link NEAR_SCOPE_JS}) or,
+ * anywhere, after a hover popups and messages (tooltip, menu, listbox,
+ * dialog, alert and status roles, `aria-live`, message-like classes) and
+ * after a click or key press only elements with a dialog or alert/status
+ * role ({@link PRESS_POPUP_ROLES}). Text in textareas,
+ * selects, password inputs, elements whose `autocomplete` ends in
+ * `password` or `one-time-code` and elements named like secrets is left
+ * out. Also, after a hover, the
  * elements hidden before it that are shown now ({@link REVEAL_SNAPSHOT_JS}).
  * Background widgets elsewhere on the page do not count. Only shown ones
  * with visible text count, the outermost of nested ones, and not those
@@ -258,11 +271,17 @@ export const SHOWN_ELEMENTS_JS = `(state) => {
   const shown = ${SHOWN_JS};
   const visibleText = ${VISIBLE_TEXT_JS};
   const word = /\\b(${MESSAGE_WORDS.join('|')})\\b/i;
-  const target = state.reveal ? state.reveal.target : state.keyTarget;
+  const target = state.reveal ? state.reveal.target : state.keyTarget || state.pressTarget;
+  const secretPart = (node) => /^(textarea|select|option)$/.test(node.localName) ||
+    (node.localName === 'input' && node.type === 'password') ||
+    /(password|one-time-code)$/i.test(node.getAttribute('autocomplete') || '') ||
+    /pass|secret|token|otp|cvv|cvc/i.test((node.getAttribute('name') || '') + ' ' + (node.id || ''));
   const scope = target && target.isConnected ? (${NEAR_SCOPE_JS})(target) : null;
-  const popup = (el) => ${POPUP_ROLES}.test(el.getAttribute('role') || '') || el.hasAttribute('popover') ||
+  const hoverPopup = (el) => ${POPUP_ROLES}.test(el.getAttribute('role') || '') || el.hasAttribute('popover') ||
     (el.hasAttribute('aria-live') && el.getAttribute('aria-live') !== 'off') ||
     word.test(el.getAttribute('class') || '') || word.test(el.id || '');
+  const announced = (el) => ${PRESS_POPUP_ROLES}.test(el.getAttribute('role') || '');
+  const popup = state.reveal ? hoverPopup : announced;
   const near = (el) => (scope !== null && scope.contains(el)) || popup(el);
   const contentOf = (node) => (node.textContent || '').replace(/\\s+/g, ' ').trim();
   const removed = new Set(state.removed.map(contentOf));
@@ -272,7 +291,7 @@ export const SHOWN_ELEMENTS_JS = `(state) => {
   for (const el of candidates) {
     if (performance.now() > deadline) break;
     if (!shown(el) || removed.has(contentOf(el))) continue;
-    const text = visibleText(el, () => false);
+    const text = visibleText(el, secretPart);
     if (text !== '') found.push({ el: el, text: text });
   }
   return found
@@ -321,8 +340,10 @@ export const STRUCTURAL_CHANGE_JS = `(record) => {
 export const UNCERTAIN_JS = `(state, active) => {
   if (state.copied) return 'clipboard';
   if (state.targets.size === 0) return 'no-event';
+  if (state.keyTarget && !state.enterField) return 'key';
   const controls = /^(input|select|textarea|option|label|canvas|video|audio|iframe|embed|object)$/;
   for (const node of state.path) {
+    if (node === state.enterField) continue;
     if (controls.test(node.localName) || node.isContentEditable) return 'control';
     if (node.hasAttribute('popovertarget') || node.hasAttribute('commandfor')) return 'control';
     if (node.localName === 'a' && node.hasAttribute('href')) {
@@ -334,7 +355,7 @@ export const UNCERTAIN_JS = `(state, active) => {
   const plain = (node) => /^(body|button|summary)$/.test(node.localName) ||
     (node.localName === 'a' && node.hasAttribute('href')) ||
     (node.localName === 'input' && /^(button|submit|reset)$/i.test(node.type || ''));
-  if (active && active !== state.focus && !plain(active)) return 'focus';
+  if (active && active !== state.focus && active !== state.enterField && !plain(active)) return 'focus';
   return undefined;
 }`;
 
@@ -353,6 +374,47 @@ const SETTLE_JS = `(state) => {
     burstAges: state.bursts.map((time) => Math.round(now - time)),
     loading: loader ? describe(loader) : null
   };
+}`;
+
+/** Controls whose own change after a press counts as its effect */
+const PRESSED_CONTROLS =
+  'button, input[type=button], input[type=submit], input[type=reset], [role=button]';
+
+/**
+ * Page-side label of a pressed control ({@link PRESSED_CONTROLS}): an input
+ * button's value, else its rendered text, whitespace collapsed, at most
+ * {@link MAX_MESSAGE_TEXT} characters. A control holds no field's value.
+ */
+const CONTROL_LABEL_JS = `(el) => (el.localName === 'input' ? el.value : el.innerText || el.textContent || '')
+  .replace(/\\s+/g, ' ').trim().slice(0, ${MAX_MESSAGE_TEXT})`;
+
+/**
+ * Page-side outcomes of the press, for a read: the first form that fired
+ * `submit` during the watch and whether the page cancelled it
+ * (`defaultPrevented`, final once the event was dispatched; the form is kept
+ * when noted, since a dispatch clears a target in a shadow root); the pressed
+ * control's change since the press (its disabled state or label); the
+ * element a key press clicked inside the key's target (Enter or Space on a
+ * button); and whether the key was Enter in a form's input. Empty parts are
+ * left out.
+ */
+const OUTCOMES_JS = `(state) => {
+  const describe = ${ELEMENT_DESCRIPTION_JS};
+  const outcomes = {};
+  const submit = state.submits[0];
+  if (submit) outcomes.submitted = { form: describe(submit.form), cancelled: submit.event.defaultPrevented };
+  const control = state.control;
+  if (control && control.el.isConnected) {
+    const disabled = control.el.matches(':disabled');
+    const text = (${CONTROL_LABEL_JS})(control.el);
+    const change = {};
+    if (disabled !== control.disabled) change.disabled = disabled;
+    if (text !== control.text) change.text = text;
+    if (Object.keys(change).length > 0) outcomes.controlChange = { element: describe(control.el), ...change };
+  }
+  if (state.keyClick) outcomes.activated = describe(state.keyClick);
+  if (state.enterField) outcomes.enterField = true;
+  return outcomes;
 }`;
 
 /**
@@ -377,7 +439,31 @@ export const EFFECTS_START_SCRIPT = `(() => {
   const state = {
     ids: ids, changes: 0, targets: new Set(), path: new Set(), focus: document.activeElement,
     pressScroll: null, copied: false, stopped: false, added: [], removed: [], bursts: [],
-    keyTarget: null, loaders: new Set((${LOADERS_JS})())
+    keyTarget: null, loaders: new Set((${LOADERS_JS})()),
+    pressTarget: null, submits: [], forms: [], control: null, keyClick: null, enterField: null
+  };
+  const listen = EventTarget.prototype.addEventListener;
+  const unlisten = EventTarget.prototype.removeEventListener;
+  const controlLabel = ${CONTROL_LABEL_JS};
+  const onSubmit = (event) => {
+    const form = event.target;
+    if (!state.submits.some((seen) => seen.form === form)) state.submits.push({ form: form, event: event });
+  };
+  const notePress = (event, first) => {
+    if (!state.pressTarget) state.pressTarget = first;
+    const form = first.form || first.closest('form');
+    if (form instanceof HTMLFormElement && !state.forms.includes(form)) {
+      state.forms.push(form);
+      listen.call(form, 'submit', onSubmit, true);
+    }
+    const control = state.control ? null : first.closest(${JSON.stringify(PRESSED_CONTROLS)});
+    if (control) state.control = { el: control, disabled: control.matches(':disabled'), text: controlLabel(control) };
+    if (event.type === 'keydown' && event.key === 'Enter' && first.localName === 'input' && first.form) {
+      state.enterField = state.enterField || first;
+    }
+    if (event.type === 'click' && state.keyTarget && !state.keyClick && state.keyTarget.contains(first)) {
+      state.keyClick = first;
+    }
   };
   const keep = (list, nodes) => {
     for (const node of nodes) if (node.nodeType === 1 && list.length < ${MAX_TRACKED_NODES}) list.push(node);
@@ -421,6 +507,14 @@ export const EFFECTS_START_SCRIPT = `(() => {
     if (path[0] && !state.keyTarget && event.type === 'keydown') state.keyTarget = path[0];
     path.forEach((node) => state.path.add(node));
     if (!state.pressScroll && pressTypes.includes(event.type)) state.pressScroll = [scrollX, scrollY];
+    if (event.type === 'submit') onSubmit(event);
+    else if (path[0] && pressTypes.includes(event.type)) {
+      try {
+        notePress(event, path[0]);
+      } catch (error) {
+        state.pressFailed = true;
+      }
+    }
   };
   types.forEach((type) => window.addEventListener(type, record, true));
   state.flush = () => count(observer.takeRecords());
@@ -431,6 +525,7 @@ export const EFFECTS_START_SCRIPT = `(() => {
     observer.disconnect();
     if (Element.prototype.attachShadow === watchedAttach) Element.prototype.attachShadow = attachShadow;
     types.forEach((type) => window.removeEventListener(type, record, true));
+    state.forms.forEach((form) => unlisten.call(form, 'submit', onSubmit, true));
   };
   const expiry = setTimeout(state.stop, ${MAX_WATCH_MS});
   window.__bdgEffects = state;
@@ -479,7 +574,8 @@ export const EFFECTS_READ_SCRIPT = `((stop, shown) => {
     uncertain: (${UNCERTAIN_JS})(state, document.activeElement),
     messages: (${MESSAGES_JS})(state.ids),
     settle: (${SETTLE_JS})(state),
-    shown: shown ? (${SHOWN_ELEMENTS_JS})(state) : undefined
+    shown: shown ? (${SHOWN_ELEMENTS_JS})(state) : undefined,
+    ...(${OUTCOMES_JS})(state)
   };
 })`;
 

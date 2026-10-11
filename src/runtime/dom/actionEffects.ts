@@ -17,6 +17,8 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import type {
   ActionEffects,
+  ControlChange,
+  FormSubmit,
   NewMessage,
   PageNavigation,
   PendingChanges,
@@ -170,6 +172,14 @@ export interface ReadSnapshot {
   settle?: SettleSignals;
   /** Elements the action showed (when asked for) */
   shown?: ShownElement[];
+  /** First form that fired `submit` during the watch (same document only) */
+  submitted?: FormSubmit;
+  /** The pressed button's own change (same document only) */
+  controlChange?: ControlChange;
+  /** Element a key press clicked inside the key's target */
+  activated?: string;
+  /** The key was Enter in a form's input */
+  enterField?: boolean;
 }
 
 /** What collecting saw of the page's work, for {@link pendingChanges} */
@@ -426,8 +436,9 @@ export function pageNavigation(
 /**
  * Whether an action had no visible effect: the page was read before and
  * after in the same document, it counted no DOM change, nothing made the
- * check uncertain, and no navigation, message, shown element, request,
- * dialog, new window or console message happened.
+ * check uncertain, and no navigation, message, shown element, form submit
+ * (cancelled or not), pressed button change, request, dialog, new window or
+ * console message happened.
  *
  * @param read - Page read after the action
  * @param effects - Navigation and messages found
@@ -447,6 +458,8 @@ export function hadNoEffect(
     effects.navigation === undefined &&
     (effects.messages ?? []).length === 0 &&
     (effects.shown ?? []).length === 0 &&
+    effects.submitted === undefined &&
+    effects.controlChange === undefined &&
     activity.requests === 0 &&
     activity.dialogs === 0 &&
     !activity.opened &&
@@ -705,6 +718,7 @@ function effectsOf(
       ...(messages.length > 0 && { messages }),
       ...(more > 0 && { moreMessages: more }),
       ...(shown.length > 0 && { shown }),
+      ...pressOutcomes(snapshot),
     };
   } catch (error) {
     log.debug(
@@ -712,6 +726,31 @@ function effectsOf(
     );
     return { ...(navigation && { navigation }) };
   }
+}
+
+/**
+ * The press's outcomes a same-document read found: the form submit, the
+ * pressed button's change (its label cut to {@link MAX_MESSAGE_LENGTH}) and
+ * the element a key press clicked.
+ *
+ * @param snapshot - Read after the action, if taken
+ * @returns Outcomes, without empty parts
+ */
+function pressOutcomes(
+  snapshot: ReadSnapshot | undefined
+): Pick<ActionEffects, 'submitted' | 'controlChange' | 'activated'> {
+  if (!snapshot || snapshot.fresh) return {};
+  const change = snapshot.controlChange;
+  return {
+    ...(snapshot.submitted && { submitted: snapshot.submitted }),
+    ...(change && {
+      controlChange: {
+        ...change,
+        ...(change.text !== undefined && { text: cutText(change.text) }),
+      },
+    }),
+    ...(snapshot.activated && { activated: snapshot.activated }),
+  };
 }
 
 /**

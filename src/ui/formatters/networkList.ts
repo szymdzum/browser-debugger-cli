@@ -15,6 +15,7 @@ import {
   COOKIE_BLOCKED_MARK,
   earlierPagesHiddenNote,
   networkEvictedNote,
+  trackersExcludedNote,
   type NetworkEvictionCounts,
 } from '@/ui/messages/networkMessages.js';
 
@@ -248,6 +249,8 @@ function formatNetworkListHuman(requests: NetworkRequest[], options: NetworkList
   fmt.separator('─', SEPARATOR_WIDTH);
   const evictedNote = options.evictions && networkEvictedNote(options.evictions);
   if (evictedNote) fmt.text(evictedNote);
+  const trackers = options.evictions?.trackersExcluded;
+  if (trackers) fmt.text(trackersExcludedNote(trackers));
 
   if (requests.length === 0) {
     fmt.text('No matching requests found.');

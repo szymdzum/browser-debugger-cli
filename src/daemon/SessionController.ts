@@ -355,6 +355,9 @@ export class SessionController {
               ...(data.droppedIssues && { issuesDropped: data.droppedIssues }),
               ...(data.droppedNetwork && { networkDropped: data.droppedNetwork }),
               ...(data.evictedNetworkBodies && { networkBodiesEvicted: data.evictedNetworkBodies }),
+              ...(data.excludedTrackerRequests && {
+                networkTrackersExcluded: data.excludedTrackerRequests,
+              }),
             },
             currentNavigationId: data.currentNavigationId,
             ...(data.fetchInterception && { fetchInterception: data.fetchInterception }),
