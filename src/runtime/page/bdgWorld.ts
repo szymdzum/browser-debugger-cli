@@ -186,6 +186,9 @@ export async function callFunctionInBdgWorld(
 /**
  * Call a page function in the main world of the top frame, with the page's
  * global object as `this` (CDP needs an object or a context to call on).
+ * Without an object group, the global object is released afterwards without
+ * waiting: a function that started a navigation (a form submit) has the page
+ * hold every command until the new document commits.
  *
  * @param cdp - Connection to the page
  * @param params - The function, its arguments and the call's options
@@ -208,7 +211,7 @@ export async function callFunctionInMainWorld(
     })) as Protocol.Runtime.CallFunctionOnResponse;
   } finally {
     if (objectGroup === undefined && objectId) {
-      await cdp.send('Runtime.releaseObject', { objectId }).catch((error: unknown) => {
+      void cdp.send('Runtime.releaseObject', { objectId }).catch((error: unknown) => {
         log.debug(`Global object not released: ${getErrorMessage(error)}`);
       });
     }
