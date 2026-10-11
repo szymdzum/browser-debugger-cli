@@ -20,7 +20,7 @@ Files in this skill:
 - **Propose 4–6 issues** with one line each on why. Recommend one set; don't present a menu. A candidate you can't reproduce in a few minutes drops out of the proposal and gets a `needs repro` comment on the issue.
 - **Show the balance.** The proposal states issues opened vs closed since the last session, and the session's target: close at least two issues for each one it files. At least half of every wave's PRs, rounded up, close issues that predate this session's sweep (bugs, not features; the polish sweep PR counts, it closes nit issues); a feature session (new behaviour, nothing closed) is the user's explicit choice, never the default. Since the skill went live it filed about two issues for each one it closed; the proposal is where that is corrected.
 - **Polish sweep PR.** The proposal names one tier-1 PR for the wording nits of the queue: human-output text that no test asserts and no agent parses, no flag, no exit code, no default. A `--json` field, a hint a test asserts, or `--help --json` text is tier 2, not a sweep item. It runs last in the session, together with the docs PRs, one commit per nit.
-- **Waves of 2–3 parallel implementers.** Issues touching the same files or output run in sequence (the second starts from the first's branch, or after it merges). Light, conflict-free changes first; docs last.
+- **Waves of at most 2 parallel implementers** (token budget: three implementers plus their reviews and testers burst past the account's limit twice on 2026-10-11). Issues touching the same files or output run in sequence (the second starts from the first's branch, or after it merges). Light, conflict-free changes first; docs last.
 - **Ask for merge authority** as a yes/no question: "May I merge on my own once gates 1–8 hold, or do you want to OK each PR?" A bare "OK" is not an answer; ask again. It doesn't carry over to the next session.
 - **Product decisions belong to the user:** changed defaults, contracts, exit codes, removed `--json` fields. Present options with a recommendation, then wait. A standing "pick the recommended option" **never** covers a contract change or a third fix round; each gets its own yes/no question.
 
@@ -46,14 +46,16 @@ Spawn one implementer per issue with the implementer brief. Fill in scope, decis
 
 **Implementers run in the background**, so a finished one gets its review while the others still work (on the first plan, a wave of three held a ready PR for 40 minutes). Keep the user informed instead: one line at each step change (started, red commit, draft PR, report in), and `git status --short` of the worktree when asked. **Reviewers and testers run in the foreground**: they take 1–5 minutes and the next step waits on them. Every subagent gets a **fresh context** (`general-purpose` / `code-reviewer`, never a fork of this conversation).
 
-An implementer's report ends with one fixed line: `PR <url> HEAD <sha> CI <run id> <conclusion>`. No such line means the work isn't done. If an agent stops without it, don't wait: read the PR and CI state yourself (`gh pr view`, `gh pr checks`) and resume the agent with what's missing.
+**Models (token budget, decided 2026-10-11 after a session burned the monthly MAX quota):** `model: sonnet` for the reviewer, tester, verifier, themed sweep, Explore and tier 1–2 implementers; `model: opus` only for a tier 3 implementer; never the default (Fable). The orchestrator waits for CI, not the implementer: an implementer that polls CI for 20 minutes re-reads its whole context on every poll (one did 180 tool calls, 350 k tokens). Implementers run only the affected smoke files; the full suite is CI's job (asking for it locally doubled a refactor PR's cost). Subagent reports are capped at about 40 lines; the PR body carries the detail.
+
+An implementer's report ends with one fixed line: `PR <url> HEAD <sha>`. No such line means the work isn't done. If an agent stops without it, don't wait for the agent: read the PR state yourself (`gh pr view`) and resume it with what's missing. You then wait for CI on that head with one background command (Commands below) and send the review in parallel; a push with no `pull_request` run after 3 minutes gets a close/reopen of the PR, not a dispatch (the required `CI OK` must come from a pull_request run).
 
 ### Review
 
 When the implementer reports, spawn a fresh reviewer with the reviewer brief: the diff, the issue, and the risky areas of this change (races, failure and cleanup paths, leaks, security, contract changes, recently merged features it could break). Don't pass on the implementer's reasoning.
 
 - Findings come back as **blocking / should-fix / nit** with file:line and a scenario. A review that lists an item from your risk list under "Not checked" is incomplete: resume the reviewer for that item before you send anything on.
-- Send every finding to the **same implementer** (SendMessage, so it keeps its context): a test and a fix in the same commit (no red commit per finding), or an argued rejection. You decide disputes.
+- Send every finding to the **same implementer** (SendMessage, so it keeps its context): a test and a fix in the same commit (no red commit per finding), or an argued rejection. You decide disputes. After a fix push the implementer returns with `PR … HEAD <new sha>` without polling CI; you wait for CI on that SHA.
 - **Adjacent fix rule.** A finding (from the reviewer, the tester or the implementer) about **older code** in the same file or function as the change, fixable in about 20 changed product lines plus its test, is fixed in the same PR as its own commit (`fix: <symptom> (#<N> adjacent)`) and listed in the PR body; unless it changes parsed output, a flag, an exit code or a default, which is the user's decision first. Everything else is reported to you (never filed by the agent) and goes to the verifier. Three PRs each filed the issue their reviewer found in the function they had just changed (#601 from #597, #599 from #587, #630 from #603); each then cost a full cycle.
 - A **second review** only for large or risky fix commits (rollback, file handling, concurrency).
 - Every report names the SHA it looked at. A fix commit invalidates only the evidence about what it changed: re-run the review or the tester for that part, not the whole cycle.
@@ -101,7 +103,7 @@ Merge only when **all** hold. If one fails, fix it; don't negotiate it.
 1. **Review resolved.** Every blocking and should-fix finding fixed or rejected with a reason you accept; nits about this change fixed in the fix commit, nits about older code in the polish sweep or with the verifier.
 2. **Fresh-agent test done** on the branch (features and behaviour changes), its findings about this change fixed in the PR.
 3. **Red commit verified.** The first commit holds only the tests for the issue's reproduction and each **testable** acceptance criterion (plus fixtures and `not implemented` skeletons); the PR says which criteria are measurements or docs and how they were checked, and the reviewer ran them on it: they fail on an assertion about the issue, not a build or import error. Exempt: docs-only, pure refactors covered by existing tests, CI/tooling (the PR says which). Review-fix commits carry their test with the fix. Self-reported "it failed before" doesn't count.
-4. **Timing-sensitive tests** passed the CI repeat dispatch with repeat ≥ 10 on Linux and macOS. CI or environment changes (browser, runner, tooling): the full smoke suite with repeat ≥ 3 on **Node 22 only** (`-f node=22`); the full Node matrix only when the change touches the Node runtime or `package.json` engines.
+4. **Timing-sensitive tests** passed the CI repeat dispatch with repeat ≥ 10 on Linux and macOS (the implementer dispatches it and reports the run ID; you check its conclusion). CI or environment changes (browser, runner, tooling): the full smoke suite with repeat ≥ 3 on **Node 22 only** (`-f node=22`); the full Node matrix only when the change touches the Node runtime or `package.json` engines.
 5. **CI on the final head commit** (`gh pr view <n> --json headRefOid` matches what you checked; never `--watch`), in three classes:
    - **required:** `CI OK` passed (it aggregates changes, build, quality, contract tests and Linux smoke; Security and macOS are outside it);
    - **additionally required for this PR:** macOS smoke when the PR touches timing-sensitive paths, the repeat dispatch for tier 3 timing changes, Security Audit for dependency changes;
@@ -117,6 +119,7 @@ Merge only when **all** hold. If one fails, fix it; don't negotiate it.
 - **Only the orchestrator files issues.** Implementers, reviewers and testers report findings in their report; you send them through the verifier and file umbrella issues. An implementer once filed an issue without a repro (#630 from #603), which the next session had to verify again.
 - **Reporting:** one line at each step change (agent started, report in, review sent back, test started), a summary at merges, real problems and decisions. Don't relay every background notification or stale watcher.
 - **Releases** only when the user decides (`docs/RELEASE_PROCESS.md`), never at the end of a session by default.
+- **One conversation per themed session.** Start the next session in a fresh conversation with the roadmap, the sweep and the memory notes as input; a single 80-turn orchestration re-reads its whole context on every notification and cost as much as the agents it ran.
 - **Retro at session end,** in a few lines: what merged and was filed, what slowed the session, what was unnecessary, one or two process changes. Agreed changes go into this skill (on a branch, as a PR); memory keeps only the reasons.
 
 ## Recurring traps
@@ -125,7 +128,7 @@ Merge only when **all** hold. If one fails, fix it; don't negotiate it.
 - **A rebase after the agent's last test run:** re-run typecheck and the affected tests before merging.
 - **A new test that passed on its first run** is at best a regression test. Ask what it would have caught; the report must say.
 - **"Flaky" can be a real bug.** Root-cause a flake before calling it one; several were product bugs or tests asserting wrong timing.
-- **A report without the final `PR … HEAD … CI …` line** is not done. Read the PR and CI state yourself and resume the agent.
+- **A report without the final `PR … HEAD …` line** is not done. Read the PR state yourself and resume the agent.
 - **CodeQL or linters on test fixtures** (e.g. a variable named `SECRET`): rename, don't suppress. An open CodeQL alert on `main` gets an issue the day it appears; six sat there without one until the session D retro.
 
 ## Project settings

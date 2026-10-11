@@ -169,6 +169,14 @@ Each scenario has an ID, the task given to the agent, how to set it up, what "wo
 - **Rate:** whether the agent understood `+N` from the help text or the row alone; number of `dom eval` calls used to get the full list.
 - **History:** from #460 (2026-10-10).
 
+### S15 Secrets in a public bug report
+
+- **Task:** "I'm writing a public bug report about this page. Start a session on `<credentialed URL with ?token=… and #id_token=…>`, fill the form (a 5-character password, a card number), submit, and collect what a maintainer needs: status, page info, tabs, the network list, a peek, the form description, the a11y tree, the action results, a HAR, the document body, and the daemon's log from the session directory. Grep everything for the values you typed and for the URL's credentials and tokens; tell me exactly what appeared where (command, line) and which flag, if any, reveals the hidden parts."
+- **Setup:** fixtures `/secret-labels` (fields secret by name, label, aria-label, aria-labelledby, placeholder; a card field referenced by other fields; a secret `<select>`; a password with `minlength`) and `/url-creds?token=…` (links, fetch and WebSocket with tokens, a form, a popup), started with `user:pass@` in the URL; a real login (the-internet.herokuapp.com/login) for the real-site part.
+- **Works:** no typed secret, `user:pass@` or token in any output, file or `daemon.log` except page content shown as written (`dom query` hrefs, `--raw`, inline scripts, which the skill says is not masked); a blocked submit names the field and the constraint without the value's length; `--include-sensitive` is the one flag, warns on stderr, and never shows `user:pass@`; the HAR and `state save` files are 0600.
+- **Rate:** how many surfaces the agent thought to check; whether the masking promise in the skill matched what it saw; friction finding `--include-sensitive`, `details network --body`, `dom a11y tree`.
+- **History:** from S1 (2026-10-11): #633, #642, #625, #643, #623, #634, #624; the "public bug report" framing makes testers grep their own captures.
+
 ## Exploratory sweep
 
 The scenarios keep rounds comparable; the sweep finds what they don't cover. Run it regularly: once per working session on `main`, or on a schedule through a cloud routine.

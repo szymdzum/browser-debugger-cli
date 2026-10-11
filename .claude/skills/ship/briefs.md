@@ -9,7 +9,7 @@ Self-contained prompts for the subagents. Fill in the `<…>` parts and send the
 - Verifier brief (fresh `general-purpose` agent, reproduces a round's older-code findings on `main`)
 
 ## Implementer brief
-Fill in the `<…>` parts; the rest is bdg's settings already. Keep it self-contained: the implementer has no context beyond this text and the repo. Spawn it as a `general-purpose` agent.
+Fill in the `<…>` parts; the rest is bdg's settings already. Keep it self-contained: the implementer has no context beyond this text and the repo. Spawn it as a `general-purpose` agent with `model: sonnet` (tier 1–2) or `model: opus` (tier 3).
 
 ---
 
@@ -48,10 +48,10 @@ Build only in your worktree. If another branch you depend on hasn't merged yet, 
 
 **Verify**
 - Environment, at the start of every shell call: `export PATH="$HOME/.nvm/versions/node/v22.15.0/bin:$PATH" BDG_TEST_SESSION_PARENT=/tmp/bt-<N> BDG_TEST_HOME_DIR=/tmp/bt-<N>-h` (yours alone; other agents have their own; each test process gets its own session dir under the parent), `BDG_SESSION_DIR=/tmp/bdg-<N>-manual` for manual runs. `node_modules` is a symlink to the main checkout: don't `npm install` through it; if your change touches `package-lock.json`, run `npm ci` in your worktree instead of the symlink.
-- Run `npm run check`, `npm test`, `npm run build`, and the affected smoke files (`npx tsx --test --test-concurrency=1 src/__tests__/smoke/<file>.smoke.test.ts`). CI runs the full smoke suite. Run every suite in the **foreground** (a background run is lost when your turn ends; the report must contain its exit line).
+- Run `npm run check`, `npm test`, `npm run build`, and the affected smoke files (`npx tsx --test --test-concurrency=1 src/__tests__/smoke/<file>.smoke.test.ts`). CI runs the full smoke suite; don't run it locally. Run every suite in the **foreground** (a background run is lost when your turn ends; the report must contain its exit line).
 - You commit and push in your worktree; this brief grants that. Push over SSH: `git push -u git@github.com:szymdzum/browser-debugger-cli.git <branch>`. If you must rewrite a pushed branch, use `git push --force-with-lease=<branch>:<old sha> git@github.com:szymdzum/browser-debugger-cli.git <branch>` (plain `--force-with-lease` refuses on a URL remote); after a review, force-push only for a rebase the orchestrator asked for (say so in the PR).
 - Open a **draft PR** (`gh pr create --draft --head <branch> --repo szymdzum/browser-debugger-cli`; `--head` is needed after a push to the SSH URL) with a full body: what changed for users, before/after, verification with run IDs, decisions you made, and known limits. Link the issue (`Closes #N`).
-- **Don't return before the draft PR is open and CI has a result.** Your report's **last line** is exactly `PR <url> HEAD <sha> CI <run id> <conclusion>`; a report without it is treated as unfinished.
+- **Return as soon as the draft PR is open.** Don't wait for or poll CI (the orchestrator does); if GitHub shows no `pull_request` run within 3 minutes of your push, say so in the report instead of dispatching one. Your report's **last line** is exactly `PR <url> HEAD <sha>`; a report without it is treated as unfinished.
 - No AI attribution in commits or the PR.
 
 **Rules**
@@ -62,10 +62,10 @@ Build only in your worktree. If another branch you depend on hasn't merged yet, 
 - Don't open GitHub issues. Report findings; the orchestrator files them.
 - Other agents are working in parallel on `<their areas and files>`. Stay out of those, and keep your edits to shared files (registries, docs) minimal and additive.
 
-**Report.** What changed, decisions with reasons, the red commit (SHA and the failure line it produced), before/after evidence, test and CI results with run IDs, the final commit hash, the PR URL, adjacent fixes made, and any finding outside your scope with its command and output (I'll verify and file it).
+**Report** (at most ~40 lines; the detail lives in the PR body). What changed, decisions with reasons, the red commit (SHA and the failure line it produced), before/after evidence in two lines, test exit lines, adjacent fixes made, and any finding outside your scope with its command and output (I'll verify and file it).
 
 ## Reviewer brief
-The reviewer must be a **fresh agent** that hasn't seen the implementation discussion: spawn it as a `code-reviewer` agent (read-only tools plus Bash). Give it the diff, the issue, and the risky areas. Don't give it the implementer's reasoning.
+The reviewer must be a **fresh agent** that hasn't seen the implementation discussion: spawn it as a `code-reviewer` agent with `model: sonnet` (read-only tools plus Bash). Give it the diff, the issue, and the risky areas. Don't give it the implementer's reasoning.
 
 ---
 
@@ -109,7 +109,7 @@ They must fail on an assertion about the issue (or the CLI's real output), not o
 **Report.** The SHA you reviewed, then findings as **blocking / should-fix / nit**, each with file:line and a concrete scenario (inputs → wrong outcome). Mark a finding **adjacent** when it is in the same file or function as the change and fixable in about 20 changed product lines plus its test without changing parsed output, flags, exit codes or defaults (the implementer fixes it in this PR); mark it **older code** when it predates the change and sits elsewhere (the orchestrator verifies and files it). Also list what you checked and found fine, and under **Not checked** anything from the list above you skipped and why (the orchestrator will resume you for it). Keep it short.
 
 ## Tester brief
-Run this on the **PR branch before merging**. The tester is a fresh `general-purpose` agent playing a real user. It gets tasks, not a description of the diff: use the **Task** lines of the scenarios that touch the change's area (`scenarios.md`), plus a task for the new behaviour if no scenario covers it yet (then add it as a scenario). Its findings about this change are fixed in the same PR; findings about older code go to the orchestrator, who sends them through the verifier and files them.
+Run this on the **PR branch before merging**. The tester is a fresh `general-purpose` agent with `model: sonnet` playing a real user. It gets tasks, not a description of the diff: use the **Task** lines of the scenarios that touch the change's area (`scenarios.md`), plus a task for the new behaviour if no scenario covers it yet (then add it as a scenario). Its findings about this change are fixed in the same PR; findings about older code go to the orchestrator, who sends them through the verifier and files them.
 
 Build the branch first in its worktree (`npm run build` in `../bdg-<N>`, Node pinned), and start the fixtures **from that same worktree** if the tasks need them (`cd ../bdg-<N> && npx tsx src/__testutils__/serveFixtures.ts`): a server started elsewhere serves another branch's pages.
 
@@ -146,7 +146,7 @@ bdg() { node <absolute path to ../bdg-<N>>/dist/index.js "$@"; }
 Be concise.
 
 ## Verifier brief
-After a fresh-agent round, one agent reproduces every finding about older code on current `main`, so issues are filed only for what really happens. The same brief, with the **Sweep** block filled in, runs the themed sweep at session start (then "Findings" lists the theme's open issues by number). Spawn it as a `general-purpose` agent, in the foreground.
+After a fresh-agent round, one agent reproduces every finding about older code on current `main`, so issues are filed only for what really happens. The same brief, with the **Sweep** block filled in, runs the themed sweep at session start (then "Findings" lists the theme's open issues by number). Spawn it as a `general-purpose` agent with `model: sonnet`, in the foreground.
 
 ---
 
