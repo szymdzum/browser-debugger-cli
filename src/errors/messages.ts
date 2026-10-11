@@ -2077,13 +2077,18 @@ interface ActedElement {
 /**
  * How a bdg command names an element an action was refused for: the index
  * the user gave for a listed element (the selector is then bdg's internal
- * placeholder for the bound node), otherwise the quoted selector.
+ * placeholder for the bound node), otherwise the quoted selector. An index
+ * that is not a non-negative integer (a malformed IPC request) is not
+ * trusted: the quoted selector is used instead.
  *
  * @param target - The element
  * @returns Command argument, e.g. `0` or `'#covered'`
  */
 function elementArgument(target: ActedElement): string {
-  return target.listIndex === undefined ? shellQuote(target.selector) : String(target.listIndex);
+  const { listIndex } = target;
+  return Number.isInteger(listIndex) && (listIndex ?? -1) >= 0
+    ? String(listIndex)
+    : shellQuote(target.selector);
 }
 
 /**

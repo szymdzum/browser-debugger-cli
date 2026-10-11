@@ -32,6 +32,27 @@ void describe('refused action suggestions', () => {
     }
   });
 
+  void it('quote the selector when the index is not a non-negative integer', () => {
+    for (const listIndex of ['0; echo pwned', -3, 1.5, Number.NaN, null, { a: 1 }]) {
+      const target = { ...bySelector, listIndex: listIndex as unknown as number };
+      assert.match(
+        unreachableElementError(target, null, 'click').suggestion,
+        /bdg dom layout '#covered', then close/,
+        JSON.stringify(listIndex)
+      );
+      assert.match(
+        pressNotReceivedError(target, 'click').suggestion,
+        /bdg dom layout '#covered'$/,
+        JSON.stringify(listIndex)
+      );
+      assert.match(
+        textTypedElsewhereError(target, 'input#vis').suggestion,
+        /bdg dom listeners '#covered'$/,
+        JSON.stringify(listIndex)
+      );
+    }
+  });
+
   void it('quote the selector of an element given by selector', () => {
     assert.match(
       unreachableElementError(bySelector, null, 'click').suggestion,
