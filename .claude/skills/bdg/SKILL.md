@@ -104,6 +104,8 @@ bdg dom wait '.toast' --text 'Saved'           # Also --visible, --gone, --load
 
 Actions wait for the requests they start; `--no-wait` returns at once.
 
+An index refers to the last `dom query`, `dom form` or `dom a11y query` list of the session (one cache for all three), and every index-based success names it (`From index 3 of the last dom query "input"`, or the `Element` row; JSON `indexSource`). Run list commands and the index commands that use them in sequence, not in parallel. An index past the list exits 87 (out of range); a query that matched nothing, or no query yet in this session, exits 81 and says which.
+
 JavaScript dialogs never block: they are accepted (a prompt gets its default value, as OK gives) and listed as `Dialog: confirm() accepted: "Sure?"` (JSON `dialogs[].answer`), also in the output of `bdg <url>` and `page navigate`/`reload` for dialogs the page opened while loading. To test the Cancel path or type into a prompt, answer them per action, or set the session default at start:
 
 ```bash

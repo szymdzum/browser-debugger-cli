@@ -19,6 +19,7 @@ import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption, SELECTOR_OR_INDEX_ARGUMENT } from '@/commands/shared/commonOptions.js';
 import type { ListenersCommandOptions } from '@/commands/shared/optionTypes.js';
 import { eventTypesOption, integerOption } from '@/commands/shared/validation.js';
+import { withIndexSourceLine } from '@/errors/messages.js';
 import { domListeners } from '@/ipc/client.js';
 import type { ListenersResult } from '@/ipc/protocol/domTypes.js';
 import { formatListeners } from '@/ui/formatters/listeners.js';
@@ -45,7 +46,7 @@ export function registerListenersCommand(dom: Command): void {
       await runCommand(
         () => listElementListeners(selectorOrIndex, options),
         options,
-        (data) => formatListeners(data, options.type)
+        (data) => withIndexSourceLine(formatListeners(data, options.type), data.indexSource)
       );
     });
 }

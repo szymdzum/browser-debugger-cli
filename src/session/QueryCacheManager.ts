@@ -20,13 +20,15 @@
  */
 
 import { existsSync } from 'fs';
-import { readFile, rm, writeFile } from 'fs/promises';
+import { readFile, rm } from 'fs/promises';
 import { join } from 'path';
 
+import { noQueryInSessionError } from '@/errors/messages.js';
 import { getSessionDir } from '@/session/paths.js';
 import type { DomQueryResult, IndexSource } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
+import { AtomicFileWriter } from '@/utils/atomicFile.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
 const log = createLogger('session');
@@ -36,6 +38,9 @@ const log = createLogger('session');
  * per-connection node ids that are meaningless to later commands.
  */
 const CACHE_VERSION = 2;
+
+/** Mode of the cache file: only the user can read it (it holds element previews) */
+const CACHE_FILE_MODE = 0o600;
 
 /**
  * Selector recorded for `dom form` results (fields carry their own selectors).
@@ -106,12 +111,14 @@ export class QueryCacheManager {
    *
    * @returns Absolute cache file path
    */
-  private getCachePath(): string {
+  getCachePath(): string {
     return join(getSessionDir(), 'query-cache.json');
   }
 
   /**
-   * Store a query result.
+   * Store a query result. The file is replaced in one step (a temporary
+   * file in the session directory, then a rename), so a command reading it
+   * meanwhile sees the previous list or this one, never a partial file.
    *
    * @param result - Query result whose nodes carry backend node ids
    * @param document - Identity of the page document queried
@@ -121,10 +128,10 @@ export class QueryCacheManager {
   async set(result: DomQueryResult, document?: string): Promise<void> {
     try {
       const cachePath = this.getCachePath();
-      await writeFile(
+      await AtomicFileWriter.writeAsync(
         cachePath,
         JSON.stringify({ version: CACHE_VERSION, ...result, ...(document && { document }) }),
-        'utf-8'
+        { mode: CACHE_FILE_MODE }
       );
       log.debug(`Cached ${result.nodes.length} query results to ${cachePath}`);
     } catch (error) {
@@ -133,13 +140,29 @@ export class QueryCacheManager {
   }
 
   /**
+   * Record that a query matched nothing: an empty list replaces the previous
+   * one, so its indices are not used by mistake and the next index command
+   * can say why there is nothing to use.
+   *
+   * @param selector - Selector recorded for the query (as {@link set} records it)
+   * @param document - Identity of the page document queried
+   */
+  async setNoMatches(selector: string, document?: string): Promise<void> {
+    await this.set({ selector, count: 0, nodes: [] }, document);
+  }
+
+  /**
    * Read the cache and check that it can be used.
    *
    * @returns Validation result with the cached query when usable
    */
   async validate(): Promise<QueryCacheValidation> {
-    const raw = await this.read();
-    if (!raw) {
+    const read = await this.read();
+    if (read === 'missing') {
+      const err = noQueryInSessionError();
+      return { valid: false, cache: null, error: err.message, suggestion: err.suggestion };
+    }
+    if (read === 'unreadable') {
       return {
         valid: false,
         cache: null,
@@ -147,6 +170,7 @@ export class QueryCacheManager {
         suggestion: `Run "${sessionCommand('bdg dom query <selector>')}" first to generate indexed results`,
       };
     }
+    const raw = read;
     const { version, ...cache } = raw;
     if (version !== CACHE_VERSION) {
       return {
@@ -180,18 +204,20 @@ export class QueryCacheManager {
   /**
    * Read the raw cache file.
    *
-   * @returns Parsed cache content, or null if missing/unreadable
+   * @returns Parsed cache content; `missing` when no query of this session
+   *   wrote one, `unreadable` when it cannot be parsed
    */
-  private async read(): Promise<(DomQueryResult & { version?: number }) | null> {
+  private async read(): Promise<
+    (DomQueryResult & { version?: number }) | 'missing' | 'unreadable'
+  > {
     try {
-      const cachePath = this.getCachePath();
-      if (!existsSync(cachePath)) return null;
-      return JSON.parse(await readFile(cachePath, 'utf-8')) as DomQueryResult & {
+      return JSON.parse(await readFile(this.getCachePath(), 'utf-8')) as DomQueryResult & {
         version?: number;
       };
     } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return 'missing';
       log.debug(`Failed to read query cache: ${getErrorMessage(error)}`);
-      return null;
+      return 'unreadable';
     }
   }
 }

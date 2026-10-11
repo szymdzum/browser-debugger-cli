@@ -44,7 +44,7 @@ export function showBothSectionsWhenBothRequested(options: {
 const SELECTOR_SCOPE = 'searches open shadow roots and same-origin iframes';
 
 /** Help of a `<selectorOrIndex>` argument */
-export const SELECTOR_OR_INDEX_ARGUMENT = `CSS selector (${SELECTOR_SCOPE}) or numeric index from query results (0-based)`;
+export const SELECTOR_OR_INDEX_ARGUMENT = `CSS selector (${SELECTOR_SCOPE}) or numeric index into the last dom query, dom form or dom a11y query list (0-based)`;
 
 /** Help text after `dom query`'s options: what selectors search and what they cannot */
 export const SELECTOR_SCOPE_HELP = `

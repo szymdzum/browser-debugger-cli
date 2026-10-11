@@ -27,10 +27,11 @@ import {
   indexWithIndexOptionError,
   nodeIdNotFoundError,
   optionRequiresError,
+  withIndexSourceLine,
   type ErrorWithSuggestion,
 } from '@/errors/messages.js';
 import { resolveA11yNode } from '@/telemetry/a11y.js';
-import type { DomGetResult } from '@/types.js';
+import type { DomGetResult, IndexSource } from '@/types.js';
 import { formatDomGet } from '@/ui/formatters/dom.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
@@ -39,20 +40,30 @@ import { capLength } from '@/utils/strings.js';
 /** What `bdg dom get` reads without a selector */
 export const DOM_GET_DEFAULT_SELECTOR = 'body';
 
+/** What `dom get` read, with the list a cached index refers to */
+type WithIndexSource<T> = T & { indexSource?: IndexSource };
+
+/** The element to read, and the list it comes from for a cached index */
+interface GetTarget {
+  nodeId: number;
+  indexSource?: IndexSource;
+}
+
 /**
  * The element to read: a cached index or a selector match.
  *
  * @param selectorOrIndex - CSS selector or cached index
  * @param index - Which match of the selector (0-based)
- * @returns Backend node id
- * @throws CommandError (83) no match, (81) index out of range, (87) stale cached index
+ * @returns Backend node id, with the list for a cached index
+ * @throws CommandError (83) no match, (81) no usable list, (87) index out of range or stale
  */
-async function targetNodeId(selectorOrIndex: string, index: number | undefined): Promise<number> {
+async function getTarget(selectorOrIndex: string, index: number | undefined): Promise<GetTarget> {
   const resolver = DomElementResolver.getInstance();
   if (resolver.isNumericIndex(selectorOrIndex)) {
-    return (await resolver.getNodeIdForIndex(Number(selectorOrIndex))).nodeId;
+    const { nodeId, source } = await resolver.getNodeIdForIndex(Number(selectorOrIndex));
+    return { nodeId, indexSource: source };
   }
-  return selectMatch(selectorOrIndex, index ?? 0);
+  return { nodeId: await selectMatch(selectorOrIndex, index ?? 0) };
 }
 
 /**
@@ -86,7 +97,8 @@ async function semanticElement(
 }
 
 /**
- * Raw view: the element(s) with attributes and outer HTML.
+ * Raw view: the element(s) with attributes and outer HTML. A cached index
+ * names the list it comes from (`indexSource`, and a `From …` line).
  *
  * @param selectorOrIndex - CSS selector or cached index
  * @param options - Command options (`--all`, `--index`, `--full`)
@@ -95,17 +107,24 @@ async function handleRawGet(selectorOrIndex: string, options: DomGetCommandOptio
   await runCommand(
     async () => {
       const resolver = DomElementResolver.getInstance();
-      const getOptions = resolver.isNumericIndex(selectorOrIndex)
-        ? { nodeId: (await resolver.getNodeIdForIndex(Number(selectorOrIndex))).nodeId }
+      const target = resolver.isNumericIndex(selectorOrIndex)
+        ? await getTarget(selectorOrIndex, undefined)
+        : undefined;
+      const getOptions = target
+        ? { nodeId: target.nodeId }
         : (filterDefined({
             selector: selectorOrIndex,
             all: options.all,
             nth: matchIndex(options),
           }) as DomGetHelperOptions);
-      return { success: true, data: rawGetData(await getDOMElements(getOptions), options) };
+      const data: WithIndexSource<DomGetResult> = {
+        ...rawGetData(await getDOMElements(getOptions), options),
+        ...(target?.indexSource && { indexSource: target.indexSource }),
+      };
+      return { success: true, data };
     },
     options,
-    (data) => formatDomGet(data, { full: options.full })
+    (data) => withIndexSourceLine(formatDomGet(data, { full: options.full }), data.indexSource)
   );
 }
 
@@ -129,7 +148,8 @@ function rawGetData(result: DomGetResult, options: DomGetCommandOptions): DomGet
 }
 
 /**
- * Semantic view of the target.
+ * Semantic view of the target. A cached index names the list it comes from
+ * (`indexSource`, and a `From …` line).
  *
  * @param selectorOrIndex - CSS selector or cached index
  * @param options - Command options (`--index`, `--full`)
@@ -140,11 +160,15 @@ async function handleSemanticGet(
 ): Promise<void> {
   await runCommand(
     async () => {
-      const backendNodeId = await targetNodeId(selectorOrIndex, matchIndex(options));
-      return { success: true, data: await semanticElement(backendNodeId, options.full === true) };
+      const { nodeId, indexSource } = await getTarget(selectorOrIndex, matchIndex(options));
+      const data: WithIndexSource<SemanticNodeWithContext> = {
+        ...(await semanticElement(nodeId, options.full === true)),
+        ...(indexSource && { indexSource }),
+      };
+      return { success: true, data };
     },
     options,
-    formatSemanticNodeWithContext
+    (data) => withIndexSourceLine(formatSemanticNodeWithContext(data), data.indexSource)
   );
 }
 

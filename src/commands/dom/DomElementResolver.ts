@@ -24,6 +24,7 @@ import { noActiveSessionError } from '@/commands/shared/CommandRunner.js';
 import { CommandError } from '@/errors/index.js';
 import {
   cachedIndexOutOfRangeError,
+  emptyCachedListError,
   indexWithIndexOptionError,
   staleNodeError,
 } from '@/errors/messages.js';
@@ -196,9 +197,11 @@ export class DomElementResolver {
    *
    * @param index - Zero-based index
    * @returns Cached node and the query's selector
-   * @throws CommandError (83) without a session, (81) without a usable cache,
-   *   (87) for an index outside the cached results or of a page document
-   *   that has since been replaced (another page's elements reuse its node ids)
+   * @throws CommandError (83) without a session, (81) without a usable cache
+   *   or when the last query matched nothing, (87) for an index outside the
+   *   cached results (checked first, so it is reported as out of range even
+   *   after a navigation) or of a page document that has since been replaced
+   *   (another page's elements reuse its node ids)
    */
   private async lookup(
     index: number
@@ -214,13 +217,21 @@ export class DomElementResolver {
     }
     const { nodes, selector, count, document } = validation.cache;
     const source = indexSourceOf(index, selector);
-    if (document !== undefined && (await pageDocumentId()) !== document) {
-      const err = staleNodeError(index, source);
-      throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.STALE_CACHE);
+    if (count === 0) {
+      const err = emptyCachedListError(source);
+      throw new CommandError(
+        err.message,
+        { suggestion: err.suggestion },
+        EXIT_CODES.INVALID_ARGUMENTS
+      );
     }
     const node = nodes.find((n) => n.index === index);
     if (!node) {
       const err = cachedIndexOutOfRangeError(source, nodes.length, count);
+      throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.STALE_CACHE);
+    }
+    if (document !== undefined && (await pageDocumentId()) !== document) {
+      const err = staleNodeError(index, source);
       throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.STALE_CACHE);
     }
     return { node, selector, source };
