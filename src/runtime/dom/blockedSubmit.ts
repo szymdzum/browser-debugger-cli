@@ -11,8 +11,10 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import type { InvalidField } from '@/ipc/protocol/domTypes.js';
+import type { InvalidField, ValidityReport } from '@/ipc/protocol/domTypes.js';
+import { SENSITIVE_FIELD_JS, VALIDITY_REPORT_JS } from '@/runtime/dom/elementInfo.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { validityStateText } from '@/ui/messages/commands.js';
 import { raceTimeout } from '@/utils/async.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { truncateByLength } from '@/utils/strings.js';
@@ -71,9 +73,30 @@ const IS_INVALID_JS = `(f) => f.willValidate && !f.validity.valid`;
 
 /**
  * Page-side entry naming an invalid field by its name, id or tag, with the
- * browser's validation message
+ * browser's validation message, or for a secret field
+ * ({@link SENSITIVE_FIELD_JS}) its validity state instead
+ * ({@link VALIDITY_REPORT_JS}: the browser's text may give the value's
+ * length, #643)
  */
-const FIELD_ENTRY_JS = `(f) => ({ field: f.name || f.id || f.tagName.toLowerCase(), message: f.validationMessage })`;
+const FIELD_ENTRY_JS = `(f) => {
+  const field = f.name || f.id || f.tagName.toLowerCase();
+  return (${SENSITIVE_FIELD_JS})(f)
+    ? { field: field, validity: (${VALIDITY_REPORT_JS})(f) }
+    : { field: field, message: f.validationMessage };
+}`;
+
+/**
+ * An invalid field as the page lists it ({@link FIELD_ENTRY_JS}): with the
+ * browser's message, or for a secret field with its validity state
+ */
+export interface RawInvalidField {
+  /** The field's name, id or tag */
+  field: string;
+  /** The browser's validation message (not for a secret field) */
+  message?: string;
+  /** Why a secret field is invalid */
+  validity?: ValidityReport;
+}
 
 /**
  * Page-side list of a form's invalid fields: those the browser validates
@@ -293,18 +316,31 @@ function fieldText(text: string): string {
 }
 
 /**
+ * The message of an invalid field as reported: the browser's, or for a
+ * secret field its validity state in words ({@link validityStateText}).
+ *
+ * @param field - Invalid field as the page listed it
+ * @returns Message
+ */
+function invalidFieldMessage(field: RawInvalidField): string {
+  if (field.validity) return validityStateText(field.validity);
+  return fieldText(field.message ?? '');
+}
+
+/**
  * Bound a form's invalid fields for a report: the first
  * {@link MAX_REPORTED_FIELDS}, names and messages on one line and cut
- * ({@link fieldText}).
+ * ({@link fieldText}), a secret field's message worded from its validity
+ * state.
  *
  * @param fields - Invalid fields as the page listed them
  * @returns The fields to report, and how many were left out
  */
-export function boundInvalidFields(fields: InvalidField[]): BoundedInvalidFields {
+export function boundInvalidFields(fields: RawInvalidField[]): BoundedInvalidFields {
   return {
     fields: fields
       .slice(0, MAX_REPORTED_FIELDS)
-      .map((f) => ({ field: fieldText(f.field), message: fieldText(f.message) })),
+      .map((f) => ({ field: fieldText(f.field), message: invalidFieldMessage(f) })),
     omitted: Math.max(0, fields.length - MAX_REPORTED_FIELDS),
   };
 }
@@ -321,12 +357,12 @@ export function boundInvalidFields(fields: InvalidField[]): BoundedInvalidFields
 export async function readBlockedSubmit(
   cdp: CDPConnection
 ): Promise<BoundedInvalidFields | undefined> {
-  const read = async (): Promise<InvalidField[] | undefined> => {
+  const read = async (): Promise<RawInvalidField[] | undefined> => {
     try {
       const reply = (await cdp.send('Runtime.evaluate', {
         expression: READ_SUBMIT_PROBE_SCRIPT,
         returnByValue: true,
-      })) as { result?: { value?: InvalidField[] | null } };
+      })) as { result?: { value?: RawInvalidField[] | null } };
       return reply.result?.value ?? undefined;
     } catch (error) {
       log.debug(`Submit probe not read: ${getErrorMessage(error)}`);

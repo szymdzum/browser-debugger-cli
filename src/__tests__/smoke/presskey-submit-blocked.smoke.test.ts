@@ -290,11 +290,16 @@ void describe('dom pressKey Enter in forms without a usable submit button', () =
 
   void it('names the three invalid fields of the sign-up form (the issue page)', async () => {
     const expected = [];
-    for (const name of ['email', 'password', 'terms']) {
+    for (const name of ['email', 'terms']) {
       expected.push({ field: name, message: await validationMessage(`[name=${name}]`) });
     }
+    expected.splice(1, 0, { field: 'password', message: 'valueMissing' });
     const data = await pressKeyJson('[name=email]', 'Enter');
-    assert.deepEqual(data.submitBlocked, expected);
+    assert.deepEqual(
+      data.submitBlocked,
+      expected,
+      'the password field is reported by its validity state, not by Chrome\u2019s text (#643)'
+    );
   });
 
   void it('reports a form in a closed shadow root, reached by dom a11y query', async () => {

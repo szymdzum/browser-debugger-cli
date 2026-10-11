@@ -21,8 +21,9 @@ import {
   pressNotReceivedError,
   textTypedElsewhereError,
   unreachableElementError,
+  optionNotFoundError,
 } from '@/errors/messages.js';
-import type { FillValueMismatch } from '@/ipc/protocol/domTypes.js';
+import type { FillValueMismatch, OptionNotFound } from '@/ipc/protocol/domTypes.js';
 import {
   ActionScriptError,
   escapeValueForJS,
@@ -79,7 +80,23 @@ type FillOutcome = FillResult & {
   notTyped?: FillNotTypedReason | FillNotTypedReason[];
   tooShort?: number;
   tooLong?: number;
+  optionNotFound?: OptionNotFound;
 };
+
+/**
+ * The refusal of a select value matching no option, worded here (#625: the
+ * value and the options are given only for a select that holds no secret).
+ *
+ * @param outcome - Fill script result with `optionNotFound`
+ * @returns Failed fill result
+ */
+function optionNotFoundFailure(
+  outcome: FillOutcome & { optionNotFound: OptionNotFound }
+): FillResult {
+  const { optionNotFound, ...result } = outcome;
+  const err = optionNotFoundError(optionNotFound);
+  return { ...result, success: false, error: err.message, suggestion: err.suggestion };
+}
 
 /**
  * The refusal of a value over the field's `maxlength`, worded here (the
@@ -151,6 +168,8 @@ export async function fillElement(
       const result: FillOutcome = cdpResponse.result.value;
       if (result.tooLong !== undefined)
         return tooLongFailure({ ...result, tooLong: result.tooLong }, value);
+      if (result.optionNotFound !== undefined)
+        return optionNotFoundFailure({ ...result, optionNotFound: result.optionNotFound });
       if (!result.fileInput) {
         const filled = result.insertText
           ? await insertAsUser(cdp, { selector, value, listIndex: options.listIndex }, result)

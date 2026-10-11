@@ -132,7 +132,12 @@ void describe('dom fill enters text as a user edit (#592)', () => {
     const password = form.forms[0]?.fields.find((field) => field.name === 'password');
     assert.equal(password?.validation.valid, false, 'dom form lists the password as invalid');
     const click = await json<{ submitBlocked?: BlockedField[] }>(['dom', 'click', '#go']);
-    assert.deepEqual(click.submitBlocked, [{ field: 'password', message: state.message }]);
+    assert.deepEqual(
+      click.submitBlocked,
+      [{ field: 'password', message: 'tooShort: at least 8 characters' }],
+      'a password field is reported by its validity state, not by Chrome\u2019s text with its length (#643)'
+    );
+    assert.doesNotMatch(JSON.stringify(click), /using 5 characters/);
     assert.deepEqual(await evaluate('window.submitted'), []);
   });
 

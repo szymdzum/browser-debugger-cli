@@ -412,6 +412,8 @@ export interface A11yTree {
   nodes: Map<string, A11yNode>;
   /** Total node count */
   count: number;
+  /** Set when a secret was masked in the tree (a value, a name, an alert) */
+  masked?: true;
 }
 
 /** An accessibility node as `dom a11y tree` lists it */
@@ -432,6 +434,8 @@ export interface ListedA11yTree {
   omitted?: number;
   /** Nodes never listed: text boxes, blank or repeated text, nameless layout wrappers */
   skipped?: number;
+  /** Set when a secret was masked in the tree (a value, a name, an alert) */
+  masked?: true;
 }
 
 /**

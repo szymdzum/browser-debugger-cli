@@ -5,7 +5,7 @@
  * and returns structured data for agent consumption.
  */
 
-import { MASKED_VALUE, SENSITIVE_FIELD_JS } from '@/runtime/dom/elementInfo.js';
+import { MASKED_VALUE, SENSITIVE_FIELD_JS, VALIDITY_REPORT_JS } from '@/runtime/dom/elementInfo.js';
 import type { RawFormData } from '@/runtime/dom/formTypes.js';
 import { DEEP_QUERY_JS } from '@/runtime/dom/targetNode.js';
 
@@ -264,8 +264,14 @@ export const FORM_DISCOVERY_SCRIPT = `
     if (ariaLabel) return cleanLabelText(ariaLabel);
     const ariaLabelledBy = element.getAttribute('aria-labelledby');
     if (ariaLabelledBy) {
-      const labelEl = root.getElementById(ariaLabelledBy);
-      if (labelEl) return cleanLabelText(labelEl.textContent);
+      // Every referenced element, as the accessible name joins them; a
+      // referenced field contributes its value, masked when it is a secret
+      const texts = ariaLabelledBy.split(/\\s+/).filter(Boolean)
+        .map(id => root.getElementById(id))
+        .filter(Boolean)
+        .map(labelEl => !isNativeInput(labelEl) ? labelEl.textContent
+          : isSecret(labelEl) ? '${MASKED_VALUE}' : labelEl.value || '');
+      if (texts.length) return cleanLabelText(texts.join(' '));
     }
     const wrappingLabel = element.closest('label');
     if (wrappingLabel) {
@@ -377,7 +383,7 @@ export const FORM_DISCOVERY_SCRIPT = `
     const secret = isSecret(element);
     return Array.from(element.options).map(opt => ({
       value: secret ? '' : opt.value,
-      label: opt.textContent.trim(),
+      label: secret ? '${MASKED_VALUE}' : opt.textContent.trim(),
       selected: secret ? false : opt.selected
     }));
   }
@@ -589,6 +595,7 @@ export const FORM_DISCOVERY_SCRIPT = `
       nodes[idx] = el;
       const isHidden = el.type === 'hidden' || !isShown(el);
       const value = getFieldValue(el);
+      const secret = isSecret(el);
       fields.push({
         index: idx,
         formIndex: formIndex,
@@ -606,7 +613,8 @@ export const FORM_DISCOVERY_SCRIPT = `
         native: isNativeInput(el),
         value: value,
         checked: el.checked,
-        validationMessage: el.validationMessage || undefined,
+        validationMessage: secret ? undefined : el.validationMessage || undefined,
+        validity: secret && el.validity && !el.validity.valid ? (${VALIDITY_REPORT_JS})(el) : undefined,
         isValid: el.validity ? el.validity.valid : true,
         valueMissing: el.validity ? el.validity.valueMissing : false,
         ariaInvalid: el.getAttribute('aria-invalid') === 'true',

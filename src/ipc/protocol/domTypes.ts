@@ -634,7 +634,10 @@ export interface RawField {
   native: boolean;
   value: string | boolean | string[];
   checked?: boolean;
+  /** The browser's validation message (not for a secret field, see `validity`) */
   validationMessage?: string;
+  /** Why a secret field is invalid, instead of the browser's message (#643) */
+  validity?: ValidityReport;
   isValid: boolean;
   /** Only the "required but empty" constraint fails */
   valueMissing?: boolean;
@@ -662,4 +665,33 @@ export interface RawButton {
   primaryClass: boolean;
   /** Backend node id of the button, when the daemon could resolve it */
   backendNodeId?: number;
+}
+
+/**
+ * Why a secret field is invalid, as the page reports it instead of the
+ * browser's validation text (which may say how long the value is): the
+ * `ValidityState` flags that are set, and the length limits the field
+ * declares.
+ */
+export interface ValidityReport {
+  /** `ValidityState` flags that are set, e.g. `tooShort`, `valueMissing` */
+  states: string[];
+  /** The field's `minlength`, when it has one */
+  minLength?: number;
+  /** The field's `maxlength`, when it has one */
+  maxLength?: number;
+}
+
+/**
+ * What `dom fill` reports when a select has no option matching the value:
+ * how many options there are, and (for a select that holds no secret) the
+ * value looked for and the first options.
+ */
+export interface OptionNotFound {
+  /** Options the select has */
+  count: number;
+  /** The value looked for; left out for a secret select */
+  value?: string;
+  /** The first options, by value or text; left out for a secret select */
+  options?: string[];
 }

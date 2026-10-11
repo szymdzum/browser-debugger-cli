@@ -21,6 +21,7 @@ import type {
   PageNavigation,
   PendingChanges,
   ShownElement,
+  ValidityReport,
 } from '@/ipc/protocol/domTypes.js';
 import type { InspectVisibility } from '@/ipc/protocol/inspectTypes.js';
 import type { OpenedTab, TabInfo, TabRef, TabSwitchInfo } from '@/ipc/protocol/tabTypes.js';
@@ -2038,10 +2039,32 @@ export function moreCharsNote(count: number): string {
 }
 
 /**
- * Footer of `dom get --raw` output in which a secret value is masked.
+ * Footer of `dom get --raw` and `dom a11y tree` output in which a secret
+ * value is masked.
  *
  * @returns The note, naming how to read a value
  */
 export function rawHtmlMaskedNote(): string {
   return `Secret values shown as ${MASKED_VALUE} (read them with ${sessionCommand('bdg dom eval')})`;
+}
+
+/**
+ * Why a secret field is invalid, from its validity state (#643): the
+ * browser's text would say how long the value is.
+ *
+ * @param validity - Validity flags and length limits
+ * @returns e.g. "tooShort: at least 8 characters", "valueMissing", or "invalid"
+ */
+export function validityStateText(validity: ValidityReport): string {
+  const limits: Record<string, string | undefined> = {
+    tooShort:
+      validity.minLength === undefined ? undefined : `at least ${validity.minLength} characters`,
+    tooLong:
+      validity.maxLength === undefined ? undefined : `at most ${validity.maxLength} characters`,
+  };
+  const named = validity.states.map((state) => {
+    const limit = limits[state];
+    return limit === undefined ? state : `${state}: ${limit}`;
+  });
+  return named.length > 0 ? named.join(', ') : 'invalid';
 }

@@ -4,6 +4,7 @@
  * it and where they live (iframes, shadow roots).
  */
 
+import type { ValidityReport } from '@/ipc/protocol/domTypes.js';
 import { SENSITIVE_NAME_JS } from '@/utils/sensitiveNames.js';
 
 /**
@@ -161,7 +162,7 @@ export const FLAT_TEXT_JS = `(el, limit, fields) => {
  * a whole page's text, unless `full` is set. Decorations are left out
  * ({@link WITHOUT_DECORATIONS_JS}).
  */
-export const ELEMENT_TEXT_JS = `(el, full) => {
+const RAW_ELEMENT_TEXT_JS = `(el, full) => {
   const withoutDecorations = ${WITHOUT_DECORATIONS_JS};
   const composed = ${COMPOSED_JS};
   const flatText = ${FLAT_TEXT_JS};
@@ -188,14 +189,51 @@ export const ELEMENT_TEXT_JS = `(el, full) => {
 export const MASKED_VALUE = '••••';
 
 /**
+ * Page-side: whether a control takes text a label may mark as secret
+ * (#633): a text-like input (text, search, tel, email, url, number,
+ * password), a textarea or a select. A checkbox, radio or button is not
+ * one, so a "Show password" checkbox stays readable; nor is a
+ * contenteditable element, whose text no surface masks.
+ */
+const TEXT_CONTROL_JS = `(el) =>
+  el.localName === 'textarea' ||
+  el.localName === 'select' ||
+  (el.localName === 'input' && /^(text|search|tel|email|url|number|password)$/.test(el.type))`;
+
+/**
+ * Page-side: the text that labels a control, the sources `dom form` names
+ * it by: its `aria-label`, the text of its `aria-labelledby` targets (in
+ * its own root), the text of its labels (`<label for>` and a wrapping
+ * label, without the text of controls inside them, so a textarea's own
+ * text or an option does not count), its placeholder and its title, joined
+ * with spaces.
+ */
+const LABEL_TEXT_JS = `(el) => {
+  const textOf = (node) =>
+    Array.from(node.childNodes || [], (child) =>
+      child.nodeType === 3 ? child.data : /^(input|select|textarea)$/.test(child.localName) ? '' : textOf(child)
+    ).join(' ');
+  const root = el.getRootNode();
+  const ids = (el.getAttribute('aria-labelledby') || '').split(/\\s+/).filter(Boolean);
+  const labels = ids.map((id) => root.getElementById && root.getElementById(id)).concat(Array.from(el.labels || []));
+  return [el.getAttribute('aria-label'), el.getAttribute('placeholder'), el.getAttribute('title')]
+    .concat(labels.filter(Boolean).map(textOf))
+    .join(' ');
+}`;
+
+/**
  * Page-side check whether a form control holds a secret whose value must
  * never leave the page: a password field (live type or type attribute), a
  * field shown masked by CSS (`-webkit-text-security` other than `none`),
  * one whose `autocomplete` names a password, a payment card (`cc-*`) or a
- * one-time code, or a field whose name, id or autocomplete is a secret name
+ * one-time code, a field whose name, id or autocomplete is a secret name
  * ({@link SENSITIVE_NAME_JS}, the rule HAR sanitising shares: passwords,
  * one-time codes, PINs, card data, keys, tokens, secrets, sessions), which
- * covers a password field switched to text by a "show password" button.
+ * covers a password field switched to text by a "show password" button,
+ * or a text-like control ({@link TEXT_CONTROL_JS}) whose label text
+ * ({@link LABEL_TEXT_JS}: aria-label, aria-labelledby, label, placeholder,
+ * title) is a secret name (#633: "Password", "Token", "API key",
+ * "Security code").
  */
 export const SENSITIVE_FIELD_JS = `(el) => {
   const isSensitiveName = ${SENSITIVE_NAME_JS};
@@ -203,12 +241,58 @@ export const SENSITIVE_FIELD_JS = `(el) => {
   if (/(^|\\s)(cc-[a-z-]+|one-time-code|current-password|new-password)(\\s|$)/i.test(autocomplete)) return true;
   if (el.type === 'password' || /^password$/i.test(el.getAttribute('type') || '')) return true;
   if (isSensitiveName([el.getAttribute('name'), el.id, autocomplete].join(' '))) return true;
+  if ((${TEXT_CONTROL_JS})(el) && isSensitiveName((${LABEL_TEXT_JS})(el))) return true;
   try {
     const security = el.ownerDocument.defaultView.getComputedStyle(el).getPropertyValue('-webkit-text-security');
     return Boolean(security) && security !== 'none';
   } catch (e) {
     return false;
   }
+}`;
+
+/**
+ * Page-side report of why a field is invalid, for a secret field whose
+ * browser validation text must not be shown (#643: "you are currently
+ * using 5 characters" gives the value's length): the `ValidityState` flags
+ * that are set, and the field's `minlength` and `maxlength` when it
+ * declares them. Node words it ({@link ValidityReport}).
+ */
+export const VALIDITY_REPORT_JS = `(el) => {
+  const flags = ['valueMissing', 'typeMismatch', 'patternMismatch', 'tooLong', 'tooShort', 'rangeUnderflow', 'rangeOverflow', 'stepMismatch', 'badInput', 'customError'];
+  const validity = el.validity || {};
+  return {
+    states: flags.filter((flag) => validity[flag] === true),
+    minLength: el.minLength > 0 ? el.minLength : undefined,
+    maxLength: el.maxLength > 0 ? el.maxLength : undefined
+  };
+}`;
+
+/**
+ * Page-side text of an element as a user sees it ({@link RAW_ELEMENT_TEXT_JS})
+ * with secrets masked (#625): the option labels of a sensitive select
+ * ({@link SENSITIVE_FIELD_JS}) and the text of a sensitive textarea, the
+ * element itself or inside it, are replaced by {@link MASKED_VALUE}; an
+ * option of a sensitive select reads as {@link MASKED_VALUE}.
+ */
+export const ELEMENT_TEXT_JS = `(el, full) => {
+  const isSensitive = ${SENSITIVE_FIELD_JS};
+  if (el.tagName === 'OPTION') {
+    const select = el.closest('select');
+    return select && isSensitive(select) ? '${MASKED_VALUE}' : el.label;
+  }
+  const text = (${RAW_ELEMENT_TEXT_JS})(el, full);
+  if (!text || typeof el.querySelectorAll !== 'function') return text;
+  const fields = [el].concat(Array.from(el.querySelectorAll('select, textarea')));
+  let masked = text;
+  for (const field of fields) {
+    if (!/^(select|textarea)$/.test(field.localName) || !isSensitive(field)) continue;
+    const parts = field.localName === 'select' ? Array.from(field.options, (o) => o.label) : [field.value, field.textContent];
+    for (const part of parts) {
+      const trimmed = (part || '').trim();
+      if (trimmed) masked = masked.split(trimmed).join('${MASKED_VALUE}');
+    }
+  }
+  return masked;
 }`;
 
 /**

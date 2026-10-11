@@ -128,6 +128,7 @@ export function listA11yTree(tree: A11yTree, limit: number, maxDepth?: number): 
     count: tree.count,
     ...(omitted > 0 && { omitted }),
     ...(skipped > 0 && { skipped }),
+    ...(tree.masked && { masked: true }),
   };
 }
 
@@ -190,11 +191,14 @@ export async function collectA11yTree(): Promise<A11yTree> {
       );
     }
 
-    const tree = buildTreeFromRawNodes([
-      ...result.nodes,
-      ...(await collectFrameNodes(result.nodes)),
-    ]);
-    return maskSecretValues(tree, await sensitiveNodeIds(tree));
+    const rawNodes = [...result.nodes, ...(await collectFrameNodes(result.nodes))];
+    const tree = buildTreeFromRawNodes(rawNodes);
+    const secretIds = await sensitiveNodeIds(tree);
+    maskSecretValues(tree, secretIds);
+    maskSecretReferences(tree, rawNodes, secretIds);
+    maskSecretMessages(tree, await secretValidationMessages(tree, secretIds));
+    if (secretIds.size > 0) tree.masked = true;
+    return tree;
   } finally {
     await callCDP('Accessibility.disable', {});
   }
@@ -231,6 +235,25 @@ async function sensitiveNodeIds(tree: A11yTree): Promise<Set<string>> {
 let secretChecks = 0;
 
 /**
+ * Page-side check, on a node with an accessibility value, of whether it is
+ * a sensitive field ({@link SENSITIVE_FIELD_JS}); a node that is not an
+ * element counts as one.
+ */
+const SECRET_VALUE_CHECK_JS = `function () { return this.nodeType !== 1 || (${SENSITIVE_FIELD_JS})(this); }`;
+
+/**
+ * Page-side check, on an element a name or description comes from, of
+ * whether it is a form control holding a secret (#642): a label or heading
+ * whose id reads like a secret name (`password-label`) is not one, so the
+ * name it gives stays. A node that is not an element counts as secret.
+ */
+const SECRET_RELATION_CHECK_JS = `function () {
+  if (this.nodeType !== 1) return true;
+  const control = /^(input|textarea|select)$/.test(this.localName) || this.isContentEditable === true;
+  return control && (${SENSITIVE_FIELD_JS})(this);
+}`;
+
+/**
  * Whether an element is a sensitive field. An element that cannot be read
  * counts as one, so a value is never shown by mistake. Each check has an
  * object group of its own: checks run concurrently (and so do commands), and
@@ -238,23 +261,37 @@ let secretChecks = 0;
  * is read, masking a plain value.
  *
  * @param backendNodeId - The element
+ * @param check - Page-side function run on the element
  * @returns True for secret fields (and unreadable elements)
  */
-async function isSensitiveField(backendNodeId: number): Promise<boolean> {
+async function isSensitiveField(
+  backendNodeId: number,
+  check: string = SECRET_VALUE_CHECK_JS
+): Promise<boolean> {
+  return (await readOnElement(backendNodeId, check)) !== false;
+}
+
+/**
+ * Run a page-side function on an element (as `this`) and read its result
+ * by value, in an object group of its own (see {@link isSensitiveField}).
+ *
+ * @param backendNodeId - The element
+ * @param functionDeclaration - Function source
+ * @returns The result; undefined when the element cannot be resolved
+ */
+async function readOnElement(backendNodeId: number, functionDeclaration: string): Promise<unknown> {
   const objectGroup = `bdg-a11y-secret-${process.pid}-${++secretChecks}`;
   const resolved = await callBdgScript('DOM.resolveNode', { backendNodeId, objectGroup });
   const objectId = (resolved.data?.result as Protocol.DOM.ResolveNodeResponse | undefined)?.object
     ?.objectId;
-  if (!objectId) return true;
+  if (!objectId) return undefined;
   try {
     const response = await callCDP('Runtime.callFunctionOn', {
       objectId,
-      functionDeclaration: `function () { return this.nodeType !== 1 || (${SENSITIVE_FIELD_JS})(this); }`,
+      functionDeclaration,
       returnByValue: true,
     });
-    const value = (response.data?.result as { result?: { value?: unknown } } | undefined)?.result
-      ?.value;
-    return value !== false;
+    return (response.data?.result as { result?: { value?: unknown } } | undefined)?.result?.value;
   } finally {
     await callCDP('Runtime.releaseObjectGroup', { objectGroup });
   }
@@ -282,6 +319,89 @@ export function maskSecretValues(tree: A11yTree, secretIds: ReadonlySet<string>)
     node.childIds?.forEach((childId) => hide(childId, true));
   };
   secretIds.forEach((nodeId) => hide(nodeId, false));
+  return tree;
+}
+
+/** Page-side: the browser's validation message of a field, if any */
+const VALIDATION_MESSAGE_JS = `function () { return typeof this.validationMessage === 'string' ? this.validationMessage : ''; }`;
+
+/**
+ * The browser's validation messages of the secret fields that have one
+ * (#643): Chrome shows the message of the invalid field it focused as an
+ * `alert` node of the tree, and the text may give the value's length.
+ *
+ * @param tree - Accessibility tree
+ * @param secretIds - Node ids of secret fields
+ * @returns The messages, each once
+ */
+async function secretValidationMessages(
+  tree: A11yTree,
+  secretIds: ReadonlySet<string>
+): Promise<Set<string>> {
+  const elements = [...secretIds]
+    .map((nodeId) => tree.nodes.get(nodeId)?.backendDOMNodeId)
+    .filter((id): id is number => id !== undefined);
+  const limiter = new ConcurrencyLimiter(SENSITIVE_CHECK_CONCURRENCY);
+  const messages = await Promise.all(
+    elements.map((backendNodeId) =>
+      limiter.run(() => readOnElement(backendNodeId, VALIDATION_MESSAGE_JS))
+    )
+  );
+  return new Set(messages.filter((message): message is string => Boolean(message)));
+}
+
+/**
+ * The tree with every node whose name is a secret field's validation
+ * message (the `alert` Chrome shows for the invalid field it focused)
+ * renamed {@link MASKED_VALUE} (#643); the alert's name may carry a
+ * trailing space, so names are compared trimmed.
+ *
+ * @param tree - Accessibility tree
+ * @param messages - Validation messages of secret fields
+ * @returns The same tree (nodes replaced in place)
+ */
+export function maskSecretMessages(tree: A11yTree, messages: ReadonlySet<string>): A11yTree {
+  if (messages.size === 0) return tree;
+  const trimmed = new Set([...messages].map((message) => message.trim()));
+  for (const [nodeId, node] of tree.nodes) {
+    if (node.name === undefined || !trimmed.has(node.name.trim())) continue;
+    const masked = { ...node, name: MASKED_VALUE };
+    tree.nodes.set(nodeId, masked);
+    if (tree.root.nodeId === nodeId) tree.root = masked;
+  }
+  return tree;
+}
+
+/**
+ * The tree with the names and descriptions that come from a secret field
+ * masked ({@link maskSecretRelations}, #642): a field whose
+ * `aria-labelledby` or `aria-describedby` points at a card number field is
+ * named `Confirm ••••`, not by the number.
+ *
+ * @param tree - Accessibility tree, secret values already masked
+ * @param rawNodes - The raw nodes it was built from, with the relations
+ * @param secretIds - Node ids of secret fields
+ * @returns The same tree (nodes replaced in place)
+ */
+function maskSecretReferences(
+  tree: A11yTree,
+  rawNodes: Protocol.Accessibility.AXNode[],
+  secretIds: ReadonlySet<string>
+): A11yTree {
+  const secretElements = new Set<number>();
+  for (const nodeId of secretIds) {
+    const backendNodeId = tree.nodes.get(nodeId)?.backendDOMNodeId;
+    if (backendNodeId !== undefined) secretElements.add(backendNodeId);
+  }
+  if (secretElements.size === 0) return tree;
+  for (const rawNode of rawNodes) {
+    const node = tree.nodes.get(rawNode.nodeId);
+    if (!node) continue;
+    const masked = maskSecretRelations(node, rawNode, (id) => secretElements.has(id));
+    if (masked === node) continue;
+    tree.nodes.set(rawNode.nodeId, masked);
+    if (tree.root.nodeId === rawNode.nodeId) tree.root = masked;
+  }
   return tree;
 }
 
@@ -690,7 +810,7 @@ export async function resolveA11yNode(target: NodeRef): Promise<A11yNode | null>
       return null;
     }
 
-    return parseA11yNode(rawNode);
+    return maskSecretRelations(parseA11yNode(rawNode), rawNode, await secretRelations(rawNode));
   } finally {
     await callCDP('Accessibility.disable', {});
   }
@@ -736,3 +856,175 @@ const IGNORED_REASONS: Record<string, string> = {
   uninteresting: 'has no role or name',
   labelFor: 'a label (its text names another element)',
 };
+
+/**
+ * The related nodes of an accessibility value: those listed on it and on
+ * each source that was not superseded (the `attributeValue` of an
+ * `aria-labelledby` source lists them with the text each contributed).
+ *
+ * @param value - Name, description or attribute value
+ * @returns Related nodes, possibly listed twice
+ */
+function relatedNodes(
+  value: Protocol.Accessibility.AXValue | undefined
+): Protocol.Accessibility.AXRelatedNode[] {
+  if (!value) return [];
+  const ofSources = (value.sources ?? []).flatMap((source) =>
+    source.superseded ? [] : [...relatedNodes(source.value), ...relatedNodes(source.attributeValue)]
+  );
+  return [...(value.relatedNodes ?? []), ...ofSources];
+}
+
+/**
+ * The related nodes a property lists (`labelledby`, `describedby`).
+ *
+ * @param rawNode - Raw AXNode from CDP
+ * @param name - Property name
+ * @returns Related nodes
+ */
+function propertyRelations(
+  rawNode: Protocol.Accessibility.AXNode,
+  name: Protocol.Accessibility.AXPropertyName
+): Protocol.Accessibility.AXRelatedNode[] {
+  return (rawNode.properties ?? [])
+    .filter((property) => property.name === name)
+    .flatMap((property) => property.value.relatedNodes ?? []);
+}
+
+/**
+ * Related nodes each once, by backend node id (the first listing of a node
+ * is the one with its text).
+ *
+ * @param nodes - Related nodes
+ * @returns Distinct related nodes
+ */
+function distinctRelations(
+  nodes: Protocol.Accessibility.AXRelatedNode[]
+): Protocol.Accessibility.AXRelatedNode[] {
+  const seen = new Set<number>();
+  return nodes.filter((node) => {
+    if (seen.has(node.backendDOMNodeId)) return false;
+    seen.add(node.backendDOMNodeId);
+    return true;
+  });
+}
+
+/**
+ * The nodes a node's accessible name comes from.
+ *
+ * @param rawNode - Raw AXNode from CDP
+ * @returns Related nodes, each once
+ */
+function nameRelations(
+  rawNode: Protocol.Accessibility.AXNode
+): Protocol.Accessibility.AXRelatedNode[] {
+  return distinctRelations([
+    ...relatedNodes(rawNode.name),
+    ...propertyRelations(rawNode, 'labelledby'),
+  ]);
+}
+
+/**
+ * The nodes a node's accessible description comes from.
+ *
+ * @param rawNode - Raw AXNode from CDP
+ * @returns Related nodes, each once
+ */
+function descriptionRelations(
+  rawNode: Protocol.Accessibility.AXNode
+): Protocol.Accessibility.AXRelatedNode[] {
+  return distinctRelations([
+    ...relatedNodes(rawNode.description),
+    ...propertyRelations(rawNode, 'describedby'),
+  ]);
+}
+
+/**
+ * Backend node ids of the elements a node's accessible name and description
+ * come from (`aria-labelledby`, `aria-describedby` and other relations).
+ *
+ * @param rawNode - Raw AXNode from CDP
+ * @returns Backend node ids, in order of appearance, each once
+ */
+export function secretRelationIds(rawNode: Protocol.Accessibility.AXNode): number[] {
+  return distinctRelations([...nameRelations(rawNode), ...descriptionRelations(rawNode)]).map(
+    (node) => node.backendDOMNodeId
+  );
+}
+
+/**
+ * A computed text with what secret related nodes contributed replaced by
+ * {@link MASKED_VALUE}: each secret node's text, or the whole text when a
+ * secret node's contribution is not known (a description's related nodes
+ * come without their text) or not found in it.
+ *
+ * @param text - Computed name or description
+ * @param related - The nodes it comes from
+ * @param isSecret - Whether a backend node id is a secret field
+ * @returns The masked text, or undefined when no related node is secret
+ */
+function maskedContribution(
+  text: string,
+  related: Protocol.Accessibility.AXRelatedNode[],
+  isSecret: (backendNodeId: number) => boolean
+): string | undefined {
+  const secret = related.filter((node) => isSecret(node.backendDOMNodeId));
+  if (secret.length === 0) return undefined;
+  let masked = text;
+  for (const node of secret) {
+    if (node.text === '') continue;
+    if (node.text === undefined || !masked.includes(node.text)) return MASKED_VALUE;
+    masked = masked.split(node.text).join(MASKED_VALUE);
+  }
+  return masked;
+}
+
+/**
+ * The node with the part of its name or description that a secret field
+ * contributed replaced by {@link MASKED_VALUE} (#642).
+ *
+ * @param node - Parsed node
+ * @param rawNode - Its raw AXNode, with the relations
+ * @param isSecret - Whether a backend node id is a secret field
+ * @returns The node, or a copy with the name or description masked
+ */
+export function maskSecretRelations(
+  node: A11yNode,
+  rawNode: Protocol.Accessibility.AXNode,
+  isSecret: (backendNodeId: number) => boolean
+): A11yNode {
+  const name =
+    node.name === undefined
+      ? undefined
+      : maskedContribution(node.name, nameRelations(rawNode), isSecret);
+  const description =
+    node.description === undefined
+      ? undefined
+      : maskedContribution(node.description, descriptionRelations(rawNode), isSecret);
+  if (name === undefined && description === undefined) return node;
+  return {
+    ...node,
+    ...(name !== undefined && { name }),
+    ...(description !== undefined && { description }),
+  };
+}
+
+/**
+ * Which of the elements a node's name and description come from are secret
+ * fields, checked in the page ({@link SECRET_RELATION_CHECK_JS}), for a
+ * node read on its own (`dom get`, `a11y describe`).
+ *
+ * @param rawNode - Raw AXNode from CDP
+ * @returns Whether a backend node id is a secret field
+ */
+async function secretRelations(
+  rawNode: Protocol.Accessibility.AXNode
+): Promise<(backendNodeId: number) => boolean> {
+  const ids = secretRelationIds(rawNode);
+  const limiter = new ConcurrencyLimiter(SENSITIVE_CHECK_CONCURRENCY);
+  const checked = await Promise.all(
+    ids.map((id) => limiter.run(() => isSensitiveField(id, SECRET_RELATION_CHECK_JS)))
+  );
+  const secret = new Set(ids.filter((_, index) => checked[index]));
+  return (backendNodeId) => secret.has(backendNodeId);
+}

@@ -1,15 +1,18 @@
 /**
  * Names of fields that hold secrets: the one rule DOM masking (page side,
- * `SENSITIVE_FIELD_JS`) and HAR sanitising (Node side, field, parameter and
- * cookie names) share, so the two cannot drift apart (#622).
+ * `SENSITIVE_FIELD_JS`, on a field's name, id, autocomplete and label text)
+ * and HAR sanitising (Node side, field, parameter and cookie names) share,
+ * so the two cannot drift apart (#622).
  *
  * A name matches when, case-insensitively and with camelCase split into
  * words (`apiKey` → `api_Key`), it contains one of {@link SENSITIVE_NAME_TERMS}.
  * Short or common words only count as whole words (between non-letters or
- * at the ends), so `pass`, `pw`, `pin` and `auth` match `user_pass`,
+ * at the ends), so `pass`, `pw`, `pin`, `auth` and `csc` match `user_pass`,
  * `pw1`, `userPin` and `X-Auth` but not `passport`, `compass`, `opinion`
  * or `author`. A bare `key` or `code` does not count (`keyword`, `zipcode`,
- * a search key); `api_key`, `private_key`, `access_key`, `auth_code` do.
+ * a search key); `api_key`, `private_key`, `access_key`, `auth_code` and
+ * `security code` do. Two-word terms take `-`, `_` or a space between the
+ * words (`cc-number`, `card number`, `API key`), as label text has spaces.
  */
 
 /**
@@ -30,13 +33,13 @@ function wholeWord(words: string): string {
  */
 export const SENSITIVE_NAME_TERMS: readonly string[] = [
   'passw|pwd|passcode|passphrase',
-  wholeWord('pass|pw|otp|totp|pin|ssn|auth|sid'),
-  'cvv|cvc',
-  'card[-_]?(num(ber)?|no)([^a-z]|$)',
-  '(^|[^a-z])cc[-_]?(num(ber)?|no)([^a-z]|$)|credit[-_]?card',
+  wholeWord('pass|pw|otp|totp|pin|ssn|auth|sid|csc'),
+  'cvv|cvc|security[-_ ]?code|card[-_ ]?verification',
+  'card[-_ ]?(num(ber)?|no)([^a-z]|$)',
+  '(^|[^a-z])cc[-_ ]?(num(ber)?|no)([^a-z]|$)|credit[-_ ]?card',
   'token|secret(?!ar)|credential|jwt|bearer|oauth',
-  '(api|private|access)[-_]?key',
-  'authoriz|auth[-_]?code|code[-_]?verifier',
+  '(api|private|access)[-_ ]?key',
+  'authoriz|auth[-_ ]?code|code[-_ ]?verifier',
   'session|cookie|csrf|xsrf|refresh|signature',
 ];
 

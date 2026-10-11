@@ -5,6 +5,7 @@ import {
   a11yMoreMatchesNote,
   a11yTreeMoreNote,
   a11yTreeShownNote,
+  rawHtmlMaskedNote,
 } from '@/ui/messages/commands.js';
 
 /**
@@ -37,6 +38,7 @@ export function formatA11yTree(tree: ListedA11yTree): string {
   if (tree.omitted) {
     fmt.blank().text(a11yTreeShownNote(tree.nodes.length)).text(a11yTreeMoreNote(tree.omitted));
   }
+  if (tree.masked) fmt.blank().text(rawHtmlMaskedNote());
 
   return fmt.build();
 }

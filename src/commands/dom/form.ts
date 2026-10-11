@@ -36,6 +36,7 @@ import type {
 import { FORM_DISCOVERY_CACHE_SELECTOR, QueryCacheManager } from '@/session/QueryCacheManager.js';
 import { formatFormDiscovery } from '@/ui/formatters/form.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { validityStateText } from '@/ui/messages/commands.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -48,7 +49,8 @@ const log = createLogger('dom');
  * @returns Structured validation state
  */
 function buildValidation(raw: RawField): FieldValidation {
-  const hasNativeError = !raw.isValid && !raw.valueMissing && raw.validationMessage;
+  const nativeMessage = raw.validity ? validityStateText(raw.validity) : raw.validationMessage;
+  const hasNativeError = !raw.isValid && !raw.valueMissing && nativeMessage;
   const hasAriaError = raw.ariaInvalid;
   const hasSiblingError = !!raw.siblingErrorText;
   const hasClassError = raw.hasErrorClass;
@@ -56,7 +58,7 @@ function buildValidation(raw: RawField): FieldValidation {
   if (hasNativeError) {
     return {
       valid: false,
-      message: raw.validationMessage,
+      message: nativeMessage,
       source: 'native',
       confidence: 'high',
     };
