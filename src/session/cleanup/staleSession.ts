@@ -7,6 +7,9 @@
  * get an unrelated process killed.
  */
 
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
 import { chromeSessionMarkerFlag } from '@/connection/launcher/flagsBuilder.js';
 import { QueryCacheManager } from '@/session/QueryCacheManager.js';
 import { clearChromePid, readChromePid } from '@/session/chrome.js';
@@ -71,8 +74,54 @@ export function removeSessionFiles(ownerPid?: number): void {
     const owner = readSessionMetadata()?.bdgPid;
     if (owner !== undefined && owner !== ownerPid) return;
   }
-  safeRemoveFile(getSessionFilePath('METADATA'), 'metadata file', log);
-  safeRemoveFile(QueryCacheManager.getInstance().getCachePath(), 'query cache', log);
+  const metadataPath = getSessionFilePath('METADATA');
+  const cachePath = QueryCacheManager.getInstance().getCachePath();
+  safeRemoveFile(metadataPath, 'metadata file', log);
+  safeRemoveFile(cachePath, 'query cache', log);
+  removeAtomicWriteLeftovers([metadataPath, cachePath]);
+}
+
+/**
+ * Remove `<name>.<pid>.<uuid>.tmp` files that AtomicFileWriter left next to
+ * each target when the process died between the write and the rename.
+ */
+function removeAtomicWriteLeftovers(targets: string[]): void {
+  const targetsByDirectory = new Map<string, Set<string>>();
+  for (const target of targets) {
+    const dir = path.dirname(target);
+    const names = targetsByDirectory.get(dir) ?? new Set<string>();
+    names.add(path.basename(target));
+    targetsByDirectory.set(dir, names);
+  }
+
+  for (const [dir, targetNames] of targetsByDirectory) {
+    let names: string[];
+    try {
+      names = fs.readdirSync(dir);
+    } catch (error) {
+      logDebugError(log, `read directory ${dir} for atomic write leftovers`, error);
+      continue;
+    }
+    for (const name of names) {
+      for (const targetName of targetNames) {
+        const escapedTargetName = targetName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const match = name.match(
+          new RegExp(
+            `^${escapedTargetName}\\.(\\d+)\\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.tmp$`,
+            'i'
+          )
+        );
+        if (!match) continue;
+        const pid = Number(match[1]);
+        if (isProcessAlive(pid)) {
+          log.debug(`Keeping atomic write temp ${name}; process ${pid} is still running`);
+          break;
+        }
+        safeRemoveFile(path.join(dir, name), 'atomic write leftover', log);
+        break;
+      }
+    }
+  }
 }
 
 /**
