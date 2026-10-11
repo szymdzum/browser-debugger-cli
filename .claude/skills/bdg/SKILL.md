@@ -56,7 +56,7 @@ The file holds secrets (written 0600, also over an existing file; keep it out of
 bdg page navigate https://example.com/next   # Load a URL and wait for it
 bdg page back                                # Also: page forward
 bdg page reload
-bdg page info                                # URL and title
+bdg page info                                # Current URL (with fragment) and title, read live
 ```
 
 ### Tabs and Popups

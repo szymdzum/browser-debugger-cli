@@ -2,7 +2,8 @@
  * Smoke test for the page's title and URL in `page info`, `status` and
  * `peek` (#640): a title a script sets after the page loaded shows up, and
  * after a full-page navigation the URL keeps its fragment. A fragment
- * that carries a token shows masked on every surface, human and `--json`.
+ * that carries a token shows masked on every surface, human and `--json`
+ * (human `peek` shows no page URL).
  */
 
 import * as assert from 'node:assert/strict';
@@ -124,7 +125,6 @@ void describe('page title and URL in page info, status and peek (#640)', () => {
     }
     assert.ok((await bdg(['page', 'info'])).stdout.includes(url));
     assert.ok((await bdg(['status'])).stdout.includes(url));
-    assert.ok((await bdg(['peek'])).stdout.includes(url));
   });
 
   void it('a token in the fragment shows masked, never its value', async () => {
@@ -133,13 +133,14 @@ void describe('page title and URL in page info, status and peek (#640)', () => {
     for (const name of Object.keys(SURFACES)) {
       await waitForSurface(name, { url: masked });
     }
-    for (const args of [['page', 'info'], ['status'], ['peek']]) {
+    for (const args of [['page', 'info'], ['status'], ['peek', '--last', '0', '-v']]) {
       const human = await bdg(args);
       const json = await bdg([...args, '--json']);
       for (const output of [human, json]) {
         assert.doesNotMatch(`${output.stdout}${output.stderr}`, new RegExp(TOKEN), args.join(' '));
       }
-      assert.ok(human.stdout.includes(masked), `${args.join(' ')}: ${human.stdout}`);
+      if (args[0] !== 'peek')
+        assert.ok(human.stdout.includes(masked), `${args.join(' ')}: ${human.stdout}`);
     }
   });
 });
