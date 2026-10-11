@@ -2039,7 +2039,8 @@ export function moreCharsNote(count: number): string {
 }
 
 /**
- * Footer of `dom get --raw` output in which a secret value is masked.
+ * Footer of `dom get --raw` and `dom a11y tree` output in which a secret
+ * value is masked.
  *
  * @returns The note, naming how to read a value
  */

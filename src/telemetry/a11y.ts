@@ -128,6 +128,7 @@ export function listA11yTree(tree: A11yTree, limit: number, maxDepth?: number): 
     count: tree.count,
     ...(omitted > 0 && { omitted }),
     ...(skipped > 0 && { skipped }),
+    ...(tree.masked && { masked: true }),
   };
 }
 
@@ -195,7 +196,9 @@ export async function collectA11yTree(): Promise<A11yTree> {
     const secretIds = await sensitiveNodeIds(tree);
     maskSecretValues(tree, secretIds);
     maskSecretReferences(tree, rawNodes, secretIds);
-    return maskSecretMessages(tree, await secretValidationMessages(tree, secretIds));
+    maskSecretMessages(tree, await secretValidationMessages(tree, secretIds));
+    if (secretIds.size > 0) tree.masked = true;
+    return tree;
   } finally {
     await callCDP('Accessibility.disable', {});
   }

@@ -162,7 +162,7 @@ export const FLAT_TEXT_JS = `(el, limit, fields) => {
  * a whole page's text, unless `full` is set. Decorations are left out
  * ({@link WITHOUT_DECORATIONS_JS}).
  */
-export const ELEMENT_TEXT_JS = `(el, full) => {
+const RAW_ELEMENT_TEXT_JS = `(el, full) => {
   const withoutDecorations = ${WITHOUT_DECORATIONS_JS};
   const composed = ${COMPOSED_JS};
   const flatText = ${FLAT_TEXT_JS};
@@ -265,6 +265,34 @@ export const VALIDITY_REPORT_JS = `(el) => {
     minLength: el.minLength > 0 ? el.minLength : undefined,
     maxLength: el.maxLength > 0 ? el.maxLength : undefined
   };
+}`;
+
+/**
+ * Page-side text of an element as a user sees it ({@link RAW_ELEMENT_TEXT_JS})
+ * with secrets masked (#625): the option labels of a sensitive select
+ * ({@link SENSITIVE_FIELD_JS}) and the text of a sensitive textarea, the
+ * element itself or inside it, are replaced by {@link MASKED_VALUE}; an
+ * option of a sensitive select reads as {@link MASKED_VALUE}.
+ */
+export const ELEMENT_TEXT_JS = `(el, full) => {
+  const isSensitive = ${SENSITIVE_FIELD_JS};
+  if (el.tagName === 'OPTION') {
+    const select = el.closest('select');
+    return select && isSensitive(select) ? '${MASKED_VALUE}' : el.label;
+  }
+  const text = (${RAW_ELEMENT_TEXT_JS})(el, full);
+  if (!text || typeof el.querySelectorAll !== 'function') return text;
+  const fields = [el].concat(Array.from(el.querySelectorAll('select, textarea')));
+  let masked = text;
+  for (const field of fields) {
+    if (!/^(select|textarea)$/.test(field.localName) || !isSensitive(field)) continue;
+    const parts = field.localName === 'select' ? Array.from(field.options, (o) => o.label) : [field.value, field.textContent];
+    for (const part of parts) {
+      const trimmed = (part || '').trim();
+      if (trimmed) masked = masked.split(trimmed).join('${MASKED_VALUE}');
+    }
+  }
+  return masked;
 }`;
 
 /**

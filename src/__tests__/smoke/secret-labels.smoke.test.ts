@@ -116,6 +116,7 @@ interface FormFieldJson {
   selector: string;
   value: string | boolean | string[];
   validation: { valid: boolean; message?: string };
+  options?: Array<{ value: string; label: string; selected: boolean }>;
 }
 
 /** What the tests read of `dom form --json` */
@@ -185,6 +186,9 @@ void describe('secret labels', () => {
     }
     const raw = await bdg(['dom', 'get', '#aria', '--raw']);
     assert.match(raw, /value="••••"/);
+    const form = await bothModes(['dom', 'get', '#vault']);
+    assertNoSecret(form, 'dom get #vault (the form\u2019s text summary)');
+    assert.match(form, /Confirm( ••••)+ Go/, 'the text summary lost the select or its neighbours');
   });
 
   void it('dom form masks them, human and --json', async () => {
@@ -209,6 +213,11 @@ void describe('secret labels', () => {
       '#sel',
     ]);
     assert.equal(form?.fields.find((field) => field.selector === '#show')?.value, false);
+    const select = form?.fields.find((field) => field.selector === '#sel');
+    assert.deepEqual(select?.options, [
+      { value: '', label: MASK, selected: true },
+      { value: '', label: MASK, selected: false },
+    ]);
   });
 
   void it('dom a11y describe masks them', async () => {
@@ -329,6 +338,11 @@ void describe('secret labels', () => {
       'the validation alert in the a11y tree shows the password length'
     );
     assert.match(tree, /\[Alert\] "••••"/);
+    assert.match(tree, /^Secret values shown as •••• \(read them with bdg dom eval\)$/m);
+    assert.equal(
+      (await bdgJson<{ masked?: boolean }>(['dom', 'a11y', 'tree', '--limit', '0'])).masked,
+      true
+    );
   });
 
   void it('dom form reports the secret field by its validity state, not its length (#643)', async () => {
