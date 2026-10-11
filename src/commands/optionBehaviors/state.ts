@@ -21,7 +21,7 @@ export const STATE_BEHAVIORS: BehaviorTable = {
     whenEnabled:
       'Saves the storage of the given origins only (repeatable; any URL of the origin works); an origin the page has no frame of exits 83 (storage is read through a frame of its origin) and no file is written; not an http(s) URL exits 81',
     automaticBehavior:
-      'The file is JSON { version: 1, savedAt, cookies (Network.getAllCookies), origins: [{ origin, localStorage, sessionStorage }] }, written through a temp file renamed over the target: a new file is 0600, an existing one keeps its mode, a symlink at the path is replaced (not followed). Output (human and --json) has counts and origins, never values',
+      'The file is JSON { version: 1, savedAt, cookies (Network.getAllCookies), origins: [{ origin, localStorage, sessionStorage }] }, written through a temp file renamed over the target: the file is 0600, also over an existing file of another mode (the old inode is replaced), a symlink at the path is replaced (not followed). Output (human and --json) has counts and origins, never values',
   },
   'load:--no-reload': {
     default:

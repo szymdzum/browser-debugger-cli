@@ -154,7 +154,7 @@ export function registerStateCommands(program: Command): void {
   state
     .command('save')
     .description(STATE_SAVE_DESCRIPTION)
-    .argument('<file>', 'JSON file to write (created 0600)')
+    .argument('<file>', 'JSON file to write (0600, also over an existing file)')
     .option(
       '--origin <url>',
       'Save the storage of this origin (repeatable; default: every origin of the page and its same-site frames)',

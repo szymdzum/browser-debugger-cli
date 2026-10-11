@@ -2,8 +2,10 @@
  * Writing a file the user named without harming what is there: the data goes
  * to a new temp file next to the target (created with `O_EXCL|O_NOFOLLOW`,
  * so never an existing file or a symlink) and is renamed over the target
- * only once complete. An existing regular file keeps its mode; a symlink at
- * the target is replaced by the file (its destination is left as it was).
+ * only once complete. The file gets the mode asked for, also when it
+ * replaces an existing file of another mode (the rename replaces the inode,
+ * so the old mode does not carry over; #624); a symlink at the target is
+ * replaced by the file (its destination is left as it was).
  */
 
 import { createHash } from 'crypto';
@@ -43,17 +45,17 @@ export function tempPathFor(file: string): string {
  *
  * @param file - Absolute path of the target (its directory must exist)
  * @param data - Contents
- * @param mode - Mode of a new file (an existing regular file keeps its own)
+ * @param mode - Mode of the file, set exactly (not reduced by the umask), also
+ *   when it replaces an existing file
  * @throws The file-system error (the temp file is removed); EISDIR for a directory
  */
 export async function writeFileSafely(file: string, data: string, mode: number): Promise<void> {
   const target = await fs.promises.stat(file).catch(() => undefined);
   if (target?.isDirectory()) throw Object.assign(new Error('directory'), { code: 'EISDIR' });
-  const existing = await fs.promises.lstat(file).catch(() => undefined);
   const temp = tempPathFor(file);
   const handle = await fs.promises.open(temp, TEMP_FILE_FLAGS, mode);
   try {
-    await handle.chmod(existing?.isFile() ? existing.mode & 0o7777 : mode);
+    await handle.chmod(mode);
     await handle.writeFile(data, 'utf8');
     await handle.close();
     await fs.promises.rename(temp, file);

@@ -1,7 +1,7 @@
 /**
  * Reading and writing the state files of `bdg state save`, `bdg state load`
- * and `bdg <url> --state`. The file holds secrets: a new one is created
- * readable by its owner only (0600).
+ * and `bdg <url> --state`. The file holds secrets: it is written readable
+ * by its owner only (0600), also over an existing file of another mode.
  */
 
 import * as fs from 'fs';
@@ -16,7 +16,7 @@ import { makeDirectory } from '@/utils/directories.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { writeFileSafely } from '@/utils/safeFile.js';
 
-/** Mode of a new state file: readable by its owner only */
+/** Mode of a state file: readable by its owner only */
 export const STATE_FILE_MODE = 0o600;
 
 /** Why a state file cannot be read, by error code */
@@ -98,8 +98,8 @@ export function readStateFile(file: string): AuthStateContent {
 }
 
 /**
- * Write a state file: a new one 0600, an existing one keeps its mode; never
- * through a symlink or a partly written file.
+ * Write a state file, 0600 also over an existing file (#624); never through
+ * a symlink or a partly written file.
  *
  * @param file - Path given
  * @param content - Cookies and origins

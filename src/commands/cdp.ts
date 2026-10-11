@@ -198,7 +198,12 @@ export function registerCdpCommand(program: Command): void {
         `Collect for at most this long (default ${COLLECT_DEFAULT_TIMEOUT_S}, max ${EVENT_WAIT_MAX_S})`
       )
     )
-    .addOption(eventOption('--out <file>', 'Write collected or read events to a file (NDJSON)'))
+    .addOption(
+      eventOption(
+        '--out <file>',
+        'Write collected or read events to a file (NDJSON, unredacted: headers, cookies and URLs as sent; written 0600)'
+      )
+    )
     .addOption(
       eventOption(
         '--listen <events>',
