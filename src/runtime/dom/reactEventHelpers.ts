@@ -480,6 +480,13 @@ export const REACT_FILL_SCRIPT = `
   }
 
   const fieldsBefore = (${FIELD_VALUES_JS})(el);
+  // What Node words as the "Option not found" error: the value looked for
+  // and the first options, unless the select holds a secret (then only how
+  // many options there are)
+  const optionNotFound = (missing, options) =>
+    (${FILL_SECRET_JS})(el)
+      ? { count: options.length }
+      : { count: options.length, value: missing, options: options.slice(0, 10).map((o) => o.value || o.text.trim()) };
   const multiple = allMatches.length > 1 && typeof index !== 'number'
     ? allMatches.length + ' elements match; filled the first (use --index or a more specific selector)'
     : '';
@@ -512,10 +519,9 @@ export const REACT_FILL_SCRIPT = `
     if (missing !== undefined) {
       return {
         success: false,
-        error: 'Option not found: ' + missing,
         exitCode: 81,
         elementType: tagName + viaLabel + viaShadow,
-        suggestion: 'Available options: ' + options.slice(0, 10).map((o) => o.value || o.text.trim()).join(', ')
+        optionNotFound: optionNotFound(missing, options)
       };
     }
     options.forEach((o) => { o.selected = chosen.includes(o); });
@@ -531,10 +537,9 @@ export const REACT_FILL_SCRIPT = `
     if (!option) {
       return {
         success: false,
-        error: 'Option not found: ' + value,
         exitCode: 81,
         elementType: tagName + viaLabel + viaShadow,
-        suggestion: 'Available options: ' + options.slice(0, 10).map((o) => o.value || o.text.trim()).join(', ')
+        optionNotFound: optionNotFound(value, options)
       };
     }
     el.value = option.value;

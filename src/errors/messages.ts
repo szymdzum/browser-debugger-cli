@@ -3058,6 +3058,16 @@ export function networkOnlyDetailsOptionError(flag: string): ErrorWithSuggestion
  * @param notFound - What the page reported
  * @returns Error with suggestion
  */
-export function optionNotFoundError(_notFound: OptionNotFound): ErrorWithSuggestion {
-  throw new Error('not implemented');
+export function optionNotFoundError(notFound: OptionNotFound): ErrorWithSuggestion {
+  const { count, value, options } = notFound;
+  if (value === undefined || options === undefined) {
+    return {
+      message: 'Option not found',
+      suggestion: `${count} ${count === 1 ? 'option' : 'options'} available (the options of a secret select are not listed)`,
+    };
+  }
+  return {
+    message: `Option not found: ${value}`,
+    suggestion: `Available options: ${options.join(', ')}`,
+  };
 }
