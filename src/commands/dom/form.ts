@@ -389,6 +389,7 @@ async function handleFormCommand(options: FormCommandOptions): Promise<void> {
       }
 
       if (rawData.forms.length === 0) {
+        await QueryCacheManager.getInstance().setNoMatches(FORM_DISCOVERY_CACHE_SELECTOR, document);
         const err = noFormsFoundError(rawData.readyState, rawData.closedShadowHosts);
         return {
           success: false,

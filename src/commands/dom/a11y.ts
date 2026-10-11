@@ -135,6 +135,10 @@ async function handleA11yQuery(pattern: string, options: A11yQueryCommandOptions
       const result = queryA11yTree(tree, queryPattern);
 
       if (result.count === 0) {
+        await QueryCacheManager.getInstance().setNoMatches(
+          `${A11Y_CACHE_SELECTOR_PREFIX}${pattern}`,
+          document
+        );
         const err = noA11yNodesFoundError(pattern);
         throw new CommandError(
           err.message,

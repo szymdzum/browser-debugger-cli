@@ -72,9 +72,7 @@ export function removeSessionFiles(ownerPid?: number): void {
     if (owner !== undefined && owner !== ownerPid) return;
   }
   safeRemoveFile(getSessionFilePath('METADATA'), 'metadata file', log);
-  void QueryCacheManager.getInstance()
-    .clear()
-    .catch((error) => logDebugError(log, 'clear query cache', error));
+  safeRemoveFile(QueryCacheManager.getInstance().getCachePath(), 'query cache', log);
 }
 
 /**

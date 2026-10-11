@@ -22,8 +22,9 @@ export const QUERY_LIST_LIMIT = 50;
  * reference elements by index, and lists the first `--limit` of them (50,
  * or {@link QUERY_JSON_LIST_LIMIT} with `--json`; 0 = all) with the total
  * count. The first {@link QUERY_CACHE_LIMIT} are indexed whatever is listed.
- * No match exits 83, like `dom get` and `dom a11y`, and clears the cache so
- * indices of an earlier query are not used by mistake.
+ * No match exits 83, like `dom get` and `dom a11y`, and caches an empty list
+ * so indices of an earlier query are not used by mistake (an index then says
+ * that this query matched nothing).
  */
 export async function handleDomQuery(
   selector: string,
@@ -36,7 +37,7 @@ export async function handleDomQuery(
       const result = await queryDOMElements(selector, limit);
       const cache = QueryCacheManager.getInstance();
       if (result.count === 0) {
-        await cache.clear();
+        await cache.setNoMatches(selector, document);
         const err = await noMatchesError(selector);
         return {
           success: false,

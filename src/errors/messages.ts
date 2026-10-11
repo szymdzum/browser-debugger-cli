@@ -1390,6 +1390,36 @@ export function cachedIndexOutOfRangeError(
 }
 
 /**
+ * An index into a list that is empty: the last query matched nothing (it
+ * leaves an empty list so an earlier query's indices are not used by mistake).
+ *
+ * @param source - The index and the list it refers to
+ * @returns e.g. `The last dom query "#x" matched nothing, so it has no index 0`
+ */
+export function emptyCachedListError(source: IndexSource): ErrorWithSuggestion {
+  const list = cachedListText(source);
+  const outcome = source.command === 'dom form' ? 'found no forms' : 'matched nothing';
+  return {
+    message: `T${list.slice(1)} ${outcome}, so it has no index ${source.index}`,
+    suggestion: `Run a query that matches elements, e.g. "${sessionCommand('bdg dom query <selector>')}", then use its indices`,
+  };
+}
+
+/**
+ * An index in a session that has run no query yet (each session starts
+ * without cached results).
+ *
+ * @returns Message and suggestion
+ */
+export function noQueryInSessionError(): ErrorWithSuggestion {
+  return {
+    message:
+      'No query in this session yet: an index refers to the last dom query, dom form or dom a11y query of the session',
+    suggestion: `Run "${sessionCommand('bdg dom query <selector>')}" first to get indexed results`,
+  };
+}
+
+/**
  * Note for a form command (fill, submit) whose index refers to results of
  * another command and hit an element it cannot act on.
  *
