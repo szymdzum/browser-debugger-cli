@@ -62,6 +62,8 @@ Build only in your worktree. If another branch you depend on hasn't merged yet, 
 - Don't open GitHub issues. Report findings; the orchestrator files them.
 - Other agents are working in parallel on `<their areas and files>`. Stay out of those, and keep your edits to shared files (registries, docs) minimal and additive.
 
+**Budget.** At most 80 tool calls; at the cap, stop and report what is left. No background processes except the fixture server (PID file); no monitors or self-notifications; every test run in the foreground with its output cut: `npm test 2>&1 | tail -20`, `npm run check 2>&1 | tail -15`, smoke `… 2>&1 | grep -E '^# (pass|fail)|^not ok'`. Read a file once; don't re-run a suite that already passed.
+
 **Report** (at most ~40 lines; the detail lives in the PR body). What changed, decisions with reasons, the red commit (SHA and the failure line it produced), before/after evidence in two lines, test exit lines, adjacent fixes made, and any finding outside your scope with its command and output (I'll verify and file it).
 
 ## Reviewer brief
@@ -104,6 +106,8 @@ git -C ../bdg-<N> worktree remove --force /tmp/red-<N>
 ```
 They must fail on an assertion about the issue (or the CLI's real output), not on a build or import error. A missing or wrong-reason red commit is **blocking**, unless the change is docs-only, a pure refactor or CI/tooling. Quote the failure line in your report.
 
+**Budget.** At most 25 tool calls; cut test output (`npm test 2>&1 | tail -20`, smoke `… 2>&1 | grep -E '^# (pass|fail)|^not ok'`).
+
 **Rules:** no `git stash`; no `pkill`/`killall`; a background process you start writes its PID to `/tmp/bdg-review-<N>-<name>.pid` and you kill only what you read back from there; don't touch `~/.bdg`, the worktree, or the main checkout (including its `.tmp/`); don't open GitHub issues. Run tests in the foreground.
 
 **Report.** The SHA you reviewed, then findings as **blocking / should-fix / nit**, each with file:line and a concrete scenario (inputs → wrong outcome). Mark a finding **adjacent** when it is in the same file or function as the change and fixable in about 20 changed product lines plus its test without changing parsed output, flags, exit codes or defaults (the implementer fixes it in this PR); mark it **older code** when it predates the change and sits elsewhere (the orchestrator verifies and files it). Also list what you checked and found fine, and under **Not checked** anything from the list above you skipped and why (the orchestrator will resume you for it). Keep it short.
@@ -135,6 +139,8 @@ bdg() { node <absolute path to ../bdg-<N>>/dist/index.js "$@"; }
 3. `<edge case: interrupt, failure, odd input>`
 4. `<a real-world site if one is reachable>`
 
+**Budget.** At most 40 tool calls; no background processes except a server with a PID file; save long outputs to files under your scratch dir and `grep` them instead of reading them whole (`| head -40` on anything you print).
+
 **Rules:**
 - No `pkill`/`killall`. A background process you start writes its PID to `/tmp/bdg-t-<N>-<agent>-<name>.pid`; kill only PIDs read back from those files.
 - No git commands, no repo edits (the main checkout and its `.tmp/` included), no GitHub issues: report bugs, the orchestrator files them.
@@ -159,6 +165,8 @@ Findings:
 2. `<…>`
 
 **Sweep** (themed sessions only; delete otherwise). The theme is `<theme>`. Build a page (or a few, under `/tmp/verify-<date>-pages`, served with `cd /tmp/verify-<date>-pages && python3 -m http.server <port> & echo $! > /tmp/bdg-verify-http.pid`) with `<the inputs the theme is about, e.g. secret-named fields, labels, URLs with tokens>`, run `<the commands and surfaces of the theme, human and --json, files and daemon.log>`, and grep every output for `<the literal markers>`. Report each hit as a finding of its own: command, output line, exit code, cause with file:line when a few minutes find it, and which listed finding (if any) shares its root cause.
+
+**Budget.** At most 60 tool calls; no background processes except the fixture/HTTP servers with PID files; one command per finding where possible, outputs cut with `| head -40` or `grep` to the lines that matter.
 
 **Rules:** no git commands, no repo edits, no GitHub issues (the orchestrator files them), no `pkill`/`killall`, don't touch `~/.bdg` or `~/Downloads`; `bdg stop` at the end.
 
