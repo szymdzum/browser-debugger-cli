@@ -7,6 +7,9 @@
  * get an unrelated process killed.
  */
 
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
 import { chromeSessionMarkerFlag } from '@/connection/launcher/flagsBuilder.js';
 import { QueryCacheManager } from '@/session/QueryCacheManager.js';
 import { clearChromePid, readChromePid } from '@/session/chrome.js';
@@ -71,8 +74,33 @@ export function removeSessionFiles(ownerPid?: number): void {
     const owner = readSessionMetadata()?.bdgPid;
     if (owner !== undefined && owner !== ownerPid) return;
   }
-  safeRemoveFile(getSessionFilePath('METADATA'), 'metadata file', log);
-  safeRemoveFile(QueryCacheManager.getInstance().getCachePath(), 'query cache', log);
+  const metadataPath = getSessionFilePath('METADATA');
+  const cachePath = QueryCacheManager.getInstance().getCachePath();
+  safeRemoveFile(metadataPath, 'metadata file', log);
+  safeRemoveFile(cachePath, 'query cache', log);
+  removeAtomicWriteLeftovers([metadataPath, cachePath]);
+}
+
+/**
+ * Remove `<name>.<pid>.<uuid>.tmp` files that AtomicFileWriter left next to
+ * each target when the process died between the write and the rename.
+ */
+function removeAtomicWriteLeftovers(targets: string[]): void {
+  for (const target of targets) {
+    const dir = path.dirname(target);
+    const prefix = `${path.basename(target)}.`;
+    let names: string[];
+    try {
+      names = fs.readdirSync(dir);
+    } catch {
+      continue;
+    }
+    for (const name of names) {
+      if (name.startsWith(prefix) && name.endsWith('.tmp')) {
+        safeRemoveFile(path.join(dir, name), 'atomic write leftover', log);
+      }
+    }
+  }
 }
 
 /**
