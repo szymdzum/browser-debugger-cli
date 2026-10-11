@@ -432,12 +432,28 @@ export const DISABLED_CAUSE_JS = `(el) => {
 }`;
 
 /**
+ * Page-side short description of an element an action hit: its short
+ * description ({@link ELEMENT_DESCRIPTION_JS}) and, for an element without
+ * an id, its `name` attribute (quoted unless a plain identifier, cut at 40
+ * characters), e.g. `input[name=email]`, `input[name="user[email]"]`.
+ */
+export const NAMED_DESCRIPTION_JS = `(node) => {
+  const description = (${ELEMENT_DESCRIPTION_JS})(node);
+  const name = node.id ? '' : node.getAttribute('name') || '';
+  if (!name) return description;
+  if (/^[A-Za-z_][\\w-]*$/.test(name) && name.length <= 40) return description + '[name=' + name + ']';
+  const characters = Array.from(name);
+  const shown = characters.length > 40 ? characters.slice(0, 40).join('') + '…' : name;
+  return description + '[name="' + shown.replace(/["\\\\]/g, '\\\\$&') + '"]';
+}`;
+
+/**
  * Page-side position of an element among its parent's children with the
- * same short description ({@link ELEMENT_DESCRIPTION_JS}), e.g. `(2nd of 3)`;
+ * same description ({@link NAMED_DESCRIPTION_JS}), e.g. `(2nd of 3)`;
  * empty when it is the only one.
  */
 export const SIBLING_POSITION_JS = `(el) => {
-  const describe = ${ELEMENT_DESCRIPTION_JS};
+  const describe = ${NAMED_DESCRIPTION_JS};
   const parent = el.parentElement;
   if (!parent) return '';
   const own = describe(el);
@@ -458,12 +474,15 @@ export const SIBLING_POSITION_JS = `(el) => {
  * `button#add.btn "Add to cart"`. A `<select>` is named by its label
  * (`aria-labelledby` or `<label>`), aria-label or name, else by its selected
  * option, e.g. `select.sort "Sort products"`. An element without visible
- * text is described by itself first: by its position among same-looking
- * siblings ({@link SIBLING_POSITION_JS}), e.g. `div.figure (2nd of 3)`, with
- * its name when it has one: aria-label, label, placeholder, title, or the
- * alt text of an image (in it). Only an element
- * without an id that is the only one of its kind is named by the nearest of
- * three ancestors that has text, e.g.
+ * text is described with its `name` attribute ({@link NAMED_DESCRIPTION_JS})
+ * and its name when it has one: aria-label, label, placeholder, title, or
+ * the alt text of an image (in it). One with a label (`aria-labelledby` or
+ * `<label>`), or with an id or a name no other element in its document (or
+ * shadow root) has and no same-looking sibling, is identified by that, e.g.
+ * `input[name=email]`, `input[name=nl-email] "Newsletter email"`; otherwise
+ * by its position among same-looking siblings ({@link SIBLING_POSITION_JS}),
+ * e.g. `div.figure (2nd of 3)`. Only an element that is the only one of its
+ * kind is named by the nearest of three ancestors that has text, e.g.
  * `input.toggle in div.view "Write report"` (rows of a list share their
  * aria-label), leaving out the options
  * of `<select>`s in it (read like `innerText`: CSS-hidden text is left out of
@@ -475,6 +494,7 @@ export const SIBLING_POSITION_JS = `(el) => {
  */
 export const ELEMENT_IDENTITY_JS = `(el) => {
   const describe = ${ELEMENT_DESCRIPTION_JS};
+  const named = ${NAMED_DESCRIPTION_JS};
   const siblingPosition = ${SIBLING_POSITION_JS};
   const withoutDecorations = ${WITHOUT_DECORATIONS_JS};
   const composed = ${COMPOSED_JS};
@@ -524,18 +544,25 @@ export const ELEMENT_IDENTITY_JS = `(el) => {
     return clean(text);
   };
   const quoted = (text) => (text ? ' "' + cut(text) + '"' : '');
+  const uniqueName = (node) => {
+    const name = node.getAttribute('name');
+    if (!name) return false;
+    const others = Array.from(node.getRootNode().querySelectorAll('[name]'));
+    return others.filter((other) => other.getAttribute('name') === name).length === 1;
+  };
   const visible = shownText(el) || buttonValue(el) || (el.localName === 'select' ? selectName(el) : '');
   if (visible) return describe(el) + quoted(visible);
   const attribute = attributeText(el);
   const position = siblingPosition(el);
-  if (position) return describe(el) + ' ' + position + quoted(attribute);
-  let ancestor = el.id || el.isContentEditable ? null : el.parentElement;
+  if (labelText(el) || (!position && (el.id || uniqueName(el)))) return named(el) + quoted(attribute);
+  if (position) return named(el) + ' ' + position + quoted(attribute);
+  let ancestor = el.isContentEditable ? null : el.parentElement;
   for (let depth = 0; ancestor && depth < 3; depth++, ancestor = ancestor.parentElement) {
     if (isControl(ancestor)) break;
     const text = textOutsideSelects(ancestor);
-    if (text) return describe(el) + ' in ' + describe(ancestor) + quoted(text);
+    if (text) return named(el) + ' in ' + describe(ancestor) + quoted(text);
   }
-  return describe(el) + quoted(attribute);
+  return named(el) + quoted(attribute);
 }`;
 
 /**

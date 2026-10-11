@@ -583,7 +583,7 @@ void describe('DOM interactions', () => {
     );
     assert.match(
       await bdg(['dom', 'fill', 'label:has-text("Customer name")', 'Ada']),
-      /Element: +input in label "Customer name:" \(via label\)/
+      /Element: +input\[name=custname\] "Customer name:" \(via label\)/
     );
     assert.equal(await evaluate("document.querySelector('[name=custname]').value"), 'Ada');
     await bdg(['dom', 'fill', 'label:has-text("Customer name") input', 'Bob']);

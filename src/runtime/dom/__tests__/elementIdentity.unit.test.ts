@@ -1,5 +1,6 @@
 /**
- * Action output names the element itself: its text, else its position among
+ * Action output names the element itself: its text, else its label or a
+ * unique `name` (`input[name=email]`), else its position among
  * same-looking siblings (`div.figure (2nd of 3)`), and only then an
  * ancestor's text; an element without text by its label or image alt text.
  * Text previews leave out close buttons and icons.
