@@ -5,6 +5,7 @@ import type { DialogAnswer, DialogChoice, DialogInfo } from '@/ipc/protocol/domT
 import type { CleanupFunction } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { dialogNotAnsweredText } from '@/ui/messages/commands.js';
+import { displayUrl } from '@/utils/displayUrl.js';
 
 const log = createLogger('dialogs');
 
@@ -103,7 +104,9 @@ export async function startDialogHandling(
     };
     void cdp.send('Page.handleJavaScriptDialog', { ...reply }).then(
       () => {
-        log.debug(`${answer} ${params.type} dialog: "${params.message}" from ${params.url}`);
+        log.debug(
+          `${answer} ${params.type} dialog: "${params.message}" from ${displayUrl(params.url)}`
+        );
         onDialog?.(dialog);
       },
       (error: Error) => {

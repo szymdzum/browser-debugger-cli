@@ -167,8 +167,14 @@ export type StopCommandOptions = BaseOptions & ChromeOptions;
 /** Options for cleanup command */
 export type CleanupCommandOptions = BaseOptions & CleanupOptions;
 
+/** `--include-sensitive` of the commands that show page URLs with their tokens masked (#623) */
+export interface SensitiveUrlOptions {
+  /** `--include-sensitive`: show the query and fragment tokens of page URLs (never their user info) */
+  includeSensitive?: boolean;
+}
+
 /** Options for status command */
-export type StatusCommandOptions = BaseOptions & VerboseOptions;
+export type StatusCommandOptions = BaseOptions & VerboseOptions & SensitiveUrlOptions;
 
 /** Options for details command */
 export type DetailsCommandOptions = BaseOptions & {
@@ -472,7 +478,8 @@ export interface PreviewDisplayOptions {
  * Options for peek command.
  * Includes preview options plus last count and resource type filter.
  */
-export interface PeekCommandOptions extends BaseOptions, PreviewDisplayOptions {
+export interface PeekCommandOptions
+  extends BaseOptions, PreviewDisplayOptions, SensitiveUrlOptions {
   /** Show last N items (string from CLI, default: 10) */
   last?: string;
   /** Filter network requests by resource type (comma-separated) */

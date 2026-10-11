@@ -18,6 +18,7 @@ import type { RawFormData } from '@/runtime/dom/formTypes.js';
 import { evaluateInBdgWorld } from '@/runtime/page/bdgWorld.js';
 import type { CDPSender } from '@/telemetry/objectExpander.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { displayUrl } from '@/utils/displayUrl.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
 const log = createLogger('dom');
@@ -65,7 +66,8 @@ export async function evaluateFormDiscovery(
  * Read the discovery data from the script's result, with the backend node
  * id of each listed field and button and the custom elements whose closed
  * shadow roots hold fields. Node lookups that fail leave the data as it is
- * (the CLI then resolves fields by selector). Releases the result.
+ * (the CLI then resolves fields by selector). A form's action is shown
+ * without user info and with its tokens masked (#623). Releases the result.
  *
  * @param cdp - Connection to the page
  * @param objectId - The script's result
@@ -96,6 +98,7 @@ export async function readFormDiscovery(
       ...data,
       forms: data.forms.map((form) => ({
         ...form,
+        action: form.action === null ? null : displayUrl(form.action),
         fields: form.fields.map(bind),
         buttons: form.buttons.map(bind),
       })),

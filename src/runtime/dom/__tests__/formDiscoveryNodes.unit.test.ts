@@ -225,3 +225,18 @@ void describe('readFormDiscovery', () => {
     assert.equal(sent.at(-1)?.method, 'Runtime.releaseObjectGroup');
   });
 });
+
+void describe('form action URLs (#623)', () => {
+  void it('removes the user info and masks the tokens of a form action', async () => {
+    const { cdp } = fakeCdp({
+      data: {
+        ...DATA,
+        forms: [
+          { ...DATA.forms[0], action: 'http://bob:PW@127.0.0.1:4000/login?token=T&next=/home' },
+        ],
+      },
+    });
+    const data = await readFormDiscovery(cdp, 'root', formDiscoveryGroup());
+    assert.equal(data.forms[0]?.action, 'http://127.0.0.1:4000/login?token=••••&next=/home');
+  });
+});

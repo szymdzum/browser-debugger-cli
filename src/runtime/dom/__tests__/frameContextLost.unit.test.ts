@@ -40,6 +40,18 @@ async function lostMessage(owner: () => Promise<unknown>, page = OPEN_PAGE): Pro
   return error.message;
 }
 
+void describe('frameContextLostError URL (#623)', () => {
+  void it('names the frame without its user info and with its tokens masked', async () => {
+    const error = await frameContextLostError(
+      sender(() => Promise.resolve({ backendNodeId: 5 })),
+      OPEN_PAGE,
+      { frameId: 'F1', url: 'https://bob:PW@pay.example/?token=T' }
+    );
+    assert.doesNotMatch(error.message, /PW|token=T/);
+    assert.match(error.message, /https:\/\/pay\.example\/\?token=••••/);
+  });
+});
+
 void describe('frameContextLostError', () => {
   void it('says the frame navigated when its iframe element is still there', async () => {
     const message = await lostMessage(() => Promise.resolve({ backendNodeId: 5 }));

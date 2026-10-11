@@ -382,3 +382,32 @@ void describe('TelemetryStore.recordDialog', () => {
     assert.equal(store.dialogs.length, 1);
   });
 });
+
+void describe('tab URLs in interaction results (#623)', () => {
+  const MASK = '••••';
+  const opened: OpenedTab = {
+    url: 'https://bob:PW@idp.test/authorize?code=C&state=ok',
+    targetId: 'P',
+    kind: 'popup',
+    index: 1,
+  };
+  const closed: TabClosedSwitch = {
+    tabClosed: { targetId: 'P', url: 'https://idp.test/done#id_token=T', title: 'Done' },
+    switchedTo: { index: 0, targetId: 'A', url: 'https://bob:PW@app.test/', title: 'App' },
+  };
+  const tabs: TabReports = {
+    openedCount: () => 0,
+    openedSince: () => [opened],
+    takeClosedSwitch: () => closed,
+    pageLost: () => undefined,
+  };
+
+  void it('removes the user info and masks the tokens of opened, closed and current tabs', async () => {
+    const interact = createInteractionRunner(new TelemetryStore(), tabs);
+    const result = await interact(fakeCdp(), () => Promise.resolve({ success: true }));
+    assert.equal(result.opened?.[0]?.url, `https://idp.test/authorize?code=${MASK}&state=ok`);
+    assert.equal(result.opened?.[0]?.index, 1);
+    assert.equal(result.tabClosed?.url, `https://idp.test/done#id_token=${MASK}`);
+    assert.equal(result.switchedTo?.url, 'https://app.test/');
+  });
+});

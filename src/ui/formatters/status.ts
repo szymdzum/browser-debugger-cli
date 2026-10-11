@@ -15,6 +15,7 @@ import {
 import { networkEvictedNote } from '@/ui/messages/networkMessages.js';
 import { lastSessionEndText } from '@/ui/messages/session.js';
 import { noActiveSessionMessage, sessionCommand } from '@/ui/messages/sessionCommand.js';
+import { displayUrl } from '@/utils/displayUrl.js';
 import { isProcessAlive } from '@/utils/process.js';
 
 export interface StatusData {
@@ -310,4 +311,22 @@ export function formatNoSessionMessage(data: StatusData = { active: false }): st
         : `Clean up after a crash:  ${sessionCommand('bdg cleanup', session)}`,
     ])
     .build();
+}
+
+/**
+ * Status data with its page URLs as bdg shows them.
+ *
+ * @param data - Status data
+ * @param includeSensitive - Whether `--include-sensitive` was given
+ * @returns The data to show
+ */
+export function withShownUrls(data: StatusData, includeSensitive = false): StatusData {
+  const { pageState, starting } = data;
+  return {
+    ...data,
+    ...(pageState && {
+      pageState: { ...pageState, url: displayUrl(pageState.url, includeSensitive) },
+    }),
+    ...(starting && { starting: { ...starting, url: displayUrl(starting.url, includeSensitive) } }),
+  };
 }

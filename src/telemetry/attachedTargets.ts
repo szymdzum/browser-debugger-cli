@@ -14,6 +14,7 @@ import { CDPHandlerRegistry } from '@/connection/handlers.js';
 import { TypedCDPConnection } from '@/connection/typed-cdp.js';
 import type { CleanupFunction } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { displayUrl } from '@/utils/displayUrl.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
 const log = createLogger('targets');
@@ -67,7 +68,9 @@ async function runSetups(
   const results = await Promise.allSettled([...setups].map((setup) => setup(sessionId)));
   for (const result of results) {
     if (result.status === 'rejected') {
-      log.debug(`Setup of attached target ${url} failed: ${getErrorMessage(result.reason)}`);
+      log.debug(
+        `Setup of attached target ${displayUrl(url)} failed: ${getErrorMessage(result.reason)}`
+      );
     }
   }
 }
@@ -97,13 +100,15 @@ async function prepareChild(
       ]),
       new Promise((resolve) => (timer = setTimeout(resolve, SETUP_WAIT_MS))),
     ]).finally(() => clearTimeout(timer));
-    log.debug(`Attached to ${url || 'a new target'}`);
+    log.debug(`Attached to ${displayUrl(url) || 'a new target'}`);
   } catch (error) {
-    log.debug(`Could not prepare attached target ${url}: ${getErrorMessage(error)}`);
+    log.debug(`Could not prepare attached target ${displayUrl(url)}: ${getErrorMessage(error)}`);
   } finally {
     await manager.typed
       .send('Runtime.runIfWaitingForDebugger', {}, sessionId)
-      .catch((error: unknown) => log.debug(`Could not resume ${url}: ${getErrorMessage(error)}`));
+      .catch((error: unknown) =>
+        log.debug(`Could not resume ${displayUrl(url)}: ${getErrorMessage(error)}`)
+      );
   }
 }
 

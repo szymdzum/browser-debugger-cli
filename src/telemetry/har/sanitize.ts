@@ -253,8 +253,19 @@ function redactCookie(cookie: Cookie): Cookie {
  * @param name - Decoded parameter name
  * @returns True for secret names ({@link isSensitiveName}), `code`, `sig` and `key`
  */
-function isSensitiveParam(name: string): boolean {
+export function isSensitiveParam(name: string): boolean {
   return isSensitiveName(name) || SENSITIVE_URL_PARAM.test(name);
+}
+
+/**
+ * Remove the user info (`user:pass@`) of a URL, whole, as a user name may
+ * itself be a token.
+ *
+ * @param url - URL (empty for none)
+ * @returns URL without user info, otherwise byte for byte
+ */
+export function removeUrlUserInfo(url: string): string {
+  return url.replace(URL_USER_INFO, '$1');
 }
 
 /**
@@ -279,7 +290,7 @@ function redactQueryParam(param: QueryParam): QueryParam {
  * @returns URL without user info, credential values replaced
  */
 export function redactUrl(captured: string, placeholder = URL_REDACTED): string {
-  const url = captured.replace(URL_USER_INFO, '$1');
+  const url = removeUrlUserInfo(captured);
   const hash = url.indexOf('#');
   const beforeHash = hash === -1 ? url : url.slice(0, hash);
   const fragment =

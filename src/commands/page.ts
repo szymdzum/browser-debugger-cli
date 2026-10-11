@@ -6,13 +6,13 @@
 import { Option, type Command } from 'commander';
 
 import { noActiveSessionError, runCommand } from '@/commands/shared/CommandRunner.js';
-import { jsonOption } from '@/commands/shared/commonOptions.js';
+import { includeSensitiveOption, jsonOption } from '@/commands/shared/commonOptions.js';
 import {
   abortOnInterrupt,
   interruptExitCode,
   interruptSignal,
 } from '@/commands/shared/interrupt.js';
-import type { BaseOptions } from '@/commands/shared/optionTypes.js';
+import type { BaseOptions, SensitiveUrlOptions } from '@/commands/shared/optionTypes.js';
 import { parseColorScheme, requestedViewport } from '@/commands/start.js';
 import { CommandError } from '@/errors/index.js';
 import { javascriptNavigationError, pageSwitchInterruptedError } from '@/errors/messages.js';
@@ -31,7 +31,12 @@ import type {
   PageEmulationResult,
   PageNavigationResult,
 } from '@/ipc/protocol/commands.js';
-import type { PageCloseData, PageSwitchData, PageTabsData } from '@/ipc/protocol/tabTypes.js';
+import type {
+  PageCloseData,
+  PageSwitchData,
+  PageTabsData,
+  TabRef,
+} from '@/ipc/protocol/tabTypes.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import {
   dialogResultText,
@@ -49,6 +54,8 @@ import {
   tabSwitchHint,
   tabSwitchedNote,
 } from '@/ui/messages/commands.js';
+import { includeSensitiveWarning } from '@/ui/messages/networkMessages.js';
+import { displayUrl, displayUrls } from '@/utils/displayUrl.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { validateUrl } from '@/utils/url.js';
@@ -57,6 +64,20 @@ import { validateUrl } from '@/utils/url.js';
 interface PageCommandOptions extends BaseOptions {
   /** Wait for the page to load (--no-wait sets false) */
   wait: boolean;
+}
+
+/** Options of `bdg page info` and `bdg page tabs` */
+type PageReadOptions = BaseOptions & SensitiveUrlOptions;
+
+/**
+ * A tab with its URL as shown.
+ *
+ * @param tab - Tab
+ * @param includeSensitive - Whether `--include-sensitive` was given
+ * @returns The tab to show
+ */
+function shownTab<T extends TabRef>(tab: T, includeSensitive = false): T {
+  return { ...tab, url: displayUrl(tab.url, includeSensitive) };
 }
 
 /**
@@ -155,7 +176,7 @@ async function runPageAction(
  *
  * @param options - Command options
  */
-async function showPageInfo(options: BaseOptions): Promise<void> {
+async function showPageInfo(options: PageReadOptions): Promise<void> {
   await runCommand(
     async () => {
       const response = await getStatus(undefined, { tabMove: true });
@@ -168,7 +189,11 @@ async function showPageInfo(options: BaseOptions): Promise<void> {
       }
       const page = response.data?.sessionPid ? response.data.pageState : undefined;
       if (!page) throw noActiveSessionError();
-      return { success: true, data: { url: page.url, title: page.title } };
+      return {
+        success: true,
+        data: { url: displayUrl(page.url, options.includeSensitive), title: page.title },
+        ...(options.includeSensitive && { warning: includeSensitiveWarning() }),
+      };
     },
     options,
     (page: Pick<PageState, 'url' | 'title'>) =>
@@ -262,12 +287,14 @@ interface TabResponse<T> {
  * @param options - Command options
  * @param format - Human-readable output
  * @param failure - Error when the daemon gives none
+ * @param shown - The answer with its URLs as shown
  */
 async function runTabCommand<T>(
   request: () => Promise<TabResponse<T>>,
-  options: BaseOptions,
+  options: PageReadOptions,
   format: (data: T) => string,
-  failure: string
+  failure: string,
+  shown: (data: T, includeSensitive: boolean) => T
 ): Promise<void> {
   await runCommand(
     async () => {
@@ -280,7 +307,11 @@ async function runTabCommand<T>(
           ...(response.suggestion && { errorContext: { suggestion: response.suggestion } }),
         };
       }
-      return { success: true, data: response.data };
+      return {
+        success: true,
+        data: shown(response.data, options.includeSensitive === true),
+        ...(options.includeSensitive && { warning: includeSensitiveWarning() }),
+      };
     },
     options,
     format
@@ -412,8 +443,15 @@ function registerTabCommands(page: Command): void {
     .command('tabs')
     .description(PAGE_TABS_DESCRIPTION)
     .addOption(jsonOption())
-    .action(async (options: BaseOptions) => {
-      await runTabCommand(() => pageTabs(), options, formatTabs, 'Failed to list the tabs');
+    .addOption(includeSensitiveOption())
+    .action(async (options: PageReadOptions) => {
+      await runTabCommand(
+        () => pageTabs(),
+        options,
+        formatTabs,
+        'Failed to list the tabs',
+        (data, includeSensitive) => ({ tabs: displayUrls(data.tabs, includeSensitive) })
+      );
     });
 
   page
@@ -430,7 +468,11 @@ function registerTabCommands(page: Command): void {
         () => switchTab(target, interrupt),
         options,
         formatSwitch,
-        'Failed to switch tabs'
+        'Failed to switch tabs',
+        (data) => ({
+          tab: shownTab(data.tab),
+          ...(data.previous && { previous: shownTab(data.previous) }),
+        })
       );
     });
 
@@ -447,7 +489,8 @@ function registerTabCommands(page: Command): void {
         () => pageClose(target === undefined ? {} : { target }),
         options,
         formatClose,
-        'Failed to close the tab'
+        'Failed to close the tab',
+        (data) => ({ ...data, closed: shownTab(data.closed), current: shownTab(data.current) })
       );
     });
 }
@@ -468,7 +511,8 @@ export function registerPageCommands(program: Command): void {
     .command('info')
     .description(PAGE_INFO_DESCRIPTION)
     .addOption(jsonOption())
-    .action(async (options: BaseOptions) => {
+    .addOption(includeSensitiveOption())
+    .action(async (options: PageReadOptions) => {
       await showPageInfo(options);
     });
 

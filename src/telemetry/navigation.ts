@@ -3,6 +3,7 @@ import { CDPHandlerRegistry } from '@/connection/handlers.js';
 import { TypedCDPConnection } from '@/connection/typed-cdp.js';
 import type { CleanupFunction } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { displayUrl } from '@/utils/displayUrl.js';
 
 const log = createLogger('navigation');
 
@@ -68,7 +69,9 @@ export async function startNavigationTracking(
     if (params.frame.parentId !== undefined) return;
     navigationCounter++;
     record(params.frame.url);
-    log.debug(`Main frame navigation detected [${navigationCounter}]: ${params.frame.url}`);
+    log.debug(
+      `Main frame navigation detected [${navigationCounter}]: ${displayUrl(params.frame.url)}`
+    );
   });
 
   return {

@@ -23,6 +23,7 @@ import { readPortFile } from '@/session/portClaims.js';
 import { isValidSessionName, normalizeSessionName } from '@/session/sessionName.js';
 import { createLogger, logDebugError } from '@/ui/logging/index.js';
 import { removeDirCommand, sessionCommand } from '@/ui/messages/sessionCommand.js';
+import { displayUrl } from '@/utils/displayUrl.js';
 import { isProcessAlive } from '@/utils/process.js';
 
 const log = createLogger('session');
@@ -67,11 +68,13 @@ export interface RunningSessionInfo {
  *
  * @param name - Session name
  * @param data - Status data
+ * @param includeSensitive - Whether `--include-sensitive` was given
  * @returns Session info
  */
 export function toRunningSession(
   name: string | null,
-  data: StatusResponseData
+  data: StatusResponseData,
+  includeSensitive = false
 ): RunningSessionInfo {
   const meta = data.sessionMetadata;
   const state: RunningSessionState = meta ? 'active' : data.ending ? 'ending' : 'starting';
@@ -79,7 +82,7 @@ export function toRunningSession(
   return {
     name,
     state,
-    ...(url !== undefined && { url }),
+    ...(url !== undefined && { url: displayUrl(url, includeSensitive) }),
     ...(meta && { port: meta.port }),
     daemonPid: data.daemonPid,
     ...(meta?.chromePid && { chromePid: meta.chromePid }),
@@ -91,9 +94,13 @@ export function toRunningSession(
  * one left behind.
  *
  * @param entry - Session directory
+ * @param includeSensitive - Whether `--include-sensitive` was given
  * @returns Session info, or null when there is no session
  */
-async function describeSession(entry: SessionDirEntry): Promise<RunningSessionInfo | null> {
+async function describeSession(
+  entry: SessionDirEntry,
+  includeSensitive: boolean
+): Promise<RunningSessionInfo | null> {
   const { name, dir } = entry;
   const socketPath = sessionFilePathIn(dir, 'DAEMON_SOCKET');
   const probe = await probeDaemonSocket(socketPath);
@@ -104,7 +111,9 @@ async function describeSession(entry: SessionDirEntry): Promise<RunningSessionIn
   }
   try {
     const response = await getStatus(socketPath);
-    if (response.status === 'ok' && response.data) return toRunningSession(name, response.data);
+    if (response.status === 'ok' && response.data) {
+      return toRunningSession(name, response.data, includeSensitive);
+    }
   } catch (error) {
     logDebugError(log, `get status of ${dir}`, error);
   }
@@ -252,11 +261,17 @@ function selectableEntry(entry: SessionDirEntry): SessionDirEntry | null {
  * removes it by hand.
  *
  * @param entry - Session directory
+ * @param includeSensitive - Whether `--include-sensitive` was given
  * @returns Session info
  */
-async function describeUnselectable(entry: SessionDirEntry): Promise<RunningSessionInfo | null> {
+async function describeUnselectable(
+  entry: SessionDirEntry,
+  includeSensitive: boolean
+): Promise<RunningSessionInfo | null> {
   const socketPath = sessionFilePathIn(entry.dir, 'DAEMON_SOCKET');
-  if ((await probeDaemonSocket(socketPath)) === 'alive') return describeSession(entry);
+  if ((await probeDaemonSocket(socketPath)) === 'alive') {
+    return describeSession(entry, includeSensitive);
+  }
   return { name: entry.name, state: 'stale', cleanup: removeDirCommand(entry.dir) };
 }
 
@@ -266,17 +281,19 @@ async function describeUnselectable(entry: SessionDirEntry): Promise<RunningSess
  * their leftovers can be cleaned up. A directory differing only in case
  * (`ALPHA`) that `--session alpha` reaches is listed once, as `alpha`.
  *
+ * @param includeSensitive - Whether `--include-sensitive` was given (page
+ *   URLs then keep their query and fragment tokens; never their user info)
  * @returns Sessions
  */
-export async function listRunningSessions(): Promise<RunningSessionInfo[]> {
+export async function listRunningSessions(includeSensitive = false): Promise<RunningSessionInfo[]> {
   const listed = new Set<string | null>();
   const sessions = await Promise.all(
     listSessionDirs().map((entry) => {
       const selectable = selectableEntry(entry);
-      if (selectable === null) return describeUnselectable(entry);
+      if (selectable === null) return describeUnselectable(entry, includeSensitive);
       if (listed.has(selectable.name)) return Promise.resolve(null);
       listed.add(selectable.name);
-      return describeSession(selectable);
+      return describeSession(selectable, includeSensitive);
     })
   );
   return sessions.filter((session): session is RunningSessionInfo => session !== null);

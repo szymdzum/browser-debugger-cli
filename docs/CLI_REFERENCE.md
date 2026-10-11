@@ -49,10 +49,13 @@ JSON adds `data.loading: { readyState, pending: [{ method, url, resourceType?, p
 bdg status                      # Basic status information
 bdg status --verbose            # Include the Chrome executable, mode and profile
 bdg status --json               # JSON output
-bdg page info                   # Just the URL and title of the session page (--json: data.url, data.title)
+bdg status --include-sensitive  # URL tokens as captured (user:pass@ still removed), with a warning
+bdg page info                   # Just the URL and title of the session page (--json: data.url, data.title); --include-sensitive as for status
 ```
 
 The first line of `bdg status` is `Session active: <url> — <title>`; the sections below it (process, target, activity, collectors) follow.
+
+**Page URLs are shown without credentials** (#623), in every command and in `daemon.log`: `user:pass@` is removed whole, and query and fragment parameters with a [secret field name](#secret-field-names) or named `code`, `sig` or `key` (`token`, `access_token`, `id_token`, `code`, `password`, `cc-number`…) are shown as `••••`, human and `--json` (the `url` fields keep their names; the rest of the URL stays byte for byte): `http://bob:hunter2@app.test/cb?code=abc&state=ok#id_token=eyJ…` is shown as `http://app.test/cb?code=••••&state=ok#id_token=••••`. `status`, `sessions`, `page info`, `page tabs`, `network list` and `peek` take `--include-sensitive`, which shows the query and fragment tokens with a warning (`Warning: Output includes credentials (--include-sensitive): share it with care`; `warning` in the `--json` envelope); `user:pass@` is never shown. The start output (`Target:`, JSON `targetUrl`), `page navigate|reload|back|forward`, `page switch`, `page close`, action results (`Page: navigated to …`, `triggeredRequests`, `opened`, `Tab closed: …`), `dom form` (`action`), `dom a11y tree` (the root `url`), `dom frames` (and the `frame` field of frame-scoped results) and `daemon.log` are always masked and have no `--include-sensitive`: `bdg details network <id> --include-sensitive` has the full request URL. Page content is shown as written: link `href`s in `dom query` and `dom get --raw`, inline scripts and HTML bodies are not masked, only the page and request URLs bdg itself reports.
 
 When the page's renderer crashes (out of memory, a Chrome bug, a killed renderer process), the session stays up but the page cannot answer. `bdg status`, `bdg peek`, `bdg console` and `bdg network list` then start with `⚠ The page crashed at 18:42:10 (renderer gone); bdg page reload brings it back` (JSON `pageState.crashedAt`, `pageCrashedAt` in `peek`, `console` and `network list --json`); `console --follow` and `network list --follow` print it once when the page crashes (JSON: a line with `pageCrashedAt`). Commands that need the page fail at once with exit 107 (`PAGE_CRASHED`) and the same way back, as do commands that were waiting on the page when it crashed. `status`, `peek`, `console`, `network`, `details`, `page reload`/`navigate`/`back`/`forward` and `bdg cdp` methods the browser answers (`Page.reload`, `Page.navigate`, `Target.*`, `Browser.*`, `Network.*` except response bodies, `Storage.*`) keep working. Reloading or navigating brings the page back.
 
@@ -62,7 +65,8 @@ An action that opens a tab or window says so: `Opened: popup http://localhost:30
 
 ```bash
 bdg page tabs                   # Tabs (2): * [0] Shop  http://localhost:3000/
-                                #             [1] Sign in  http://localhost:3000/authorize (opened by 0)
+                                #             [1] Sign in  http://localhost:3000/authorize?code=•••• (opened by 0)
+bdg page tabs --include-sensitive   # URL tokens as captured (user:pass@ still removed), with a warning
 bdg page switch 1               # By 0-based index, target id or a part of the URL (bdg page switch authorize)
 bdg page close [target]         # Close a tab (index, target id, URL part, url:<part>); without one the session tab (the session moves to its opener first)
 ```
@@ -92,6 +96,7 @@ bdg --session agent-1 peek                  # --session goes before or after the
 bdg dom eval "document.title" --session agent-1
 BDG_SESSION=agent-2 bdg status              # Status shows the session name and its port
 bdg sessions                                # List sessions (name, state, port, PID, URL), incl. crashed ones
+bdg sessions --include-sensitive            # URL tokens as captured (user:pass@ still removed), with a warning
 bdg stop --session agent-1                  # Stops agent-1 only
 bdg cleanup --session agent-2               # Cleans up agent-2 only
 bdg cleanup --session agent-2 --purge       # ... and deletes its directory (Chrome profile, logs)
@@ -140,7 +145,10 @@ bdg peek --type XHR,Fetch       # Multiple types (XHR or Fetch requests)
 bdg peek --json                 # JSON output
 bdg peek --verbose              # Verbose output (full URLs, resource types)
 bdg peek --full                 # Console message texts whole
+bdg peek --include-sensitive    # URL tokens as captured (user:pass@ still removed), with a warning
 ```
+
+Page and request URLs are shown without `user:pass@` and with credential parameters as `••••` (see [Check session status](#check-session-status)); `--include-sensitive` shows the parameters.
 
 Console message texts are cut like `bdg console --list` cuts them: at 200 characters followed by `… N more chars (use --full)` (the compact view also at 2 lines). In `--json` a text over 10000 characters is cut with `truncatedFrom` (its original length). `--full` prints them whole.
 
@@ -204,7 +212,7 @@ user=tom&password=••••
 {"access_token":"••••","expires_in":3600}
 ```
 
-What is masked is what the default HAR export redacts (see `network har` below; same rules, `••••` instead of `[redacted]`): `Cookie` and `Set-Cookie` values (cookie names and attributes kept), `Authorization` and `Proxy-Authorization` (scheme kept), API key, token, CSRF and session headers and headers named like a secret field (`X-Password`, `Sid`, `Cookie2`); `user:pass@` and credential query and fragment parameters in the request URL, the redirect URL and `Location`, `Referer`, `:path`, `Content-Location`, `Refresh` and `Link` headers; a JWT in any header; fields with a [secret field name](#secret-field-names) in urlencoded, JSON (any depth) and multipart request bodies, JSON response bodies and WebSocket messages; in an HTML response body (`text/html`, `application/xhtml+xml`) the `value` of an `<input>` that is `type=password` or `type=hidden` or whose `name`, `id` or `autocomplete` is a secret field name, and the text of such a `<textarea>` (the rest of the HTML, inline scripts included, stays as captured: a token in a `<script>` literal is shown); a token-shaped credential after `Bearer`/`Basic` (any case, same line) in plain-text WebSocket messages (`Basic information` is prose and stays); any JWT. The output says when something was masked: a last line `Credentials shown as •••• (--include-sensitive shows them)` (with `--body`, on stderr) and `masked: true` in `--json` `data`. `--include-sensitive` shows every value as captured, with a warning (`Warning: Output includes credentials (--include-sensitive): share it with care`; `warning` in the `--json` envelope). With `--body` the masked body is the one printed and cut (`bodyLength` counts it), and `masked: true` and the note appear only when the body itself had a credential. `Size`, `decodedBodyLength`, `encodedDataLength` and the `Content-Length` header describe the captured body, not the masked one. Not masked: inline scripts and everything else of an HTML body but its secret form-control values, URLs in `network list`, `peek` and `status`, and `network getCookies`.
+What is masked is what the default HAR export redacts (see `network har` below; same rules, `••••` instead of `[redacted]`): `Cookie` and `Set-Cookie` values (cookie names and attributes kept), `Authorization` and `Proxy-Authorization` (scheme kept), API key, token, CSRF and session headers and headers named like a secret field (`X-Password`, `Sid`, `Cookie2`); `user:pass@` and credential query and fragment parameters in the request URL, the redirect URL and `Location`, `Referer`, `:path`, `Content-Location`, `Refresh` and `Link` headers; a JWT in any header; fields with a [secret field name](#secret-field-names) in urlencoded, JSON (any depth) and multipart request bodies, JSON response bodies and WebSocket messages; in an HTML response body (`text/html`, `application/xhtml+xml`) the `value` of an `<input>` that is `type=password` or `type=hidden` or whose `name`, `id` or `autocomplete` is a secret field name, and the text of such a `<textarea>` (the rest of the HTML, inline scripts included, stays as captured: a token in a `<script>` literal is shown); a token-shaped credential after `Bearer`/`Basic` (any case, same line) in plain-text WebSocket messages (`Basic information` is prose and stays); any JWT. The output says when something was masked: a last line `Credentials shown as •••• (--include-sensitive shows them)` (with `--body`, on stderr) and `masked: true` in `--json` `data`. `--include-sensitive` shows every value as captured, with a warning (`Warning: Output includes credentials (--include-sensitive): share it with care`; `warning` in the `--json` envelope). With `--body` the masked body is the one printed and cut (`bodyLength` counts it), and `masked: true` and the note appear only when the body itself had a credential. `Size`, `decodedBodyLength`, `encodedDataLength` and the `Content-Length` header describe the captured body, not the masked one. Not masked: inline scripts and everything else of an HTML body but its secret form-control values, and `network getCookies`. Page URLs in `network list`, `peek`, `status`, `sessions`, `page info` and `page tabs` follow the same URL rule (see [Check session status](#check-session-status)), with their own `--include-sensitive`.
 
 The response body is cut at 20000 characters by default, in text (`… 594000 more characters (full body: bdg details network <id> --body)`) and in `--json` (`bodyTruncated: true` and `bodyLength`, the whole length, on the item), so a large HTML document stays near 25 KB instead of hundreds. `--body-max <chars>` changes the cap (0 keeps the whole body); base64 bodies are cut on a whole 4-character group. `--no-body` leaves the response body out of both outputs (the request body and `bodyNotCaptured` stay). `--body` prints only the response body, whole, for piping: no newline is added, and control characters are escaped only when stdout is a terminal; a binary body comes base64-encoded (`base64 -d` decodes it; a hint on stderr says so), and `--json` gives `data: { type: "network-body", requestId, body, bodyLength, base64Encoded?, bodyTruncated?, mimeType? }`. A request with no body to print exits 83 with the reason: not captured (skipped or evicted, see below), still loading, a WebSocket (it has messages), the response has no body (HEAD, 204, 205, 304), or none captured (redirects, failed requests). `--body --body-max N` prints the first N characters and says so on stderr (`body cut at N of M characters (--body-max 0 for all)`), so stdout stays clean for piping. These options apply to `details network` only (exit 81 for `details console`), and `--no-body` with `--body-max` exits 81.
 
@@ -1121,8 +1129,11 @@ List and filter captured network requests using Chrome DevTools-compatible filte
 ```bash
 # List recent requests (default: last 100); long URLs are cut in the middle,
 # keeping the host, the start of the path and its end with the query
-# (api.example.com/v1/users/…/orders?page=2); --verbose shows them whole
+# (api.example.com/v1/users/…/orders?page=2); --verbose shows them whole.
+# URLs are shown without user:pass@ and with credential parameters as ••••
+# (?access_token=••••); --include-sensitive shows the parameters, with a warning
 bdg network list
+bdg network list --include-sensitive
 
 # Show all requests
 bdg network list --last 0

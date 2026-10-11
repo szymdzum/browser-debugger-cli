@@ -14,6 +14,7 @@ import type {
   NodeRef,
 } from '@/types.js';
 import { ConcurrencyLimiter } from '@/utils/concurrency.js';
+import { displayUrl } from '@/utils/displayUrl.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { levenshteinDistance } from '@/utils/levenshtein.js';
 
@@ -532,7 +533,9 @@ function parseA11yNode(rawNode: Protocol.Accessibility.AXNode): A11yNode {
         node.required = prop.value.value === true;
       } else {
         const value = propertyValue(prop.value);
-        if (value !== undefined) props[prop.name] = value;
+        if (value === undefined) continue;
+        props[prop.name] =
+          prop.name === 'url' && typeof value === 'string' ? displayUrl(value) : value;
       }
     }
 

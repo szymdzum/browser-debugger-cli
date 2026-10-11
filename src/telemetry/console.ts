@@ -16,6 +16,7 @@ import { MAX_CONSOLE_MESSAGES } from '@/constants.js';
 import { attachChildTargets } from '@/telemetry/attachedTargets.js';
 import type { ConsoleMessage, CleanupFunction, StackFrame } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { displayUrl } from '@/utils/displayUrl.js';
 
 import { shouldExcludeConsoleMessage } from './filters.js';
 import { expandConsoleArgs, senderFor, type CDPSender } from './objectExpander.js';
@@ -44,11 +45,12 @@ interface MessageContext {
 }
 
 /**
- * Convert a CDP call frame to a StackFrame.
+ * Convert a CDP call frame to a StackFrame, its URL without user info and
+ * with its tokens masked (#623; a script of the page has the page's URL).
  */
 function convertCallFrame(frame: Protocol.Runtime.CallFrame): StackFrame {
   const stackFrame: StackFrame = {
-    url: frame.url,
+    url: displayUrl(frame.url),
     lineNumber: frame.lineNumber,
     columnNumber: frame.columnNumber,
     scriptId: frame.scriptId,
@@ -375,8 +377,8 @@ function handleLogEntry(
   const location = entry.url
     ? [
         entry.lineNumber === undefined
-          ? { url: entry.url, lineNumber: -1, columnNumber: -1 }
-          : { url: entry.url, lineNumber: entry.lineNumber, columnNumber: 0 },
+          ? { url: displayUrl(entry.url), lineNumber: -1, columnNumber: -1 }
+          : { url: displayUrl(entry.url), lineNumber: entry.lineNumber, columnNumber: 0 },
       ]
     : undefined;
   const context: MessageContext = {

@@ -25,6 +25,7 @@ import { findConflictingOwner } from '@/session/chromeOwners.js';
 import { getSessionDir } from '@/session/paths.js';
 import type { CDPTarget, LaunchedChrome } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
+import { displayUrl } from '@/utils/displayUrl.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import {
   createPageTarget,
@@ -181,7 +182,7 @@ async function resolveExternalTarget(
   const page = firstPage ?? (await createPageTarget(hostname, config.port, log, http));
   if (!page)
     fail(externalChromeUnreachableError(endpoint, http.secure), EXIT_CODES.CDP_CONNECTION_FAILURE);
-  log.info(`Attaching to page ${page.url} of the external Chrome`);
+  log.info(`Attaching to page ${displayUrl(page.url)} of the external Chrome`);
   return {
     ...page,
     webSocketDebuggerUrl: withEndpoint(page.webSocketDebuggerUrl, protocol, hostname, port),
@@ -328,5 +329,5 @@ export async function findPageTarget(
   }
 
   telemetryStore.setTargetInfo(foundTarget);
-  log.info(`Found target: ${foundTarget.title} (${foundTarget.url})`);
+  log.info(`Found target: ${foundTarget.title} (${displayUrl(foundTarget.url)})`);
 }

@@ -636,3 +636,38 @@ void describe('pendingChanges', () => {
     );
   });
 });
+
+void describe('pageNavigation page URLs (#623)', () => {
+  const MASK = '••••';
+
+  void it('removes the user info and masks the tokens of a new document', () => {
+    const navigated = events({
+      document: { url: 'https://bob:PW@site.test/welcome?token=T&api_key=K', loaderId: 'L9' },
+      statusByLoader: new Map([['L9', 200]]),
+    });
+    assert.deepEqual(
+      pageNavigation(
+        'https://site.test/login',
+        read({ href: 'https://site.test/welcome?token=T&api_key=K', fresh: true }),
+        navigated
+      ),
+      {
+        url: `https://site.test/welcome?token=${MASK}&api_key=${MASK}`,
+        sameDocument: false,
+        status: 200,
+      }
+    );
+  });
+
+  void it('masks the tokens of a same-document change and keeps plain parameters', () => {
+    const result = pageNavigation(
+      'https://site.test/app',
+      read({ href: 'https://site.test/app?q=plain#id_token=T', fresh: true }),
+      events({})
+    );
+    assert.deepEqual(result, {
+      url: `https://site.test/app?q=plain#id_token=${MASK}`,
+      sameDocument: true,
+    });
+  });
+});

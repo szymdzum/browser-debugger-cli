@@ -38,6 +38,7 @@ import { assertFrameIndexCurrent, frameError, selectFrame } from '@/runtime/dom/
 import { attachedSessionOf } from '@/telemetry/attachedTargets.js';
 import { senderFor, type CDPSender } from '@/telemetry/objectExpander.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { displayUrl } from '@/utils/displayUrl.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -71,7 +72,7 @@ interface SessionTree {
 }
 
 /** A frame with the session that owns it */
-interface FrameNode {
+export interface FrameNode {
   frame: Protocol.Page.Frame;
   sessionId?: string;
   context?: FrameContext;
@@ -405,7 +406,7 @@ async function frameOwner(
 }
 
 /** What describing a frame needs to know about the frames listed before it */
-interface ListingState {
+export interface ListingState {
   /** The page's effective origin */
   topOrigin: string;
   /** Effective origin of each frame listed so far (and the main frame), by id */
@@ -450,7 +451,9 @@ function placeFrame(
 
 /**
  * Describe an iframe for listing. Chrome names a frame after its element's
- * `id` when it has no `name`, so such a name is not repeated.
+ * `id` when it has no `name`, so such a name is not repeated. The URL is
+ * shown without user info and with its tokens masked (#623); the origin is
+ * computed from the URL as reported.
  *
  * @param node - The frame
  * @param index - Its position
@@ -458,7 +461,7 @@ function placeFrame(
  * @param state - Frames described so far (updated)
  * @returns The located frame
  */
-function describeFrame(
+export function describeFrame(
   node: FrameNode,
   index: number,
   owner: OwnerAttributes,
@@ -469,7 +472,7 @@ function describeFrame(
   const { origin, parentIndex } = placeFrame(node, index, owner, state);
   const info: DomFrame = {
     index,
-    url: frame.url + (frame.urlFragment ?? ''),
+    url: displayUrl(frame.url + (frame.urlFragment ?? '')),
     ...(name && { name }),
     ...(owner.id && { id: owner.id }),
     origin,
@@ -736,7 +739,7 @@ export async function frameContextLostError(
     removed: frameRemovedDuringEvalError,
     unknown: frameLostDuringEvalError,
   };
-  const err = messages[await frameOwnerState(conn, frame)](frame.url);
+  const err = messages[await frameOwnerState(conn, frame)](displayUrl(frame.url));
   return frameError(err, EXIT_CODES.RESOURCE_NOT_FOUND);
 }
 
