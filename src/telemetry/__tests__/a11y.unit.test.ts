@@ -575,3 +575,26 @@ void describe('maskSecretValues', () => {
     assert.doesNotMatch(JSON.stringify([...tree.nodes.values()]), /hunter2|•{5,}/);
   });
 });
+
+describe('root URL property (#623)', () => {
+  test('removes the user info and masks the tokens of the RootWebArea url', () => {
+    const tree = buildTreeFromRawNodes([
+      {
+        nodeId: '1',
+        ignored: false,
+        role: { type: 'role', value: 'RootWebArea' },
+        name: { type: 'computedString', value: 'App' },
+        properties: [
+          {
+            name: 'url' as Protocol.Accessibility.AXPropertyName,
+            value: { type: 'string', value: 'http://bob:PW@127.0.0.1:4000/app?token=T#id_token=T' },
+          },
+        ],
+      },
+    ]);
+    assert.equal(
+      tree.root.properties?.['url'],
+      `http://127.0.0.1:4000/app?token=${MASKED_VALUE}#id_token=${MASKED_VALUE}`
+    );
+  });
+});

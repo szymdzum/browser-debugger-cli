@@ -11,6 +11,7 @@ import {
   formatNoSessionMessage,
   formatSessionStatus,
   formatStatusAsJson,
+  withShownUrls,
 } from '@/ui/formatters/status.js';
 
 const external: SessionMetadata = {
@@ -133,5 +134,50 @@ void describe('status of the --dialog session default (#553)', () => {
     assert.equal(formatStatusAsJson(metadata, process.pid).dialog, undefined);
     assert.doesNotMatch(formatSessionStatus(metadata, process.pid), /Dialogs:/);
     assert.doesNotMatch(formatSessionStatus(external, process.pid), /Dialogs:/);
+  });
+});
+
+void describe('status page URLs (#623)', () => {
+  const MASK = '••••';
+  const pageState = {
+    url: 'http://bob:PW@127.0.0.1:4000/app?token=T&q=plain#id_token=T',
+    title: 'App',
+  };
+
+  void it('withShownUrls removes the user info and masks the tokens of pageState and starting', () => {
+    const shown = withShownUrls({
+      active: true,
+      pageState,
+      starting: { url: 'http://bob:PW@127.0.0.1:4000/start?code=C', since: 1 },
+    });
+    assert.equal(
+      shown.pageState?.url,
+      `http://127.0.0.1:4000/app?token=${MASK}&q=plain#id_token=${MASK}`
+    );
+    assert.equal(shown.pageState?.title, 'App');
+    assert.equal(shown.starting?.url, `http://127.0.0.1:4000/start?code=${MASK}`);
+  });
+
+  void it('withShownUrls with --include-sensitive keeps the tokens but never the user info', () => {
+    const shown = withShownUrls({ active: true, pageState }, true);
+    assert.equal(shown.pageState?.url, 'http://127.0.0.1:4000/app?token=T&q=plain#id_token=T');
+  });
+
+  void it('the human output shows the shown URL in the active line and the target section', () => {
+    const shown = withShownUrls({ active: true, pageState });
+    const output = formatSessionStatus(external, process.pid, undefined, shown.pageState);
+    assert.doesNotMatch(output, /PW|token=T/);
+    assert.match(output, /token=••••/);
+  });
+
+  void it('the "session starting" message shows the shown URL', () => {
+    const output = formatNoSessionMessage(
+      withShownUrls({
+        active: false,
+        starting: { url: 'http://bob:PW@127.0.0.1:4000/start?code=C', since: Date.now() },
+      })
+    );
+    assert.doesNotMatch(output, /PW|code=C/);
+    assert.match(output, /Session starting: http:\/\/127\.0\.0\.1:4000\/start\?code=••••/);
   });
 });

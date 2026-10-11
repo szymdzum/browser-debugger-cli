@@ -1,0 +1,96 @@
+/**
+ * Page URLs as bdg shows them (#623): `user:pass@` removed, secret-named
+ * query and fragment parameters masked, the rest byte for byte;
+ * `--include-sensitive` shows the parameters but never the user info.
+ */
+
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+
+import { displayUrl, displayUrls } from '@/utils/displayUrl.js';
+
+const MASK = '••••';
+
+/** URL shapes × what is shown by default and with --include-sensitive */
+const CASES: Array<{ url: string; shown: string; sensitive: string }> = [
+  {
+    url: 'http://bob:PW@host/p',
+    shown: 'http://host/p',
+    sensitive: 'http://host/p',
+  },
+  {
+    url: 'http://host/p?token=T',
+    shown: `http://host/p?token=${MASK}`,
+    sensitive: 'http://host/p?token=T',
+  },
+  {
+    url: 'http://host/p?access_token=T&code=C',
+    shown: `http://host/p?access_token=${MASK}&code=${MASK}`,
+    sensitive: 'http://host/p?access_token=T&code=C',
+  },
+  {
+    url: 'http://host/p#id_token=T',
+    shown: `http://host/p#id_token=${MASK}`,
+    sensitive: 'http://host/p#id_token=T',
+  },
+  {
+    url: 'http://host/p?password=P&cc-number=4111111111111111',
+    shown: `http://host/p?password=${MASK}&cc-number=${MASK}`,
+    sensitive: 'http://host/p?password=P&cc-number=4111111111111111',
+  },
+  {
+    url: 'http://host/p?q=plain&page=2',
+    shown: 'http://host/p?q=plain&page=2',
+    sensitive: 'http://host/p?q=plain&page=2',
+  },
+  {
+    url: 'ws://host/ws?token=T',
+    shown: `ws://host/ws?token=${MASK}`,
+    sensitive: 'ws://host/ws?token=T',
+  },
+  {
+    url: 'http://bob:PW@host/p?token=T&q=plain#id_token=T',
+    shown: `http://host/p?token=${MASK}&q=plain#id_token=${MASK}`,
+    sensitive: 'http://host/p?token=T&q=plain#id_token=T',
+  },
+];
+
+void describe('displayUrl', () => {
+  for (const { url, shown, sensitive } of CASES) {
+    void it(`shows ${url} as ${shown}`, () => {
+      assert.equal(displayUrl(url), shown);
+    });
+
+    void it(`shows ${url} with --include-sensitive as ${sensitive}`, () => {
+      assert.equal(displayUrl(url, true), sensitive);
+    });
+  }
+
+  void it('leaves a URL without a query, fragment or user info alone', () => {
+    for (const url of ['about:blank', '', 'http://host/', 'data:text/html,<p>x</p>']) {
+      assert.equal(displayUrl(url), url);
+    }
+  });
+
+  void it('is idempotent', () => {
+    const once = displayUrl('http://bob:PW@host/p?token=T#id_token=T');
+    assert.equal(displayUrl(once), once);
+  });
+});
+
+void describe('displayUrls', () => {
+  void it('maps the url of each item and keeps the other fields', () => {
+    const items = [
+      { url: 'http://bob:PW@host/a?token=T', id: 1 },
+      { url: 'http://host/b?q=plain', id: 2 },
+    ];
+    assert.deepEqual(displayUrls(items), [
+      { url: `http://host/a?token=${MASK}`, id: 1 },
+      { url: 'http://host/b?q=plain', id: 2 },
+    ]);
+    assert.deepEqual(displayUrls(items, true), [
+      { url: 'http://host/a?token=T', id: 1 },
+      { url: 'http://host/b?q=plain', id: 2 },
+    ]);
+  });
+});

@@ -311,3 +311,15 @@ export function formatNoSessionMessage(data: StatusData = { active: false }): st
     ])
     .build();
 }
+
+/**
+ * Status data with its page URLs as bdg shows them.
+ *
+ * @param data - Status data
+ * @param includeSensitive - Whether `--include-sensitive` was given
+ * @returns The data to show
+ */
+export function withShownUrls(data: StatusData, includeSensitive = false): StatusData {
+  void includeSensitive;
+  return data;
+}

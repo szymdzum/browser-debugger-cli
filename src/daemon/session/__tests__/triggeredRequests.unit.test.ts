@@ -322,3 +322,29 @@ void describe('watchTriggeredRequests limit', () => {
     assert.equal(collected?.triggeredRequestsOmitted, 5);
   });
 });
+
+void describe('triggered request URLs (#623)', () => {
+  const MASK = '••••';
+
+  void it('removes the user info and masks the tokens of a request URL', () => {
+    const triggered = toTriggeredRequest(
+      request('1', { url: 'http://bob:PW@127.0.0.1:8080/api?access_token=T&q=plain', status: 200 })
+    );
+    assert.equal(triggered.url, `http://127.0.0.1:8080/api?access_token=${MASK}&q=plain`);
+  });
+
+  void it('masks the token of a WebSocket handshake URL', async () => {
+    const store = new TelemetryStore();
+    const interact = createInteractionRunner(store);
+    const result = await interact(cdp, () => {
+      store.websocketConnections.push({
+        requestId: 'ws1',
+        url: 'ws://127.0.0.1:8080/ws?token=T',
+        timestamp: Date.now(),
+        frames: [],
+      });
+      return Promise.resolve({ success: true });
+    });
+    assert.equal(result.triggeredRequests?.[0]?.url, `ws://127.0.0.1:8080/ws?token=${MASK}`);
+  });
+});

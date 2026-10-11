@@ -67,12 +67,15 @@ export interface RunningSessionInfo {
  *
  * @param name - Session name
  * @param data - Status data
+ * @param includeSensitive - Whether `--include-sensitive` was given
  * @returns Session info
  */
 export function toRunningSession(
   name: string | null,
-  data: StatusResponseData
+  data: StatusResponseData,
+  includeSensitive = false
 ): RunningSessionInfo {
+  void includeSensitive;
   const meta = data.sessionMetadata;
   const state: RunningSessionState = meta ? 'active' : data.ending ? 'ending' : 'starting';
   const url = data.pageState?.url ?? data.starting?.url;
