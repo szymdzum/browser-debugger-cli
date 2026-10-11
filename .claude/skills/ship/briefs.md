@@ -106,7 +106,7 @@ git -C ../bdg-<N> worktree remove --force /tmp/red-<N>
 ```
 They must fail on an assertion about the issue (or the CLI's real output), not on a build or import error. A missing or wrong-reason red commit is **blocking**, unless the change is docs-only, a pure refactor or CI/tooling. Quote the failure line in your report.
 
-**Budget.** At most 25 tool calls; cut test output as above (`| tail -20`, `grep -E '^# (pass|fail)|^not ok'`).
+**Budget.** At most 25 tool calls; cut test output (`npm test 2>&1 | tail -20`, smoke `… 2>&1 | grep -E '^# (pass|fail)|^not ok'`).
 
 **Rules:** no `git stash`; no `pkill`/`killall`; a background process you start writes its PID to `/tmp/bdg-review-<N>-<name>.pid` and you kill only what you read back from there; don't touch `~/.bdg`, the worktree, or the main checkout (including its `.tmp/`); don't open GitHub issues. Run tests in the foreground.
 
@@ -139,7 +139,7 @@ bdg() { node <absolute path to ../bdg-<N>>/dist/index.js "$@"; }
 3. `<edge case: interrupt, failure, odd input>`
 4. `<a real-world site if one is reachable>`
 
-**Budget.** At most 40 tool calls; save long outputs to files under your scratch dir and `grep` them instead of reading them whole.
+**Budget.** At most 40 tool calls; no background processes except a server with a PID file; save long outputs to files under your scratch dir and `grep` them instead of reading them whole (`| head -40` on anything you print).
 
 **Rules:**
 - No `pkill`/`killall`. A background process you start writes its PID to `/tmp/bdg-t-<N>-<agent>-<name>.pid`; kill only PIDs read back from those files.
@@ -166,7 +166,7 @@ Findings:
 
 **Sweep** (themed sessions only; delete otherwise). The theme is `<theme>`. Build a page (or a few, under `/tmp/verify-<date>-pages`, served with `cd /tmp/verify-<date>-pages && python3 -m http.server <port> & echo $! > /tmp/bdg-verify-http.pid`) with `<the inputs the theme is about, e.g. secret-named fields, labels, URLs with tokens>`, run `<the commands and surfaces of the theme, human and --json, files and daemon.log>`, and grep every output for `<the literal markers>`. Report each hit as a finding of its own: command, output line, exit code, cause with file:line when a few minutes find it, and which listed finding (if any) shares its root cause.
 
-**Budget.** At most 60 tool calls; one command per finding where possible, outputs cut to the lines that matter.
+**Budget.** At most 60 tool calls; no background processes except the fixture/HTTP servers with PID files; one command per finding where possible, outputs cut with `| head -40` or `grep` to the lines that matter.
 
 **Rules:** no git commands, no repo edits, no GitHub issues (the orchestrator files them), no `pkill`/`killall`, don't touch `~/.bdg` or `~/Downloads`; `bdg stop` at the end.
 

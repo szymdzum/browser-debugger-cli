@@ -20,7 +20,7 @@ Files in this skill:
 - **Propose 4–6 issues** with one line each on why. Recommend one set; don't present a menu. A candidate you can't reproduce in a few minutes drops out of the proposal and gets a `needs repro` comment on the issue.
 - **Show the balance.** The proposal states issues opened vs closed since the last session, and the session's target: close at least two issues for each one it files. At least half of every wave's PRs, rounded up, close issues that predate this session's sweep (bugs, not features; the polish sweep PR counts, it closes nit issues); a feature session (new behaviour, nothing closed) is the user's explicit choice, never the default.
 - **Polish sweep PR.** The proposal names one tier-1 PR for the wording nits of the queue: human-output text that no test asserts and no agent parses, no flag, no exit code, no default. A `--json` field, a hint a test asserts, or `--help --json` text is tier 2, not a sweep item. It runs last in the session, together with the docs PRs, one commit per nit.
-- **Waves of at most 2 parallel implementers**. Issues touching the same files or output run in sequence (the second starts from the first's branch, or after it merges). Light, conflict-free changes first; docs last.
+- **Waves of at most 2 parallel implementers.** Issues touching the same files or output run in sequence (the second starts from the first's branch, or after it merges). Light, conflict-free changes first; docs last.
 - **Ask for merge authority** as a yes/no question: "May I merge on my own once gates 1–8 hold, or do you want to OK each PR?" A bare "OK" is not an answer; ask again. It doesn't carry over to the next session.
 - **Product decisions belong to the user:** changed defaults, contracts, exit codes, removed `--json` fields. Present options with a recommendation, then wait. A standing "pick the recommended option" **never** covers a contract change or a third fix round; each gets its own yes/no question.
 
@@ -48,7 +48,7 @@ Spawn one implementer per issue with the implementer brief. Fill in scope, decis
 
 **Token budget.** Cost is turns × context, not output: every tool call re-reads the agent's whole context. Rules:
 - **Models:** `model: sonnet` for the reviewer, tester, verifier, themed sweep and tier 1–2 implementers; `model: opus` only for a tier 3 implementer; never the default model.
-- **No background work inside a subagent:** everything in the foreground, one shell call per step with its own `until` loop; no monitors, no self-notifications (an agent that wakes on every CI poll re-reads 300 k tokens each time). The orchestrator alone waits for CI, with one background command per wave.
+- **No background work inside a subagent** except a fixture or HTTP server with a PID file: everything else in the foreground, one shell call per step with its own `until` loop; no monitors, no self-notifications (an agent that wakes on every CI poll re-reads 300 k tokens each time). The orchestrator alone waits for CI, with one background command per wave.
 - **Tool-call caps in every brief:** implementer 80, reviewer 25, tester 40, verifier 60; at the cap the agent stops and reports what is left.
 - **Test output stays out of the context:** `npm test 2>&1 | tail -20`, smoke through `grep -E '^# (pass|fail)|^not ok'`, `npm run check 2>&1 | tail -15`; the report quotes result lines only. Only the affected smoke files locally; the full suite is CI's job.
 - **Proofs on request only:** no before/after captures of every command, case matrices ≤ 30 cells unless the brief asks for more.
