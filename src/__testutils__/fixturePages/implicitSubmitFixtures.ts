@@ -17,7 +17,11 @@
  * without submitting: `#echo` (an email field calling `reportValidity()`
  * on input, counted in `window.echoInputs`) and `#keyup` (two text fields,
  * no button, `reportValidity()` on keyup), a form whose Enter handler loads an image
- * (`#busy`, a request during the key press), and `<x-card>`, whose closed
+ * (`#busy`, a request during the key press), textareas (#605): `#ask` (a
+ * required `textarea[name=q]` whose Enter handler does `preventDefault()`
+ * then `requestSubmit()`, as on duckduckgo.com) and `#memo` (a
+ * `minlength=10` textarea checking its validity with `reportValidity()` on
+ * input; Enter adds a line), and `<x-card>`, whose closed
  * shadow root holds a form with a required field labelled "Card" and a
  * submit button. Every form's `submit` is noted in `window.submitted` and
  * canceled. The other cases (a submit button outside the form, a
@@ -54,10 +58,15 @@ const IMPLICIT_SUBMIT_HTML = `<!doctype html><title>implicit submit</title>
 <form id="echo"><input id="e" name="email2" type="email" value="abc"></form>
 <form id="keyup"><input name="k1" required><input name="k2"></form>
 <form id="busy"><input name="code5" required><button id="busy-go">Go</button></form>
+<form id="ask"><textarea name="q" required></textarea><button id="ask-go">Search</button></form>
+<form id="memo"><textarea name="memo" minlength="10"></textarea><button id="memo-go">Save</button></form>
 <script>
   const onEnter = (name, handler) => document.querySelector('[name=' + name + ']')
     .addEventListener('keydown', (event) => { if (event.key === 'Enter') handler(event); });
   onEnter('handle', (event) => { event.preventDefault(); event.target.form.requestSubmit(); });
+  onEnter('q', (event) => { event.preventDefault(); event.target.form.requestSubmit(); });
+  const memo = document.querySelector('[name=memo]');
+  memo.addEventListener('input', () => memo.reportValidity());
   onEnter('alias', (event) => event.target.form.requestSubmit());
   onEnter('code5', () => { new Image().src = '/implicit-submit-pixel?' + Date.now(); });
   window.echoInputs = 0;

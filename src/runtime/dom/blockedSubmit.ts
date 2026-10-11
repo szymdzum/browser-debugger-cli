@@ -192,8 +192,11 @@ const IMPLICIT_SUBMIT_TYPES = ['text', 'search', 'url', 'tel', 'email', 'passwor
  *   without a submit button and with no other text field, the form is
  *   submitted: a probe noting the Enter `keypress` on the field (a
  *   canceled one submits nothing), when the form has no `novalidate`.
- * Other keys, a `<textarea>` (Enter adds a line), a form with several text
- * fields and no button, and elements outside a form get no probe.
+ * - for Enter in a `<textarea>` of a form with no `novalidate`, no probe
+ *   (Enter adds a line) but the `invalid` watch ({@link WATCH_INVALID_JS}),
+ *   which reports only when the page cancels the key (#605).
+ * Other keys, a form with several text fields and no button, and elements
+ * outside a form get no probe.
  * Evaluates to whether it was installed; like the click probe it never
  * fails the key press.
  */
@@ -202,6 +205,9 @@ export const KEY_SUBMIT_PROBE_JS = `(el, key) => {
     const members = ${FORM_MEMBERS_JS};
     const isSubmitButton = ${IS_SUBMIT_BUTTON_JS};
     if (isSubmitButton(el)) return (${SUBMIT_PROBE_JS})(el);
+    if (key === 'Enter' && el.localName === 'textarea') {
+      return !!el.form && !members.noValidate(el.form);
+    }
     const form = key === 'Enter' && el.localName === 'input' ? el.form : null;
     if (!form) return false;
     const root = el.getRootNode();
@@ -228,13 +234,20 @@ export const KEY_SUBMIT_PROBE_JS = `(el, key) => {
  * and on `el`'s shadow root (open or closed; neither event leaves a shadow
  * root). It sees a submit the page's own Enter handler blocks
  * (`requestSubmit()` on an invalid form, a site's own validation), which
- * no button click or `keypress` shows. Evaluates to whether it was
+ * no button click or `keypress` shows. In a `<textarea>` Enter adds a line,
+ * so the watch also notes the Enter `keydown` that reached it: the page
+ * treats the key as a submit only when it canceled that event
+ * (`defaultPrevented`), and a `reportValidity()` on input after a line was
+ * added is no blocked submit. Evaluates to whether it was
  * installed; it never fails the key press.
  */
 export const WATCH_INVALID_JS = `(el) => {
   try {
     const members = ${FORM_MEMBERS_JS};
-    const watch = { fields: [], submitted: false };
+    const watch = { fields: [], submitted: false, keydown: null, textarea: el.localName === 'textarea' };
+    const onKeydown = (event) => {
+      if (event.key === 'Enter') watch.keydown = watch.keydown || event;
+    };
     const onInvalid = (event) => {
       if (!watch.fields.includes(event.target)) watch.fields.push(event.target);
     };
@@ -242,10 +255,12 @@ export const WATCH_INVALID_JS = `(el) => {
     const root = el.getRootNode();
     const scopes = root.nodeType === 11 ? [window, root] : [window];
     scopes.forEach((scope) => {
+      members.listen(scope, 'keydown', onKeydown);
       members.listen(scope, 'invalid', onInvalid);
       members.listen(scope, 'submit', onSubmit);
     });
     watch.stop = () => scopes.forEach((scope) => {
+      members.unlisten(scope, 'keydown', onKeydown);
       members.unlisten(scope, 'invalid', onInvalid);
       members.unlisten(scope, 'submit', onSubmit);
     });
@@ -266,6 +281,9 @@ export const WATCH_INVALID_JS = `(el) => {
  *   cancel it, the form fired no `submit` and it still has invalid fields;
  * - the fields that fired `invalid` and are still invalid, when no form
  *   fired `submit`.
+ * For a `<textarea>` the second kind counts only when `watch.keydown`, the
+ * first Enter keydown seen in the watched scopes during this press (not
+ * necessarily one aimed at the textarea), was canceled by the page.
  * Null when there are none (no probe, a submit, a canceled trigger, a form
  * removed).
  */
@@ -287,7 +305,8 @@ const READ_SUBMIT_PROBE_SCRIPT = `(() => {
       members.isConnected(probe.form)) {
     blocked.push(...members.elements(probe.form).filter(isInvalid));
   }
-  if (watch && !watch.submitted) {
+  const keyCanceled = !watch || !watch.textarea || (watch.keydown && watch.keydown.defaultPrevented);
+  if (watch && !watch.submitted && keyCanceled) {
     blocked.push(...watch.fields.filter((f) => members.isConnected(f) && isInvalid(f)));
   }
   const fields = Array.from(new Set(blocked)).map(${FIELD_ENTRY_JS});

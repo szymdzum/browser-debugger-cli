@@ -255,6 +255,25 @@ void describe('dom pressKey Enter in forms without a usable submit button', () =
     assert.deepEqual(await evaluate('window.submitted'), []);
   });
 
+  void it('reports Enter in a textarea whose handler cancels the newline and submits (#605)', async () => {
+    const output = await bdg(['dom', 'pressKey', 'textarea[name=q]', 'Enter']);
+    assert.match(output, /^⚠ Key Pressed \(submit blocked\)/);
+    assert.ok(
+      output.includes(`Submit blocked: q: ${String(requiredMessage)}`),
+      `no blocked line naming q: ${output}`
+    );
+    const data = await pressKeyJson('textarea[name=q]', 'Enter');
+    assert.deepEqual(data.submitBlocked, [{ field: 'q', message: requiredMessage }]);
+    assert.deepEqual(await evaluate('window.submitted'), []);
+  });
+
+  void it('leaves Enter in a live-validated textarea that adds a line unchanged (#605)', async () => {
+    const data = await pressKeyJson('textarea[name=memo]', 'Enter');
+    assert.equal(data.submitBlocked, undefined);
+    assert.equal(await evaluate("document.querySelector('[name=memo]').value"), '\n');
+    assert.deepEqual(await evaluate('window.submitted'), []);
+  });
+
   void it('names a field once when the page and Enter both try to submit', async () => {
     const output = await bdg(['dom', 'pressKey', '[name=alias]', 'Enter']);
     assert.equal(output.split('alias: ').length - 1, 1, output);
