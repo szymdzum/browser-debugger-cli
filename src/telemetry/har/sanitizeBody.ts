@@ -61,17 +61,11 @@ const DECODABLE_MIME =
 /** Content-Types (without parameters) of HTML bodies, whose secret form-control values are masked */
 const HTML_MIME = /^(?:text\/html|application\/xhtml\+xml)$/i;
 
-/**
- * An `<input>` tag of any case; its attributes may span lines and hold `>`
- * inside quotes. `$1` is the attribute text
- */
-const INPUT_TAG = /<input\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+/** Start of an `<input>` or `<textarea>` tag of any case (`$1` the name); a fresh copy per scan */
+const CONTROL_START = /<(input|textarea)\b/gi;
 
-/**
- * A `<textarea>` element of any case, up to its end tag: `$1` is the
- * attribute text, `$2` the content
- */
-const TEXTAREA = /<textarea\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/textarea\s*>/gi;
+/** End tag of a `<textarea>`, any case; a fresh copy per scan */
+const TEXTAREA_END = /<\/textarea\s*>/gi;
 
 /**
  * One attribute of a tag: `$1` the name; `$2`, `$3` or `$4` the value
@@ -81,10 +75,6 @@ const ATTRIBUTE = /([^\s"'<>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)
 
 /** An `autocomplete` token that names a card, one-time code or password field */
 const SECRET_AUTOCOMPLETE = /(^|\s)(cc-[a-z-]+|one-time-code|current-password|new-password)(\s|$)/i;
-
-/** Length of `<input` or `<textarea`, the part of a tag before its attributes */
-const INPUT_PREFIX = '<input'.length;
-const TEXTAREA_PREFIX = '<textarea'.length;
 
 /**
  * An auth scheme (any case, as RFC 7235 allows) followed on the same line by
@@ -143,6 +133,34 @@ interface ParsedAttribute {
   value: string;
   /** Index of the value's first character in the attribute text, when it has one */
   valueStart: number;
+}
+
+/**
+ * State of a scan of HTML text.
+ */
+interface HtmlScan {
+  /** Text scanned */
+  text: string;
+  /** Unchanged slices and replacements written so far */
+  parts: string[];
+  /** End of the text copied into `parts` */
+  copied: number;
+  /** Text written instead of each value */
+  placeholder: string;
+  /** Index from which no closing quote of each kind was found (none is found later either) */
+  noQuoteFrom: Record<string, number>;
+  /** Index from which no `</textarea>` was found */
+  noTextareaEndFrom: number;
+}
+
+/**
+ * Where a tag ends.
+ */
+interface TagEnd {
+  /** Index of the closing `>`; none for a tag broken by a `<` or an unclosed quote */
+  close?: number;
+  /** Index the scan goes on from */
+  resume: number;
 }
 
 /**
@@ -254,11 +272,14 @@ export function redactBody(text: string, mimeType: string, placeholder = REDACTE
  * and the non-empty content of a `<textarea>` judged the same way. The rest
  * of the HTML, inline scripts included, stays byte for byte.
  *
- * The HTML is scanned as text, not parsed: tags of any case, attributes in
- * any order, quoted (entities kept), single-quoted or unquoted values, and
- * tags split over lines are understood; a `<select>`'s options, a control
- * written inside a script string or comment (masked too), and a tag broken
- * by an unclosed quote are its limits.
+ * The HTML is scanned as text, not parsed, in one linear pass: tags of any
+ * case, attributes in any order, quoted (entities kept), single-quoted or
+ * unquoted values, `>` inside quotes and tags split over lines are
+ * understood. A tag broken by a `<` or an unclosed quote is not judged, and
+ * the scan goes on from that `<` (a quote or end tag not found once is not
+ * looked for again, so a hostile body of a million tag starts is still one
+ * pass). A `<select>`'s options, and a control written inside a script
+ * string or comment (masked too), are its limits.
  *
  * @param text - HTML text
  * @param placeholder - Text written instead of each value
@@ -266,14 +287,133 @@ export function redactBody(text: string, mimeType: string, placeholder = REDACTE
  *   has no secret control
  */
 export function redactHtmlFields(text: string, placeholder = REDACTED): string {
-  if (!/<(?:input|textarea)\b/i.test(text)) return text;
-  return text
-    .replace(INPUT_TAG, (tag: string, attributes: string) =>
-      redactInputValues(tag, attributes, placeholder)
-    )
-    .replace(TEXTAREA, (element: string, attributes: string, content: string) =>
-      redactTextareaContent(element, attributes, content, placeholder)
-    );
+  const scan: HtmlScan = {
+    text,
+    parts: [],
+    copied: 0,
+    placeholder,
+    noQuoteFrom: { '"': Infinity, "'": Infinity },
+    noTextareaEndFrom: Infinity,
+  };
+  const start = new RegExp(CONTROL_START.source, CONTROL_START.flags);
+  let match = start.exec(text);
+  while (match !== null) {
+    const attributesStart = match.index + match[0].length;
+    const isTextarea = (match[1] ?? '').toLowerCase() === 'textarea';
+    start.lastIndex = scanControl(scan, attributesStart, isTextarea);
+    match = start.exec(text);
+  }
+  if (scan.parts.length === 0) return text;
+  scan.parts.push(text.slice(scan.copied));
+  return scan.parts.join('');
+}
+
+/**
+ * Judge one control whose tag starts at an index and replace its value(s).
+ *
+ * @param scan - Scan state
+ * @param attributesStart - Index after the tag name
+ * @param isTextarea - Whether it is a `<textarea>` (its content is the value)
+ * @returns Index the scan goes on from
+ */
+function scanControl(scan: HtmlScan, attributesStart: number, isTextarea: boolean): number {
+  const end = tagEnd(scan, attributesStart);
+  if (end.close === undefined) return end.resume;
+  const attributes = scan.text.slice(attributesStart, end.close);
+  if (!isTextarea) {
+    const redacted = redactInputValues(attributes, scan.placeholder);
+    if (redacted !== undefined) replaceHtml(scan, attributesStart, end.close, redacted);
+    return end.resume;
+  }
+  const contentStart = end.close + 1;
+  const endTag = textareaEnd(scan, contentStart);
+  if (endTag === undefined) return contentStart;
+  if (endTag.index > contentStart && isSecretControl(parseAttributes(attributes))) {
+    replaceHtml(scan, contentStart, endTag.index, scan.placeholder);
+  }
+  return endTag.index + endTag[0].length;
+}
+
+/**
+ * Walk a tag's attributes to its closing `>`, honouring quotes.
+ *
+ * @param scan - Scan state
+ * @param from - Index after the tag name
+ * @returns The closing index, or where to go on from when the tag is broken
+ */
+function tagEnd(scan: HtmlScan, from: number): TagEnd {
+  const { text } = scan;
+  let index = from;
+  while (index < text.length) {
+    const char = text[index] ?? '';
+    if (char === '>') return { close: index, resume: index + 1 };
+    if (char === '<') return { resume: index };
+    if (char !== '"' && char !== "'") {
+      index++;
+      continue;
+    }
+    const closing =
+      index + 1 >= (scan.noQuoteFrom[char] ?? Infinity) ? -1 : text.indexOf(char, index + 1);
+    if (closing === -1) {
+      scan.noQuoteFrom[char] = Math.min(scan.noQuoteFrom[char] ?? Infinity, index + 1);
+      const next = text.indexOf('<', from);
+      return { resume: next === -1 ? text.length : next };
+    }
+    index = closing + 1;
+  }
+  return { resume: text.length };
+}
+
+/**
+ * The `</textarea>` end tag at or after an index.
+ *
+ * @param scan - Scan state
+ * @param from - Index after the start tag
+ * @returns Its match, or undefined when there is none
+ */
+function textareaEnd(scan: HtmlScan, from: number): RegExpExecArray | undefined {
+  if (from >= scan.noTextareaEndFrom) return undefined;
+  const end = new RegExp(TEXTAREA_END.source, TEXTAREA_END.flags);
+  end.lastIndex = from;
+  const match = end.exec(scan.text);
+  if (match === null) scan.noTextareaEndFrom = from;
+  return match ?? undefined;
+}
+
+/**
+ * Write a replacement instead of the text between two indices.
+ *
+ * @param scan - Scan state
+ * @param start - Index of the first character replaced
+ * @param end - Index after the last
+ * @param replacement - Text written instead
+ */
+function replaceHtml(scan: HtmlScan, start: number, end: number, replacement: string): void {
+  scan.parts.push(scan.text.slice(scan.copied, start), replacement);
+  scan.copied = end;
+}
+
+/**
+ * Replace the non-empty `value` attributes of an `<input>` when the control
+ * holds a secret.
+ *
+ * @param attributes - Attribute text of the tag
+ * @param placeholder - Text written instead of each value
+ * @returns The attribute text with its values replaced (quotes kept), or
+ *   undefined when the control is not a secret or has no value
+ */
+function redactInputValues(attributes: string, placeholder: string): string | undefined {
+  const parsed = parseAttributes(attributes);
+  if (!isSecretControl(parsed)) return undefined;
+  let redacted = attributes;
+  let changed = false;
+  for (const attribute of [...parsed].reverse()) {
+    if (attribute.name !== 'value' || attribute.value === '') continue;
+    const end = attribute.valueStart + attribute.value.length;
+    redacted = `${redacted.slice(0, attribute.valueStart)}${placeholder}${redacted.slice(end)}`;
+    changed = true;
+  }
+  return changed ? redacted : undefined;
 }
 
 /**
@@ -320,47 +460,6 @@ function isSecretControl(attributes: ParsedAttribute[]): boolean {
   const autocomplete = first('autocomplete');
   if (SECRET_AUTOCOMPLETE.test(autocomplete)) return true;
   return isSensitiveName([first('name'), first('id'), autocomplete].join(' '));
-}
-
-/**
- * Replace the non-empty `value` attributes of an `<input>` tag when the
- * control holds a secret.
- *
- * @param tag - The whole tag
- * @param attributes - Its attribute text
- * @param placeholder - Text written instead of each value
- * @returns The tag, with its values replaced (quotes kept) when it is a secret control
- */
-function redactInputValues(tag: string, attributes: string, placeholder: string): string {
-  const parsed = parseAttributes(attributes);
-  if (!isSecretControl(parsed)) return tag;
-  let redacted = attributes;
-  for (const attribute of [...parsed].reverse()) {
-    if (attribute.name !== 'value' || attribute.value === '') continue;
-    const end = attribute.valueStart + attribute.value.length;
-    redacted = `${redacted.slice(0, attribute.valueStart)}${placeholder}${redacted.slice(end)}`;
-  }
-  return `${tag.slice(0, INPUT_PREFIX)}${redacted}>`;
-}
-
-/**
- * Replace the content of a `<textarea>` when it holds a secret.
- *
- * @param element - The whole element
- * @param attributes - Its attribute text
- * @param content - Its content
- * @param placeholder - Text written instead of the content
- * @returns The element, with its content replaced when it is a non-empty secret control
- */
-function redactTextareaContent(
-  element: string,
-  attributes: string,
-  content: string,
-  placeholder: string
-): string {
-  if (content === '' || !isSecretControl(parseAttributes(attributes))) return element;
-  const contentStart = TEXTAREA_PREFIX + attributes.length + 1;
-  return `${element.slice(0, contentStart)}${placeholder}${element.slice(contentStart + content.length)}`;
 }
 
 /**

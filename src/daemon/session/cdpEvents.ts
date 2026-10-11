@@ -111,7 +111,13 @@ class NdjsonFile {
       if (target?.isDirectory()) throw Object.assign(new Error('directory'), { code: 'EISDIR' });
       await fs.promises.mkdir(path.dirname(file), { recursive: true });
       const handle = await fs.promises.open(temp, TEMP_FILE_FLAGS, OUT_FILE_MODE);
-      await handle.chmod(OUT_FILE_MODE);
+      try {
+        await handle.chmod(OUT_FILE_MODE);
+      } catch (error) {
+        await handle.close().catch(() => undefined);
+        await fs.promises.rm(temp, { force: true });
+        throw error;
+      }
       return new NdjsonFile(file, temp, handle.createWriteStream(), maxPendingBytes);
     } catch (error) {
       throw outputPathError(file, error, '.ndjson');

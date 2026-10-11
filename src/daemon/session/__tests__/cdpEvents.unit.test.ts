@@ -302,6 +302,34 @@ void describe('collectEvents', () => {
     );
   }
 
+  void it('removes the temp file when it cannot be made 0600 (#624 review)', async () => {
+    const dir = fs.mkdtempSync(path.join(tmpDir, 'chmod-'));
+    const file = path.join(dir, 'events.ndjson');
+    const open = fs.promises.open.bind(fs.promises);
+    mock.method(fs.promises, 'open', async (...args: Parameters<typeof open>) => {
+      const handle = await open(...args);
+      mock.method(handle, 'chmod', () =>
+        Promise.reject(Object.assign(new Error('not permitted'), { code: 'EPERM' }))
+      );
+      return handle;
+    });
+    const source = new FakeSource();
+    await assert.rejects(
+      collectEvents(source, () => Promise.resolve({}), {
+        events: ['A.b'],
+        timeoutMs: 10,
+        out: file,
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof CommandError);
+        assert.equal(error.exitCode, EXIT_CODES.PERMISSION_DENIED);
+        return true;
+      }
+    );
+    mock.restoreAll();
+    assert.deepEqual(fs.readdirSync(dir), [], 'no temp file left');
+  });
+
   void it(
     'replaces a symlink at --out by a 0600 file, leaving its destination (#624)',
     { skip: process.platform === 'win32' },

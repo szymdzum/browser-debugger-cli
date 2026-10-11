@@ -99,6 +99,35 @@ void describe('HTML bodies: redactHtmlFields', () => {
     assert.equal(redactHtmlFields(html, REDACTED), want);
   });
 
+  test('keeps a tag broken by an unclosed quote or a < and judges the next one', () => {
+    const html = page(
+      '<input name="token" value="BROKEN-H634 <input name="token" value="NEXT-H634">'
+    );
+    assert.equal(
+      redactHtmlFields(html, REDACTED),
+      page(`<input name="token" value="BROKEN-H634 <input name="token" value="${REDACTED}">`)
+    );
+    const unclosed = page(`<input name="token" value='OPEN-H634 <input name=pw value=X-H634>`);
+    assert.equal(
+      redactHtmlFields(unclosed, REDACTED),
+      page(`<input name="token" value='OPEN-H634 <input name=pw value=${REDACTED}>`)
+    );
+  });
+
+  for (const [name, piece] of [
+    ['tag starts', '<input '],
+    ['unclosed quotes', '<input a="'],
+    ['textarea starts', '<textarea>'],
+    ['unclosed textareas', '<textarea name=pw>x'],
+  ] as const) {
+    test(`redacts 1 MB of ${name} in one pass`, () => {
+      const body = piece.repeat(Math.ceil((1024 * 1024) / piece.length));
+      const started = performance.now();
+      assert.equal(redactHtmlFields(body, REDACTED), body);
+      assert.ok(performance.now() - started < 2000, `${name} took over 2 s`);
+    });
+  }
+
   test('also redacts a JWT in the HTML', () => {
     const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl';
     const html = page(`<p>${jwt}</p><input name="q" value="${jwt}">`);
