@@ -15,8 +15,8 @@ import { describe, it } from 'node:test';
 
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { MASKED_VALUE } from '@/runtime/dom/elementInfo.js';
-import { maskSecretRelations, secretRelationIds } from '@/telemetry/a11y.js';
-import type { A11yNode } from '@/types.js';
+import { maskSecretMessages, maskSecretRelations, secretRelationIds } from '@/telemetry/a11y.js';
+import type { A11yNode, A11yTree } from '@/types.js';
 
 /** The card field's backend node id (secret) and the label's (not) */
 const CARD = 14;
@@ -150,5 +150,35 @@ void describe('secret relations of an accessibility node (#642)', () => {
       maskSecretRelations(parsed(DESCRIBED_BY_CARD), DESCRIBED_BY_CARD, () => false).description,
       '4111111111111111'
     );
+  });
+});
+
+void describe('validation alert of a secret field (#643)', () => {
+  void it('renames the alert that carries a secret field\u2019s validation message, nothing else', () => {
+    const alert: A11yNode = {
+      nodeId: '-1',
+      role: 'alert',
+      name: 'Please lengthen this text to 8 characters or more (you are currently using 5 characters). ',
+    };
+    const label: A11yNode = { nodeId: '2', role: 'StaticText', name: 'Nickname' };
+    const root: A11yNode = {
+      nodeId: '1',
+      role: 'RootWebArea',
+      name: 'page',
+      childIds: ['-1', '2'],
+    };
+    const tree: A11yTree = {
+      root,
+      nodes: new Map([
+        ['1', root],
+        ['-1', alert],
+        ['2', label],
+      ]),
+      count: 3,
+    };
+    maskSecretMessages(tree, new Set([(alert.name ?? '').trim()]));
+    assert.equal(tree.nodes.get('-1')?.name, MASKED_VALUE);
+    assert.equal(tree.nodes.get('2')?.name, 'Nickname');
+    assert.doesNotMatch(JSON.stringify([...tree.nodes.values()]), /using 5 characters/);
   });
 });

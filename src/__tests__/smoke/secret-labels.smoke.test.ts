@@ -320,6 +320,15 @@ void describe('secret labels', () => {
     const submit = await bdg(['dom', 'submit', '#vault'], 81);
     assert.doesNotMatch(submit, PASSWORD_LENGTH, 'dom submit shows the password length');
     assert.match(submit, /pw: tooShort: at least 8 characters; nick: /);
+
+    await bdg(['dom', 'click', '#go']);
+    const tree = await bothModes(['dom', 'a11y', 'tree', '--limit', '0']);
+    assert.doesNotMatch(
+      tree,
+      PASSWORD_LENGTH,
+      'the validation alert in the a11y tree shows the password length'
+    );
+    assert.match(tree, /\[Alert\] "••••"/);
   });
 
   void it('dom form reports the secret field by its validity state, not its length (#643)', async () => {

@@ -2,8 +2,9 @@
  * A field is secret by its accessible label too (#633): the shared secret
  * name rule is applied to a text-like control's `aria-label`, the text of
  * its `aria-labelledby` targets, its `<label for>` or wrapping label, its
- * placeholder and title, never to a checkbox, radio or button (a "Show
- * password" checkbox is not masked) and never to the control's own text.
+ * placeholder and title, never to a checkbox, radio, button or
+ * contenteditable element (a "Show password" checkbox is not masked) and
+ * never to the control's own text.
  *
  * The rule runs here in an isolated VM context on element-like objects.
  */
@@ -141,9 +142,9 @@ const CASES: ReadonlyArray<readonly [kind: string, field: FakeElement, secret: b
     true,
   ],
   [
-    'contenteditable with aria-label "Password"',
+    'contenteditable with aria-label "Password" (its text is not masked anywhere)',
     element({ localName: 'div', contentEditable: true, attributes: { 'aria-label': 'Password' } }),
-    true,
+    false,
   ],
   [
     'checkbox labelled "Show password"',

@@ -191,14 +191,13 @@ export const MASKED_VALUE = '••••';
 /**
  * Page-side: whether a control takes text a label may mark as secret
  * (#633): a text-like input (text, search, tel, email, url, number,
- * password), a textarea, a select or a contenteditable element. A
- * checkbox, radio or button is not one, so a "Show password" checkbox
- * stays readable.
+ * password), a textarea or a select. A checkbox, radio or button is not
+ * one, so a "Show password" checkbox stays readable; nor is a
+ * contenteditable element, whose text no surface masks.
  */
 const TEXT_CONTROL_JS = `(el) =>
   el.localName === 'textarea' ||
   el.localName === 'select' ||
-  el.isContentEditable === true ||
   (el.localName === 'input' && /^(text|search|tel|email|url|number|password)$/.test(el.type))`;
 
 /**

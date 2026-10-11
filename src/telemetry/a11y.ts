@@ -193,7 +193,9 @@ export async function collectA11yTree(): Promise<A11yTree> {
     const rawNodes = [...result.nodes, ...(await collectFrameNodes(result.nodes))];
     const tree = buildTreeFromRawNodes(rawNodes);
     const secretIds = await sensitiveNodeIds(tree);
-    return maskSecretReferences(maskSecretValues(tree, secretIds), rawNodes, secretIds);
+    maskSecretValues(tree, secretIds);
+    maskSecretReferences(tree, rawNodes, secretIds);
+    return maskSecretMessages(tree, await secretValidationMessages(tree, secretIds));
   } finally {
     await callCDP('Accessibility.disable', {});
   }
@@ -263,20 +265,30 @@ async function isSensitiveField(
   backendNodeId: number,
   check: string = SECRET_VALUE_CHECK_JS
 ): Promise<boolean> {
+  return (await readOnElement(backendNodeId, check)) !== false;
+}
+
+/**
+ * Run a page-side function on an element (as `this`) and read its result
+ * by value, in an object group of its own (see {@link isSensitiveField}).
+ *
+ * @param backendNodeId - The element
+ * @param functionDeclaration - Function source
+ * @returns The result; undefined when the element cannot be resolved
+ */
+async function readOnElement(backendNodeId: number, functionDeclaration: string): Promise<unknown> {
   const objectGroup = `bdg-a11y-secret-${process.pid}-${++secretChecks}`;
   const resolved = await callBdgScript('DOM.resolveNode', { backendNodeId, objectGroup });
   const objectId = (resolved.data?.result as Protocol.DOM.ResolveNodeResponse | undefined)?.object
     ?.objectId;
-  if (!objectId) return true;
+  if (!objectId) return undefined;
   try {
     const response = await callCDP('Runtime.callFunctionOn', {
       objectId,
-      functionDeclaration: check,
+      functionDeclaration,
       returnByValue: true,
     });
-    const value = (response.data?.result as { result?: { value?: unknown } } | undefined)?.result
-      ?.value;
-    return value !== false;
+    return (response.data?.result as { result?: { value?: unknown } } | undefined)?.result?.value;
   } finally {
     await callCDP('Runtime.releaseObjectGroup', { objectGroup });
   }
@@ -304,6 +316,56 @@ export function maskSecretValues(tree: A11yTree, secretIds: ReadonlySet<string>)
     node.childIds?.forEach((childId) => hide(childId, true));
   };
   secretIds.forEach((nodeId) => hide(nodeId, false));
+  return tree;
+}
+
+/** Page-side: the browser's validation message of a field, if any */
+const VALIDATION_MESSAGE_JS = `function () { return typeof this.validationMessage === 'string' ? this.validationMessage : ''; }`;
+
+/**
+ * The browser's validation messages of the secret fields that have one
+ * (#643): Chrome shows the message of the invalid field it focused as an
+ * `alert` node of the tree, and the text may give the value's length.
+ *
+ * @param tree - Accessibility tree
+ * @param secretIds - Node ids of secret fields
+ * @returns The messages, each once
+ */
+async function secretValidationMessages(
+  tree: A11yTree,
+  secretIds: ReadonlySet<string>
+): Promise<Set<string>> {
+  const elements = [...secretIds]
+    .map((nodeId) => tree.nodes.get(nodeId)?.backendDOMNodeId)
+    .filter((id): id is number => id !== undefined);
+  const limiter = new ConcurrencyLimiter(SENSITIVE_CHECK_CONCURRENCY);
+  const messages = await Promise.all(
+    elements.map((backendNodeId) =>
+      limiter.run(() => readOnElement(backendNodeId, VALIDATION_MESSAGE_JS))
+    )
+  );
+  return new Set(messages.filter((message): message is string => Boolean(message)));
+}
+
+/**
+ * The tree with every node whose name is a secret field's validation
+ * message (the `alert` Chrome shows for the invalid field it focused)
+ * renamed {@link MASKED_VALUE} (#643); the alert's name may carry a
+ * trailing space, so names are compared trimmed.
+ *
+ * @param tree - Accessibility tree
+ * @param messages - Validation messages of secret fields
+ * @returns The same tree (nodes replaced in place)
+ */
+export function maskSecretMessages(tree: A11yTree, messages: ReadonlySet<string>): A11yTree {
+  if (messages.size === 0) return tree;
+  const trimmed = new Set([...messages].map((message) => message.trim()));
+  for (const [nodeId, node] of tree.nodes) {
+    if (node.name === undefined || !trimmed.has(node.name.trim())) continue;
+    const masked = { ...node, name: MASKED_VALUE };
+    tree.nodes.set(nodeId, masked);
+    if (tree.root.nodeId === nodeId) tree.root = masked;
+  }
   return tree;
 }
 
