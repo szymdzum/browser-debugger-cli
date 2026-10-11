@@ -239,7 +239,7 @@ void describe('maskNetworkRequest', () => {
     const { value, masked } = mask({
       webSocket: {
         frames: [
-          { timestamp: 1, direction: 'sent', opcode: 1, payloadData: 'AUTH Bearer WB1 now' },
+          { timestamp: 1, direction: 'sent', opcode: 1, payloadData: 'AUTH Bearer WB1-S615 now' },
           {
             timestamp: 2,
             direction: 'sent',
@@ -252,6 +252,12 @@ void describe('maskNetworkRequest', () => {
             opcode: 1,
             payloadData: 'the basic plan, bearer of news',
           },
+          {
+            timestamp: 4,
+            direction: 'sent',
+            opcode: 1,
+            payloadData: 'bearer abc123; BEARER Xy_99zz',
+          },
         ],
       },
     });
@@ -263,6 +269,7 @@ void describe('maskNetworkRequest', () => {
       `login Basic ${MASK}`
     );
     assert.equal(frames[2]?.payloadData, 'the basic plan, bearer of news');
+    assert.equal(frames[3]?.payloadData, `bearer ${MASK}; BEARER ${MASK}`);
   });
 
   test('keeps HTTP message signature metadata and masks the signature', () => {

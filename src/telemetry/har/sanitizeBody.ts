@@ -55,11 +55,17 @@ const DECODABLE_MIME =
   /^(?:application\/octet-stream|binary\/octet-stream|application\/x-www-form-urlencoded|text\/event-stream)?$|json/i;
 
 /**
- * An auth scheme as written in headers and its credentials, in text
- * (`Bearer abc`, `Basic dXNlcjpw`); case-sensitive, so prose such as "the
- * basic plan" is left alone
+ * An auth scheme (any case, as RFC 7235 allows) followed on the same line by
+ * a word of at least 6 token characters (`Bearer abc123`, `basic dXNlcjpw`);
+ * {@link isTokenShaped} decides whether the word is a credential
  */
-const SCHEME_CREDENTIALS = /\b(Bearer|Basic)(\s+)[^\s"',;]+/g;
+const SCHEME_CREDENTIALS = /\b(bearer|basic)([ \t]+)([\w.~+/=-]{6,})(?![\w.~+/=-])/gi;
+
+/** A digit or a token symbol, which prose words do not have */
+const TOKEN_SYMBOL = /[\d._~+/=-]/;
+
+/** An uppercase letter after the first character (`dXNlcjpw`, `TOKEN`) */
+const INNER_UPPERCASE = /.[A-Z]/;
 
 /** A bare value (number, `true`, `false`, `null`) or word, up to the next delimiter */
 const BARE = /[^\s,:[\]{}"]+/y;
@@ -211,8 +217,9 @@ export function redactBase64Body(base64: string, mimeType: string, placeholder =
 /**
  * Redact credential fields of a WebSocket text message: as a body
  * ({@link redactBody}), and in a message that is neither JSON nor a form,
- * the credentials after a `Bearer` or `Basic` scheme too (`Bearer abc` is
- * written `Bearer [redacted]`); the rest stays byte for byte.
+ * a token-shaped credential after a `Bearer` or `Basic` scheme of any case
+ * on the same line too (`bearer abc123` is written `bearer [redacted]`;
+ * `Basic information` stays); the rest stays byte for byte.
  *
  * @param text - Message text
  * @param placeholder - Text written instead of each credential value
@@ -221,7 +228,23 @@ export function redactBase64Body(base64: string, mimeType: string, placeholder =
 export function redactMessage(text: string, placeholder = REDACTED): string {
   const redacted = redactBody(text, '', placeholder);
   if (JSON_LIKE_START.test(text) || FORM_BODY.test(text)) return redacted;
-  return redacted.replace(SCHEME_CREDENTIALS, `$1$2${placeholder}`);
+  return redacted.replace(
+    SCHEME_CREDENTIALS,
+    (match, scheme: string, space: string, value: string) =>
+      isTokenShaped(value) ? `${scheme}${space}${placeholder}` : match
+  );
+}
+
+/**
+ * Whether a word after an auth scheme looks like a credential rather than
+ * prose: it has a digit or symbol, or an uppercase letter after its first
+ * character (base64). `Basic information` and `bearer of` are prose.
+ *
+ * @param value - Word after the scheme
+ * @returns True for a token-shaped word
+ */
+function isTokenShaped(value: string): boolean {
+  return TOKEN_SYMBOL.test(value) || INNER_UPPERCASE.test(value);
 }
 
 /**

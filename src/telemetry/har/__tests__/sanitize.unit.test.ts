@@ -377,12 +377,50 @@ void describe('HAR sanitization: URLs', () => {
       ...LOGIN_REQUEST,
       resourceType: 'WebSocket',
       webSocket: {
-        frames: [{ timestamp: 1, direction: 'sent', opcode: 1, payloadData: 'Bearer WB1' }],
+        frames: [{ timestamp: 1, direction: 'sent', opcode: 1, payloadData: 'Bearer WB1-S615' }],
       },
     });
     assert.deepEqual(
       entry._webSocketMessages?.map((m) => m.data),
       [`Bearer ${REDACTED}`]
+    );
+  });
+
+  test('redacts Bearer and Basic credentials of any case, never prose', () => {
+    const messages = [
+      'bearer abc123',
+      'BEARER Xy_99zz',
+      'basic dXNlcjpwYXNz',
+      'Basic information',
+      'bearer of bad news',
+      'Basic plan rocks',
+      'Bearer\nnext1234',
+      'Bearer abc',
+    ];
+    const entry = entryFor({
+      ...LOGIN_REQUEST,
+      resourceType: 'WebSocket',
+      webSocket: {
+        frames: messages.map((payloadData, i) => ({
+          timestamp: i,
+          direction: 'sent' as const,
+          opcode: 1,
+          payloadData,
+        })),
+      },
+    });
+    assert.deepEqual(
+      entry._webSocketMessages?.map((m) => m.data),
+      [
+        `bearer ${REDACTED}`,
+        `BEARER ${REDACTED}`,
+        `basic ${REDACTED}`,
+        'Basic information',
+        'bearer of bad news',
+        'Basic plan rocks',
+        'Bearer\nnext1234',
+        'Bearer abc',
+      ]
     );
   });
 
