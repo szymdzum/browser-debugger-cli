@@ -67,6 +67,16 @@ void describe('summarizePendingRequests', () => {
   });
 });
 
+void describe('summarizePendingRequests URLs (#623)', () => {
+  void it('removes the user info and masks the tokens of a pending request', () => {
+    const summary = summarizePendingRequests(
+      [pending('http://bob:PW@api.test/poll?access_token=T&q=plain', 1000, 'Fetch')],
+      1500
+    );
+    assert.equal(summary[0]?.url, 'http://api.test/poll?access_token=••••&q=plain');
+  });
+});
+
 void describe('readPageLoadingState', () => {
   void it('reports nothing for a complete document', async () => {
     assert.equal(await readPageLoadingState(fakeCdp('complete'), [pending('x', 0)]), undefined);

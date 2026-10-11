@@ -12,6 +12,7 @@ import type { PendingRequest } from '@/telemetry/network.js';
 import type { CDPSender } from '@/telemetry/objectExpander.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { raceTimeout } from '@/utils/async.js';
+import { displayUrl } from '@/utils/displayUrl.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
 const log = createLogger('readiness');
@@ -51,7 +52,7 @@ export function summarizePendingRequests(
     .slice(0, MAX_NAMED_PENDING_REQUESTS)
     .map(({ request }) => ({
       method: request.method,
-      url: request.url,
+      url: displayUrl(request.url),
       ...(request.resourceType && { resourceType: request.resourceType }),
       pendingMs: Math.max(0, now - request.timestamp),
     }));

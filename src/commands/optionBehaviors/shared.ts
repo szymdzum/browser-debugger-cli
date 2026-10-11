@@ -23,7 +23,7 @@ export const MASKED_URL_ENABLED =
 
 /** Hidden behaviors of masked page URLs */
 export const MASKED_URL_AUTOMATIC =
-  'Matching is by parameter name, so it over-masks harmless values under credential-looking names and keeps credentials under other names. The start output, page navigate, action results (navigation, triggered requests, opened tabs), dom form action, the a11y root url and daemon.log are always masked: no flag shows them';
+  'Matching is by parameter name, so it over-masks harmless values under credential-looking names and keeps credentials under other names. The start output, page navigate, action results (navigation, triggered requests, opened tabs), dom form action, the a11y root url and daemon.log are always masked: no flag shows them. dom frames and the frame field of frame-scoped results, pendingRequests of a page still loading, console message sources and the user info of a URL nested in a query value or wrapped by a blob: URL are masked too';
 
 /** How every follow mode (peek, console, network list) runs and ends */
 export const FOLLOW_BEHAVIOR =

@@ -66,6 +66,31 @@ void describe('displayUrl', () => {
     });
   }
 
+  for (const includeSensitive of [false, true]) {
+    const mode = includeSensitive ? 'with' : 'without';
+    void it(`removes the user info of a URL nested in a query value, ${mode} --include-sensitive`, () => {
+      assert.equal(
+        displayUrl('http://host/login?next=http://u:p@x/path&q=plain', includeSensitive),
+        'http://host/login?next=http://x/path&q=plain'
+      );
+      assert.equal(
+        displayUrl('http://host/login?next=http%3A%2F%2Fu%3Ap%40x%2Fpath', includeSensitive),
+        'http://host/login?next=http%3A%2F%2Fx%2Fpath'
+      );
+      assert.equal(
+        displayUrl('http://host/p#return=//u:p@x/', includeSensitive),
+        'http://host/p#return=//x/'
+      );
+    });
+
+    void it(`removes the user info of the URL a blob: URL wraps, ${mode} --include-sensitive`, () => {
+      assert.equal(
+        displayUrl('blob:http://u:p@h/550e8400-e29b', includeSensitive),
+        'blob:http://h/550e8400-e29b'
+      );
+    });
+  }
+
   void it('leaves a URL without a query, fragment or user info alone', () => {
     for (const url of ['about:blank', '', 'http://host/', 'data:text/html,<p>x</p>']) {
       assert.equal(displayUrl(url), url);

@@ -25,8 +25,8 @@ const MASKED_OUTPUT_AUTOMATIC =
 /** Behaviors by registry key */
 export const NETWORK_BEHAVIORS: BehaviorTable = {
   'list:--include-sensitive': {
-    default: MASKED_URL_DEFAULT,
-    whenEnabled: `${MASKED_URL_ENABLED}; with --follow the warning is printed once on stderr`,
+    default: `${MASKED_URL_DEFAULT}. --filter matches the shown (masked) URL, so url~token=abc does not match`,
+    whenEnabled: `${MASKED_URL_ENABLED}; --filter matches the raw URL again; with --follow the warning is printed once on stderr`,
     automaticBehavior: MASKED_URL_AUTOMATIC,
   },
   'list:--follow': {
