@@ -214,10 +214,14 @@ void describe('secret labels', () => {
     ]);
     assert.equal(form?.fields.find((field) => field.selector === '#show')?.value, false);
     const select = form?.fields.find((field) => field.selector === '#sel');
-    assert.deepEqual(select?.options, [
-      { value: '', label: MASK, selected: true },
-      { value: '', label: MASK, selected: false },
-    ]);
+    assert.deepEqual(
+      select?.options,
+      [
+        { value: '', label: MASK, selected: false },
+        { value: '', label: MASK, selected: false },
+      ],
+      'the chosen option of a secret select is not given away (its position names it in the page source)'
+    );
     assert.equal(form?.fields.find((field) => field.selector === '#ref')?.label, 'Confirm ••••');
   });
 
