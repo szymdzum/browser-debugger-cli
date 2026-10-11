@@ -46,7 +46,9 @@ Spawn one implementer per issue with the implementer brief. Fill in scope, decis
 
 **Implementers run in the background**, so a finished one gets its review while the others still work (on the first plan, a wave of three held a ready PR for 40 minutes). Keep the user informed instead: one line at each step change (started, red commit, draft PR, report in), and `git status --short` of the worktree when asked. **Reviewers and testers run in the foreground**: they take 1–5 minutes and the next step waits on them. Every subagent gets a **fresh context** (`general-purpose` / `code-reviewer`, never a fork of this conversation).
 
-An implementer's report ends with one fixed line: `PR <url> HEAD <sha> CI <run id> <conclusion>`. No such line means the work isn't done. If an agent stops without it, don't wait: read the PR and CI state yourself (`gh pr view`, `gh pr checks`) and resume the agent with what's missing.
+**Models (token budget, decided 2026-10-11 after a session burned the monthly MAX quota):** `model: sonnet` for the reviewer, tester, verifier, themed sweep, Explore and tier 1–2 implementers; `model: opus` only for a tier 3 implementer; never the default (Fable). The orchestrator waits for CI, not the implementer: an implementer that polls CI for 20 minutes re-reads its whole context on every poll (one did 180 tool calls, 350 k tokens). Implementers run only the affected smoke files; the full suite is CI's job (asking for it locally doubled a refactor PR's cost). Subagent reports are capped at about 40 lines; the PR body carries the detail.
+
+An implementer's report ends with one fixed line: `PR <url> HEAD <sha>`. No such line means the work isn't done. If an agent stops without it, don't wait: read the PR state yourself (`gh pr view`) and resume the agent with what's missing. You then wait for CI on that head with one background command (Commands below) and send the review in parallel; a push with no `pull_request` run after 3 minutes gets a close/reopen of the PR, not a dispatch (the required `CI OK` must come from a pull_request run).
 
 ### Review
 
@@ -125,7 +127,7 @@ Merge only when **all** hold. If one fails, fix it; don't negotiate it.
 - **A rebase after the agent's last test run:** re-run typecheck and the affected tests before merging.
 - **A new test that passed on its first run** is at best a regression test. Ask what it would have caught; the report must say.
 - **"Flaky" can be a real bug.** Root-cause a flake before calling it one; several were product bugs or tests asserting wrong timing.
-- **A report without the final `PR … HEAD … CI …` line** is not done. Read the PR and CI state yourself and resume the agent.
+- **A report without the final `PR … HEAD …` line** is not done. Read the PR state yourself and resume the agent.
 - **CodeQL or linters on test fixtures** (e.g. a variable named `SECRET`): rename, don't suppress. An open CodeQL alert on `main` gets an issue the day it appears; six sat there without one until the session D retro.
 
 ## Project settings
