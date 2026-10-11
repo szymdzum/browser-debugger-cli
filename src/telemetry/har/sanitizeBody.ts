@@ -69,9 +69,13 @@ const TEXTAREA_END = /<\/textarea\s*>/gi;
 
 /**
  * One attribute of a tag: `$1` the name; `$2`, `$3` or `$4` the value
- * (double-quoted, single-quoted or unquoted), none for a bare attribute
+ * (double-quoted, single-quoted, or unquoted up to whitespace or `>`, as
+ * browsers read it: `value=a<b` is `a<b`), none for a bare attribute
  */
-const ATTRIBUTE = /([^\s"'<>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+const ATTRIBUTE = /([^\s"'<>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
+
+/** HTML whitespace, which ends an unquoted attribute value */
+const WHITESPACE = /[ \t\n\r\f]/;
 
 /** An `autocomplete` token that names a card, one-time code or password field */
 const SECRET_AUTOCOMPLETE = /(^|\s)(cc-[a-z-]+|one-time-code|current-password|new-password)(\s|$)/i;
@@ -274,11 +278,12 @@ export function redactBody(text: string, mimeType: string, placeholder = REDACTE
  *
  * The HTML is scanned as text, not parsed, in one linear pass: tags of any
  * case, attributes in any order, quoted (entities kept), single-quoted or
- * unquoted values, `>` inside quotes and tags split over lines are
- * understood. A tag broken by a `<` or an unclosed quote is not judged, and
- * the scan goes on from that `<` (a quote or end tag not found once is not
- * looked for again, so a hostile body of a million tag starts is still one
- * pass). A `<select>`'s options, and a control written inside a script
+ * unquoted values (a `<` in an unquoted value is part of it), `>` inside
+ * quotes and tags split over lines are understood. A tag broken by a `<`
+ * where an attribute name would be, or by an unclosed quote, is not judged,
+ * and the scan goes on from that `<` (a quote or end tag not found once is
+ * not looked for again, so a hostile body of a million tag starts is still
+ * one pass). A `<select>`'s options, and a control written inside a script
  * string or comment (masked too), are its limits.
  *
  * @param text - HTML text
@@ -335,7 +340,8 @@ function scanControl(scan: HtmlScan, attributesStart: number, isTextarea: boolea
 }
 
 /**
- * Walk a tag's attributes to its closing `>`, honouring quotes.
+ * Walk a tag's attributes to its closing `>`, honouring quotes and unquoted
+ * values (which run to whitespace or `>`, so a `<` in one is not a tag).
  *
  * @param scan - Scan state
  * @param from - Index after the tag name
@@ -344,14 +350,30 @@ function scanControl(scan: HtmlScan, attributesStart: number, isTextarea: boolea
 function tagEnd(scan: HtmlScan, from: number): TagEnd {
   const { text } = scan;
   let index = from;
+  let afterEquals = false;
+  let inUnquotedValue = false;
   while (index < text.length) {
     const char = text[index] ?? '';
     if (char === '>') return { close: index, resume: index + 1 };
-    if (char === '<') return { resume: index };
-    if (char !== '"' && char !== "'") {
+    const space = WHITESPACE.test(char);
+    if (inUnquotedValue) {
+      if (space) inUnquotedValue = false;
       index++;
       continue;
     }
+    if (char === '<') return { resume: index };
+    if (char === '=') {
+      afterEquals = true;
+      index++;
+      continue;
+    }
+    if (char !== '"' && char !== "'") {
+      if (afterEquals && !space) inUnquotedValue = true;
+      afterEquals = afterEquals && space;
+      index++;
+      continue;
+    }
+    afterEquals = false;
     const closing =
       index + 1 >= (scan.noQuoteFrom[char] ?? Infinity) ? -1 : text.indexOf(char, index + 1);
     if (closing === -1) {

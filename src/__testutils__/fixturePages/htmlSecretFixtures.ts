@@ -97,6 +97,7 @@ export const HTML_SECRET_ROWS: readonly HtmlSecretRow[] = [
     secret: 'SPLIT-H634',
   },
   { name: 'secret id', html: '<input id="user-password" value="ID-H634">', secret: 'ID-H634' },
+  { name: 'unquoted value with a <', html: '<input name=token value=LT<H634>', secret: 'LT<H634' },
   {
     name: 'autocomplete one-time-code',
     html: '<input name="c" autocomplete="one-time-code" value="OTP-H634">',
