@@ -1376,7 +1376,8 @@ bdg network headers <request-id> --header content-type
 bdg network headers --json
 bdg network headers --header content-security-policy --json | jq '.data.responseHeaders | to_entries[0].value'
 
-# Main document headers (same as network headers without an id)
+# Main document headers (same as network headers without an id); the HTML body is in
+# bdg details network <id> --body
 bdg network document
 
 # Credentials as captured (masked as •••• by default)
