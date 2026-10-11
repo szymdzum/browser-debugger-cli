@@ -37,6 +37,7 @@ import {
   parseSelectorFilters,
   type ScopedStep,
   type SelectorFilter,
+  type SelectorPart,
 } from '@/utils/selectorFilters.js';
 
 /** Selector placeholder that makes page scripts use the bound node. */
@@ -296,21 +297,21 @@ const NAME_SCAN_LIMIT = 5000;
 /**
  * Page-side ids (`kind` "id") or classes (`kind` "class") in the top
  * document, from the first {@link NAME_SCAN_LIMIT} elements that have one.
- *
- * @param kind - Which names to read
- * @returns Expression evaluating to the distinct names
+ * Takes the kind as its argument.
  */
-export function pageNamesJS(kind: 'id' | 'class'): string {
-  return `(() => {
+export const PAGE_NAMES_JS = `(kind) => {
   const names = new Set();
-  const elements = document.querySelectorAll('[${kind}]');
+  const elements = document.querySelectorAll(kind === 'id' ? '[id]' : '[class]');
   for (let i = 0; i < elements.length && i < ${NAME_SCAN_LIMIT}; i++) {
     const el = elements[i];
-    ${kind === 'id' ? 'if (el.id) names.add(el.id);' : 'for (const name of el.classList) names.add(name);'}
+    if (kind === 'id') {
+      if (el.id) names.add(el.id);
+    } else {
+      for (const name of el.classList) names.add(name);
+    }
   }
   return Array.from(names);
-})()`;
-}
+}`;
 
 /**
  * Page-side: the form control a `<label>` stands for (`label.control`: its
@@ -330,6 +331,21 @@ export const LABEL_CONTROL_JS = `(el) => (el && el.localName === 'label' ? el.co
  * @throws CommandError (81) for an empty selector or a misplaced or malformed filter
  */
 export function selectorArgsJS(selector: string): string {
+  return selectorArgs(selector)
+    .map((arg) => JSON.stringify(arg))
+    .join(', ');
+}
+
+/**
+ * Arguments for {@link DEEP_QUERY_JS} / {@link FIND_ELEMENTS_JS} as values,
+ * for a page function that gets them as `Runtime.callFunctionOn` arguments:
+ * the selector and its parts (`null` for plain CSS).
+ *
+ * @param selector - Selector as the user gave it (or the bound-node placeholder)
+ * @returns The two arguments
+ * @throws CommandError (81) for an empty selector or a misplaced or malformed filter
+ */
+export function selectorArgs(selector: string): [string, SelectorPart[] | null] {
   if (selector.trim() === '') {
     const err = emptySelectorError();
     throw new CommandError(
@@ -338,7 +354,7 @@ export function selectorArgsJS(selector: string): string {
       EXIT_CODES.INVALID_ARGUMENTS
     );
   }
-  return `${JSON.stringify(selector)}, ${JSON.stringify(parseSelectorFilters(selector))}`;
+  return [selector, parseSelectorFilters(selector)];
 }
 
 /**

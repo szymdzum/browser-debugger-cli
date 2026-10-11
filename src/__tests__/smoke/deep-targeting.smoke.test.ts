@@ -43,6 +43,24 @@ async function evaluate(expression: string): Promise<unknown> {
   return (await runJson<{ result: unknown }>('dom', ['eval', expression])).result;
 }
 
+/**
+ * Elements whose `data-x` is `it's "q" </script> \ end`: a hidden `<p>`, a
+ * visible `<span>` and a file input (the value is a literal in the page
+ * script, not put into it)
+ */
+const ADD_ODD_ELEMENTS = String.raw`for (const tag of ['p', 'span', 'input']) {
+  const el = document.createElement(tag);
+  el.setAttribute('data-x', 'it\'s "q" </script> \\ end');
+  if (tag === 'p') el.hidden = true;
+  if (tag === 'span') el.textContent = 'Odd text';
+  if (tag === 'input') el.type = 'file';
+  document.body.append(el);
+}
+1`;
+
+/** CSS attribute selector for the `data-x` of {@link ADD_ODD_ELEMENTS} */
+const ODD_ATTRIBUTE = String.raw`[data-x="it's \"q\" </script> \\ end"]`;
+
 after(removeTempDirs);
 
 void describe('Shadow DOM and iframe targeting', () => {
@@ -118,6 +136,49 @@ void describe('Shadow DOM and iframe targeting', () => {
     const envelope = JSON.parse(missing.stdout) as { suggestion?: string };
     assert.match(envelope.suggestion ?? '', /Verify the CSS selector is correct/);
     assert.doesNotMatch(envelope.suggestion ?? '', /cross-origin/);
+  });
+
+  void it('says a selector that crosses into an open shadow root needs no host', async () => {
+    const result = await runCommand('dom', ['query', 'shadow-form #shadow-input']);
+    assert.equal(result.exitCode, 83, result.stderr);
+    assert.match(
+      result.stderr,
+      /shadow-form hosts a shadow root, which a selector cannot cross into; bdg searches open shadow roots itself: use "#shadow-input"/
+    );
+  });
+
+  void it('passes selectors with quotes, backslashes and </script> to the page intact (#617)', async () => {
+    const added = await runCommand('dom', ['eval', ADD_ODD_ELEMENTS]);
+    assert.equal(added.exitCode, 0, added.stderr);
+
+    const hidden = await runCommand('dom', ['query', `p${ODD_ATTRIBUTE}:visible`]);
+    assert.equal(hidden.exitCode, 83, hidden.stderr);
+    assert.ok(hidden.stderr.includes(`No nodes found matching "p${ODD_ATTRIBUTE}:visible"`));
+    assert.match(hidden.stderr, /1 element matches without :visible but is hidden/);
+
+    const layout = await runJson<{
+      selector: string;
+      count: number;
+      elements: Array<{ text: string }>;
+    }>('dom', ['layout', `span${ODD_ATTRIBUTE}`]);
+    assert.equal(layout.selector, `span${ODD_ATTRIBUTE}`);
+    assert.equal(layout.count, 1);
+    assert.equal(layout.elements[0]?.text, 'Odd text');
+    await runJson('dom', ['query', `span${ODD_ATTRIBUTE}`]);
+    const byIndex = await runJson<{ count: number; elements: Array<{ text: string }> }>('dom', [
+      'layout',
+      '0',
+    ]);
+    assert.equal(byIndex.elements[0]?.text, 'Odd text');
+
+    const file = path.join(makeTempDir('bdg-odd-upload-'), 'odd.txt');
+    fs.writeFileSync(file, 'odd');
+    await runJson('dom', ['fill', `input${ODD_ATTRIBUTE}`, file]);
+    assert.equal(
+      await evaluate("document.querySelector('input[type=file][data-x]').files[0].name"),
+      'odd.txt'
+    );
+    await evaluate("document.querySelectorAll('[data-x]').forEach((el) => el.remove()); 1");
   });
 
   void it('describes and captures elements in shadow roots and frames', async () => {

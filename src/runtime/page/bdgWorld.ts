@@ -6,9 +6,10 @@
  * change what bdg's page scripts find or return.
  *
  * Only the entry points need the world: `Runtime.evaluate` runs in it with
- * its `contextId`, and `DOM.resolveNode` hands out objects of it with its
- * `executionContextId`; `Runtime.callFunctionOn` on such an object runs in
- * the same world. The world belongs to the top frame (same-origin iframes are
+ * its `contextId`, a page function called on no object runs in it with its
+ * `executionContextId` (its parameters are the call's arguments), and
+ * `DOM.resolveNode` hands out objects of it with its `executionContextId`;
+ * `Runtime.callFunctionOn` on such an object runs in the same world. The world belongs to the top frame (same-origin iframes are
  * reached through it); a node of another frame, a connection without the
  * Page domain (a frame-scoped one) or a failure to create it fall back to the
  * main world, as before.
@@ -108,13 +109,15 @@ async function createWorld(cdp: PageConnection): Promise<number | null> {
  * @param method - CDP method
  * @param params - Its parameters
  * @param withContext - The parameters with the world's context id
+ * @param inMainWorld - Sends the command in the main world (by default as it is)
  * @returns The command's result
  */
 async function sendInWorld(
   cdp: PageConnection,
   method: string,
   params: Record<string, unknown>,
-  withContext: (contextId: number) => Record<string, unknown>
+  withContext: (contextId: number) => Record<string, unknown>,
+  inMainWorld: () => Promise<unknown> = () => cdp.send(method, params)
 ): Promise<unknown> {
   for (let attempt = 0; attempt < 2; attempt++) {
     const contextId = await worldContext(cdp);
@@ -126,7 +129,7 @@ async function sendInWorld(
       worlds.delete(cdp);
     }
   }
-  return cdp.send(method, params);
+  return inMainWorld();
 }
 
 /**
@@ -148,6 +151,68 @@ export async function evaluateInBdgWorld(
     ...params,
     contextId,
   }))) as Protocol.Runtime.EvaluateResponse;
+}
+
+/**
+ * A `Runtime.callFunctionOn` of a page function on no object: the function
+ * gets its parameters as the call's `arguments`, never in its source.
+ */
+export type PageFunctionCall = Omit<
+  Protocol.Runtime.CallFunctionOnRequest,
+  'objectId' | 'executionContextId' | 'uniqueContextId'
+>;
+
+/**
+ * Call a page function in bdg's world of the top frame, or in the main world
+ * when there is none ({@link callFunctionInMainWorld}).
+ *
+ * @param cdp - Connection to the page
+ * @param params - The function, its arguments and the call's options
+ * @returns Call response
+ */
+export async function callFunctionInBdgWorld(
+  cdp: PageConnection,
+  params: PageFunctionCall
+): Promise<Protocol.Runtime.CallFunctionOnResponse> {
+  return (await sendInWorld(
+    cdp,
+    'Runtime.callFunctionOn',
+    { ...params },
+    (executionContextId) => ({ ...params, executionContextId }),
+    () => callFunctionInMainWorld(cdp, params)
+  )) as Protocol.Runtime.CallFunctionOnResponse;
+}
+
+/**
+ * Call a page function in the main world of the top frame, with the page's
+ * global object as `this` (CDP needs an object or a context to call on).
+ *
+ * @param cdp - Connection to the page
+ * @param params - The function, its arguments and the call's options
+ * @returns Call response
+ */
+export async function callFunctionInMainWorld(
+  cdp: PageConnection,
+  params: PageFunctionCall
+): Promise<Protocol.Runtime.CallFunctionOnResponse> {
+  const { objectGroup } = params;
+  const global = (await cdp.send('Runtime.evaluate', {
+    expression: 'globalThis',
+    ...(objectGroup !== undefined && { objectGroup }),
+  })) as Protocol.Runtime.EvaluateResponse;
+  const { objectId } = global.result;
+  try {
+    return (await cdp.send('Runtime.callFunctionOn', {
+      ...params,
+      objectId,
+    })) as Protocol.Runtime.CallFunctionOnResponse;
+  } finally {
+    if (objectGroup === undefined && objectId) {
+      await cdp.send('Runtime.releaseObject', { objectId }).catch((error: unknown) => {
+        log.debug(`Global object not released: ${getErrorMessage(error)}`);
+      });
+    }
+  }
 }
 
 /**
@@ -201,8 +266,9 @@ async function usableInWorld(cdp: PageConnection, objectId: string | undefined):
 }
 
 /**
- * Send a CDP command for bdg's own scripts: `Runtime.evaluate` and
- * `DOM.resolveNode` go to bdg's world, other methods as they are.
+ * Send a CDP command for bdg's own scripts: `Runtime.evaluate`,
+ * `DOM.resolveNode` and a `Runtime.callFunctionOn` on no object or context
+ * go to bdg's world, other methods as they are.
  *
  * @param cdp - Connection to the page
  * @param method - CDP method
@@ -219,6 +285,12 @@ export function sendForBdgScript(
   }
   if (method === 'DOM.resolveNode') {
     return resolveNodeInBdgWorld(cdp, params);
+  }
+  if (
+    method === 'Runtime.callFunctionOn' &&
+    !('objectId' in params || 'executionContextId' in params || 'uniqueContextId' in params)
+  ) {
+    return callFunctionInBdgWorld(cdp, params as unknown as PageFunctionCall);
   }
   return cdp.send(method, params);
 }
