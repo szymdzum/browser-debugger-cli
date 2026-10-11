@@ -326,6 +326,15 @@ void describe('dom fill when the page moves the focus as it types (#592)', () =>
     }
   });
 
+  void it('suggests bdg dom listeners <index> for a field given by index (#603)', async () => {
+    await bdg(['dom', 'query', '#bi']);
+    const { exit, output } = await fill('0', 'SECRET99');
+    assert.equal(exit, 90, output);
+    assert.match(output, /bdg dom listeners 0$/m);
+    assert.doesNotMatch(output, /__bdg_bound_target__/);
+    assert.ok(!output.includes('SECRET99'), `the text is echoed: ${output}`);
+  });
+
   void it('never reports success while the text sits in another field (focus moved 30 ms later)', async () => {
     for (const id of ['ta', 'tp']) {
       const { exit, output } = await fill(`#${id}`, 'SECRET99');
