@@ -11,6 +11,7 @@ import type {
 import { isEmptyCdpResult } from '@/ui/formatters/cdp.js';
 import { formatTimestamp } from '@/ui/formatters/console/shared.js';
 import { formatBytes, joinLines, pluralize } from '@/ui/formatting.js';
+import { CDP_OUT_FILE_NOTE } from '@/ui/messages/cdpEvents.js';
 
 /** Characters of an event's params on its line */
 const PARAMS_PREVIEW_LENGTH = 300;
@@ -54,7 +55,7 @@ function eventLines(events: CdpEventOutput[]): string[] {
  */
 function fileLine(data: { file?: string; bytes?: number; count?: number }): string | undefined {
   if (data.file === undefined) return undefined;
-  return `Wrote ${pluralize(data.count ?? 0, 'event')} to ${data.file} (${formatBytes(data.bytes ?? 0)}, NDJSON)`;
+  return `Wrote ${pluralize(data.count ?? 0, 'event')} to ${data.file} (${formatBytes(data.bytes ?? 0)}, NDJSON; ${CDP_OUT_FILE_NOTE})`;
 }
 
 /**

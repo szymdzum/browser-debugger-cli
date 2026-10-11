@@ -134,6 +134,25 @@ void describe('HAR export sanitization', () => {
     assert.match(result.stdout, /sanitized.*--include-sensitive/);
   });
 
+  void it('warns on stderr when --include-sensitive writes the HAR to stdout', async () => {
+    const quiet = await runCommand('network', ['har', '-'], { timeout: 30000 });
+    assert.equal(quiet.exitCode, 0, quiet.stderr);
+    assert.equal(quiet.stderr, '', 'the sanitized HAR needs no warning');
+    const loud = await runCommand('network', ['har', '-', '--include-sensitive'], {
+      timeout: 30000,
+    });
+    assert.equal(loud.exitCode, 0, loud.stderr);
+    assert.match(loud.stderr, /Warning: Output includes credentials \(--include-sensitive\)/);
+    assert.ok(loud.stdout.includes('"log"'), 'the HAR is still on stdout');
+    const json = await runCommand('network', ['har', '-', '--include-sensitive', '--json'], {
+      timeout: 30000,
+    });
+    assert.equal(json.exitCode, 0, json.stderr);
+    const envelope = JSON.parse(json.stdout) as { warning?: string; data: { log: unknown } };
+    assert.match(envelope.warning ?? '', /--include-sensitive/);
+    assert.ok(envelope.data.log, 'the HAR is in data');
+  });
+
   void it(
     'writes the file readable by its owner only',
     { skip: process.platform === 'win32' },

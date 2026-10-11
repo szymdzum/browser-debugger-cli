@@ -7,6 +7,9 @@ import type { ErrorWithSuggestion } from '@/errors/messages.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 
 /** `bdg cdp --help` section on events */
+/** Note after the file line of `--out`: what the file is and how it is written */
+export const CDP_OUT_FILE_NOTE = 'unredacted, readable by its owner only (0600)';
+
 export const CDP_EVENTS_HELP = [
   'Events (IPC is request/response, so the daemon buffers them):',
   '  bdg cdp <Method> --collect <Event>[,...] [--until <Event>] [--timeout <s>] [--out <file>]',
