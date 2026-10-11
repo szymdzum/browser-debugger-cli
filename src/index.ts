@@ -133,6 +133,9 @@ async function main(): Promise<void> {
     writeOut: (text) => {
       if (!jsonMode) process.stdout.write(text);
     },
+    writeErr: (text) => {
+      if (!jsonMode) process.stderr.write(text);
+    },
     outputError: () => undefined,
   });
   program.hook('preAction', (_root, actionCommand) => applyGlobalOptions(program, actionCommand));

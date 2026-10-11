@@ -22,7 +22,10 @@ import { maskHeaderFields } from '@/telemetry/networkMasking.js';
 import type { NetworkRequest } from '@/types.js';
 import type { Cookie, NetworkHeadersOutput } from '@/ui/formatters/index.js';
 import { formatCookies, formatNetworkHeaders } from '@/ui/formatters/index.js';
-import { includeSensitiveWarning } from '@/ui/messages/networkMessages.js';
+import {
+  NETWORK_DOCUMENT_BODY_NOTE,
+  includeSensitiveWarning,
+} from '@/ui/messages/networkMessages.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -193,6 +196,7 @@ export function registerDocumentCommand(networkCmd: Command): void {
     .option('--header <name>', 'Filter to specific header name')
     .addOption(jsonOption())
     .addOption(includeSensitiveOption())
+    .addHelpText('after', `\n${NETWORK_DOCUMENT_BODY_NOTE}`)
     .action(async (options: NetworkHeadersCommandOptions) => {
       await runCommand(
         async (opts) => {

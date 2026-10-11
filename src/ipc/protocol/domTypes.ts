@@ -692,6 +692,6 @@ export interface OptionNotFound {
   count: number;
   /** The value looked for; left out for a secret select */
   value?: string;
-  /** The first options, by value or text; left out for a secret select */
+  /** The first options as `value (Label)` when they differ, else value or text; left out for a secret select */
   options?: string[];
 }

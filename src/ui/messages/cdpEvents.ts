@@ -6,10 +6,10 @@
 import type { ErrorWithSuggestion } from '@/errors/messages.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 
-/** `bdg cdp --help` section on events */
 /** Note after the file line of `--out`: what the file is and how it is written */
 export const CDP_OUT_FILE_NOTE = 'unredacted, readable by its owner only (0600)';
 
+/** `bdg cdp --help` section on events */
 export const CDP_EVENTS_HELP = [
   'Events (IPC is request/response, so the daemon buffers them):',
   '  bdg cdp <Method> --collect <Event>[,...] [--until <Event>] [--timeout <s>] [--out <file>]',
@@ -20,6 +20,7 @@ export const CDP_EVENTS_HELP = [
   '      10 MB; oldest dropped and counted); with a method, listen before calling it',
   '  bdg cdp --events [<Event>[,...]] [--wait <s>] [--clear] [--out <file>]   read and remove them',
   '  bdg cdp --unlisten                          stop and discard the buffer',
+  '  Cookies and auth headers arrive only in Network.requestWillBeSentExtraInfo.',
   '  Only events of the session page are kept (not of attached iframe/worker sessions).',
   '  Trace: bdg cdp Tracing.start, act, then bdg cdp Tracing.end --collect Tracing.dataCollected \\',
   '      --until Tracing.tracingComplete --out trace.ndjson',
