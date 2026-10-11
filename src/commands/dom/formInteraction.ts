@@ -158,8 +158,9 @@ export function registerFormInteractionCommands(program: Command): void {
           return runElementCommand<Parameters<typeof domFill>[0], FillResult>({
             selectorOrIndex,
             index: options.index,
-            buildRequest: (target) => ({
+            buildRequest: (target, source) => ({
               ...target,
+              ...(source && { listIndex: source.index }),
               ...dialogs,
               value,
               cwd: process.cwd(),
@@ -469,8 +470,9 @@ async function runPointerCommand(
       return runElementCommand<Parameters<typeof domClick>[0], ClickResult>({
         selectorOrIndex,
         index: options.index,
-        buildRequest: (target) => ({
+        buildRequest: (target, source) => ({
           ...target,
+          ...(source && { listIndex: source.index }),
           ...dialogs,
           wait: options.wait !== false,
           ...(action !== 'click' && { action }),

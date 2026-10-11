@@ -1035,6 +1035,8 @@ export interface FillOptions {
   index?: number;
   /** Directory relative file paths are resolved against (file inputs) */
   cwd?: string;
+  /** Index the user gave for a listed element (named in suggestions instead of the bound-node placeholder) */
+  listIndex?: number;
 }
 
 export type { FillResult, ClickResult } from '@/ipc/protocol/domTypes.js';

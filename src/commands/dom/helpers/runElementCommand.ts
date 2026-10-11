@@ -52,8 +52,11 @@ export interface ElementCommandOptions<Req, Res extends ResultPayload> {
   selectorOrIndex: string;
   /** Optional --index flag value. */
   index: number | undefined;
-  /** Build the IPC request params given the resolved selector + index. */
-  buildRequest: (target: { selector: string; index?: number; backendNodeId?: number }) => Req;
+  /** Build the IPC request params given the resolved selector + index (and, for a numeric index, the list it refers to). */
+  buildRequest: (
+    target: { selector: string; index?: number; backendNodeId?: number },
+    source?: IndexSource
+  ) => Req;
   /** Invoke the IPC client function. */
   call: (req: Req) => Promise<IpcResponse<Res>>;
   /** `bdg dom` subcommand being run, e.g. "fill" (for suggestions). */
@@ -85,11 +88,14 @@ export async function runElementCommand<Req, Res extends ResultPayload>(
     };
   }
 
-  const request = buildRequest({
-    selector: target.selector,
-    ...(target.index !== undefined && { index: target.index }),
-    ...(target.backendNodeId !== undefined && { backendNodeId: target.backendNodeId }),
-  });
+  const request = buildRequest(
+    {
+      selector: target.selector,
+      ...(target.index !== undefined && { index: target.index }),
+      ...(target.backendNodeId !== undefined && { backendNodeId: target.backendNodeId }),
+    },
+    target.source
+  );
 
   const response = await call(request);
   const failure =
