@@ -10,7 +10,9 @@
  * query in `window.lookups` (submitted by JS, no navigation).
  * The appended span holds a `<b autocomplete="one-time-code">` code, never
  * reported. `/ticker` appends a `div.toast` ("Sale ends in N seconds") to the
- * body every 50 ms next to an unrelated "Like" button (`#like`).
+ * body every 50 ms and a "Score N" line to a fixed `aria-live` region, next to
+ * an unrelated "Like" button (`#like`), and a "Save" button (`#notify`) that
+ * appends a `role=status` "Saved" to the body, far from it.
  * `/tracker-errors` has `#track`, which logs two console errors from
  * scripts named as tracker URLs (`//# sourceURL=` on
  * googletagmanager.com and google-analytics.com, hosts the default tracking
@@ -74,7 +76,21 @@ const TRACKER_ERRORS_HTML = `<!doctype html><title>tracker errors</title>
 /** A ticker adding toasts to the body every 50 ms, and an unrelated button */
 const TICKER_HTML = `<!doctype html><meta charset="utf-8"><title>ticker</title>
 <div><button type="button" id="like" onclick="window.likes = (window.likes || 0) + 1">Like</button></div>
+<section><div><button type="button" id="notify">Save</button></div></section>
+<div id="score" aria-live="polite" style="position: fixed; top: 0; right: 0"></div>
 <script>
+  document.getElementById('notify').addEventListener('click', () => {
+    const status = document.createElement('div');
+    status.setAttribute('role', 'status');
+    status.textContent = 'Saved';
+    document.body.append(status);
+  });
+  let score = 0;
+  setInterval(() => {
+    const line = document.createElement('div');
+    line.textContent = 'Score ' + score++;
+    document.getElementById('score').append(line);
+  }, 50);
   let left = 1000;
   setInterval(() => {
     const toast = document.createElement('div');

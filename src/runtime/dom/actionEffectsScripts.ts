@@ -57,9 +57,9 @@ const NEAR_CONTAINERS =
 
 /**
  * Added elements a click or key press reports wherever they are: the page's
- * own announcements (dialogs and alert/status roles; `aria-live` regions are
- * checked separately). Class words and other popups count near the target
- * only, so a toast or ticker elsewhere is not attributed to a press.
+ * own announcements, elements with a dialog or alert/status role. Class
+ * words, other popups and `aria-live` regions count near the target only,
+ * so a toast or a live score ticking elsewhere is not attributed to a press.
  */
 const PRESS_POPUP_ROLES = /^(dialog|alertdialog|alert|status)$/;
 
@@ -254,8 +254,8 @@ const NEAR_SCOPE_JS = `(target) => {
  * the watch inside the target's container ({@link NEAR_SCOPE_JS}) or,
  * anywhere, after a hover popups and messages (tooltip, menu, listbox,
  * dialog, alert and status roles, `aria-live`, message-like classes) and
- * after a click or key press only dialogs, alert/status roles and elements
- * in an `aria-live` region ({@link PRESS_POPUP_ROLES}). Text in textareas,
+ * after a click or key press only elements with a dialog or alert/status
+ * role ({@link PRESS_POPUP_ROLES}). Text in textareas,
  * selects, password inputs, elements whose `autocomplete` ends in
  * `password` or `one-time-code` and elements named like secrets is left
  * out. Also, after a hover, the
@@ -280,8 +280,7 @@ export const SHOWN_ELEMENTS_JS = `(state) => {
   const hoverPopup = (el) => ${POPUP_ROLES}.test(el.getAttribute('role') || '') || el.hasAttribute('popover') ||
     (el.hasAttribute('aria-live') && el.getAttribute('aria-live') !== 'off') ||
     word.test(el.getAttribute('class') || '') || word.test(el.id || '');
-  const announced = (el) => ${PRESS_POPUP_ROLES}.test(el.getAttribute('role') || '') ||
-    el.closest('[aria-live]:not([aria-live="off"])') !== null;
+  const announced = (el) => ${PRESS_POPUP_ROLES}.test(el.getAttribute('role') || '');
   const popup = state.reveal ? hoverPopup : announced;
   const near = (el) => (scope !== null && scope.contains(el)) || popup(el);
   const contentOf = (node) => (node.textContent || '').replace(/\\s+/g, ' ').trim();

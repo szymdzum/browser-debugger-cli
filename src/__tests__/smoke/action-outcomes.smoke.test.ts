@@ -153,6 +153,7 @@ void describe('Action outcomes', () => {
         (data.shown ?? []).map((shown) => shown.text),
         ['Something went wrong']
       );
+      assert.doesNotMatch(JSON.stringify(data), /Hunter2Secret|654321/);
       const output = await bdg(['dom', 'click', '#redspan-go']);
       assert.match(output, /Something went wrong/);
       assert.doesNotMatch(output, /Hunter2Secret|654321/);
@@ -186,7 +187,13 @@ void describe('Action outcomes', () => {
     void it('does not attribute toasts added elsewhere to a click', async () => {
       const data = await act(['click', '#like']);
       assert.deepEqual(data.shown ?? [], []);
-      assert.doesNotMatch(await bdg(['dom', 'click', '#like']), /Shown:/);
+      assert.doesNotMatch(await bdg(['dom', 'click', '#like']), /Shown:|Score \d/);
+    });
+
+    void it('reports a status the click added far from the button', async () => {
+      const output = await bdg(['dom', 'click', '#notify']);
+      assert.match(output, /(New text|Shown):.*Saved/);
+      assert.doesNotMatch(output, /Score \d/);
     });
   });
 
