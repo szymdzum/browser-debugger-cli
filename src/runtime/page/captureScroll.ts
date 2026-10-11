@@ -6,7 +6,8 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CommandError } from '@/errors/index.js';
 import { noNodesFoundError } from '@/errors/messages.js';
-import { DEEP_QUERY_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
+import { DEEP_QUERY_JS, selectorArgs } from '@/runtime/dom/targetNode.js';
+import { callFunctionInBdgWorld } from '@/runtime/page/bdgWorld.js';
 import { evaluateValue, type ScrollPosition } from '@/runtime/page/captureEmulation.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { delay } from '@/utils/async.js';
@@ -69,6 +70,42 @@ const UNWATCH_STABILITY_JS = `(() => {
   }
 })()`;
 
+/** Page function: scroll the selector's first match into view (centered), telling where the page was */
+const SCROLL_TO_FUNCTION = `function (selector, parts) {
+  const el = (${DEEP_QUERY_JS})(selector, parts)[0];
+  if (!el) return { found: false };
+  const originalX = window.scrollX;
+  const originalY = window.scrollY;
+  el.scrollIntoView({ block: 'center', behavior: 'instant' });
+  return { found: true, originalX, originalY };
+}`;
+
+/** Page function: scroll the selector's first match into view again (centered) */
+const SCROLL_AGAIN_FUNCTION = `function (selector, parts) {
+  (${DEEP_QUERY_JS})(selector, parts)[0]?.scrollIntoView({ block: 'center', behavior: 'instant' });
+}`;
+
+/**
+ * Call a page function on the selector's arguments in bdg's world.
+ *
+ * @param cdp - Session connection
+ * @param functionDeclaration - The function
+ * @param selector - The element
+ * @returns What the function returned (undefined when it threw)
+ */
+async function callWithSelector(
+  cdp: CDPConnection,
+  functionDeclaration: string,
+  selector: string
+): Promise<unknown> {
+  const response = await callFunctionInBdgWorld(cdp, {
+    functionDeclaration,
+    arguments: selectorArgs(selector).map((value) => ({ value })),
+    returnByValue: true,
+  });
+  return response.result.value as unknown;
+}
+
 /**
  * Wait for the page to settle after a programmatic scroll (lazy-load idle +
  * DOM mutation idle). Uses shorter thresholds than full page load.
@@ -108,17 +145,8 @@ export async function scrollToElement(
   cdp: CDPConnection,
   selector: string
 ): Promise<ScrollPosition> {
-  const value = (await evaluateValue(
-    cdp,
-    `(() => {
-      const el = (${DEEP_QUERY_JS})(${selectorArgsJS(selector)})[0];
-      if (!el) return { found: false };
-      const originalX = window.scrollX;
-      const originalY = window.scrollY;
-      el.scrollIntoView({ block: 'center', behavior: 'instant' });
-      return { found: true, originalX, originalY };
-    })()`
-  )) as { found?: boolean; originalX?: number; originalY?: number } | undefined;
+  const value = (await callWithSelector(cdp, SCROLL_TO_FUNCTION, selector)) as
+    { found?: boolean; originalX?: number; originalY?: number } | undefined;
   if (!value?.found) {
     const err = noNodesFoundError(selector);
     throw new CommandError(
@@ -139,8 +167,5 @@ export async function scrollToElement(
  * @param selector - The element
  */
 export async function scrollIntoViewAgain(cdp: CDPConnection, selector: string): Promise<void> {
-  await evaluateValue(
-    cdp,
-    `(${DEEP_QUERY_JS})(${selectorArgsJS(selector)})[0]?.scrollIntoView({ block: 'center', behavior: 'instant' })`
-  );
+  await callWithSelector(cdp, SCROLL_AGAIN_FUNCTION, selector);
 }

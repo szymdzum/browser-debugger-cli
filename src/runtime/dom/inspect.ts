@@ -48,8 +48,8 @@ import {
 } from '@/runtime/dom/inspectScripts.js';
 import { DEFAULT_TREE_DEPTH, DEFAULT_TREE_LIMIT } from '@/runtime/dom/inspectTree.js';
 import { inspectLayout } from '@/runtime/dom/layout.js';
-import { DEEP_QUERY_JS, missingElementError, selectorArgsJS } from '@/runtime/dom/targetNode.js';
-import { evaluateInBdgWorld, resolveNodeInBdgWorld } from '@/runtime/page/bdgWorld.js';
+import { DEEP_QUERY_JS, missingElementError, selectorArgs } from '@/runtime/dom/targetNode.js';
+import { callFunctionInBdgWorld, resolveNodeInBdgWorld } from '@/runtime/page/bdgWorld.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -356,8 +356,9 @@ async function querySelector(
   selector: string,
   objectGroup: string
 ): Promise<string> {
-  const response = await evaluateInBdgWorld(cdp, {
-    expression: `(${DEEP_QUERY_JS})(${selectorArgsJS(selector)})`,
+  const response = await callFunctionInBdgWorld(cdp, {
+    functionDeclaration: DEEP_QUERY_JS,
+    arguments: selectorArgs(selector).map((value) => ({ value })),
     objectGroup,
   });
   if (response.exceptionDetails || !response.result.objectId) {

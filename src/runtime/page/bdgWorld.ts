@@ -16,6 +16,7 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import { CDPProtocolError } from '@/connection/errors.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -183,9 +184,48 @@ export async function callFunctionInBdgWorld(
   )) as Protocol.Runtime.CallFunctionOnResponse;
 }
 
+/** Chrome's error for a call on an object whose document went away meanwhile */
+const OBJECT_GONE = /Could not find object with given id/;
+
 /**
- * Call a page function in the main world of the top frame, with the page's
- * global object as `this` (CDP needs an object or a context to call on).
+ * An object of the main world of the top frame to call page functions on:
+ * the page's global object, as `this` of a top-level script, which no page
+ * property can change (`globalThis` is a writable property a page can set
+ * to anything). When that yields no object, the document resolved into the
+ * main world stands in.
+ *
+ * @param cdp - Connection to the page
+ * @param objectGroup - Object group for the handle, if any
+ * @returns Remote object id
+ */
+async function mainWorldObject(
+  cdp: PageConnection,
+  objectGroup: string | undefined
+): Promise<string | undefined> {
+  const group = objectGroup !== undefined && { objectGroup };
+  const global = (await cdp.send('Runtime.evaluate', {
+    expression: 'this',
+    ...group,
+  })) as Protocol.Runtime.EvaluateResponse;
+  if (global.result.objectId) return global.result.objectId;
+  const { root } = (await cdp.send('DOM.getDocument', {
+    depth: 0,
+  })) as Protocol.DOM.GetDocumentResponse;
+  const resolved = (await cdp.send('DOM.resolveNode', {
+    nodeId: root.nodeId,
+    ...group,
+  })) as Protocol.DOM.ResolveNodeResponse;
+  return resolved.object.objectId;
+}
+
+/**
+ * Call a page function in the main world of the top frame, on the page's
+ * global object ({@link mainWorldObject}; CDP needs an object or a context
+ * to call on). A page that navigated between the lookup and the call fails
+ * it as a lost context, like a `Runtime.evaluate` of the old document.
+ * Without an object group, the object is released afterwards without
+ * waiting: a function that started a navigation (a form submit) has the page
+ * hold every command until the new document commits.
  *
  * @param cdp - Connection to the page
  * @param params - The function, its arguments and the call's options
@@ -196,19 +236,24 @@ export async function callFunctionInMainWorld(
   params: PageFunctionCall
 ): Promise<Protocol.Runtime.CallFunctionOnResponse> {
   const { objectGroup } = params;
-  const global = (await cdp.send('Runtime.evaluate', {
-    expression: 'globalThis',
-    ...(objectGroup !== undefined && { objectGroup }),
-  })) as Protocol.Runtime.EvaluateResponse;
-  const { objectId } = global.result;
+  const objectId = await mainWorldObject(cdp, objectGroup);
   try {
     return (await cdp.send('Runtime.callFunctionOn', {
       ...params,
       objectId,
     })) as Protocol.Runtime.CallFunctionOnResponse;
+  } catch (error) {
+    if (error instanceof CDPProtocolError && OBJECT_GONE.test(error.message)) {
+      throw new CDPProtocolError(
+        'Execution context was destroyed: the page navigated during the call',
+        error.code,
+        error.data
+      );
+    }
+    throw error;
   } finally {
     if (objectGroup === undefined && objectId) {
-      await cdp.send('Runtime.releaseObject', { objectId }).catch((error: unknown) => {
+      void cdp.send('Runtime.releaseObject', { objectId }).catch((error: unknown) => {
         log.debug(`Global object not released: ${getErrorMessage(error)}`);
       });
     }

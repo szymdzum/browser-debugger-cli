@@ -23,7 +23,7 @@ import {
 import { COMPOSED_JS, FLAT_TEXT_JS } from '@/runtime/dom/elementInfo.js';
 import { ActionScriptError, throwIfInvalidSelector } from '@/runtime/dom/formFillHelpers/shared.js';
 import { frameScopedConnection } from '@/runtime/dom/frameScopedConnection.js';
-import { evaluateInBdgWorld } from '@/runtime/page/bdgWorld.js';
+import { callFunctionInBdgWorld, callFunctionInMainWorld } from '@/runtime/page/bdgWorld.js';
 import { findReplacedBuiltins } from '@/runtime/page/replacedBuiltins.js';
 import type { CDPSender } from '@/telemetry/objectExpander.js';
 import { createLogger } from '@/ui/logging/index.js';
@@ -323,23 +323,9 @@ export const LABEL_CONTROL_JS = `(el) => (el && el.localName === 'label' ? el.co
 
 /**
  * Arguments for {@link DEEP_QUERY_JS} / {@link FIND_ELEMENTS_JS} and the page
- * scripts built on them: the selector as a JS string literal and its parts
- * (`null` for plain CSS, which runs unchanged).
- *
- * @param selector - Selector as the user gave it (or the bound-node placeholder)
- * @returns JS source of the two arguments, e.g. `"li:visible", [{...}]`
- * @throws CommandError (81) for an empty selector or a misplaced or malformed filter
- */
-export function selectorArgsJS(selector: string): string {
-  return selectorArgs(selector)
-    .map((arg) => JSON.stringify(arg))
-    .join(', ');
-}
-
-/**
- * Arguments for {@link DEEP_QUERY_JS} / {@link FIND_ELEMENTS_JS} as values,
- * for a page function that gets them as `Runtime.callFunctionOn` arguments:
- * the selector and its parts (`null` for plain CSS).
+ * scripts built on them, which get them as `Runtime.callFunctionOn`
+ * arguments: the selector and its parts (`null` for plain CSS, which runs
+ * unchanged).
  *
  * @param selector - Selector as the user gave it (or the bound-node placeholder)
  * @returns The two arguments
@@ -466,6 +452,16 @@ function replacedBuiltins(cdp: CDPSender): Promise<string[]> {
   ]);
 }
 
+/** Page function: the first `limit` matches of the selector ({@link DEEP_QUERY_JS}) */
+const FIRST_MATCHES_FUNCTION = `function (selector, parts, limit) {
+  return (${DEEP_QUERY_JS})(selector, parts).slice(0, limit);
+}`;
+
+/** Page-side: starts the list of matches bound for a selector, on the window the page scripts read */
+const BIND_MATCHES_FUNCTION = `function (selector) {
+  window.__bdgMatches = { selector: selector, nodes: [] };
+}`;
+
 /**
  * Search the selector in bdg's own world, where the page's replacements do
  * not apply, and hand the matches (the first {@link MATCH_BIND_LIMIT}, or up
@@ -483,8 +479,9 @@ async function bindMatches(cdp: CDPConnection, selector: string, index: number):
   const objectGroup = `bdg-bind-${Date.now()}`;
   const limit = Math.max(MATCH_BIND_LIMIT, index + 1);
   try {
-    const found = await evaluateInBdgWorld(cdp, {
-      expression: `(${DEEP_QUERY_JS})(${selectorArgsJS(selector)}).slice(0, ${limit})`,
+    const found = await callFunctionInBdgWorld(cdp, {
+      functionDeclaration: FIRST_MATCHES_FUNCTION,
+      arguments: [...selectorArgs(selector), limit].map((value) => ({ value })),
       objectGroup,
     });
     if (found.exceptionDetails) throwIfInvalidSelector(found.exceptionDetails, selector);
@@ -497,8 +494,9 @@ async function bindMatches(cdp: CDPConnection, selector: string, index: number):
     const matches = result
       .filter((property) => /^\d+$/.test(property.name))
       .map((property) => ({ i: Number(property.name), objectId: property.value?.objectId }));
-    await cdp.send('Runtime.evaluate', {
-      expression: `window.__bdgMatches = { selector: ${JSON.stringify(selector)}, nodes: [] }`,
+    await callFunctionInMainWorld(cdp, {
+      functionDeclaration: BIND_MATCHES_FUNCTION,
+      arguments: [{ value: selector }],
     });
     const bound = await Promise.all(
       matches.map(({ i, objectId }) =>

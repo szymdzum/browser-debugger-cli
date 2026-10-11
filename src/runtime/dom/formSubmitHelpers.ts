@@ -21,7 +21,8 @@ import {
 } from '@/runtime/dom/blockedSubmit.js';
 import { DISABLED_CAUSE_JS, ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
 import { throwIfInvalidSelector } from '@/runtime/dom/formFillHelpers/shared.js';
-import { FIND_ELEMENTS_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
+import { FIND_ELEMENTS_JS, selectorArgs } from '@/runtime/dom/targetNode.js';
+import { callFunctionInMainWorld } from '@/runtime/page/bdgWorld.js';
 import { summarizePendingRequests } from '@/runtime/page/loadingState.js';
 import type { PendingRequest } from '@/telemetry/network.js';
 import type { DocumentRequestState } from '@/types.js';
@@ -306,8 +307,9 @@ async function triggerSubmit(
   selector: string,
   index: number | undefined
 ): Promise<{ failure: SubmitResult } | { clicked: boolean; element?: string | undefined }> {
-  const response = (await cdp.send('Runtime.evaluate', {
-    expression: `(${PREPARE_SUBMIT_SCRIPT})(${selectorArgsJS(selector)}, ${index ?? 'null'})`,
+  const response = (await callFunctionInMainWorld(cdp, {
+    functionDeclaration: PREPARE_SUBMIT_SCRIPT,
+    arguments: [...selectorArgs(selector), index ?? null].map((value) => ({ value })),
     returnByValue: true,
     userGesture: true,
   })) as {

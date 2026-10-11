@@ -32,7 +32,8 @@ import {
   type ReactPropHandler,
   type ResolvedHandler,
 } from '@/runtime/dom/listenerSummary.js';
-import { DEEP_QUERY_JS, missingElementError, selectorArgsJS } from '@/runtime/dom/targetNode.js';
+import { DEEP_QUERY_JS, missingElementError, selectorArgs } from '@/runtime/dom/targetNode.js';
+import { callFunctionInMainWorld } from '@/runtime/page/bdgWorld.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -175,11 +176,11 @@ async function findSelectorMatch(
   params: DomListenersCommand,
   objectGroup: string
 ): Promise<{ matchCount: number; backendNodeId: number }> {
-  const expression = `(${SELECT_JS})(${selectorArgsJS(params.selector)}, ${params.index ?? 0})`;
-  const response = (await cdp.send('Runtime.evaluate', {
-    expression,
+  const response = await callFunctionInMainWorld(cdp, {
+    functionDeclaration: SELECT_JS,
+    arguments: [...selectorArgs(params.selector), params.index ?? 0].map((value) => ({ value })),
     objectGroup,
-  })) as Protocol.Runtime.EvaluateResponse;
+  });
   if (response.exceptionDetails) {
     throwIfInvalidSelector(response.exceptionDetails, params.selector);
     const err = operationFailedError('find the element', response.exceptionDetails.text);

@@ -53,7 +53,7 @@ import {
   DEEP_QUERY_JS,
   PAGE_NAMES_JS,
   UNSEARCHED_CONTENT_JS,
-  selectorArgsJS,
+  selectorArgs,
 } from '@/runtime/dom/targetNode.js';
 import type {
   DomQueryResult,
@@ -189,8 +189,9 @@ async function withSelection<T>(
 ): Promise<T> {
   await callCDP('DOM.enable', {});
   const objectGroup = `bdg-query-${process.pid}-${++queryCount}`;
-  const evaluated = await callBdgScript('Runtime.evaluate', {
-    expression: `(${DEEP_QUERY_JS})(${selectorArgsJS(selector)})`,
+  const evaluated = await callBdgScript('Runtime.callFunctionOn', {
+    functionDeclaration: DEEP_QUERY_JS,
+    arguments: selectorArgs(selector).map((value) => ({ value })),
     objectGroup,
   });
   try {

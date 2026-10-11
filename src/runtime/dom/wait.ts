@@ -16,7 +16,7 @@ import { CommandError } from '@/errors/index.js';
 import { invalidSelectorError, waitTimeoutError } from '@/errors/messages.js';
 import type { DomWaitCommand, DomWaitData } from '@/ipc/protocol/commands.js';
 import { isContextLostError } from '@/runtime/dom/evalHelpers.js';
-import { DEEP_QUERY_JS, FILTER_MATCHING_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
+import { DEEP_QUERY_JS, FILTER_MATCHING_JS, selectorArgs } from '@/runtime/dom/targetNode.js';
 import {
   isWaitConditionMet,
   needsGoneConfirmation,
@@ -24,7 +24,7 @@ import {
   type WaitCondition,
   type WaitSnapshot,
 } from '@/runtime/dom/waitCondition.js';
-import { evaluateInBdgWorld } from '@/runtime/page/bdgWorld.js';
+import { callFunctionInBdgWorld } from '@/runtime/page/bdgWorld.js';
 import type { CDPSender } from '@/telemetry/objectExpander.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { delay, raceTimeout } from '@/utils/async.js';
@@ -189,12 +189,13 @@ async function nextSnapshot(
   deadline: number
 ): Promise<WaitSnapshot | undefined> {
   const remaining = deadline - Date.now();
-  const selectorArgs =
-    condition.selector === undefined ? 'null, null' : selectorArgsJS(condition.selector);
+  const [selector, parts] =
+    condition.selector === undefined ? [null, null] : selectorArgs(condition.selector);
   const text = condition.text === undefined ? null : normalizeWaitText(condition.text);
-  const args = `${selectorArgs}, ${JSON.stringify(text)}, ${JSON.stringify(previous)}, ${Math.min(remaining, WAIT_SLICE_MS)}`;
-  const evaluated = evaluateInBdgWorld(cdp, {
-    expression: `(${WAIT_SNAPSHOT_JS})(${args})`,
+  const args = [selector, parts, text, previous, Math.min(remaining, WAIT_SLICE_MS)];
+  const evaluated = callFunctionInBdgWorld(cdp, {
+    functionDeclaration: WAIT_SNAPSHOT_JS,
+    arguments: args.map((value) => ({ value })),
     awaitPromise: true,
     returnByValue: true,
   });

@@ -40,12 +40,14 @@ function fakeCdp(
 ): { cdp: CDPConnection; sent: string[] } {
   const sent: string[] = [];
   const send = (method: string, params: Record<string, unknown> = {}): Promise<unknown> => {
-    const expression = typeof params['expression'] === 'string' ? params['expression'] : '';
+    const source = params['functionDeclaration'] ?? params['expression'];
+    const expression = typeof source === 'string' ? source : '';
     if (method === 'Input.dispatchMouseEvent') {
       sent.push(String(params['type']));
       if (params['type'] === failingEvent) return Promise.reject(new Error('dispatch failed'));
       return Promise.resolve({});
     }
+    if (expression === 'this') return Promise.resolve({ result: { objectId: 'global' } });
     if (expression.includes('allMatches')) return Promise.resolve({ result: { value: located } });
     if (expression.includes('__bdgClickTarget') && !expression.startsWith('delete')) {
       sent.push('dom-fallback');

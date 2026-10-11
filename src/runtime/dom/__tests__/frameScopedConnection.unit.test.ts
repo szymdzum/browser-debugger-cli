@@ -195,6 +195,9 @@ void describe('frameMappingFrom', () => {
   });
 });
 
+/** The frame's global object: what the scoped connection returns for the main-world lookup (`this`) on the element */
+const FRAME_GLOBAL = 'frame-window';
+
 /**
  * Fake session connection for the scoped connection: records what reaches
  * Chrome and answers page scripts with a result the interactions accept.
@@ -217,6 +220,8 @@ function fakeConnection(quads: () => number[][]): {
     if (declaration === CLIENT_RECT_FUNCTION) {
       return { result: { value: { x: 0, y: 0, width: 10, height: 10 } } };
     }
+    if (/return \(\nthis\n\)/.test(String(declaration)))
+      return { result: { objectId: FRAME_GLOBAL } };
     return {
       result: {
         value: {
@@ -242,7 +247,7 @@ function fakeConnection(quads: () => number[][]): {
 }
 
 void describe('frameScopedConnection', () => {
-  void it('passes every interaction script through a wrapper that parses as one expression', async () => {
+  void it("runs every interaction script in the element's frame, as one parsable expression", async () => {
     const { cdp, sent } = fakeConnection(() => [quad(100, 100, 10, 10)]);
     const scoped = frameScopedConnection(cdp, 'element');
     const runs = [
@@ -256,13 +261,16 @@ void describe('frameScopedConnection', () => {
     ];
     for (const run of runs) await run().catch(() => undefined);
 
-    const wrapped = sent
-      .filter(({ params }) => params['objectId'] === 'element')
+    const inFrame = sent
+      .filter(({ params }) => [FRAME_GLOBAL, 'element'].includes(String(params['objectId'])))
       .map(({ params }) => String(params['functionDeclaration']));
-    assert.ok(wrapped.some((source) => source.includes(CLICK_ELEMENT_SCRIPT)));
-    assert.ok(wrapped.some((source) => source.includes(REACT_FILL_SCRIPT)));
-    assert.ok(wrapped.length >= 10, `${wrapped.length} scripts`);
-    for (const source of wrapped) {
+    const onGlobal = sent.filter(({ params }) => params['objectId'] === FRAME_GLOBAL);
+    assert.ok(
+      onGlobal.some(({ params }) => params['functionDeclaration'] === CLICK_ELEMENT_SCRIPT)
+    );
+    assert.ok(onGlobal.some(({ params }) => params['functionDeclaration'] === REACT_FILL_SCRIPT));
+    assert.ok(inFrame.length >= 10, `${inFrame.length} scripts`);
+    for (const source of inFrame) {
       assert.doesNotThrow(() => new vm.Script(`(${source});`), source.slice(0, 200));
     }
     assert.equal(

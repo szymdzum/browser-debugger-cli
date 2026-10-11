@@ -26,7 +26,6 @@ import {
 import type { FillValueMismatch, OptionNotFound } from '@/ipc/protocol/domTypes.js';
 import {
   ActionScriptError,
-  escapeValueForJS,
   exceptionSummary,
   throwIfInvalidSelector,
   withMultipleMatchesWarning,
@@ -46,12 +45,7 @@ import {
   type FillResult,
   type ClickResult,
 } from '@/runtime/dom/reactEventHelpers.js';
-import {
-  FIND_ELEMENTS_JS,
-  LABEL_CONTROL_JS,
-  selectorArgs,
-  selectorArgsJS,
-} from '@/runtime/dom/targetNode.js';
+import { FIND_ELEMENTS_JS, LABEL_CONTROL_JS, selectorArgs } from '@/runtime/dom/targetNode.js';
 import { callFunctionInMainWorld } from '@/runtime/page/bdgWorld.js';
 import { createLogger } from '@/ui/logging/index.js';
 import {
@@ -145,11 +139,10 @@ export async function fillElement(
     index: options.index,
   };
 
-  const expression = `(${REACT_FILL_SCRIPT})(${selectorArgsJS(selector)}, '${escapeValueForJS(value)}', ${JSON.stringify(scriptOptions)})`;
-
   try {
-    const response = await cdp.send('Runtime.evaluate', {
-      expression,
+    const response = await callFunctionInMainWorld(cdp, {
+      functionDeclaration: REACT_FILL_SCRIPT,
+      arguments: [...selectorArgs(selector), value, scriptOptions].map((value) => ({ value })),
       returnByValue: true,
       userGesture: true,
     });
@@ -754,13 +747,14 @@ export async function clickElement(
   selector: string,
   options: { index?: number; action?: PointerAction; strict?: boolean; listIndex?: number } = {}
 ): Promise<ClickOutcome> {
-  const indexArg = options.index ?? 'null';
   const action = options.action ?? 'click';
-  const expression = `(${CLICK_ELEMENT_SCRIPT})(${selectorArgsJS(selector)}, ${indexArg}, '${action}')`;
 
   try {
-    const response = await cdp.send('Runtime.evaluate', {
-      expression,
+    const response = await callFunctionInMainWorld(cdp, {
+      functionDeclaration: CLICK_ELEMENT_SCRIPT,
+      arguments: [...selectorArgs(selector), options.index ?? null, action].map((value) => ({
+        value,
+      })),
       returnByValue: true,
       userGesture: true,
     });
