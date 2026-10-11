@@ -16,7 +16,9 @@ Files in this skill:
 ## Session start
 
 - **Only verified issues go in.** Verified means **one command you have already run** that shows the user's exact symptom on `main`: a bdg invocation on a fixture page or real site, a test, or a script. It must be deterministic, or for timing bugs reproduce at a rate you can debug against (loop it, add load). Record the command and its output in the issue; it becomes the red commit's first test. Behaviour that can't be run (dead code, a wrong doc) may be confirmed with file:line instead. No command and no file:line: verify first or ask.
+- **Themed sweep first.** A session has a theme (one root cause or one area: secrets, false success, visibility). Before the proposal, one verifier-style agent (verifier brief, `../bdg-verify` on current `main`) re-runs the command of every open issue in the theme and sweeps the theme's surfaces for what the issues don't yet name. The proposal is built from its report: issues it couldn't reproduce get a `needs repro` comment and drop out; new symptoms join an existing issue or an umbrella issue (below), not a new issue each. Session E's secrets sweep before the proposal found the shape of the work the issues only hinted at.
 - **Propose 4–6 issues** with one line each on why. Recommend one set; don't present a menu. A candidate you can't reproduce in a few minutes drops out of the proposal and gets a `needs repro` comment on the issue.
+- **Show the balance.** The proposal states issues opened vs closed since the last session and what each wave closes. At least half of every wave closes existing issues; a feature session (new behaviour, nothing closed) is the user's explicit choice, never the default. Since the skill went live it filed about two issues for each one it closed; the proposal is where that is corrected.
 - **Waves of 2–3 parallel implementers.** Issues touching the same files or output run in sequence (the second starts from the first's branch, or after it merges). Light, conflict-free changes first; docs last.
 - **Ask for merge authority** as a yes/no question: "May I merge on my own once gates 1–8 hold, or do you want to OK each PR?" A bare "OK" is not an answer; ask again. It doesn't carry over to the next session.
 - **Product decisions belong to the user:** changed defaults, contracts, exit codes, removed `--json` fields. Present options with a recommendation, then wait. A standing "pick the recommended option" **never** covers a contract change or a third fix round; each gets its own yes/no question.
@@ -34,7 +36,7 @@ Copy one per issue into your notes and tick it off:
 - [ ] Fresh-agent test on the branch (briefs.md → Tester), findings fixed in the PR
 - [ ] Gates 1–8 hold on the final head SHA
 - [ ] Merged, main CI green, worktree and branch removed, fixture server (PID file) killed, issue updated
-- [ ] Every finding fixed or filed
+- [ ] Every finding fixed in the PR (adjacent), fixed in the sweep PR (nit) or sent to the verifier
 ```
 
 ### Implement
@@ -59,16 +61,18 @@ When the implementer reports, spawn a fresh reviewer with the reviewer brief: th
 
 The highest-yield step. Run it for every behaviour change (tier 2 and 3 below). Use the tester brief with the scenarios from `scenarios.md` that touch the change's area.
 
+**Adjacent fix rule.** A finding (from the reviewer, the tester or the implementer) that lives in the same file or function as the change and is fixable in about 20 lines with a test is fixed in the same PR, as its own commit (`fix: <symptom> (#<N> adjacent)`), and the PR body lists it. Everything else is reported to you (not filed by the agent) and goes to the verifier. Three PRs of session C/D each filed the issue their reviewer found in the function they had just changed (#601 from #597, #599 from #587, #630 from #603); each then cost a full cycle.
+
 ### Verification tiers
 
 | Tier | What | Review | Fresh-agent test | Red commit |
 |---|---|---|---|---|
-| 1 docs / tooling / tiny fix (no change to output, flags, exit codes or timing) | docs, CI, refactor under existing tests, a typo in a message | fresh reviewer | no | no (the PR says why) |
+| 1 docs / tooling / tiny fix (no change to output, flags, exit codes or timing) | docs, CI, refactor under existing tests, a typo in a message, the session's **polish sweep** (all UX nits of the session in one PR, one commit per nit, never one cycle each) | fresh reviewer | no | no (the PR says why) |
 | 2 behaviour change | new or changed output, flag, hint, default | fresh reviewer | yes | yes |
-| 3 high risk | session lifecycle, Chrome launch, files on disk, concurrency, security, contracts | fresh reviewer + second review of the fix commit | yes, plus the interrupt scenario (S08) when relevant | yes, plus repeat=10 for timing |
+| 3 high risk | session lifecycle, Chrome launch, files on disk, concurrency, security, contracts, redaction or parsing rules | fresh reviewer + second review of the fix commit | yes, plus the interrupt scenario (S08) when relevant | yes, plus repeat=10 for timing; for redaction or parsing, the brief's **case matrix** (inputs × output surfaces) is the red commit's test table |
 
 - Findings **about this change** go back to the implementer and are fixed **in the same PR**.
-- Findings about **older code** are collected for the whole round. Then **one verifier agent** (verifier brief in `briefs.md`) reproduces them all on current `main` in one pass; you group what survived into issues (one per root cause, with the command and output) in the right milestone. Don't verify 15 findings by hand, and don't file unverified ones. The verifier runs no git commands, so you prepare its checkout: `git worktree add ../bdg-verify --detach origin/main && ln -s <main checkout>/node_modules ../bdg-verify/node_modules && npm --prefix ../bdg-verify run build`, and remove it after the report (`git worktree remove ../bdg-verify`).
+- Findings about **older code** are collected for the whole round. Then **one verifier agent** (verifier brief in `briefs.md`) reproduces them all on current `main` in one pass. **Only you file issues**, and you file **one umbrella issue per root cause**: the cause in the title, the symptoms as a checklist with the verifier's command and output each, the milestone set. A symptom of an already open issue goes into that issue as a comment. Session E filed five secrets issues from one sweep; one root cause, five cycles. Don't verify 15 findings by hand, and don't file unverified ones. The verifier runs no git commands, so you prepare its checkout: `git worktree add ../bdg-verify --detach origin/main && ln -s <main checkout>/node_modules ../bdg-verify/node_modules && npm --prefix ../bdg-verify run build`, and remove it after the report (`git worktree remove ../bdg-verify`).
 - **Fresh base first.** If `main` merged changes to files this PR touches since the branch was created (`git -C ../bdg-<N> log --oneline HEAD..origin/main -- <files>`), the implementer rebases **before** the fresh-agent test; otherwise the tester reports bugs `main` already fixed.
 - **For a fix that adds no new output or flag**, the tester gets the two scenarios closest to the change, not four tasks.
 - **Start the fixtures from the worktree of the branch under test** (`npx tsx src/__testutils__/serveFixtures.ts` in `../bdg-<N>`), never from another worktree or the main checkout: a tester once got a page the branch had added from a server that didn't have it. Start it as `npx tsx src/__testutils__/serveFixtures.ts & echo $! > /tmp/bdg-fixtures-<N>.pid` and kill that PID when the tester reports (one server ran for 2.5 h after its round).
@@ -88,7 +92,7 @@ git -C ../bdg-<N> status --short                                          # anyt
 git worktree remove ../bdg-<N> && git branch -D <branch>                  # no --force; GitHub deletes the remote branch
 ```
 
-A red `main` is fixed before any new work. Close the issue, or comment with what's left, if the PR didn't.
+A red `main` is fixed before any new work. Merge when `main`'s last completed run is green; an in-progress push run of an unrelated PR is not a reason to wait (session E held an independent PR for a run that could not affect it). Close the issue, or comment with what's left, if the PR didn't.
 
 ## Gates
 
@@ -110,6 +114,7 @@ Merge only when **all** hold. If one fails, fix it; don't negotiate it.
 
 - **Roadmap #466:** one update at the end of the session (done / new / moved), not after every merge; re-read the body right before editing, GitHub ticks tasklist items on its own.
 - **Fix or file:** every finding from any step is fixed now or filed as a verified issue. Never only "out of scope" in a PR body or summary.
+- **Only the orchestrator files issues.** Implementers, reviewers and testers report findings in their report; you send them through the verifier and file umbrella issues. An implementer once filed an issue without a repro (#630 from #603), which the next session had to verify again.
 - **Reporting:** one line at each step change (agent started, report in, review sent back, test started), a summary at merges, real problems and decisions. Don't relay every background notification or stale watcher.
 - **Releases** only when the user decides (`docs/RELEASE_PROCESS.md`), never at the end of a session by default.
 - **Retro at session end,** in a few lines: what merged and was filed, what slowed the session, what was unnecessary, one or two process changes. Agreed changes go into this skill (on a branch, as a PR); memory keeps only the reasons.
@@ -154,6 +159,6 @@ Merge only when **all** hold. If one fails, fix it; don't negotiate it.
   For a PR also run `gh pr checks <n>` once at the end (it lists the jobs; it doesn't wait).
 
 ### Forbidden
-- `git stash`; `git commit --no-verify` or any other hook bypass; broad `pkill`/`killall`/`pkill -P` (kill only PIDs you started).
+- `git stash`; `git commit --no-verify` or any other hook bypass; broad `pkill`/`killall`/`pkill -P`. Kill only a PID read from a file the process wrote at start (`/tmp/bdg-<role>-<N>.pid`), never one remembered or looked up with `ps`/`lsof`: an implementer killed two PIDs from memory and one belonged to another agent's session.
 - Touching `~/.bdg`, other worktrees or the main checkout from an agent; leaving files in `~/Downloads`.
 - Committing in the main checkout without being asked (implementers commit and push in their own worktree; their brief grants that); AI attribution; relaying an npm OTP through chat; releasing unless the user decides.
