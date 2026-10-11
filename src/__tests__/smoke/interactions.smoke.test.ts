@@ -1263,6 +1263,19 @@ void describe('DOM interactions', () => {
     assert.deepEqual([hover.success, hover.exitCode], [false, 90]);
     assert.equal(await evaluate('window.coveredClicks'), 0);
 
+    await bdg(['dom', 'query', '#covered']);
+    const byIndex = await bdg(['dom', 'click', '0', '--strict'], 90);
+    assert.match(byIndex, /covered by another element \(div#cover\)/);
+    assert.match(byIndex, /bdg dom layout 0,/, 'an index names the index, not a selector (#603)');
+    assert.doesNotMatch(byIndex, /__bdg_bound_target__/);
+    const hoverByIndex = JSON.parse(await bdg(['dom', 'hover', '0', '--strict', '--json'], 90)) as {
+      exitCode: number;
+      suggestion?: string;
+    };
+    assert.equal(hoverByIndex.exitCode, 90);
+    assert.match(hoverByIndex.suggestion ?? '', /bdg dom layout 0,/);
+    assert.doesNotMatch(hoverByIndex.suggestion ?? '', /__bdg_bound_target__/);
+
     await bdg(['dom', 'click', '#covered']);
     assert.equal(await evaluate('window.coveredClicks'), 1, 'without --strict DOM events are used');
     assert.match(await bdg(['dom', 'click', '#toast', '--strict']), /Method: +mouse events/);

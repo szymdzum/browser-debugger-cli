@@ -11,7 +11,8 @@
  * press: for a shield inside the element's closed root, one in an outer
  * closed root over an element in a nested one, one in the document over a
  * closed root element, and one over a light element; `--strict` refuses
- * it, naming the shield.
+ * it, naming the shield, and for an index suggests `bdg dom layout <index>`
+ * (#603).
  *
  * Each test loads `/press-check` again after resting the mouse on `#park`,
  * so no shield is up before the click moves the mouse. The checks read the
@@ -152,4 +153,20 @@ void describe('Press check', () => {
       );
     });
   }
+
+  void it('suggests bdg dom layout <index> when --strict refuses a missed press on an index (#603)', async () => {
+    const index = await buttonIndex('Shielded');
+    const output = await bdg(['dom', 'click', index, '--strict'], 90);
+    assert.match(output, new RegExp(`bdg dom layout ${index}$`, 'm'));
+    assert.doesNotMatch(output, /__bdg_bound_target__/);
+
+    await bdg(['dom', 'hover', '#park']);
+    await bdg(['page', 'navigate', `${fixture.url}press-check`]);
+    const json = JSON.parse(
+      await bdg(['dom', 'click', await buttonIndex('Shielded'), '--strict', '--json'], 90)
+    ) as { exitCode: number; suggestion?: string };
+    assert.equal(json.exitCode, 90);
+    assert.match(json.suggestion ?? '', new RegExp(`bdg dom layout ${index}$`));
+    assert.doesNotMatch(json.suggestion ?? '', /__bdg_bound_target__/);
+  });
 });

@@ -2050,21 +2050,45 @@ export function actionBrokenByPageError(
  * A pointer action refused under `--strict` because a real mouse could not
  * reach the element (covered, hidden, zero-size, pointer-events: none).
  *
- * @param target - Selector and element description, as the click located it
+ * @param target - Selector and element description, as the click located it, and the index the user gave for a listed element
  * @param reason - Why the mouse could not reach it, e.g. "covered by another element (div#shield)"
  * @param verb - What was refused, e.g. "click", "hover"
  * @returns Message naming the obstruction, and how to inspect it
  */
 export function unreachableElementError(
-  target: { selector: string; element?: string | undefined },
+  target: ActedElement,
   reason: string | null | undefined,
   verb: string
 ): ErrorWithSuggestion {
   const element = target.element ?? target.selector;
   return {
     message: `Did not ${verb} ${element}: it is ${reason ?? 'not reachable by the mouse'}, so a user could not ${verb} it (--strict)`,
-    suggestion: `See what is in the way with ${sessionCommand(`bdg dom layout ${shellQuote(target.selector)}`)}, then close the overlay or scroll; without --strict bdg uses DOM events instead`,
+    suggestion: `See what is in the way with ${sessionCommand(`bdg dom layout ${elementArgument(target)}`)}, then close the overlay or scroll; without --strict bdg uses DOM events instead`,
   };
+}
+
+/** An element an action was refused for: its selector and description, and the index the user gave for a listed element */
+interface ActedElement {
+  selector: string;
+  element?: string | undefined;
+  listIndex?: number | undefined;
+}
+
+/**
+ * How a bdg command names an element an action was refused for: the index
+ * the user gave for a listed element (the selector is then bdg's internal
+ * placeholder for the bound node), otherwise the quoted selector. An index
+ * that is not a non-negative integer (a malformed IPC request) is not
+ * trusted: the quoted selector is used instead.
+ *
+ * @param target - The element
+ * @returns Command argument, e.g. `0` or `'#covered'`
+ */
+function elementArgument(target: ActedElement): string {
+  const { listIndex } = target;
+  return Number.isInteger(listIndex) && (listIndex ?? -1) >= 0
+    ? String(listIndex)
+    : shellQuote(target.selector);
 }
 
 /**
@@ -2072,13 +2096,13 @@ export function unreachableElementError(
  * element: it was sent, but landed on another element, or the page never
  * saw it (a browser dialog or bubble captured the input).
  *
- * @param target - Selector and element description, as the click located it
+ * @param target - Selector and element description, as the click located it, and the index the user gave for a listed element
  * @param verb - What was refused, e.g. "click"
  * @param landedOn - The element the press landed on, when the page saw it
  * @returns Message, and how to inspect the page
  */
 export function pressNotReceivedError(
-  target: { selector: string; element?: string | undefined },
+  target: ActedElement,
   verb: string,
   landedOn?: string
 ): ErrorWithSuggestion {
@@ -2089,7 +2113,7 @@ export function pressNotReceivedError(
       : `landed on ${landedOn}`;
   return {
     message: `Did not ${verb} ${element}: the press did not reach the element (it was sent, but ${where}) (--strict)`,
-    suggestion: `Check the page with ${sessionCommand('bdg dom screenshot page.png')} and ${sessionCommand(`bdg dom layout ${shellQuote(target.selector)}`)}`,
+    suggestion: `Check the page with ${sessionCommand('bdg dom screenshot page.png')} and ${sessionCommand(`bdg dom layout ${elementArgument(target)}`)}`,
   };
 }
 
@@ -2118,19 +2142,20 @@ export function fillTooLongError(
  * `dom fill` typed the text, but the page had moved the focus and it went
  * to another field (named, never with the text).
  *
- * @param target - The field filled: its selector, and its description
- *   (e.g. `input#password "Password"`) when known
+ * @param target - The field filled: its selector, its description
+ *   (e.g. `input#password "Password"`) when known, and the index the user
+ *   gave for a listed element
  * @param receiver - The field that got the text instead
  * @returns Error with suggestion
  */
 export function textTypedElsewhereError(
-  target: { selector: string; element?: string | undefined },
+  target: ActedElement,
   receiver: string
 ): ErrorWithSuggestion {
   const field = target.element ?? target.selector;
   return {
     message: `Did not fill ${field}: the page moved the focus to ${receiver} as bdg typed the text, so ${receiver} got it instead`,
-    suggestion: `Clear ${receiver} if it should not keep the text, and see what moves the focus (focus, beforeinput) with ${sessionCommand(`bdg dom listeners ${shellQuote(target.selector)}`)}`,
+    suggestion: `Clear ${receiver} if it should not keep the text, and see what moves the focus (focus, beforeinput) with ${sessionCommand(`bdg dom listeners ${elementArgument(target)}`)}`,
   };
 }
 

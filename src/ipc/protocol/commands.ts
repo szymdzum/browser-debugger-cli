@@ -315,6 +315,8 @@ export interface DomFillCommand extends DialogChoice {
   index?: number;
   /** Exact element from the query cache (overrides selector/index) */
   backendNodeId?: number;
+  /** The index the user gave for that element (named in suggestions) */
+  listIndex?: number;
   blur?: boolean;
   wait?: boolean;
 }
@@ -329,6 +331,8 @@ export interface DomClickCommand extends DialogChoice {
   index?: number;
   /** Exact element from the query cache (overrides selector/index) */
   backendNodeId?: number;
+  /** The index the user gave for that element (named in suggestions) */
+  listIndex?: number;
   wait?: boolean;
   /** Double or right click, or only hover (default: click) */
   action?: 'click' | 'double' | 'right' | 'hover';

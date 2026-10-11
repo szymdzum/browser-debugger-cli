@@ -153,7 +153,7 @@ export async function fillElement(
         return tooLongFailure({ ...result, tooLong: result.tooLong }, value);
       if (!result.fileInput) {
         const filled = result.insertText
-          ? await insertAsUser(cdp, { selector, value }, result)
+          ? await insertAsUser(cdp, { selector, value, listIndex: options.listIndex }, result)
           : result;
         return withValueMismatchWarning(await withReadBack(cdp, withFillWarnings(filled)));
       }
@@ -196,7 +196,8 @@ type FilledField =
  * navigated) the fill script's result stands.
  *
  * @param cdp - CDP connection
- * @param fill - The selector filled and the text to type
+ * @param fill - The selector filled, the text to type, and the index the
+ *   user gave for a listed element
  * @param pending - Result of the fill script, with `insertText`
  * @returns Fill outcome
  * @throws CommandError (exit 90) when the page moved the focus and the text
@@ -205,7 +206,7 @@ type FilledField =
  */
 async function insertAsUser(
   cdp: CDPConnection,
-  fill: { selector: string; value: string },
+  fill: { selector: string; value: string; listIndex?: number | undefined },
   pending: FillOutcome
 ): Promise<FillOutcome> {
   const { insertText: _typed, ...result } = pending;
@@ -222,7 +223,7 @@ async function insertAsUser(
   if (!done) return result;
   if (done.typedInto !== undefined) {
     const err = textTypedElsewhereError(
-      { selector: result.selector ?? '', element: result.element },
+      { selector: result.selector ?? '', element: result.element, listIndex: fill.listIndex },
       done.typedInto
     );
     throw new CommandError(
@@ -628,15 +629,17 @@ function releaseClickTarget(cdp: CDPConnection): void {
  * @param action - What was refused
  * @param why - Why the mouse could not reach it (nothing was sent), or the
  *   press that was sent and missed
+ * @param listIndex - Index the user gave for a listed element, named in the suggestion
  * @returns Never
  * @throws CommandError always
  */
 function refuseUnreachable(
   result: ClickResult,
   action: PointerAction,
-  why: { obstruction: string | null } | { missed: PressOutcome }
+  why: { obstruction: string | null } | { missed: PressOutcome },
+  listIndex: number | undefined
 ): never {
-  const target = { selector: result.selector ?? '', element: result.element };
+  const target = { selector: result.selector ?? '', element: result.element, listIndex };
   const verb = POINTER_ACTION_NOUN[action];
   const err =
     'missed' in why
@@ -659,6 +662,7 @@ function refuseUnreachable(
  * @param located - Locate result with center point
  * @param action - Click, double click, right click or hover
  * @param strict - Refuse instead of falling back to DOM events
+ * @param listIndex - Index the user gave for a listed element (named when refused)
  * @returns Click result
  * @throws CommandError under `strict` when a user could not reach the element
  */
@@ -666,7 +670,8 @@ async function performClick(
   cdp: CDPConnection,
   located: LocatedClick,
   action: PointerAction,
-  strict: boolean
+  strict: boolean,
+  listIndex?: number
 ): Promise<ClickOutcome> {
   const { x, y, hittable, obstruction, ...result } = located;
   if (!result.success) return result;
@@ -674,7 +679,7 @@ async function performClick(
   if (hittable && x !== undefined && y !== undefined) {
     const press = await dispatchMouseAction(cdp, action, { x, y }, strict);
     releaseClickTarget(cdp);
-    if (!press.reached && strict) refuseUnreachable(result, action, { missed: press });
+    if (!press.reached && strict) refuseUnreachable(result, action, { missed: press }, listIndex);
     return withMultipleMatchesWarning<ClickResult>(
       {
         ...result,
@@ -694,7 +699,7 @@ async function performClick(
 
   if (strict) {
     releaseClickTarget(cdp);
-    refuseUnreachable(result, action, { obstruction: obstruction ?? null });
+    refuseUnreachable(result, action, { obstruction: obstruction ?? null }, listIndex);
   }
   const response = (await cdp.send('Runtime.evaluate', {
     expression: domFallbackScript(action),
@@ -718,11 +723,17 @@ async function performClick(
 
 /**
  * Click an element.
+ *
+ * @param cdp - CDP connection
+ * @param selector - Selector, or the bound-node placeholder
+ * @param options - Match index, pointer action, `--strict`, and the index the
+ *   user gave for a listed element (named when `--strict` refuses)
+ * @returns Click result
  */
 export async function clickElement(
   cdp: CDPConnection,
   selector: string,
-  options: { index?: number; action?: PointerAction; strict?: boolean } = {}
+  options: { index?: number; action?: PointerAction; strict?: boolean; listIndex?: number } = {}
 ): Promise<ClickOutcome> {
   const indexArg = options.index ?? 'null';
   const action = options.action ?? 'click';
@@ -750,7 +761,13 @@ export async function clickElement(
     }
 
     if (cdpResponse.result?.value && isClickResult(cdpResponse.result.value)) {
-      return await performClick(cdp, cdpResponse.result.value, action, options.strict === true);
+      return await performClick(
+        cdp,
+        cdpResponse.result.value,
+        action,
+        options.strict === true,
+        options.listIndex
+      );
     }
 
     const err = unexpectedResponseFormatError('ClickResult');

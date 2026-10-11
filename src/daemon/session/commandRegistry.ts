@@ -811,7 +811,12 @@ export function createCommandRegistry(
                   target.cdp,
                   target.selector,
                   params.value,
-                  filterDefined({ index: target.index, blur: params.blur, cwd: params.cwd })
+                  filterDefined({
+                    index: target.index,
+                    blur: params.blur,
+                    cwd: params.cwd,
+                    listIndex: params.listIndex,
+                  })
                 ),
               params.wait !== false
             )
@@ -838,6 +843,7 @@ export function createCommandRegistry(
                     index: target.index,
                     action: params.action,
                     strict: params.strict,
+                    listIndex: params.listIndex,
                   })
                 );
                 probed = submitProbe === true;
