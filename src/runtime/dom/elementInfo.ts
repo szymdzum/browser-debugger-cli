@@ -257,8 +257,9 @@ export const ELEMENT_STATE_JS = `(el) => {
  * Page-side outer HTML of a node as `dom get --raw` shows it, with secrets
  * masked as {@link MASKED_VALUE} (an empty value stays empty):
  *
- * - the `value` attribute of each sensitive input ({@link SENSITIVE_FIELD_JS}),
- *   the text of each sensitive textarea, and the `value` and `label`
+ * - the `value` attribute of each hidden input (often a CSRF or session
+ *   token; `dom query` leaves it out) and of each sensitive input
+ *   ({@link SENSITIVE_FIELD_JS}), the text of each sensitive textarea, and the `value` and `label`
  *   attributes and text of each option of a sensitive select (`dom query`
  *   masks its selected option), the node itself or inside it, also in
  *   `<template>` content (judged on the inert elements, without the CSS
@@ -286,7 +287,9 @@ export const ELEMENT_STATE_JS = `(el) => {
  */
 export const MASKED_OUTER_HTML_JS = `(node) => {
   const isSensitive = ${SENSITIVE_FIELD_JS};
-  const isSecretField = (el) => el.nodeType === 1 && /^(input|textarea|select)$/.test(el.localName) && isSensitive(el);
+  const isHidden = (el) => el.localName === 'input' && /^hidden$/i.test(el.getAttribute('type') || '');
+  const isSecretField = (el) =>
+    el.nodeType === 1 && /^(input|textarea|select)$/.test(el.localName) && (isHidden(el) || isSensitive(el));
   let masked = false;
   const within = (el, selector) => {
     const found = el.nodeType === 1 && el.matches(selector) ? [el] : [];
