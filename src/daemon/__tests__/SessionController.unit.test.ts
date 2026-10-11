@@ -223,6 +223,50 @@ void describe('SessionController.command timeouts', () => {
   });
 });
 
+void describe('SessionController: a command timeout longer than a timer can wait (#617)', () => {
+  afterEach(() => mock.restoreAll());
+
+  /** Longest delay Node's `setTimeout` takes; a longer one fires after 1 ms */
+  const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
+  void it('gives the timer the longest delay, so the command does not time out at once', async () => {
+    let answer = (): void => undefined;
+    const session = {
+      launch: () => Promise.resolve(),
+      stop: () => Promise.resolve(),
+      stopRequested: () => false,
+      info: () => ({ chromePid: 1234, port: 9222, targetUrl: request.url }),
+      metadata: () => ({ startTime: Date.now(), bdgPid: process.pid, port: 9222 }),
+      execute: () =>
+        new Promise((resolve) => {
+          answer = () => resolve({ found: true });
+        }),
+      fetchInterceptionEnabled: () => false,
+      takeTabMoveNotice: () => undefined,
+    };
+    mock.method(Session, 'create', () => session as unknown as Session);
+    const controller = new SessionController(Date.now(), '/tmp/test.sock', () => undefined);
+    await controller.startSession(request);
+    const timers = mock.method(globalThis, 'setTimeout');
+
+    const response = controller.command({
+      type: 'dom_wait_request',
+      sessionId: 's',
+      selector: '#late',
+      timeout: 3_000_000_000,
+    } as never);
+    const delays = timers.mock.calls.map((call) => call.arguments[1] as number);
+    answer();
+
+    assert.equal(((await response) as { status: string }).status, 'ok');
+    assert.ok(delays.length > 0, 'the command has a timer');
+    assert.ok(
+      delays.every((delay) => delay <= MAX_TIMER_DELAY_MS),
+      `timer delays ${delays.join(', ')} exceed ${MAX_TIMER_DELAY_MS} ms`
+    );
+  });
+});
+
 void describe('SessionController: a move no command reported yet', () => {
   afterEach(() => mock.restoreAll());
 
