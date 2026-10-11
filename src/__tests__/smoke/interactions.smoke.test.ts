@@ -1251,6 +1251,22 @@ void describe('DOM interactions', () => {
     );
   });
 
+  void it('words the same cover alike in action errors and dom layout (#641)', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}effects`]);
+    const wording = /under transparent div#cover \(clicks land on it\)/;
+    assert.match(await bdg(['dom', 'hover', '#covered', '--strict'], 90), wording);
+    assert.match(await bdg(['dom', 'click', '#covered', '--strict'], 90), wording);
+    assert.match(await bdg(['dom', 'layout', '#covered']), wording);
+  });
+
+  void it('describes what --strict replaces on click and hover (#641)', async () => {
+    for (const command of ['click', 'hover']) {
+      const help = await bdg(['dom', command, '--help']);
+      assert.doesNotMatch(help, /instead of using DOM events/);
+      assert.match(help, /warn/);
+    }
+  });
+
   void it('refuses with --strict what a user could not click or hover', async () => {
     await bdg(['page', 'navigate', `${fixture.url}effects`]);
     const refused = await bdg(['dom', 'click', '#covered', '--strict'], 90);

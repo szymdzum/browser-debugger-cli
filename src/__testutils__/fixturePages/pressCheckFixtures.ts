@@ -14,7 +14,8 @@
  * inside `<x-nest>`'s and covered by `div#nest-shield` in the outer root,
  * `Under`, in `<x-under>`'s closed root and
  * covered by `div#outer-shield` in the document, and the light `#light`,
- * covered by `div#light-shield`. `#park` is a corner to rest the mouse on
+ * covered by `div#light-shield`. `#rerender` (`Rerender`) replaces itself right after its click
+ * ran, so a click that arrived must still count as clicked (#641). `#park` is a corner to rest the mouse on
  * before the page loads again, so no shield appears before a click moves
  * the mouse. Every button counts its clicks in `window.clicks`.
  */
@@ -39,6 +40,7 @@ const PRESS_CHECK_HTML = `<!doctype html><title>press check</title>
   <x-nest></x-nest>
   <x-under></x-under>
   <button id="light">Light</button>
+  <div id="rerender-host"><button id="rerender">Rerender</button></div>
 </main>
 <p id="log"></p>
 <script>
@@ -138,6 +140,11 @@ const PRESS_CHECK_HTML = `<!doctype html><title>press check</title>
         document.body.append(shield);
       }, { once: true });
     }
+  });
+  const rerender = document.getElementById('rerender');
+  rerender.addEventListener('click', () => {
+    window.clicks.push('Rerender clicked');
+    document.getElementById('rerender-host').innerHTML = '<button>Rerendered</button>';
   });
   const light = document.getElementById('light');
   count(light);

@@ -154,6 +154,31 @@ void describe('Press check', () => {
     });
   }
 
+  void it('names a next step in the missed-press warning without --strict (#641)', async () => {
+    const index = await buttonIndex('Under');
+    const data = await clickJson(index);
+    assert.match(data.warning ?? '', NOT_REACHED, JSON.stringify(data));
+    assert.match(data.warning ?? '', new RegExp(`bdg dom layout ${index}`), JSON.stringify(data));
+  });
+
+  void it('does not count a button replaced on pointerdown as clicked (#641)', async () => {
+    const index = await buttonIndex('Swap');
+    const data = await clickJson(index);
+    assert.match(data.warning ?? '', NOT_REACHED, JSON.stringify(data));
+    await bdg(['dom', 'hover', '#park']);
+    await bdg(['page', 'navigate', `${fixture.url}press-check`]);
+    const output = await bdg(['dom', 'click', await buttonIndex('Swap'), '--strict'], 90);
+    assert.match(output, /replaced/);
+    assert.deepEqual(await evaluate('window.clicks'), ['Swap pressed']);
+  });
+
+  void it('still counts a button that re-renders itself after its click (#641)', async () => {
+    const strict = await bdg(['dom', 'click', await buttonIndex('Rerender'), '--strict', '--json']);
+    const data = (JSON.parse(strict) as { data: ClickJson }).data;
+    assert.equal(data.warning, undefined, strict);
+    assert.deepEqual(await evaluate('window.clicks'), ['Rerender clicked']);
+  });
+
   void it('suggests bdg dom layout <index> when --strict refuses a missed press on an index (#603)', async () => {
     const index = await buttonIndex('Shielded');
     const output = await bdg(['dom', 'click', index, '--strict'], 90);
