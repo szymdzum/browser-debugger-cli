@@ -43,6 +43,19 @@ void describe('invalid fields in reports', () => {
     );
   });
 
+  void it('words a secret field by its validity state, an ordinary one by the browser text (#643)', () => {
+    const chromeText =
+      'Please lengthen this text to 8 characters or more (you are currently using 3 characters).';
+    const { fields } = boundInvalidFields([
+      { field: 'pw', validity: { states: ['tooShort'], minLength: 8 } },
+      { field: 'nick', message: chromeText },
+    ]);
+    assert.deepEqual(fields, [
+      { field: 'pw', message: 'tooShort: at least 8 characters' },
+      { field: 'nick', message: chromeText },
+    ]);
+  });
+
   void it('names every field without a note when there are no more', () => {
     const bounded = boundInvalidFields([
       { field: 'email', message: 'Required.' },

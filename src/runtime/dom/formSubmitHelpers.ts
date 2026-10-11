@@ -15,6 +15,7 @@ import type { PendingRequestInfo } from '@/ipc/protocol/commands.js';
 import type { InvalidField, SubmitResult } from '@/ipc/protocol/domTypes.js';
 import {
   boundInvalidFields,
+  type RawInvalidField,
   FORM_MEMBERS_JS,
   INVALID_FIELDS_JS,
 } from '@/runtime/dom/blockedSubmit.js';
@@ -114,7 +115,7 @@ interface PrepareResult {
   reason?: 'not-found' | 'range' | 'not-submittable' | 'invalid' | 'disabled';
   error?: string;
   /** The form's invalid fields (reason `invalid`) */
-  invalid?: InvalidField[];
+  invalid?: RawInvalidField[];
 }
 
 const FAILURE_EXIT_CODES: Record<NonNullable<PrepareResult['reason']>, number> = {
@@ -286,7 +287,7 @@ class SubmissionWatcher {
  * @param fields - Invalid fields as the page listed them
  * @returns The fields to name and how many were left out
  */
-function invalidFieldsArgs(fields: InvalidField[]): [InvalidField[], number] {
+function invalidFieldsArgs(fields: RawInvalidField[]): [InvalidField[], number] {
   const bounded = boundInvalidFields(fields);
   return [bounded.fields, bounded.omitted];
 }

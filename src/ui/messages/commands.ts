@@ -2054,6 +2054,16 @@ export function rawHtmlMaskedNote(): string {
  * @param validity - Validity flags and length limits
  * @returns e.g. "tooShort: at least 8 characters", "valueMissing", or "invalid"
  */
-export function validityStateText(_validity: ValidityReport): string {
-  throw new Error('not implemented');
+export function validityStateText(validity: ValidityReport): string {
+  const limits: Record<string, string | undefined> = {
+    tooShort:
+      validity.minLength === undefined ? undefined : `at least ${validity.minLength} characters`,
+    tooLong:
+      validity.maxLength === undefined ? undefined : `at most ${validity.maxLength} characters`,
+  };
+  const named = validity.states.map((state) => {
+    const limit = limits[state];
+    return limit === undefined ? state : `${state}: ${limit}`;
+  });
+  return named.length > 0 ? named.join(', ') : 'invalid';
 }

@@ -4,6 +4,7 @@
  * it and where they live (iframes, shadow roots).
  */
 
+import type { ValidityReport } from '@/ipc/protocol/domTypes.js';
 import { SENSITIVE_NAME_JS } from '@/utils/sensitiveNames.js';
 
 /**
@@ -248,6 +249,23 @@ export const SENSITIVE_FIELD_JS = `(el) => {
   } catch (e) {
     return false;
   }
+}`;
+
+/**
+ * Page-side report of why a field is invalid, for a secret field whose
+ * browser validation text must not be shown (#643: "you are currently
+ * using 5 characters" gives the value's length): the `ValidityState` flags
+ * that are set, and the field's `minlength` and `maxlength` when it
+ * declares them. Node words it ({@link ValidityReport}).
+ */
+export const VALIDITY_REPORT_JS = `(el) => {
+  const flags = ['valueMissing', 'typeMismatch', 'patternMismatch', 'tooLong', 'tooShort', 'rangeUnderflow', 'rangeOverflow', 'stepMismatch', 'badInput', 'customError'];
+  const validity = el.validity || {};
+  return {
+    states: flags.filter((flag) => validity[flag] === true),
+    minLength: el.minLength > 0 ? el.minLength : undefined,
+    maxLength: el.maxLength > 0 ? el.maxLength : undefined
+  };
 }`;
 
 /**

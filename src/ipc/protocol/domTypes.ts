@@ -634,7 +634,10 @@ export interface RawField {
   native: boolean;
   value: string | boolean | string[];
   checked?: boolean;
+  /** The browser's validation message (not for a secret field, see `validity`) */
   validationMessage?: string;
+  /** Why a secret field is invalid, instead of the browser's message (#643) */
+  validity?: ValidityReport;
   isValid: boolean;
   /** Only the "required but empty" constraint fails */
   valueMissing?: boolean;
