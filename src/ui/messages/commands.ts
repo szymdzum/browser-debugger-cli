@@ -1551,7 +1551,8 @@ export const FILL_RESULT_HELP = joinLines(
   'a value over maxlength is refused (exit 81). A value set by script instead (the',
   'field had no focus) says so in a warning. If the page moves the focus and the text',
   'lands in another field, the fill fails (exit 90) naming that field. Secret fields',
-  '(passwords, one-time codes, card data: the fields dom query masks) show Value: ••••.'
+  '(passwords, one-time codes, card data, names like api_key, token or pass: the',
+  'fields dom query masks) show Value: ••••.'
 );
 
 /** Examples in the help of `bdg dom wait` */
