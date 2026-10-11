@@ -40,7 +40,10 @@ function stateOf(spec: FieldSpec): Record<string, unknown> {
     checked: spec.checked ?? false,
     selectedOptions: (spec.selected ?? []).map((label) => ({ label })),
     form: null,
+    labels: [],
+    childNodes: [],
     getAttribute: (name: string): string | null => attributes[name] ?? null,
+    getRootNode: () => ({ getElementById: (): null => null }),
     ownerDocument: {
       defaultView: {
         getComputedStyle: () => ({
