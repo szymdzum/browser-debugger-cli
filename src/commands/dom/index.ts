@@ -126,7 +126,7 @@ export function registerDomCommands(program: Command): void {
     )
     .option(
       '--raw',
-      'Output raw HTML with all attributes (secret field values shown as ••••, as in dom query)'
+      'Output raw HTML with all attributes (secret field and hidden input values shown as ••••, as in dom query)'
     )
     .option(
       '--full',

@@ -2,8 +2,9 @@
  * Credential redaction in request and response bodies, WebSocket text
  * messages and `name=value` lists, for sanitized HAR exports (see sanitize.ts).
  *
- * Matching is by field name only, so it over-redacts: any primitive whose
- * name looks like a credential (`tokenCount: 5`) is replaced too.
+ * Matching is by field name only (`isSensitiveName`, the rule DOM masking
+ * shares), so it over-redacts: any primitive whose name looks like a
+ * credential (`tokenCount: 5`) is replaced too.
  *
  * JSON is never parsed and re-serialized: a single linear scan replaces the
  * credential values in place, so everything else (64-bit numbers, formatting,
@@ -15,25 +16,14 @@
  * JSONP and `name:value` header lines (STOMP `passcode:`) are not.
  */
 
-import { SENSITIVE_NAME_SOURCE } from '@/runtime/dom/elementInfo.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
+import { isSensitiveName } from '@/utils/sensitiveNames.js';
 
 const log = createLogger('network');
 
 /** Replaces a credential value */
 export const REDACTED = '[redacted]';
-
-/**
- * Field names holding credentials: password-like names (shared with form
- * masking), tokens, secrets, keys, sessions, signatures, credentials, bearer,
- * cookie, CSRF and refresh values, `auth` and `sid` as whole words, OAuth,
- * authorization codes and PKCE verifiers
- */
-const SENSITIVE_FIELD = new RegExp(
-  `${SENSITIVE_NAME_SOURCE}|token|secret|api[-_]?key|authoriz|credential|jwt|private[-_]?key|access[-_]?key|session|signature|bearer|cookie|csrf|xsrf|refresh|oauth|(^|[^a-z])(auth|sid)([^a-z]|$)|auth[-_]?code|code[-_]?verifier`,
-  'i'
-);
 
 /**
  * A body that is a form whatever its Content-Type: `k=v&k=v`, no whitespace,
@@ -94,17 +84,6 @@ interface JsonScan {
   lineEnd: number;
   /** Levels of string encoding around the text */
   depth: number;
-}
-
-/**
- * Whether a body field, form field or query parameter name looks like it
- * holds a credential.
- *
- * @param name - Field name
- * @returns True for password, token, secret, key, session and signature names
- */
-export function isSensitiveField(name: string): boolean {
-  return SENSITIVE_FIELD.test(name.replace(/([a-z])([A-Z])/g, '$1_$2'));
 }
 
 /**
@@ -194,9 +173,9 @@ export function redactPairs(
  */
 export function redactBody(text: string, mimeType: string): string {
   if (/multipart\/form-data/i.test(mimeType)) return redactMultipart(text, mimeType);
-  if (/x-www-form-urlencoded/i.test(mimeType)) return redactPairs(text, isSensitiveField, REDACTED);
+  if (/x-www-form-urlencoded/i.test(mimeType)) return redactPairs(text, isSensitiveName, REDACTED);
   if (JSON_LIKE_START.test(text)) return redactJsonText(text, 0);
-  if (FORM_BODY.test(text)) return redactPairs(text, isSensitiveField, REDACTED);
+  if (FORM_BODY.test(text)) return redactPairs(text, isSensitiveName, REDACTED);
   if (JSON_MIME.test(mimeType)) return redactJsonText(text, 0);
   return redactJwts(text, REDACTED);
 }
@@ -266,7 +245,7 @@ function redactPart(part: string): string {
   const headerEnd = part.indexOf('\r\n\r\n');
   if (headerEnd === -1) return part;
   const name = /;\s*name="([^"]*)"/i.exec(part.slice(0, headerEnd))?.[1];
-  if (name === undefined || !isSensitiveField(name)) return redactJwts(part, REDACTED);
+  if (name === undefined || !isSensitiveName(name)) return redactJwts(part, REDACTED);
   const valueEnd = part.endsWith('\r\n') ? part.length - 2 : part.length;
   return `${part.slice(0, headerEnd + 4)}${REDACTED}${part.slice(valueEnd)}`;
 }
@@ -337,7 +316,7 @@ function scanToken(scan: JsonScan, index: number): number {
 function scanString(scan: JsonScan, start: number): number {
   const end = stringEnd(scan, start);
   if (isFollowedByColon(scan.text, end)) {
-    scan.key = isSensitiveField(keyName(scan.text, start, end));
+    scan.key = isSensitiveName(keyName(scan.text, start, end));
   } else if (takeValue(scan)) {
     replaceValue(scan, start, end, REDACTED_STRING);
   } else {

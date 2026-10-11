@@ -8,8 +8,8 @@
  * every header, cookie and parameter name (and cookie attributes such as
  * `httpOnly`) with the value `[redacted]`, so the export still shows that a
  * request was authenticated and which cookies were set. It also covers API
- * key, token and session headers, credential query parameters in URLs
- * (`?code=`, `?access_token=`), and credential fields of request and response
+ * key, token and session headers, user info (`user:pass@`) and credential
+ * query parameters in URLs (`?code=`, `?access_token=`), and credential fields of request and response
  * bodies and of WebSocket text messages (sanitizeBody.ts), editing only
  * those values. `headersSize`, `bodySize` and `content.size` stay those of the
  * captured request. Base64 bodies are decoded when their type is generic,
@@ -22,12 +22,12 @@ import type { Content, Cookie, Entry, Header, QueryParam, WebSocketMessage } fro
 
 import {
   REDACTED,
-  isSensitiveField,
   redactBase64Body,
   redactBody,
   redactOrReplaceWhole,
   redactPairs,
 } from '@/telemetry/har/sanitizeBody.js';
+import { isSensitiveName } from '@/utils/sensitiveNames.js';
 
 /** {@link REDACTED} as written in a URL */
 const URL_REDACTED = encodeURIComponent(REDACTED);
@@ -54,6 +54,13 @@ const SENSITIVE_HEADER_SEGMENT =
 
 /** Headers whose values are URLs that may carry credential parameters */
 const URL_HEADERS = new Set(['location', 'referer']);
+
+/**
+ * The user info of a URL (`user:pass@`) after its scheme (or the `//` of a
+ * scheme-relative URL): everything up to the last `@` before the path,
+ * query or fragment starts
+ */
+const URL_USER_INFO = /^((?:[a-z][a-z\d+.-]*:)?\/\/)[^/?#]*@/i;
 
 /** Query parameter names that hold credentials in URLs only (OAuth codes, signed URLs, API keys) */
 const SENSITIVE_URL_PARAM = /^(code|sig|key)$/i;
@@ -177,10 +184,10 @@ function redactCookie(cookie: Cookie): Cookie {
  * Whether a URL query or fragment parameter holds a credential.
  *
  * @param name - Decoded parameter name
- * @returns True for credential field names, `code`, `sig` and `key`
+ * @returns True for secret names ({@link isSensitiveName}), `code`, `sig` and `key`
  */
 function isSensitiveParam(name: string): boolean {
-  return isSensitiveField(name) || SENSITIVE_URL_PARAM.test(name);
+  return isSensitiveName(name) || SENSITIVE_URL_PARAM.test(name);
 }
 
 /**
@@ -194,13 +201,17 @@ function redactQueryParam(param: QueryParam): QueryParam {
 }
 
 /**
- * Redact credential parameter values in a URL's query and fragment
- * (`#access_token=` of the OAuth implicit flow), leaving the rest byte for byte.
+ * Redact the credentials of a URL: its user info (`user:pass@`, removed
+ * whole, as a user name may itself be a token) and credential parameter
+ * values in its query and fragment (`#access_token=` of the OAuth implicit
+ * flow), leaving the rest byte for byte.
  *
- * @param url - URL (empty for none)
- * @returns URL with credential values replaced by the URL-encoded {@link REDACTED}
+ * @param captured - URL (empty for none)
+ * @returns URL without user info, credential values replaced by the
+ *   URL-encoded {@link REDACTED}
  */
-function redactUrl(url: string): string {
+function redactUrl(captured: string): string {
+  const url = captured.replace(URL_USER_INFO, '$1');
   const hash = url.indexOf('#');
   const beforeHash = hash === -1 ? url : url.slice(0, hash);
   const fragment =

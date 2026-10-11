@@ -134,4 +134,25 @@ void describe('ELEMENT_STATE_JS secrets', () => {
     );
     assert.equal(stateOf({ localName: 'select', selected: ['Price'] })['selected'], 'Price');
   });
+
+  void it('masks fields named like a key, token, secret or short password (#622)', () => {
+    for (const [attribute, value] of [
+      ['name', 'api_key'],
+      ['name', 'token'],
+      ['name', 'client_secret'],
+      ['name', 'pass'],
+      ['name', 'pw'],
+      ['name', 'cc-number'],
+      ['id', 'apiKey'],
+    ] as const) {
+      const state = stateOf({
+        value: 'SECRET7',
+        ...(attribute === 'id' ? { id: value } : { attributes: { name: value } }),
+      });
+      assert.equal(state['value'], MASKED_VALUE, `${attribute}=${value}`);
+      assert.equal(state['sensitive'], true, `${attribute}=${value}`);
+    }
+    assert.equal(stateOf({ value: 'X1', attributes: { name: 'passport' } })['value'], 'X1');
+    assert.equal(stateOf({ value: 'shoes', attributes: { name: 'keyword' } })['value'], 'shoes');
+  });
 });
