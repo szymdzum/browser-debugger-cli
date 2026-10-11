@@ -192,7 +192,9 @@ export class Session {
   private constructor(
     private config: SessionConfig,
     private readonly onEnded: (reason: SessionEndReason) => void
-  ) {}
+  ) {
+    this.store.includeAll = config.includeAll ?? false;
+  }
 
   /**
    * Validate the request and create a session that has not been launched yet.

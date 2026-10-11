@@ -619,7 +619,7 @@ export function createCommandRegistry(
       const totalNetwork = allNetwork.length;
       const totalConsole = store.consoleMessages.length;
       const dropped = store.consoleDropped;
-      const { requestsDropped, bodiesEvicted } = store.networkEvictions;
+      const { requestsDropped, bodiesEvicted, trackersExcluded } = store.networkEvictions;
 
       const networkBounds = calculateSliceBounds(totalNetwork, lastN, offset);
       const consoleBounds = calculateSliceBounds(totalConsole, lastN, offset);
@@ -658,6 +658,7 @@ export function createCommandRegistry(
         ...pageIssues(store, params.only),
         ...(requestsDropped > 0 && { droppedNetwork: requestsDropped }),
         ...(bodiesEvicted > 0 && { evictedNetworkBodies: bodiesEvicted }),
+        ...(trackersExcluded && { excludedTrackerRequests: trackersExcluded }),
         ...sessionDownloads(store),
         ...(store.tabSwitch && { tabSwitch: store.tabSwitch }),
         hasMoreNetwork: networkBounds.start > 0,
@@ -857,7 +858,7 @@ export function createCommandRegistry(
           }),
         {
           detectNoEffect: params.wait !== false && presses,
-          reportShown: params.action === 'hover',
+          reportShown: params.action !== 'right',
           detectUnsettled: params.wait !== false && params.action !== 'hover',
           ...(presses && {
             readBlockedSubmit: async () => (probed ? readBlockedSubmit(scriptCdp) : undefined),
@@ -918,6 +919,7 @@ export function createCommandRegistry(
             );
           }),
         {
+          detectNoEffect: params.wait !== false && params.key === 'Enter',
           reportShown: true,
           detectUnsettled: params.wait !== false,
           readBlockedSubmit: async () => (probed ? readBlockedSubmit(scriptCdp) : undefined),

@@ -62,6 +62,19 @@ export interface NetworkEvictionCounts {
   requestsDropped: number;
   /** Oldest request and response bodies evicted at the body budget */
   bodiesEvicted: number;
+  /** Requests to tracking hosts the default filter left out at capture */
+  trackersExcluded?: number;
+}
+
+/**
+ * Note that the default tracking filter left requests out at capture.
+ *
+ * @param count - Requests left out
+ * @returns e.g. `3 tracking requests excluded at capture (start the session with --all to keep them)`
+ */
+export function trackersExcludedNote(count: number): string {
+  const requests = pluralize(count, 'tracking request');
+  return `${requests} excluded at capture (start the session with --all to keep them)`;
 }
 
 /**

@@ -7,6 +7,7 @@ import type { TelemetryStore } from './TelemetryStore.js';
 
 import type { ActionError } from '@/ipc/protocol/domTypes.js';
 import { cutText } from '@/runtime/dom/actionEffects.js';
+import { shouldExcludeDomain } from '@/telemetry/filters.js';
 import type { ConsoleMessage } from '@/types.js';
 import { LEVEL_MAP, analyzeMessages, formatFramePosition } from '@/ui/formatters/console/shared.js';
 
@@ -17,6 +18,7 @@ const MAX_ACTION_ERRORS = 3;
 export interface CollectedErrors {
   errors?: ActionError[];
   moreErrors?: number;
+  hiddenTrackerErrors?: number;
 }
 
 /** Lists the errors logged since the watch began */
@@ -35,6 +37,9 @@ export type ActionErrorsCollector = () => CollectedErrors;
  * remote one) changes nothing; a message received earlier but added late
  * (its objects expanded after the action began) is left out. Messages are grouped like `bdg console` groups
  * them (same text and source location), in order of first appearance.
+ * Errors whose source (the first stack frame, or a failed load's URL) is on
+ * a host the default tracking filter drops ({@link shouldExcludeDomain}) are
+ * left out and only counted, unless the session runs with `--all`.
  * Nothing is reported when console telemetry is off.
  *
  * @param store - Session store holding the console telemetry
@@ -47,14 +52,30 @@ export function watchActionErrors(store: TelemetryStore): ActionErrorsCollector 
     const logged = store.consoleMessages.filter(
       (message) => LEVEL_MAP[message.type] === 'error' && store.receivedAfter(message, mark)
     );
-    const groups = analyzeMessages(logged).grouped.errors;
-    if (groups.length === 0) return {};
+    const own = logged.filter((message) => !fromTracker(message, store.includeAll));
+    const hidden = logged.length - own.length;
+    const hiddenField = hidden > 0 ? { hiddenTrackerErrors: hidden } : {};
+    const groups = analyzeMessages(own).grouped.errors;
+    if (groups.length === 0) return hiddenField;
     const errors = groups
       .slice(0, MAX_ACTION_ERRORS)
       .map(({ message, count }) => toActionError(message, count));
     const more = groups.length - errors.length;
-    return { errors, ...(more > 0 && { moreErrors: more }) };
+    return { errors, ...(more > 0 && { moreErrors: more }), ...hiddenField };
   };
+}
+
+/**
+ * Whether a console error came from a tracker: its first stack frame (a
+ * failed load's URL) is on a host the tracking filter drops.
+ *
+ * @param message - Console message
+ * @param includeAll - The session runs without the tracking filters
+ * @returns True to leave it out of the action's errors
+ */
+function fromTracker(message: ConsoleMessage, includeAll: boolean): boolean {
+  const url = message.stackTrace?.[0]?.url;
+  return url !== undefined && url !== '' && shouldExcludeDomain(url, includeAll);
 }
 
 /**

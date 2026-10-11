@@ -167,6 +167,9 @@ export async function fetchNetworkRequests(
       evictions: {
         requestsDropped: totals?.networkDropped ?? 0,
         bodiesEvicted: totals?.networkBodiesEvicted ?? 0,
+        ...(totals?.networkTrackersExcluded && {
+          trackersExcluded: totals.networkTrackersExcluded,
+        }),
       },
     },
   };

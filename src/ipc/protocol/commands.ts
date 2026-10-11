@@ -124,6 +124,8 @@ export interface SessionPeekData {
   droppedNetwork?: number;
   /** Response bodies evicted at the total body budget (the oldest) */
   evictedNetworkBodies?: number;
+  /** Requests to tracking hosts the default filter left out at capture */
+  excludedTrackerRequests?: number;
   /** Downloads that began during the session, oldest first (left out when none) */
   downloads?: DownloadInfo[];
   /** The session's latest move to another tab (left out while it stayed on its first tab) */

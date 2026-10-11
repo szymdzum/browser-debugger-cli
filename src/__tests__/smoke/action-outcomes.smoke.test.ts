@@ -160,13 +160,13 @@ void describe('Action outcomes', () => {
 
     void it("reports the clicked button's own change", async () => {
       const output = await bdg(['dom', 'click', '#sending']);
-      assert.match(output, /Button changed\s+disabled, "Sending…"/);
+      assert.match(output, /Button changed: disabled, "Sending…"/);
     });
 
     void it('reports that Enter activated the button it was pressed on', async () => {
       const data = await act(['pressKey', '#plain', 'Enter']);
       assert.equal(data.activated, 'button#plain');
-      assert.match(await bdg(['dom', 'pressKey', '#plain', 'Enter']), /Activated\s+button#plain/);
+      assert.match(await bdg(['dom', 'pressKey', '#plain', 'Enter']), /Activated:\s+button#plain/);
     });
 
     void it('reports the JS-handled submit Enter in a field started', async () => {

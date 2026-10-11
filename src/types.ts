@@ -354,6 +354,8 @@ export interface BdgOutput {
     networkDropped?: number;
     /** Response bodies evicted at the total body budget, oldest first */
     networkBodiesEvicted?: number;
+    /** Requests to tracking hosts the default filter left out at capture */
+    networkTrackersExcluded?: number;
     /** Chrome Issues of the page currently loaded */
     issues?: number;
     /** Chrome Issues of the page not kept past the per-page limit */

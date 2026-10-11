@@ -20,7 +20,7 @@
 import type { FixtureRoutes } from '@/__testutils__/fixtureRoutes.js';
 
 /** Handlers whose outcomes are a new plain text, a changed button, a click by key, a JS submit */
-const REDSPAN_HTML = `<!doctype html><title>action outcomes</title>
+const REDSPAN_HTML = `<!doctype html><meta charset="utf-8"><title>action outcomes</title>
 <form id="contact"><input name="email"><input name="password" type="password" value="Hunter2Secret">
   <button type="button" id="redspan-go">Send</button></form>
 <div id="sender"><button type="button" id="sending">Send</button></div>

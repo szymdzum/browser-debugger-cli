@@ -139,6 +139,24 @@ export interface ActionError {
   count: number;
 }
 
+/** A form submit an action fired */
+export interface FormSubmit {
+  /** The form, e.g. `form#login` */
+  form: string;
+  /** The page cancelled the submit (`preventDefault()`), handling it in script */
+  cancelled: boolean;
+}
+
+/** A pressed button's own change */
+export interface ControlChange {
+  /** The button, e.g. `button#send` */
+  element: string;
+  /** Its disabled state now, when it changed */
+  disabled?: boolean;
+  /** Its label now (at most 120 characters), when it changed */
+  text?: string;
+}
+
 /** What an action changed on the page, besides its triggered requests */
 export interface ActionEffects {
   /** The page navigated or changed its URL (absent when it did not) */
@@ -149,6 +167,16 @@ export interface ActionEffects {
   moreMessages?: number;
   /** Elements a hover or key press showed (at most 3, outermost first; absent when none) */
   shown?: ShownElement[];
+  /**
+   * A form fired `submit` during the action, in the same document (absent
+   * otherwise; a submit that loaded a new document is the navigation):
+   * `cancelled` when the page cancelled it, handling it in script
+   */
+  submitted?: FormSubmit;
+  /** The pressed button's own change: its disabled state or label (absent when it kept both) */
+  controlChange?: ControlChange;
+  /** Element a key press clicked inside the key's target, e.g. a button Enter activated */
+  activated?: string;
   /** "none" when the action had no visible effect: no DOM change, request or navigation */
   effect?: 'none';
   /** False when the page was still changing as the action returned (absent otherwise) */
@@ -169,6 +197,12 @@ export interface ActionEffects {
   errors?: ActionError[];
   /** How many more distinct errors there were than `errors` lists */
   moreErrors?: number;
+  /**
+   * Console errors left out of `errors` because they came from scripts or
+   * loads on hosts the session's tracking filter drops (absent with `--all`
+   * or when there were none)
+   */
+  hiddenTrackerErrors?: number;
   /** Tabs and windows opened during the action (absent when none were) */
   opened?: OpenedTab[];
   /** The session's tab closed since the previous action (absent when it did not) */

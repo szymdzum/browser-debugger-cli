@@ -8,11 +8,13 @@
 import type { DomFrame, PageLoadingState, PendingRequestInfo } from '@/ipc/protocol/commands.js';
 import type {
   ActionError,
+  ControlChange,
   DialogAnswer,
   DialogInfo,
   DownloadInfo,
   ElementLayout,
   FillValueMismatch,
+  FormSubmit,
   InvalidField,
   LayoutPoint,
   LayoutSize,
@@ -387,9 +389,92 @@ export function moreMessagesText(count: number): string {
  */
 export function actionErrorText(error: ActionError): string {
   const repeats = error.count > 1 ? `[${error.count}x] ` : '';
-  if (error.source === undefined) return `${repeats}${error.text}`;
+  return `${repeats}${shortErrorText(error)}`;
+}
+
+/**
+ * An error's text with its source shortened ({@link shortUrlName}), without
+ * its count.
+ *
+ * @param error - Reported error
+ * @param sources - Distinct sources that shorten to the same name (noted when more than one)
+ * @returns e.g. `Uncaught Error: handler exploded (app.js:3:142)`
+ */
+function shortErrorText(error: ActionError, sources = 1): string {
+  if (error.source === undefined) return error.text;
   const [, url = error.source, position = ''] = /^(.*?)((?::\d+){2})?$/.exec(error.source) ?? [];
-  return `${repeats}${error.text} (${shortUrlName(url)}${position})`;
+  const more = sources > 1 ? `, ${sources} sources` : '';
+  return `${error.text} (${shortUrlName(url)}${position}${more})`;
+}
+
+/**
+ * An action's `Errors:` rows: errors whose text and shortened source are the
+ * same (different URLs with the same last path segment) on one row, their
+ * counts added and their sources counted (#653).
+ *
+ * @param errors - Reported errors
+ * @returns e.g. `[2x] Failed to load resource (event, 2 sources)`
+ */
+export function actionErrorRows(errors: ActionError[]): string[] {
+  const rows = new Map<string, { error: ActionError; count: number; sources: number }>();
+  for (const error of errors) {
+    const key = shortErrorText(error);
+    const row = rows.get(key);
+    if (row) {
+      row.count += error.count;
+      row.sources++;
+    } else rows.set(key, { error, count: error.count, sources: 1 });
+  }
+  return [...rows.values()].map(({ error, count, sources }) => {
+    const repeats = count > 1 ? `[${count}x] ` : '';
+    return `${repeats}${shortErrorText(error, sources)}`;
+  });
+}
+
+/**
+ * Last `Errors:` row when console errors from filtered tracker hosts were
+ * left out (a session started with `--all` lists them).
+ *
+ * @param count - Errors left out
+ * @returns e.g. `(+2 from filtered trackers)`
+ */
+export function hiddenTrackerErrorsText(count: number): string {
+  return `(+${count} from filtered trackers)`;
+}
+
+/**
+ * Line of an action that fired a form submit.
+ *
+ * @param submitted - The submit
+ * @returns e.g. `Form submitted (cancelled by the page): form#login`
+ */
+export function formSubmittedText(submitted: FormSubmit): string {
+  const how = submitted.cancelled ? ' (cancelled by the page)' : '';
+  return `Form submitted${how}: ${submitted.form}`;
+}
+
+/**
+ * Line of a pressed button's own change.
+ *
+ * @param change - The change
+ * @returns e.g. `Button changed: disabled, "Sending…"`
+ */
+export function controlChangeText(change: ControlChange): string {
+  const parts = [
+    ...(change.disabled !== undefined ? [change.disabled ? 'disabled' : 'enabled'] : []),
+    ...(change.text !== undefined ? [JSON.stringify(change.text)] : []),
+  ];
+  return `Button changed: ${parts.join(', ')}`;
+}
+
+/**
+ * `Activated:` value of a key press that clicked an element.
+ *
+ * @param element - Element clicked, e.g. `button#plain`
+ * @returns e.g. `button#plain (the key clicked it)`
+ */
+export function activatedText(element: string): string {
+  return `${element} (the key clicked it)`;
 }
 
 /**

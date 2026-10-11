@@ -13,6 +13,8 @@ export interface NetworkEvictions {
   requestsDropped: number;
   /** Request and response bodies replaced by a placeholder at the total body budget, oldest first */
   bodiesEvicted: number;
+  /** Requests to tracking hosts the default domain filter left out at capture */
+  trackersExcluded?: number;
 }
 
 /** Limits of {@link RequestRetention} */

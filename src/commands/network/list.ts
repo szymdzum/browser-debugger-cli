@@ -186,6 +186,7 @@ function buildFormatOptions(
     evictions: {
       requestsDropped: result.dropped ?? 0,
       bodiesEvicted: result.bodiesEvicted ?? 0,
+      ...(result.trackersExcluded && { trackersExcluded: result.trackersExcluded }),
     },
   };
 }
@@ -213,15 +214,16 @@ function newEvictionKinds(): (counts: NetworkEvictionCounts) => NetworkEvictionC
  * JSON fields of the dropped/evicted counts (the non-zero ones).
  *
  * @param counts - Counts to report, if any
- * @returns `dropped` and `bodiesEvicted` when non-zero
+ * @returns `dropped`, `bodiesEvicted` and `trackersExcluded` when non-zero
  */
 function evictionFields(
   counts: NetworkEvictionCounts | undefined
-): Pick<NetworkListResult, 'dropped' | 'bodiesEvicted'> {
+): Pick<NetworkListResult, 'dropped' | 'bodiesEvicted' | 'trackersExcluded'> {
   if (!counts) return {};
   return {
     ...(counts.requestsDropped > 0 && { dropped: counts.requestsDropped }),
     ...(counts.bodiesEvicted > 0 && { bodiesEvicted: counts.bodiesEvicted }),
+    ...(counts.trackersExcluded && { trackersExcluded: counts.trackersExcluded }),
   };
 }
 
@@ -344,6 +346,8 @@ interface NetworkListResult {
   dropped?: number;
   /** Oldest response bodies the session evicted at its body budget (left out when none) */
   bodiesEvicted?: number;
+  /** Requests to tracking hosts the default filter left out at capture (left out when none) */
+  trackersExcluded?: number;
 }
 
 export function registerListCommand(networkCmd: Command): void {
