@@ -16,9 +16,10 @@ Files in this skill:
 ## Session start
 
 - **Only verified issues go in.** Verified means **one command you have already run** that shows the user's exact symptom on `main`: a bdg invocation on a fixture page or real site, a test, or a script. It must be deterministic, or for timing bugs reproduce at a rate you can debug against (loop it, add load). Record the command and its output in the issue; it becomes the red commit's first test. Behaviour that can't be run (dead code, a wrong doc) may be confirmed with file:line instead. No command and no file:line: verify first or ask.
-- **Themed sweep first.** A session has a theme (one root cause or one area: secrets, false success, visibility). Before the proposal, one verifier-style agent (verifier brief, `../bdg-verify` on current `main`) re-runs the command of every open issue in the theme and sweeps the theme's surfaces for what the issues don't yet name. The proposal is built from its report: issues it couldn't reproduce get a `needs repro` comment and drop out; new symptoms join an existing issue or an umbrella issue (below), not a new issue each. Session E's secrets sweep before the proposal found the shape of the work the issues only hinted at.
+- **Themed sweep first.** A session has a theme (one root cause or one area: secrets, false success, visibility). Before the proposal, one verifier agent (verifier brief with its **sweep** block filled in; prepare `../bdg-verify` on current `main` as the verifier step under "Verification tiers" describes) re-runs the command of every open issue in the theme and sweeps the theme's surfaces for what the issues don't yet name. The proposal is built from its report: issues it couldn't reproduce get a `needs repro` comment and drop out; new symptoms join an existing issue or an umbrella issue (below), not a new issue each. Session E's secrets sweep before the proposal found the shape of the work the issues only hinted at.
 - **Propose 4–6 issues** with one line each on why. Recommend one set; don't present a menu. A candidate you can't reproduce in a few minutes drops out of the proposal and gets a `needs repro` comment on the issue.
-- **Show the balance.** The proposal states issues opened vs closed since the last session and what each wave closes. At least half of every wave closes existing issues; a feature session (new behaviour, nothing closed) is the user's explicit choice, never the default. Since the skill went live it filed about two issues for each one it closed; the proposal is where that is corrected.
+- **Show the balance.** The proposal states issues opened vs closed since the last session, and the session's target: close at least two issues for each one it files. At least half of every wave's PRs close issues that predate this session's sweep (bugs, not features); a feature session (new behaviour, nothing closed) is the user's explicit choice, never the default. Since the skill went live it filed about two issues for each one it closed; the proposal is where that is corrected.
+- **Polish sweep PR.** The proposal names one tier-1 PR for the UX nits of the queue (wording, hints, help text that change no output an agent parses, no flag, no exit code); it runs last in the session, one commit per nit. A nit that changes parsed output or a default is a tier-2 issue, not a sweep item.
 - **Waves of 2–3 parallel implementers.** Issues touching the same files or output run in sequence (the second starts from the first's branch, or after it merges). Light, conflict-free changes first; docs last.
 - **Ask for merge authority** as a yes/no question: "May I merge on my own once gates 1–8 hold, or do you want to OK each PR?" A bare "OK" is not an answer; ask again. It doesn't carry over to the next session.
 - **Product decisions belong to the user:** changed defaults, contracts, exit codes, removed `--json` fields. Present options with a recommendation, then wait. A standing "pick the recommended option" **never** covers a contract change or a third fix round; each gets its own yes/no question.
@@ -36,7 +37,7 @@ Copy one per issue into your notes and tick it off:
 - [ ] Fresh-agent test on the branch (briefs.md → Tester), findings fixed in the PR
 - [ ] Gates 1–8 hold on the final head SHA
 - [ ] Merged, main CI green, worktree and branch removed, fixture server (PID file) killed, issue updated
-- [ ] Every finding fixed in the PR (adjacent), fixed in the sweep PR (nit) or sent to the verifier
+- [ ] Every finding about this change fixed in the PR (nits in the fix commit, adjacent ones as their own commit); every finding about older code sent to the verifier (a wording nit: to the polish sweep)
 ```
 
 ### Implement
@@ -53,21 +54,20 @@ When the implementer reports, spawn a fresh reviewer with the reviewer brief: th
 
 - Findings come back as **blocking / should-fix / nit** with file:line and a scenario. A review that lists an item from your risk list under "Not checked" is incomplete: resume the reviewer for that item before you send anything on.
 - Send every finding to the **same implementer** (SendMessage, so it keeps its context): a test and a fix in the same commit (no red commit per finding), or an argued rejection. You decide disputes.
+- **Adjacent fix rule.** A finding (from the reviewer, the tester or the implementer) about **older code** in the same file or function as the change, fixable in about 20 changed product lines plus its test, is fixed in the same PR as its own commit (`fix: <symptom> (#<N> adjacent)`) and listed in the PR body; unless it changes parsed output, a flag, an exit code or a default, which is the user's decision first. Everything else is reported to you (never filed by the agent) and goes to the verifier. Three PRs each filed the issue their reviewer found in the function they had just changed (#601 from #597, #599 from #587, #630 from #603); each then cost a full cycle.
 - A **second review** only for large or risky fix commits (rollback, file handling, concurrency).
 - Every report names the SHA it looked at. A fix commit invalidates only the evidence about what it changed: re-run the review or the tester for that part, not the whole cycle.
 - **At most two fix rounds.** If findings remain after the second, stop and bring the blocker to the user: a third round needs an explicit yes, whatever standing approvals exist; the alternative is to file the remaining finding. Nits are fixed in the same commit as the should-fix items, never pushed on their own (every push is a full CI run).
 
 ### Fresh-agent test
 
-The highest-yield step. Run it for every behaviour change (tier 2 and 3 below). Use the tester brief with the scenarios from `scenarios.md` that touch the change's area.
-
-**Adjacent fix rule.** A finding (from the reviewer, the tester or the implementer) that lives in the same file or function as the change and is fixable in about 20 lines with a test is fixed in the same PR, as its own commit (`fix: <symptom> (#<N> adjacent)`), and the PR body lists it. Everything else is reported to you (not filed by the agent) and goes to the verifier. Three PRs of session C/D each filed the issue their reviewer found in the function they had just changed (#601 from #597, #599 from #587, #630 from #603); each then cost a full cycle.
+The highest-yield step. Run it for every behaviour change (tier 2 and 3 below). Use the tester brief with the scenarios from `scenarios.md` that touch the change's area. Its findings follow the review's routing: about this change → the implementer; adjacent → the implementer as its own commit; older code → the verifier.
 
 ### Verification tiers
 
 | Tier | What | Review | Fresh-agent test | Red commit |
 |---|---|---|---|---|
-| 1 docs / tooling / tiny fix (no change to output, flags, exit codes or timing) | docs, CI, refactor under existing tests, a typo in a message, the session's **polish sweep** (all UX nits of the session in one PR, one commit per nit, never one cycle each) | fresh reviewer | no | no (the PR says why) |
+| 1 docs / tooling / tiny fix (no change to output, flags, exit codes or timing) | docs, CI, refactor under existing tests, a typo in a message, the session's **polish sweep** (wording nits that change no parsed output, one PR, one commit per nit; anything that changes parsed output is tier 2) | fresh reviewer | no | no (the PR says why) |
 | 2 behaviour change | new or changed output, flag, hint, default | fresh reviewer | yes | yes |
 | 3 high risk | session lifecycle, Chrome launch, files on disk, concurrency, security, contracts, redaction or parsing rules | fresh reviewer + second review of the fix commit | yes, plus the interrupt scenario (S08) when relevant | yes, plus repeat=10 for timing; for redaction or parsing, the brief's **case matrix** (inputs × output surfaces) is the red commit's test table |
 
@@ -92,13 +92,13 @@ git -C ../bdg-<N> status --short                                          # anyt
 git worktree remove ../bdg-<N> && git branch -D <branch>                  # no --force; GitHub deletes the remote branch
 ```
 
-A red `main` is fixed before any new work. Merge when `main`'s last completed run is green; an in-progress push run of an unrelated PR is not a reason to wait (session E held an independent PR for a run that could not affect it). Close the issue, or comment with what's left, if the PR didn't.
+A red `main` is fixed before any new work. Merge when the latest completed `CI` run on `main`'s head (or an ancestor, with no failed run after it) is green, macOS included; an in-progress run of a merge that doesn't touch this PR's files is not a reason to wait (session E held an independent PR for a run that could not affect it). If it does touch them, wait for it and re-check gate 6. Close the issue, or comment with what's left, if the PR didn't.
 
 ## Gates
 
 Merge only when **all** hold. If one fails, fix it; don't negotiate it.
 
-1. **Review resolved.** Every blocking and should-fix finding fixed or rejected with a reason you accept; nits fixed or filed.
+1. **Review resolved.** Every blocking and should-fix finding fixed or rejected with a reason you accept; nits about this change fixed in the fix commit, nits about older code in the polish sweep or with the verifier.
 2. **Fresh-agent test done** on the branch (features and behaviour changes), its findings about this change fixed in the PR.
 3. **Red commit verified.** The first commit holds only the tests for the issue's reproduction and each **testable** acceptance criterion (plus fixtures and `not implemented` skeletons); the PR says which criteria are measurements or docs and how they were checked, and the reviewer ran them on it: they fail on an assertion about the issue, not a build or import error. Exempt: docs-only, pure refactors covered by existing tests, CI/tooling (the PR says which). Review-fix commits carry their test with the fix. Self-reported "it failed before" doesn't count.
 4. **Timing-sensitive tests** passed the CI repeat dispatch with repeat ≥ 10 on Linux and macOS. CI or environment changes (browser, runner, tooling): the full smoke suite with repeat ≥ 3 on **Node 22 only** (`-f node=22`); the full Node matrix only when the change touches the Node runtime or `package.json` engines.
@@ -159,6 +159,6 @@ Merge only when **all** hold. If one fails, fix it; don't negotiate it.
   For a PR also run `gh pr checks <n>` once at the end (it lists the jobs; it doesn't wait).
 
 ### Forbidden
-- `git stash`; `git commit --no-verify` or any other hook bypass; broad `pkill`/`killall`/`pkill -P`. Kill only a PID read from a file the process wrote at start (`/tmp/bdg-<role>-<N>.pid`), never one remembered or looked up with `ps`/`lsof`: an implementer killed two PIDs from memory and one belonged to another agent's session.
+- `git stash`; `git commit --no-verify` or any other hook bypass; broad `pkill`/`killall`/`pkill -P`. Kill only a PID read from a file the process wrote at start (the briefs name the file per role, e.g. `/tmp/bdg-fixtures-<N>.pid`, `/tmp/bdg-impl-<N>-<name>.pid`), never one remembered or looked up with `ps`/`lsof`: an implementer killed two PIDs from memory and one belonged to another agent's session. A stray bdg process without a PID file is ended with `bdg stop` / `bdg cleanup --force` in its `BDG_SESSION_DIR`, or brought to the user.
 - Touching `~/.bdg`, other worktrees or the main checkout from an agent; leaving files in `~/Downloads`.
 - Committing in the main checkout without being asked (implementers commit and push in their own worktree; their brief grants that); AI attribution; relaying an npm OTP through chat; releasing unless the user decides.
