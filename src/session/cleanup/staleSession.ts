@@ -86,18 +86,39 @@ export function removeSessionFiles(ownerPid?: number): void {
  * each target when the process died between the write and the rename.
  */
 function removeAtomicWriteLeftovers(targets: string[]): void {
+  const targetsByDirectory = new Map<string, Set<string>>();
   for (const target of targets) {
     const dir = path.dirname(target);
-    const prefix = `${path.basename(target)}.`;
+    const names = targetsByDirectory.get(dir) ?? new Set<string>();
+    names.add(path.basename(target));
+    targetsByDirectory.set(dir, names);
+  }
+
+  for (const [dir, targetNames] of targetsByDirectory) {
     let names: string[];
     try {
       names = fs.readdirSync(dir);
-    } catch {
+    } catch (error) {
+      logDebugError(log, `read directory ${dir} for atomic write leftovers`, error);
       continue;
     }
     for (const name of names) {
-      if (name.startsWith(prefix) && name.endsWith('.tmp')) {
+      for (const targetName of targetNames) {
+        const escapedTargetName = targetName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const match = name.match(
+          new RegExp(
+            `^${escapedTargetName}\\.(\\d+)\\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.tmp$`,
+            'i'
+          )
+        );
+        if (!match) continue;
+        const pid = Number(match[1]);
+        if (isProcessAlive(pid)) {
+          log.debug(`Keeping atomic write temp ${name}; process ${pid} is still running`);
+          break;
+        }
         safeRemoveFile(path.join(dir, name), 'atomic write leftover', log);
+        break;
       }
     }
   }

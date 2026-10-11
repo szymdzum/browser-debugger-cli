@@ -30,17 +30,26 @@ void describe('removeSessionFiles and atomic-write leftovers', () => {
   void it('removes temp files left next to the query cache and metadata', () => {
     const cachePath = QueryCacheManager.getInstance().getCachePath();
     const metadataPath = getSessionFilePath('METADATA');
+    const stalePid = process.pid + 1_000_000_000;
     const leftovers = [
-      `${cachePath}.4242.0f3c9a1e-1111-4222-8333-444455556666.tmp`,
-      `${metadataPath}.4242.0f3c9a1e-7777-4888-8999-aaaabbbbcccc.tmp`,
+      `${cachePath}.${stalePid}.0f3c9a1e-1111-4222-8333-444455556666.tmp`,
+      `${metadataPath}.${stalePid}.0f3c9a1e-7777-4888-8999-aaaabbbbcccc.tmp`,
     ];
+    const liveWriter = `${metadataPath}.${process.pid}.0f3c9a1e-7777-4888-8999-aaaabbbbcccc.tmp`;
     const unrelated = path.join(dir, 'notes.txt');
-    for (const file of [...leftovers, unrelated]) fs.writeFileSync(file, 'x');
+    const nearMiss = `${metadataPath}.backup.tmp`;
+    const invalidUuid = `${metadataPath}.${stalePid}.not-a-uuid.tmp`;
+    for (const file of [...leftovers, liveWriter, unrelated, nearMiss, invalidUuid]) {
+      fs.writeFileSync(file, 'x');
+    }
 
     removeSessionFiles();
 
     for (const file of leftovers)
       assert.ok(!fs.existsSync(file), `${path.basename(file)} is removed`);
+    assert.ok(fs.existsSync(liveWriter), 'a temp file owned by a live process is kept');
     assert.ok(fs.existsSync(unrelated), 'unrelated files are kept');
+    assert.ok(fs.existsSync(nearMiss), 'similarly prefixed files are kept');
+    assert.ok(fs.existsSync(invalidUuid), 'files without an AtomicFileWriter UUID are kept');
   });
 });
