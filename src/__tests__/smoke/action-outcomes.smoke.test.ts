@@ -155,7 +155,7 @@ void describe('Action outcomes', () => {
       );
       const output = await bdg(['dom', 'click', '#redspan-go']);
       assert.match(output, /Something went wrong/);
-      assert.doesNotMatch(output, /Hunter2Secret/);
+      assert.doesNotMatch(output, /Hunter2Secret|654321/);
     });
 
     void it("reports the clicked button's own change", async () => {
@@ -177,6 +177,16 @@ void describe('Action outcomes', () => {
         await bdg(['dom', 'pressKey', '[name=q]', 'Enter']),
         /Form submitted \(cancelled by the page\)/
       );
+    });
+  });
+
+  void describe('a ticker on /ticker', () => {
+    before(() => open(`${fixture.url}ticker`));
+
+    void it('does not attribute toasts added elsewhere to a click', async () => {
+      const data = await act(['click', '#like']);
+      assert.deepEqual(data.shown ?? [], []);
+      assert.doesNotMatch(await bdg(['dom', 'click', '#like']), /Shown:/);
     });
   });
 

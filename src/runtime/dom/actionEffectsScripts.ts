@@ -55,7 +55,15 @@ const REVEAL_BUDGET_MS = 8;
 const NEAR_CONTAINERS =
   'form, [role="form"], [role="search"], dialog, [role="dialog"], [role="combobox"]';
 
-/** Added elements reported wherever they are: popups and messages */
+/**
+ * Added elements a click or key press reports wherever they are: the page's
+ * own announcements (dialogs and alert/status roles; `aria-live` regions are
+ * checked separately). Class words and other popups count near the target
+ * only, so a toast or ticker elsewhere is not attributed to a press.
+ */
+const PRESS_POPUP_ROLES = /^(dialog|alertdialog|alert|status)$/;
+
+/** Added elements a hover reports wherever they are: popups and messages */
 const POPUP_ROLES = /^(tooltip|menu|listbox|dialog|alert|alertdialog|status)$/;
 
 /** Messages kept per snapshot (after filtering) */
@@ -243,9 +251,14 @@ const NEAR_SCOPE_JS = `(target) => {
 
 /**
  * Page-side list of the elements an action showed: elements added during
- * the watch inside the target's container ({@link NEAR_SCOPE_JS}) or, anywhere,
- * popups and messages (tooltip, menu, listbox, dialog, alert and status
- * roles, `aria-live`, message-like classes), plus, after a hover, the
+ * the watch inside the target's container ({@link NEAR_SCOPE_JS}) or,
+ * anywhere, after a hover popups and messages (tooltip, menu, listbox,
+ * dialog, alert and status roles, `aria-live`, message-like classes) and
+ * after a click or key press only dialogs, alert/status roles and elements
+ * in an `aria-live` region ({@link PRESS_POPUP_ROLES}). Text in textareas,
+ * selects, password inputs, elements whose `autocomplete` ends in
+ * `password` or `one-time-code` and elements named like secrets is left
+ * out. Also, after a hover, the
  * elements hidden before it that are shown now ({@link REVEAL_SNAPSHOT_JS}).
  * Background widgets elsewhere on the page do not count. Only shown ones
  * with visible text count, the outermost of nested ones, and not those
@@ -260,11 +273,16 @@ export const SHOWN_ELEMENTS_JS = `(state) => {
   const word = /\\b(${MESSAGE_WORDS.join('|')})\\b/i;
   const target = state.reveal ? state.reveal.target : state.keyTarget || state.pressTarget;
   const secretPart = (node) => /^(textarea|select|option)$/.test(node.localName) ||
+    (node.localName === 'input' && node.type === 'password') ||
+    /(password|one-time-code)$/i.test(node.getAttribute('autocomplete') || '') ||
     /pass|secret|token|otp|cvv|cvc/i.test((node.getAttribute('name') || '') + ' ' + (node.id || ''));
   const scope = target && target.isConnected ? (${NEAR_SCOPE_JS})(target) : null;
-  const popup = (el) => ${POPUP_ROLES}.test(el.getAttribute('role') || '') || el.hasAttribute('popover') ||
+  const hoverPopup = (el) => ${POPUP_ROLES}.test(el.getAttribute('role') || '') || el.hasAttribute('popover') ||
     (el.hasAttribute('aria-live') && el.getAttribute('aria-live') !== 'off') ||
     word.test(el.getAttribute('class') || '') || word.test(el.id || '');
+  const announced = (el) => ${PRESS_POPUP_ROLES}.test(el.getAttribute('role') || '') ||
+    el.closest('[aria-live]:not([aria-live="off"])') !== null;
+  const popup = state.reveal ? hoverPopup : announced;
   const near = (el) => (scope !== null && scope.contains(el)) || popup(el);
   const contentOf = (node) => (node.textContent || '').replace(/\\s+/g, ' ').trim();
   const removed = new Set(state.removed.map(contentOf));

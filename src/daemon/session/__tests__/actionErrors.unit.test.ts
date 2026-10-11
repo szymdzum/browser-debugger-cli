@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
-import { watchActionErrors } from '@/daemon/session/actionErrors.js';
+import { fromTracker, watchActionErrors } from '@/daemon/session/actionErrors.js';
 import type { ConsoleMessage } from '@/types.js';
 
 /**
@@ -184,5 +184,26 @@ void describe('watchActionErrors', () => {
       })
     );
     assert.equal(collect().errors?.[0]?.source, 'http://app.test/api/items');
+  });
+});
+
+void describe('fromTracker', () => {
+  const gtm = message('error', 'x', { url: 'https://www.googletagmanager.com/gtm.js' });
+
+  void it('leaves out an error from a tracker host on another site', () => {
+    assert.equal(fromTracker(gtm, false, 'https://shop.test/'), true);
+  });
+
+  void it("keeps it with --all, without a stack, and on the page's own site", () => {
+    assert.equal(fromTracker(gtm, true, 'https://shop.test/'), false);
+    assert.equal(fromTracker(message('error', 'x'), false, 'https://shop.test/'), false);
+    assert.equal(fromTracker(gtm, false, 'https://tagmanager.googletagmanager.com/admin'), false);
+    const sentry = message('error', 'x', { url: 'https://sentry.io/app.js' });
+    assert.equal(fromTracker(sentry, false, 'https://my-org.sentry.io/issues/'), false);
+  });
+
+  void it('keeps a site error from the page itself', () => {
+    const own = message('error', 'x', { url: 'https://shop.test/app.js' });
+    assert.equal(fromTracker(own, false, 'https://shop.test/'), false);
   });
 });

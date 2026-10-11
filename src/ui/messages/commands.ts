@@ -381,18 +381,6 @@ export function moreMessagesText(count: number): string {
 }
 
 /**
- * A console error an action caused, for its `Errors:` rows: repeats counted
- * and the source shortened like `bdg console` does ({@link shortUrlName}).
- *
- * @param error - Reported error
- * @returns e.g. `[2x] Uncaught Error: handler exploded (app.js:3:142)`
- */
-export function actionErrorText(error: ActionError): string {
-  const repeats = error.count > 1 ? `[${error.count}x] ` : '';
-  return `${repeats}${shortErrorText(error)}`;
-}
-
-/**
  * An error's text with its source shortened ({@link shortUrlName}), without
  * its count.
  *

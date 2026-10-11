@@ -8,6 +8,7 @@ import type { TelemetryStore } from './TelemetryStore.js';
 import type { ActionError } from '@/ipc/protocol/domTypes.js';
 import { cutText } from '@/runtime/dom/actionEffects.js';
 import { shouldExcludeDomain } from '@/telemetry/filters.js';
+import { extractHostname } from '@/utils/url.js';
 import type { ConsoleMessage } from '@/types.js';
 import { LEVEL_MAP, analyzeMessages, formatFramePosition } from '@/ui/formatters/console/shared.js';
 
@@ -37,9 +38,10 @@ export type ActionErrorsCollector = () => CollectedErrors;
  * remote one) changes nothing; a message received earlier but added late
  * (its objects expanded after the action began) is left out. Messages are grouped like `bdg console` groups
  * them (same text and source location), in order of first appearance.
- * Errors whose source (the first stack frame, or a failed load's URL) is on
- * a host the default tracking filter drops ({@link shouldExcludeDomain}) are
- * left out and only counted, unless the session runs with `--all`.
+ * Errors whose first stack frame is a script on a host the default tracking
+ * filter drops ({@link fromTracker}) are left out and only counted, unless
+ * the session runs with `--all`; stackless entries (a tracker's
+ * `Failed to load resource`) are still listed.
  * Nothing is reported when console telemetry is off.
  *
  * @param store - Session store holding the console telemetry
@@ -52,7 +54,8 @@ export function watchActionErrors(store: TelemetryStore): ActionErrorsCollector 
     const logged = store.consoleMessages.filter(
       (message) => LEVEL_MAP[message.type] === 'error' && store.receivedAfter(message, mark)
     );
-    const own = logged.filter((message) => !fromTracker(message, store.includeAll));
+    const pageUrl = store.navigationEvents.at(-1)?.url;
+    const own = logged.filter((message) => !fromTracker(message, store.includeAll, pageUrl));
     const hidden = logged.length - own.length;
     const hiddenField = hidden > 0 ? { hiddenTrackerErrors: hidden } : {};
     const groups = analyzeMessages(own).grouped.errors;
@@ -66,16 +69,36 @@ export function watchActionErrors(store: TelemetryStore): ActionErrorsCollector 
 }
 
 /**
- * Whether a console error came from a tracker: its first stack frame (a
- * failed load's URL) is on a host the tracking filter drops.
+ * Whether a console error came from a tracker: the URL of its first stack
+ * frame is on a host the tracking filter drops, and that host is not the
+ * page's own site (a dashboard on sentry.io or facebook.com keeps its
+ * errors). Same site means the last two labels of the hosts match (a simple
+ * registrable-domain check: `app.example.co.uk` and `cdn.other.co.uk` count
+ * as the same site). Messages without a stack trace are never left out.
  *
  * @param message - Console message
  * @param includeAll - The session runs without the tracking filters
+ * @param pageUrl - URL of the session's page, when known
  * @returns True to leave it out of the action's errors
  */
-function fromTracker(message: ConsoleMessage, includeAll: boolean): boolean {
+export function fromTracker(
+  message: ConsoleMessage,
+  includeAll: boolean,
+  pageUrl: string | undefined
+): boolean {
   const url = message.stackTrace?.[0]?.url;
-  return url !== undefined && url !== '' && shouldExcludeDomain(url, includeAll);
+  if (url === undefined || url === '' || !shouldExcludeDomain(url, includeAll)) return false;
+  return pageUrl === undefined || siteOf(url) !== siteOf(pageUrl);
+}
+
+/**
+ * A URL's site for {@link fromTracker}: the last two labels of its host.
+ *
+ * @param url - URL
+ * @returns e.g. `sentry.io` for `https://my.sentry.io/x`
+ */
+function siteOf(url: string): string {
+  return extractHostname(url).toLowerCase().split('.').slice(-2).join('.');
 }
 
 /**

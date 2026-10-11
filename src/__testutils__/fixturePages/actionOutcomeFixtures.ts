@@ -8,6 +8,9 @@
  * whose click handler only notes the click in `window.clicks`; and a search
  * form (`#lookup`) whose submit handler cancels the submit and notes the
  * query in `window.lookups` (submitted by JS, no navigation).
+ * The appended span holds a `<b autocomplete="one-time-code">` code, never
+ * reported. `/ticker` appends a `div.toast` ("Sale ends in N seconds") to the
+ * body every 50 ms next to an unrelated "Like" button (`#like`).
  * `/tracker-errors` has `#track`, which logs two console errors from
  * scripts named as tracker URLs (`//# sourceURL=` on
  * googletagmanager.com and google-analytics.com, hosts the default tracking
@@ -33,6 +36,10 @@ const REDSPAN_HTML = `<!doctype html><meta charset="utf-8"><title>action outcome
     const span = document.createElement('span');
     span.style.color = 'red';
     span.textContent = 'Something went wrong';
+    const code = document.createElement('b');
+    code.setAttribute('autocomplete', 'one-time-code');
+    code.textContent = '654321';
+    span.append(code);
     document.getElementById('contact').append(span);
   });
   document.getElementById('sending').addEventListener('click', (event) => {
@@ -64,8 +71,22 @@ const TRACKER_ERRORS_HTML = `<!doctype html><title>tracker errors</title>
   });
 </script>`;
 
+/** A ticker adding toasts to the body every 50 ms, and an unrelated button */
+const TICKER_HTML = `<!doctype html><meta charset="utf-8"><title>ticker</title>
+<div><button type="button" id="like" onclick="window.likes = (window.likes || 0) + 1">Like</button></div>
+<script>
+  let left = 1000;
+  setInterval(() => {
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = 'Sale ends in ' + left-- + ' seconds';
+    document.body.append(toast);
+  }, 50);
+</script>`;
+
 /** Action outcome pages by path */
 export const ROUTES: FixtureRoutes = {
+  '/ticker': TICKER_HTML,
   '/redspan': REDSPAN_HTML,
   '/tracker-errors': TRACKER_ERRORS_HTML,
 };
