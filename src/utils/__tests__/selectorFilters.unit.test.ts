@@ -8,7 +8,7 @@ import { describe, it } from 'node:test';
 
 import { CommandError } from '@/errors/index.js';
 import { invalidSelectorError } from '@/errors/messages.js';
-import { selectorArgsJS } from '@/runtime/dom/targetNode.js';
+import { selectorArgs } from '@/runtime/dom/targetNode.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import {
   leadingCompounds,
@@ -378,11 +378,11 @@ void describe('invalidSelectorError', () => {
   });
 });
 
-void describe('selectorArgsJS', () => {
+void describe('selectorArgs', () => {
   void it('rejects an empty or blank selector with exit 81 before any page script runs', () => {
     for (const selector of ['', '   ']) {
       assert.throws(
-        () => selectorArgsJS(selector),
+        () => selectorArgs(selector),
         (error: unknown) =>
           error instanceof CommandError &&
           error.exitCode === EXIT_CODES.INVALID_ARGUMENTS &&
@@ -393,7 +393,7 @@ void describe('selectorArgsJS', () => {
   });
 
   void it('passes plain CSS unchanged', () => {
-    assert.equal(selectorArgsJS('a.b'), '"a.b", null');
+    assert.deepEqual(selectorArgs('a.b'), ['a.b', null]);
   });
 });
 

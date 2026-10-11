@@ -401,10 +401,10 @@ export async function callCDP(
 }
 
 /**
- * Send a CDP call for one of bdg's own page scripts: `Runtime.evaluate` and
- * `DOM.resolveNode` run in bdg's isolated world, so a page that replaced
- * built-ins (`querySelectorAll`, `JSON.stringify`) cannot change what they
- * find or return.
+ * Send a CDP call for one of bdg's own page scripts: `Runtime.evaluate`,
+ * `DOM.resolveNode` and a `Runtime.callFunctionOn` on no object run in bdg's
+ * isolated world, so a page that replaced built-ins (`querySelectorAll`,
+ * `JSON.stringify`) cannot change what they find or return.
  *
  * @param method - CDP method name
  * @param params - Method parameters

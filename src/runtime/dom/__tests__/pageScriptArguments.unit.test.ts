@@ -25,6 +25,7 @@ import { submitForm } from '@/runtime/dom/formSubmitHelpers.js';
 import { inspectElement } from '@/runtime/dom/inspect.js';
 import { onScriptTarget } from '@/runtime/dom/targetNode.js';
 import { waitForCondition } from '@/runtime/dom/wait.js';
+import { normalizeWaitText } from '@/runtime/dom/waitCondition.js';
 import { scrollIntoViewAgain, scrollToElement } from '@/runtime/page/captureScroll.js';
 
 /** A selector with a quote and a backslash */
@@ -199,7 +200,7 @@ const SCRIPTS: Script[] = [
   },
   {
     name: 'dom wait (WAIT_SNAPSHOT_JS)',
-    probes: [SELECTOR, VALUE],
+    probes: [SELECTOR, normalizeWaitText(VALUE)],
     run: (cdp) => waitForCondition(cdp, { selector: SELECTOR, text: VALUE, timeout: 2000 }),
   },
   {

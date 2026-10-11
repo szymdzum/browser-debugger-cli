@@ -323,21 +323,6 @@ export const LABEL_CONTROL_JS = `(el) => (el && el.localName === 'label' ? el.co
 
 /**
  * Arguments for {@link DEEP_QUERY_JS} / {@link FIND_ELEMENTS_JS} and the page
- * scripts built on them: the selector as a JS string literal and its parts
- * (`null` for plain CSS, which runs unchanged).
- *
- * @param selector - Selector as the user gave it (or the bound-node placeholder)
- * @returns JS source of the two arguments, e.g. `"li:visible", [{...}]`
- * @throws CommandError (81) for an empty selector or a misplaced or malformed filter
- */
-export function selectorArgsJS(selector: string): string {
-  return selectorArgs(selector)
-    .map((arg) => JSON.stringify(arg))
-    .join(', ');
-}
-
-/**
- * Arguments for {@link DEEP_QUERY_JS} / {@link FIND_ELEMENTS_JS} and the page
  * scripts built on them, which get them as `Runtime.callFunctionOn`
  * arguments: the selector and its parts (`null` for plain CSS, which runs
  * unchanged).

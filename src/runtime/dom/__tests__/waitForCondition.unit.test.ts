@@ -34,15 +34,18 @@ function snapshot(overrides: Partial<WaitSnapshot> = {}): WaitSnapshot {
 }
 
 /**
- * Fake CDP answering `Runtime.evaluate` with the given answers in turn
- * (the last one repeats), each after 10 ms like a page.
+ * Fake CDP answering the page function (`Runtime.callFunctionOn`) with the
+ * given answers in turn (the last one repeats), each after 10 ms like a
+ * page; the global object it is called on resolves at once.
  *
  * @param answers - Answers in order
- * @returns Stub and the number of calls made
+ * @returns Stub and the number of page function calls made
  */
 function fakePage(answers: Answer[]): { cdp: CDPSender; calls: () => number } {
   let calls = 0;
-  const send = async (): Promise<unknown> => {
+  const send = async (method: string): Promise<unknown> => {
+    if (method === 'Runtime.evaluate') return { result: { objectId: 'global' } };
+    if (method !== 'Runtime.callFunctionOn') return {};
     const answer = answers[Math.min(calls++, answers.length - 1)];
     await new Promise((resolve) => setTimeout(resolve, 10));
     if (answer instanceof Error) throw answer;
