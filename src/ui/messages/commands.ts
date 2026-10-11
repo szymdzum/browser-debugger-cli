@@ -21,6 +21,7 @@ import type {
   PageNavigation,
   PendingChanges,
   ShownElement,
+  ValidityReport,
 } from '@/ipc/protocol/domTypes.js';
 import type { InspectVisibility } from '@/ipc/protocol/inspectTypes.js';
 import type { OpenedTab, TabInfo, TabRef, TabSwitchInfo } from '@/ipc/protocol/tabTypes.js';
@@ -2044,4 +2045,15 @@ export function moreCharsNote(count: number): string {
  */
 export function rawHtmlMaskedNote(): string {
   return `Secret values shown as ${MASKED_VALUE} (read them with ${sessionCommand('bdg dom eval')})`;
+}
+
+/**
+ * Why a secret field is invalid, from its validity state (#643): the
+ * browser's text would say how long the value is.
+ *
+ * @param validity - Validity flags and length limits
+ * @returns e.g. "tooShort: at least 8 characters", "valueMissing", or "invalid"
+ */
+export function validityStateText(_validity: ValidityReport): string {
+  throw new Error('not implemented');
 }

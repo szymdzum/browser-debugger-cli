@@ -736,3 +736,31 @@ const IGNORED_REASONS: Record<string, string> = {
   uninteresting: 'has no role or name',
   labelFor: 'a label (its text names another element)',
 };
+
+/**
+ * Backend node ids of the elements a node's accessible name and description
+ * come from (`aria-labelledby`, `aria-describedby` and other relations).
+ *
+ * @param rawNode - Raw AXNode from CDP
+ * @returns Backend node ids, in order of appearance, each once
+ */
+export function secretRelationIds(_rawNode: Protocol.Accessibility.AXNode): number[] {
+  throw new Error('not implemented');
+}
+
+/**
+ * The node with the part of its name or description that a secret field
+ * contributed replaced by {@link MASKED_VALUE} (#642).
+ *
+ * @param node - Parsed node
+ * @param rawNode - Its raw AXNode, with the relations
+ * @param isSecret - Whether a backend node id is a secret field
+ * @returns The node, or a copy with the name or description masked
+ */
+export function maskSecretRelations(
+  _node: A11yNode,
+  _rawNode: Protocol.Accessibility.AXNode,
+  _isSecret: (backendNodeId: number) => boolean
+): A11yNode {
+  throw new Error('not implemented');
+}

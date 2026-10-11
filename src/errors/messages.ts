@@ -9,7 +9,7 @@ import * as path from 'path';
 
 import type { MissingMethodCause } from '@/cdp/methodTarget.js';
 import type { DomFrame, PendingRequestInfo } from '@/ipc/protocol/commands.js';
-import type { InvalidField } from '@/ipc/protocol/domTypes.js';
+import type { InvalidField, OptionNotFound } from '@/ipc/protocol/domTypes.js';
 import type { TabRef } from '@/ipc/protocol/tabTypes.js';
 import {
   countedMatches,
@@ -3049,4 +3049,15 @@ export function networkOnlyDetailsOptionError(flag: string): ErrorWithSuggestion
     message: `${flag} applies to network requests only`,
     suggestion: `Usage: bdg details network <requestId> ${flag}`,
   };
+}
+
+/**
+ * `dom fill` found no option of a select matching the value. For a select
+ * that holds a secret only the number of options is given (#625).
+ *
+ * @param notFound - What the page reported
+ * @returns Error with suggestion
+ */
+export function optionNotFoundError(_notFound: OptionNotFound): ErrorWithSuggestion {
+  throw new Error('not implemented');
 }
