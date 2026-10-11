@@ -264,8 +264,14 @@ export const FORM_DISCOVERY_SCRIPT = `
     if (ariaLabel) return cleanLabelText(ariaLabel);
     const ariaLabelledBy = element.getAttribute('aria-labelledby');
     if (ariaLabelledBy) {
-      const labelEl = root.getElementById(ariaLabelledBy);
-      if (labelEl) return cleanLabelText(labelEl.textContent);
+      // Every referenced element, as the accessible name joins them; a
+      // referenced field contributes its value, masked when it is a secret
+      const texts = ariaLabelledBy.split(/\\s+/).filter(Boolean)
+        .map(id => root.getElementById(id))
+        .filter(Boolean)
+        .map(labelEl => !isNativeInput(labelEl) ? labelEl.textContent
+          : isSecret(labelEl) ? '${MASKED_VALUE}' : labelEl.value || '');
+      if (texts.length) return cleanLabelText(texts.join(' '));
     }
     const wrappingLabel = element.closest('label');
     if (wrappingLabel) {

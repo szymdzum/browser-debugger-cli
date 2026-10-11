@@ -218,6 +218,7 @@ void describe('secret labels', () => {
       { value: '', label: MASK, selected: true },
       { value: '', label: MASK, selected: false },
     ]);
+    assert.equal(form?.fields.find((field) => field.selector === '#ref')?.label, 'Confirm ••••');
   });
 
   void it('dom a11y describe masks them', async () => {
