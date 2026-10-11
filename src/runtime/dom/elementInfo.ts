@@ -435,7 +435,8 @@ export const DISABLED_CAUSE_JS = `(el) => {
  * Page-side short description of an element an action hit: its short
  * description ({@link ELEMENT_DESCRIPTION_JS}) and, for an element without
  * an id, its `name` attribute (quoted unless a plain identifier, cut at 40
- * characters), e.g. `input[name=email]`, `input[name="user[email]"]`.
+ * characters, control characters escaped as in CSS: `\a `), e.g.
+ * `input[name=email]`, `input[name="user[email]"]`.
  */
 export const NAMED_DESCRIPTION_JS = `(node) => {
   const description = (${ELEMENT_DESCRIPTION_JS})(node);
@@ -444,7 +445,10 @@ export const NAMED_DESCRIPTION_JS = `(node) => {
   if (/^[A-Za-z_][\\w-]*$/.test(name) && name.length <= 40) return description + '[name=' + name + ']';
   const characters = Array.from(name);
   const shown = characters.length > 40 ? characters.slice(0, 40).join('') + '…' : name;
-  return description + '[name="' + shown.replace(/["\\\\]/g, '\\\\$&') + '"]';
+  const escaped = shown
+    .replace(/["\\\\]/g, '\\\\$&')
+    .replace(/[\\x00-\\x1f\\x7f]/g, (c) => '\\\\' + c.charCodeAt(0).toString(16) + ' ');
+  return description + '[name="' + escaped + '"]';
 }`;
 
 /**
@@ -477,8 +481,9 @@ export const SIBLING_POSITION_JS = `(el) => {
  * text is described with its `name` attribute ({@link NAMED_DESCRIPTION_JS})
  * and its name when it has one: aria-label, label, placeholder, title, or
  * the alt text of an image (in it). One with a label (`aria-labelledby` or
- * `<label>`), or with an id or a name no other element in its document (or
- * shadow root) has and no same-looking sibling, is identified by that, e.g.
+ * `<label>`) no same-looking sibling shares, or with an id or a name no
+ * other element in its document (or shadow root) has and no same-looking
+ * sibling, is identified by that, e.g.
  * `input[name=email]`, `input[name=nl-email] "Newsletter email"`; otherwise
  * by its position among same-looking siblings ({@link SIBLING_POSITION_JS}),
  * e.g. `div.figure (2nd of 3)`. Only an element that is the only one of its
@@ -554,7 +559,13 @@ export const ELEMENT_IDENTITY_JS = `(el) => {
   if (visible) return describe(el) + quoted(visible);
   const attribute = attributeText(el);
   const position = siblingPosition(el);
-  if (labelText(el) || (!position && (el.id || uniqueName(el)))) return named(el) + quoted(attribute);
+  const label = labelText(el);
+  const sharesLabel = () =>
+    Array.from(el.parentElement ? el.parentElement.children : []).some(
+      (other) => other !== el && named(other) === named(el) && labelText(other) === label
+    );
+  const labelled = label && (!position || !sharesLabel());
+  if (labelled || (!position && (el.id || uniqueName(el)))) return named(el) + quoted(attribute);
   if (position) return named(el) + ' ' + position + quoted(attribute);
   let ancestor = el.isContentEditable ? null : el.parentElement;
   for (let depth = 0; ancestor && depth < 3; depth++, ancestor = ancestor.parentElement) {

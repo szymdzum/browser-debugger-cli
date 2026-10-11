@@ -241,6 +241,34 @@ void describe('ELEMENT_IDENTITY_JS', () => {
     assert.equal(identityOf(field), 'input[name="user[email]"]');
   });
 
+  void it('keeps the position for siblings sharing a name and a label', () => {
+    node('span', { id: 'twin-label', text: 'Twin' });
+    const twins = [0, 1].map(() =>
+      node('input', { text: '', attributes: { name: 'twin', 'aria-labelledby': 'twin-label' } })
+    );
+    node('div', {}, twins);
+    assert.deepEqual(twins.map(identityOf), [
+      'input[name=twin] (1st of 2) "Twin"',
+      'input[name=twin] (2nd of 2) "Twin"',
+    ]);
+  });
+
+  void it('names siblings without names by their different labels, without a position', () => {
+    const fields = ['Email', 'Phone'].map((text) => {
+      const field = node('input', { text: '' });
+      field.labels = [node('label', { text })];
+      return field;
+    });
+    node('div', {}, fields);
+    assert.deepEqual(fields.map(identityOf), ['input "Email"', 'input "Phone"']);
+  });
+
+  void it('escapes control characters in a quoted name as CSS does', () => {
+    const field = node('input', { text: '', attributes: { name: 'line\none\ttab' } });
+    node('div', {}, [field]);
+    assert.equal(identityOf(field), 'input[name="line\\a one\\9 tab"]');
+  });
+
   void it('keeps the position for fields sharing a name, and names rows by their text', () => {
     const sizes = [0, 1, 2].map(() =>
       node('input', { text: '', attributes: { name: 'size-614', type: 'radio' } })

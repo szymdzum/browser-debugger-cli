@@ -120,6 +120,26 @@ void describe('action echoes on the sign-up form (#614)', () => {
     );
   });
 
+  void it('keeps the position for siblings sharing a name and a label', async () => {
+    await bdg([
+      'dom',
+      'eval',
+      `document.body.insertAdjacentHTML('beforeend', '<div id="twins"><span id="twin-label">Twin</span>' +
+        '<input name="twin" aria-labelledby="twin-label"><input name="twin" aria-labelledby="twin-label"></div>'); 1`,
+    ]);
+    try {
+      const output = await bdg(['dom', 'hover', '#twins input']);
+      assert.match(output, /2 elements match/);
+      assert.equal(elementRow(output), 'input[name=twin] (1st of 2) "Twin"');
+      assert.equal(
+        elementRow(await bdg(['dom', 'hover', '#twins input', '--index', '1'])),
+        'input[name=twin] (2nd of 2) "Twin"'
+      );
+    } finally {
+      await bdg(['dom', 'eval', "document.getElementById('twins').remove(); 1"]);
+    }
+  });
+
   void it('names a password field by its name, never its value', async () => {
     await bdg(['dom', 'fill', '#signup [name=password]', 'hunter2-614']);
     const output = await bdg(['dom', 'pressKey', '#signup [name=password]', 'a']);
