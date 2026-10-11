@@ -356,6 +356,22 @@ function booleanIfFlag(value: unknown): unknown {
 }
 
 /**
+ * The value of a node property. Relations (`labelledby`, `controls`, …)
+ * are the ids of the related elements, space-separated as in the ARIA
+ * attribute: Chrome gives `idrefList` relations that value, but `nodeList`
+ * ones (`labelledby`) only the related nodes, whose text is left out (it
+ * may be a secret field's value). Related nodes without an id are left out.
+ *
+ * @param value - CDP property value
+ * @returns The value, or undefined when there is none
+ */
+function propertyValue(value: Protocol.Accessibility.AXValue): unknown {
+  if (value.value !== undefined || !value.relatedNodes) return booleanIfFlag(value.value);
+  const ids = value.relatedNodes.flatMap((related) => (related.idref ? [related.idref] : []));
+  return ids.length > 0 ? ids.join(' ') : undefined;
+}
+
+/**
  * Parses raw CDP AXNode into simplified A11yNode format.
  *
  * Extracts key properties (role, name, description, value) and common
@@ -395,7 +411,8 @@ function parseA11yNode(rawNode: Protocol.Accessibility.AXNode): A11yNode {
       } else if (prop.name === 'required') {
         node.required = prop.value.value === true;
       } else {
-        props[prop.name] = booleanIfFlag(prop.value.value);
+        const value = propertyValue(prop.value);
+        if (value !== undefined) props[prop.name] = value;
       }
     }
 
