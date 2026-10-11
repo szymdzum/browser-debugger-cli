@@ -1,0 +1,142 @@
+/**
+ * One rule for secret field names (#622): DOM masking (page side) and HAR
+ * sanitising (Node side) agree on every name of the decision table below.
+ */
+
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+import * as vm from 'node:vm';
+
+import { SENSITIVE_NAME_JS, isSensitiveName } from '@/utils/sensitiveNames.js';
+
+/**
+ * Names and whether they count as secret. Rows marked "accepted" are
+ * ordinary names that match a credential word; masking them only hides a
+ * value `bdg dom eval` still reads, and the HAR sanitiser redacted them
+ * before this rule was shared.
+ */
+const DECISIONS: ReadonlyArray<readonly [name: string, secret: boolean]> = [
+  ['password', true],
+  ['Password', true],
+  ['passwd', true],
+  ['passwort', true],
+  ['pwd', true],
+  ['user_password', true],
+  ['userPassword', true],
+  ['new-password', true],
+  ['pass', true],
+  ['PASS', true],
+  ['pass1', true],
+  ['pass_confirm', true],
+  ['user_pass', true],
+  ['userPass', true],
+  ['user[pass]', true],
+  ['pw', true],
+  ['user_pw', true],
+  ['userPW', true],
+  ['pwConfirm', true],
+  ['passcode', true],
+  ['passphrase', true],
+  ['otp', true],
+  ['otp_code', true],
+  ['otpCode', true],
+  ['totp', true],
+  ['pin', true],
+  ['card-pin', true],
+  ['userPin', true],
+  ['ssn', true],
+  ['cvv', true],
+  ['cvc', true],
+  ['card_number', true],
+  ['cardNumber', true],
+  ['cardNo', true],
+  ['api_key', true],
+  ['api-key', true],
+  ['apiKey', true],
+  ['apikey', true],
+  ['APIKey', true],
+  ['x_api_key', true],
+  ['X-Api-Key', true],
+  ['private_key', true],
+  ['access_key', true],
+  ['token', true],
+  ['_token', true],
+  ['csrf_token', true],
+  ['csrfmiddlewaretoken', true],
+  ['authenticity_token', true],
+  ['access_token', true],
+  ['refresh_token', true],
+  ['id_token', true],
+  ['XSRF-TOKEN', true],
+  ['secret', true],
+  ['client_secret', true],
+  ['clientSecret', true],
+  ['secret_key', true],
+  ['credentials', true],
+  ['authorization', true],
+  ['jwt', true],
+  ['bearer', true],
+  ['auth', true],
+  ['X-Auth', true],
+  ['auth_code', true],
+  ['authCode', true],
+  ['oauth_verifier', true],
+  ['code_verifier', true],
+  ['sid', true],
+  ['session', true],
+  ['session_id', true],
+  ['csrf', true],
+  ['xsrf', true],
+  ['cookie', true],
+  ['signature', true],
+  ['refresh', true],
+  ['tokenizer', true],
+  ['cookie_consent', true],
+  ['refreshInterval', true],
+  ['passport', false],
+  ['passport_number', false],
+  ['passportNo', false],
+  ['compass', false],
+  ['bypass', false],
+  ['passenger', false],
+  ['passage', false],
+  ['keyword', false],
+  ['keyboard', false],
+  ['monkey', false],
+  ['key', false],
+  ['hotkey', false],
+  ['code', false],
+  ['zipcode', false],
+  ['pincode', false],
+  ['pinned', false],
+  ['pinned_items', false],
+  ['spinner', false],
+  ['opinion', false],
+  ['hotpot', false],
+  ['author', false],
+  ['authorName', false],
+  ['sidebar', false],
+  ['considered', false],
+  ['cardholder', false],
+  ['cardNotes', false],
+  ['card_nonce', false],
+  ['discard_note', false],
+  ['secretary', false],
+  ['secretariat', false],
+  ['username', false],
+  ['email', false],
+  ['q', false],
+  ['description', false],
+];
+
+/** {@link SENSITIVE_NAME_JS} as the page runs it */
+const pageRule = vm.runInNewContext(`(${SENSITIVE_NAME_JS})`) as (name: string) => boolean;
+
+void describe('secret field names (DOM masking and HAR sanitising)', () => {
+  for (const [name, secret] of DECISIONS) {
+    void it(`${name}: ${secret ? 'masked' : 'shown'}`, () => {
+      assert.equal(isSensitiveName(name), secret, `Node rule (HAR) for ${name}`);
+      assert.equal(pageRule(name), secret, `page rule (DOM) for ${name}`);
+    });
+  }
+});

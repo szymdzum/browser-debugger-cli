@@ -349,6 +349,47 @@ void describe('HAR sanitization: URLs', () => {
     const url = 'https://example.com/search?q=zipcode&keyword=a%20b';
     assert.equal(entryFor({ ...LOGIN_REQUEST, url }).request.url, url);
   });
+
+  test('strips user:pass@ from every URL field (#622)', () => {
+    const credentialed = 'http://bob:BASICPW46@127.0.0.1:8080/basic?q=1#top';
+    const entry = entryFor({
+      ...LOGIN_REQUEST,
+      url: credentialed,
+      requestHeaders: { Referer: credentialed },
+      status: 302,
+      redirectURL: credentialed,
+      responseHeaders: { Location: credentialed },
+    });
+    const expected = 'http://127.0.0.1:8080/basic?q=1#top';
+    assert.equal(entry.request.url, expected);
+    assert.equal(header(entry.request.headers, 'Referer'), expected);
+    assert.equal(entry.response.redirectURL, expected);
+    assert.equal(header(entry.response.headers, 'Location'), expected);
+    assert.ok(!JSON.stringify(entry).includes('BASICPW46'));
+  });
+
+  test('strips a token used as the user name, up to the last @ of the host part', () => {
+    assert.equal(
+      entryFor({ ...LOGIN_REQUEST, url: 'https://ghp_TOKEN1@github.com/a/b' }).request.url,
+      'https://github.com/a/b'
+    );
+    assert.equal(
+      entryFor({ ...LOGIN_REQUEST, url: 'https://u:p@ss@example.com/x?mail=a@b.c' }).request.url,
+      'https://example.com/x?mail=a@b.c'
+    );
+  });
+});
+
+void describe('HAR sanitization: short password names (#622)', () => {
+  test('redacts pass and pw in form and JSON bodies', () => {
+    const form = exportedBody(
+      'name=ann&pass=HARPASS53&pw=HARPW54&password=FULLPW',
+      'application/x-www-form-urlencoded'
+    );
+    assert.equal(form, `name=ann&pass=${REDACTED}&pw=${REDACTED}&password=${REDACTED}`);
+    const json = exportedBody('{"pass":"JSONPASS55","pw":"JSONPW56"}', 'application/json');
+    assert.equal(json, `{"pass":"${REDACTED}","pw":"${REDACTED}"}`);
+  });
 });
 
 /** A token endpoint's response: the credentials of a login flow */
