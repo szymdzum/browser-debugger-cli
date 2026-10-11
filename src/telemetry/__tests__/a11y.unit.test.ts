@@ -160,6 +160,41 @@ describe('buildTreeFromRawNodes', () => {
       'Should throw for empty array'
     );
   });
+
+  test('keeps relation properties as the ids of the related nodes, never their text (#614)', () => {
+    const tree = buildTreeFromRawNodes([
+      {
+        nodeId: '1',
+        ignored: false,
+        role: { type: 'role', value: 'textbox' },
+        properties: [
+          {
+            name: 'labelledby',
+            value: {
+              type: 'nodeList',
+              relatedNodes: [
+                { backendDOMNodeId: 5, idref: 'pp', text: '••••' },
+                { backendDOMNodeId: 6, idref: 'cc', text: '4111111111111111' },
+              ],
+            },
+          },
+          {
+            name: 'describedby',
+            value: {
+              type: 'idrefList',
+              value: 'cc',
+              relatedNodes: [{ backendDOMNodeId: 6, idref: 'cc' }],
+            },
+          },
+          {
+            name: 'owns',
+            value: { type: 'nodeList', relatedNodes: [{ backendDOMNodeId: 7 }] },
+          },
+        ],
+      },
+    ]);
+    assert.deepEqual(tree.root.properties, { labelledby: 'pp cc', describedby: 'cc' });
+  });
 });
 
 describe('buildTreeFromRawNodes with ignored nodes', () => {

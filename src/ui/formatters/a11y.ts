@@ -158,15 +158,44 @@ export function formatA11yNodeWithContext(data: A11yNodeWithContext): string {
 
   fmt.keyValueList(props, 16);
 
-  if (node.properties && Object.keys(node.properties).length > 0) {
+  const additionalProps = Object.entries(node.properties ?? {})
+    .filter(([, value]) => value !== undefined && value !== null)
+    .map(([key, value]) => [key, propertyText(key, value)] as [string, string]);
+  if (additionalProps.length > 0) {
     fmt.blank().text('Additional Properties:').blank();
-    const additionalProps = Object.entries(node.properties).map(
-      ([key, value]) => [key, String(value)] as [string, string]
-    );
     fmt.keyValueList(additionalProps, 20);
   }
 
   return fmt.build();
+}
+
+/** Properties whose value is the ids of related elements */
+const RELATION_PROPERTIES = new Set([
+  'activedescendant',
+  'controls',
+  'describedby',
+  'details',
+  'errormessage',
+  'flowto',
+  'labelledby',
+  'owns',
+]);
+
+/**
+ * A property value as shown: relations as the related elements' ids
+ * (`#nl-label`, `#a, #b`), other values as they are.
+ *
+ * @param key - Property name
+ * @param value - Property value
+ * @returns Text to show
+ */
+function propertyText(key: string, value: unknown): string {
+  if (!RELATION_PROPERTIES.has(key) || typeof value !== 'string') return String(value);
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((id) => `#${id}`)
+    .join(', ');
 }
 
 /**

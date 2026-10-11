@@ -1,5 +1,6 @@
 /**
- * Action output names the element itself: its text, else its position among
+ * Action output names the element itself: its text, else its label or a
+ * unique `name` (`input[name=email]`), else its position among
  * same-looking siblings (`div.figure (2nd of 3)`), and only then an
  * ancestor's text; an element without text by its label or image alt text.
  * Text previews leave out close buttons and icons.
@@ -51,6 +52,9 @@ interface FakeWalker {
 /** Elements by id, for `aria-labelledby` */
 const BY_ID = new Map<string, FakeNode>();
 
+/** Every node built, for the document's `querySelectorAll` */
+const ALL: FakeNode[] = [];
+
 const DOCUMENT = {
   createTreeWalker: (root: FakeNode): FakeWalker => {
     const elements = descendants(root);
@@ -61,6 +65,7 @@ const DOCUMENT = {
     return walker;
   },
   getElementById: (id: string): FakeNode | null => BY_ID.get(id) ?? null,
+  querySelectorAll: (selector: string): FakeNode[] => ALL.filter((n) => n.matches(selector)),
 };
 
 /**
@@ -80,6 +85,8 @@ function matchesSimple(node: FakeNode, selector: string): boolean {
     if (actual === undefined) return false;
     return insensitive ? actual.toLowerCase() === value.toLowerCase() : actual === value;
   }
+  const bareAttribute = /^\[([\w-]+)\]$/.exec(selector);
+  if (bareAttribute) return node.attributes[bareAttribute[1] ?? ''] !== undefined;
   const withAttribute = /^([\w-]+)\[([\w-]+)\]$/.exec(selector);
   if (withAttribute) {
     const [, tag = '', name = ''] = withAttribute;
@@ -129,6 +136,7 @@ function node(
   };
   children.forEach((child) => (child.parentElement = self));
   if (self.id) BY_ID.set(self.id, self);
+  ALL.push(self);
   return self;
 }
 
@@ -200,6 +208,92 @@ void describe('ELEMENT_IDENTITY_JS', () => {
     });
     node('div', {}, [field]);
     assert.equal(identityOf(field), 'input#name "What is your name?"');
+  });
+
+  void it('names fields by a unique name, without a sibling position (#614)', () => {
+    const email = node('input', { text: '', attributes: { name: 'email' } });
+    const password = node('input', { text: '', attributes: { name: 'password' } });
+    node('form', { id: 'signup-614', text: 'Sign up' }, [email, password]);
+    assert.equal(identityOf(email), 'input[name=email]');
+    assert.equal(identityOf(password), 'input[name=password]');
+  });
+
+  void it('names a field by its unique name rather than an ancestor text (#614)', () => {
+    const city = node('input', { text: '', attributes: { name: 'city-614' } });
+    node('form', { id: 'light-614', text: 'Go Preview' }, [city]);
+    assert.equal(identityOf(city), 'input[name=city-614]');
+  });
+
+  void it('names a labelled field by its label, without a position or ancestor text (#614)', () => {
+    node('span', { id: 'nl-label-614', text: 'Newsletter email' });
+    const labelled = node('input', {
+      text: '',
+      attributes: { name: 'nl-email-614', 'aria-labelledby': 'nl-label-614' },
+    });
+    const other = node('input', { text: '', attributes: { name: 'nl-name-614' } });
+    node('form', { text: 'Newsletter emailName *Subscribe' }, [labelled, other]);
+    assert.equal(identityOf(labelled), 'input[name=nl-email-614] "Newsletter email"');
+  });
+
+  void it('quotes a name that is not a plain identifier', () => {
+    const field = node('input', { text: '', attributes: { name: 'user[email]' } });
+    node('div', {}, [field]);
+    assert.equal(identityOf(field), 'input[name="user[email]"]');
+  });
+
+  void it('names an element with text by its aria-labelledby or aria-label', () => {
+    node('span', { id: 'hl', text: 'Hover me' });
+    const labelled = node('button', { text: 'btn', attributes: { 'aria-labelledby': 'hl' } });
+    const aria = node('button', { text: '×', attributes: { 'aria-label': 'Close dialog' } });
+    const missing = node('button', { text: 'Save', attributes: { 'aria-labelledby': 'nowhere' } });
+    node('div', {}, [labelled, aria, missing]);
+    assert.deepEqual([labelled, aria, missing].map(identityOf), [
+      'button "Hover me"',
+      'button "Close dialog"',
+      'button "Save"',
+    ]);
+  });
+
+  void it('keeps the position for siblings sharing a name and a label', () => {
+    node('span', { id: 'twin-label', text: 'Twin' });
+    const twins = [0, 1].map(() =>
+      node('input', { text: '', attributes: { name: 'twin', 'aria-labelledby': 'twin-label' } })
+    );
+    node('div', {}, twins);
+    assert.deepEqual(twins.map(identityOf), [
+      'input[name=twin] (1st of 2) "Twin"',
+      'input[name=twin] (2nd of 2) "Twin"',
+    ]);
+  });
+
+  void it('names siblings without names by their different labels, without a position', () => {
+    const fields = ['Email', 'Phone'].map((text) => {
+      const field = node('input', { text: '' });
+      field.labels = [node('label', { text })];
+      return field;
+    });
+    node('div', {}, fields);
+    assert.deepEqual(fields.map(identityOf), ['input "Email"', 'input "Phone"']);
+  });
+
+  void it('escapes control characters in a quoted name as CSS does', () => {
+    const field = node('input', { text: '', attributes: { name: 'line\none\ttab' } });
+    node('div', {}, [field]);
+    assert.equal(identityOf(field), 'input[name="line\\a one\\9 tab"]');
+  });
+
+  void it('keeps the position for fields sharing a name, and names rows by their text', () => {
+    const sizes = [0, 1, 2].map(() =>
+      node('input', { text: '', attributes: { name: 'size-614', type: 'radio' } })
+    );
+    node('div', {}, sizes);
+    assert.equal(identityOf(sizes[1] as FakeNode), 'input[name=size-614] (2nd of 3)');
+    const quantities = ['Widget', 'Gadget'].map((product) => {
+      const quantity = node('input', { text: '', attributes: { name: 'qty-614' } });
+      node('td', { text: product }, [quantity]);
+      return quantity;
+    });
+    assert.equal(identityOf(quantities[1] as FakeNode), 'input[name=qty-614] in td "Gadget"');
   });
 });
 

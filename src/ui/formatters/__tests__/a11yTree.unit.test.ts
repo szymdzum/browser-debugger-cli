@@ -1,6 +1,8 @@
 /**
  * The accessibility tree is listed depth-first without noise, bounded by
- * --limit and --depth, and the human output is indented.
+ * --limit and --depth, and the human output is indented. `a11y describe`
+ * shows relation properties by the ids of the related elements and never
+ * prints `undefined`.
  */
 
 import assert from 'node:assert/strict';
@@ -8,7 +10,7 @@ import { describe, it } from 'node:test';
 
 import { listA11yTree } from '@/telemetry/a11y.js';
 import type { A11yNode, A11yTree } from '@/types.js';
-import { formatA11yTree } from '@/ui/formatters/a11y.js';
+import { formatA11yNodeWithContext, formatA11yTree } from '@/ui/formatters/a11y.js';
 
 /**
  * Build a tree from nodes (the first is the root).
@@ -118,5 +120,28 @@ void describe('formatA11yTree', () => {
       );
     }
     assert.equal(listA11yTree(tree, 0).omitted, undefined);
+  });
+});
+
+void describe('formatA11yNodeWithContext', () => {
+  void it('shows relations by the related ids and never prints undefined (#614)', () => {
+    const output = formatA11yNodeWithContext({
+      node: {
+        nodeId: '11',
+        role: 'textbox',
+        name: 'Newsletter email',
+        properties: {
+          readonly: false,
+          labelledby: 'nl-label',
+          controls: 'a b',
+          unknown: undefined,
+        },
+      },
+      domContext: null,
+    });
+    assert.doesNotMatch(output, /undefined/);
+    assert.match(output, /^labelledby: +#nl-label$/m);
+    assert.match(output, /^controls: +#a, #b$/m);
+    assert.match(output, /^readonly: +false$/m);
   });
 });
