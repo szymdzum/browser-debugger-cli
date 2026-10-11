@@ -18,7 +18,8 @@ import {
   throwIfInvalidSelector,
   withMultipleMatchesWarning,
 } from '@/runtime/dom/formFillHelpers/shared.js';
-import { FIND_ELEMENTS_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
+import { FIND_ELEMENTS_JS, selectorArgs } from '@/runtime/dom/targetNode.js';
+import { callFunctionInMainWorld } from '@/runtime/page/bdgWorld.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -185,11 +186,9 @@ export async function scrollPage(
 ): Promise<ScrollResult> {
   try {
     if (selector) {
-      const indexArg = options.index ?? 'null';
-      const expression = `(${SCROLL_TO_ELEMENT_SCRIPT})(${selectorArgsJS(selector)}, ${indexArg})`;
-
-      const response = await cdp.send('Runtime.evaluate', {
-        expression,
+      const response = await callFunctionInMainWorld(cdp, {
+        functionDeclaration: SCROLL_TO_ELEMENT_SCRIPT,
+        arguments: [...selectorArgs(selector), options.index ?? null].map((value) => ({ value })),
         returnByValue: true,
       });
 
@@ -250,10 +249,9 @@ export async function scrollPage(
       bottom: options.bottom,
     };
 
-    const expression = `(${SCROLL_BY_SCRIPT})(${JSON.stringify(scrollOptions)})`;
-
-    const response = await cdp.send('Runtime.evaluate', {
-      expression,
+    const response = await callFunctionInMainWorld(cdp, {
+      functionDeclaration: SCROLL_BY_SCRIPT,
+      arguments: [{ value: scrollOptions }],
       returnByValue: true,
     });
 
