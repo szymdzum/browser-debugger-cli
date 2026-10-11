@@ -267,10 +267,15 @@ void describe('Secrets in network output', () => {
     const human = await bdg(['details', 'network', id]);
     assert.doesNotMatch(human.stdout, ANY_SECRET);
     assert.ok(human.stdout.includes(`"token":"${MASK}","room":"lobby"`), human.stdout);
+    assert.ok(human.stdout.includes(`Bearer ${MASK}`), human.stdout);
     const { data, stdout } = await bdgJson<DetailsJson>(['details', 'network', id]);
     assert.doesNotMatch(stdout, ANY_SECRET);
     assert.equal(data.masked, true);
     assert.ok(data.item.webSocket?.frames.every((f) => f.payloadData.includes(MASK)));
+
+    const har = await runCommand('network', ['har', '-'], { timeout: 60000 });
+    assert.equal(har.exitCode, 0, har.stderr);
+    assert.doesNotMatch(har.stdout, ANY_SECRET, 'the default HAR holds no secret of the page');
   });
 
   void it('network headers masks credentials, human and --json', async () => {

@@ -10,8 +10,8 @@
  * with a `password` part and an ordinary `note` part to `/net-upload`; a POST
  * to `/har-login` (a JSON response with `access_token` and `refresh_token`,
  * and a `har_session` cookie); and a JSON WebSocket message with a `token`
- * to the echo server at `/ws`. The title becomes `done` when the echo came
- * back. `/net-form`, `/net-json` and `/net-upload` get the fixture server's
+ * and a plain-text `Bearer` message to the echo server at `/ws`. The title
+ * becomes `done` when both echoes came back. `/net-form`, `/net-json` and `/net-upload` get the fixture server's
  * default page.
  *
  * Every secret value ends in {@link NETWORK_SECRET_MARKER}, assembled in the
@@ -51,8 +51,12 @@ fetch('/net-form', {
   .then(() => fetch('/har-login', { method: 'POST', body: 'x' }))
   .then(() => {
     const socket = new WebSocket(location.origin.replace('http', 'ws') + '/ws');
-    socket.onopen = () => socket.send(JSON.stringify({ type: 'auth', token: m('WS'), room: 'lobby' }));
-    socket.onmessage = () => { document.title = 'done'; };
+    let echoes = 0;
+    socket.onopen = () => {
+      socket.send(JSON.stringify({ type: 'auth', token: m('WS'), room: 'lobby' }));
+      socket.send('Bearer ' + m('WB'));
+    };
+    socket.onmessage = () => { if (++echoes === 2) document.title = 'done'; };
   });
 </script>`;
 

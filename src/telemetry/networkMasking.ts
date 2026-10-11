@@ -18,7 +18,9 @@ import { MASKED_VALUE } from '@/runtime/dom/elementInfo.js';
 import { isSensitiveHeader, redactHeaderText, redactUrl } from '@/telemetry/har/sanitize.js';
 import {
   redactBase64Body,
+  redactBase64Message,
   redactBody,
+  redactMessage,
   redactOrReplaceWhole,
 } from '@/telemetry/har/sanitizeBody.js';
 import { skippedBodyReason } from '@/telemetry/networkRetention.js';
@@ -187,15 +189,27 @@ function maskBody(body: string, mimeType: string, base64: boolean | undefined): 
 }
 
 /**
- * Mask the credential fields of a WebSocket message: a text message, or a
- * binary one that decodes as UTF-8 text.
+ * Mask the credential fields of a WebSocket message, a text message or a
+ * binary one that decodes as UTF-8 text ({@link redactMessage}: also
+ * `Bearer`/`Basic` credentials in plain text).
  *
  * @param frame - Captured frame
  * @returns The frame, or a copy with its payload masked
  */
 function maskFrame(frame: WebSocketFrame): WebSocketFrame {
   if (frame.opcode !== TEXT_OPCODE && frame.opcode !== BINARY_OPCODE) return frame;
-  const payloadData = maskBody(frame.payloadData, '', frame.opcode === BINARY_OPCODE);
+  const payloadData =
+    frame.opcode === TEXT_OPCODE
+      ? redactOrReplaceWhole(
+          frame.payloadData,
+          (text) => redactMessage(text, MASKED_VALUE),
+          MASKED_VALUE
+        )
+      : redactOrReplaceWhole(
+          frame.payloadData,
+          (text) => redactBase64Message(text, MASKED_VALUE),
+          BASE64_MASKED
+        );
   return payloadData === frame.payloadData ? frame : { ...frame, payloadData };
 }
 

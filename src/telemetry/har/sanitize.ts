@@ -27,8 +27,10 @@ import type { Content, Cookie, Entry, Header, QueryParam, WebSocketMessage } fro
 import {
   REDACTED,
   redactBase64Body,
+  redactBase64Message,
   redactBody,
   redactJwts,
+  redactMessage,
   redactOrReplaceWhole,
   redactPairs,
 } from '@/telemetry/har/sanitizeBody.js';
@@ -73,10 +75,16 @@ const URL_HEADERS = new Set([
 
 /**
  * Headers whose names contain a secret field name but whose values are no
- * credentials: a CORS flag, and a URL header whose credentials are redacted
- * as in other URLs
+ * credentials: a CORS flag, HTTP message signature metadata (the
+ * `Signature` header itself stays redacted), and a URL header whose
+ * credentials are redacted as in other URLs
  */
-const NOT_SECRET_HEADERS = new Set(['access-control-allow-credentials', 'refresh']);
+const NOT_SECRET_HEADERS = new Set([
+  'access-control-allow-credentials',
+  'refresh',
+  'signature-input',
+  'accept-signature',
+]);
 
 /** A URL in angle brackets, as in a `Link` header */
 const BRACKETED_URL = /<([^>]*)>/g;
@@ -163,8 +171,8 @@ function redactWebSocketMessage(message: WebSocketMessage): WebSocketMessage {
   if (message.opcode !== TEXT_OPCODE && message.opcode !== BINARY_OPCODE) return message;
   const data =
     message.opcode === TEXT_OPCODE
-      ? redactOrReplaceWhole(message.data, (text) => redactBody(text, ''))
-      : redactOrReplaceWhole(message.data, (text) => redactBase64Body(text, ''), BASE64_REDACTED);
+      ? redactOrReplaceWhole(message.data, (text) => redactMessage(text))
+      : redactOrReplaceWhole(message.data, (text) => redactBase64Message(text), BASE64_REDACTED);
   return data === message.data ? message : { ...message, data };
 }
 

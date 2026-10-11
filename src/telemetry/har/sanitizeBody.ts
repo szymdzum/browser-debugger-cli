@@ -54,6 +54,13 @@ const JSON_MIME = /json|event-stream/i;
 const DECODABLE_MIME =
   /^(?:application\/octet-stream|binary\/octet-stream|application\/x-www-form-urlencoded|text\/event-stream)?$|json/i;
 
+/**
+ * An auth scheme as written in headers and its credentials, in text
+ * (`Bearer abc`, `Basic dXNlcjpw`); case-sensitive, so prose such as "the
+ * basic plan" is left alone
+ */
+const SCHEME_CREDENTIALS = /\b(Bearer|Basic)(\s+)[^\s"',;]+/g;
+
 /** A bare value (number, `true`, `false`, `null`) or word, up to the next delimiter */
 const BARE = /[^\s,:[\]{}"]+/y;
 
@@ -198,6 +205,47 @@ export function redactBody(text: string, mimeType: string, placeholder = REDACTE
  */
 export function redactBase64Body(base64: string, mimeType: string, placeholder = REDACTED): string {
   if (!DECODABLE_MIME.test(mimeType.split(';')[0]?.trim() ?? '')) return base64;
+  return redactBase64Text(base64, (text) => redactBody(text, mimeType, placeholder));
+}
+
+/**
+ * Redact credential fields of a WebSocket text message: as a body
+ * ({@link redactBody}), and in a message that is neither JSON nor a form,
+ * the credentials after a `Bearer` or `Basic` scheme too (`Bearer abc` is
+ * written `Bearer [redacted]`); the rest stays byte for byte.
+ *
+ * @param text - Message text
+ * @param placeholder - Text written instead of each credential value
+ * @returns Message with credential values replaced
+ */
+export function redactMessage(text: string, placeholder = REDACTED): string {
+  const redacted = redactBody(text, '', placeholder);
+  if (JSON_LIKE_START.test(text) || FORM_BODY.test(text)) return redacted;
+  return redacted.replace(SCHEME_CREDENTIALS, `$1$2${placeholder}`);
+}
+
+/**
+ * Redact a binary WebSocket message that decodes as UTF-8 text, as a text
+ * message ({@link redactMessage}).
+ *
+ * @param base64 - Message as base64
+ * @param placeholder - Text written instead of each credential value
+ * @returns The redacted message re-encoded, or the input unchanged when it
+ *   was not text or held no credentials
+ */
+export function redactBase64Message(base64: string, placeholder = REDACTED): string {
+  return redactBase64Text(base64, (text) => redactMessage(text, placeholder));
+}
+
+/**
+ * Redact base64 data that decodes as UTF-8 text.
+ *
+ * @param base64 - Data as base64
+ * @param redact - Redaction of the decoded text
+ * @returns The redacted text re-encoded, or the input unchanged when it was
+ *   not UTF-8 or the redaction changed nothing
+ */
+function redactBase64Text(base64: string, redact: (text: string) => string): string {
   let decoded: string;
   try {
     decoded = UTF8.decode(Buffer.from(base64, 'base64'));
@@ -205,7 +253,7 @@ export function redactBase64Body(base64: string, mimeType: string, placeholder =
     log.debug(`Base64 body is not UTF-8: ${getErrorMessage(error)}`);
     return base64;
   }
-  const redacted = redactBody(decoded, mimeType, placeholder);
+  const redacted = redact(decoded);
   return redacted === decoded ? base64 : Buffer.from(redacted, 'utf8').toString('base64');
 }
 

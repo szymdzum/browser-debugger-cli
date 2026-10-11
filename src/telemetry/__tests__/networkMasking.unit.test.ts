@@ -235,6 +235,51 @@ void describe('maskNetworkRequest', () => {
     assert.equal(frames[2]?.payloadData, 'ping');
   });
 
+  test('masks Bearer and Basic credentials in plain-text WebSocket messages', () => {
+    const { value, masked } = mask({
+      webSocket: {
+        frames: [
+          { timestamp: 1, direction: 'sent', opcode: 1, payloadData: 'AUTH Bearer WB1 now' },
+          {
+            timestamp: 2,
+            direction: 'sent',
+            opcode: 2,
+            payloadData: Buffer.from('login Basic dXNlcjpwYXNz').toString('base64'),
+          },
+          {
+            timestamp: 3,
+            direction: 'sent',
+            opcode: 1,
+            payloadData: 'the basic plan, bearer of news',
+          },
+        ],
+      },
+    });
+    assert.equal(masked, true);
+    const frames = value.webSocket?.frames ?? [];
+    assert.equal(frames[0]?.payloadData, `AUTH Bearer ${MASK} now`);
+    assert.equal(
+      Buffer.from(frames[1]?.payloadData ?? '', 'base64').toString(),
+      `login Basic ${MASK}`
+    );
+    assert.equal(frames[2]?.payloadData, 'the basic plan, bearer of news');
+  });
+
+  test('keeps HTTP message signature metadata and masks the signature', () => {
+    const { value } = mask({
+      requestHeaders: {
+        'Signature-Input': 'sig1=("@method")',
+        'Accept-Signature': 'sig1=()',
+        Signature: 'sig1=:abc:',
+      },
+    });
+    assert.deepEqual(value.requestHeaders, {
+      'Signature-Input': 'sig1=("@method")',
+      'Accept-Signature': 'sig1=()',
+      Signature: MASK,
+    });
+  });
+
   test('does not change the captured request', () => {
     const request: NetworkRequest = { ...PLAIN, requestHeaders: { Cookie: 'sid=LIVE42' } };
     maskNetworkRequest(request);

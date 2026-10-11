@@ -372,6 +372,20 @@ void describe('HAR sanitization: URLs', () => {
     assert.equal(header(entry.response.headers, 'Refresh'), '0; url=/cb?code=%5Bredacted%5D');
   });
 
+  test('redacts Bearer credentials in a plain-text WebSocket message', () => {
+    const entry = entryFor({
+      ...LOGIN_REQUEST,
+      resourceType: 'WebSocket',
+      webSocket: {
+        frames: [{ timestamp: 1, direction: 'sent', opcode: 1, payloadData: 'Bearer WB1' }],
+      },
+    });
+    assert.deepEqual(
+      entry._webSocketMessages?.map((m) => m.data),
+      [`Bearer ${REDACTED}`]
+    );
+  });
+
   test('leaves URLs without sensitive parameters alone', () => {
     const url = 'https://example.com/search?q=zipcode&keyword=a%20b';
     assert.equal(entryFor({ ...LOGIN_REQUEST, url }).request.url, url);
