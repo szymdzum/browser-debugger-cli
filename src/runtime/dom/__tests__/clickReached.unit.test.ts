@@ -47,7 +47,7 @@ function fakeCdp(
       if (params['type'] === failingEvent) return Promise.reject(new Error('dispatch failed'));
       return Promise.resolve({});
     }
-    if (expression === 'globalThis') return Promise.resolve({ result: { objectId: 'global' } });
+    if (expression === 'this') return Promise.resolve({ result: { objectId: 'global' } });
     if (expression.includes('allMatches')) return Promise.resolve({ result: { value: located } });
     if (expression.includes('__bdgClickTarget') && !expression.startsWith('delete')) {
       sent.push('dom-fallback');

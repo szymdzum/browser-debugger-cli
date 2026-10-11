@@ -132,3 +132,31 @@ void describe('page whose replaced built-ins break action scripts', () => {
     assert.match(response.data.warning ?? '', /the page replaced Object\.keys/);
   });
 });
+
+void describe('page that removes globalThis', () => {
+  let fixture: FixtureServer;
+
+  before(async () => {
+    await cleanupAllSessions();
+    fixture = await startFixtureServer();
+    const port = await getFreePort();
+    await bdg([`${fixture.url}no-globalthis`, '--port', String(port), '--headless']);
+  });
+
+  after(async () => {
+    await cleanupAllSessions();
+    await fixture.close();
+  });
+
+  void it('fills, clicks, scrolls and presses keys although the page set globalThis to undefined', async () => {
+    assert.match(await bdg(['dom', 'eval', 'String(globalThis)']), /undefined/);
+    assert.match(await bdg(['dom', 'fill', '#name', 'Alice']), /Value: +Alice/);
+    assert.match(await bdg(['dom', 'pressKey', '#name', 'Tab']), /Key: +Tab/);
+    assert.match(await bdg(['dom', 'scroll', '#go']), /button#go/);
+    await bdg(['dom', 'click', '#go']);
+    assert.match(
+      await bdg(['dom', 'eval', 'document.getElementById("go").textContent']),
+      /Clicked/
+    );
+  });
+});

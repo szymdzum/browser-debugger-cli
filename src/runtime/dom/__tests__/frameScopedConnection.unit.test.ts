@@ -195,7 +195,7 @@ void describe('frameMappingFrom', () => {
   });
 });
 
-/** The frame's global object, as the scoped connection resolves `globalThis` on the element */
+/** The frame's global object: what the scoped connection returns for the main-world lookup (`this`) on the element */
 const FRAME_GLOBAL = 'frame-window';
 
 /**
@@ -220,7 +220,8 @@ function fakeConnection(quads: () => number[][]): {
     if (declaration === CLIENT_RECT_FUNCTION) {
       return { result: { value: { x: 0, y: 0, width: 10, height: 10 } } };
     }
-    if (String(declaration).includes('globalThis')) return { result: { objectId: FRAME_GLOBAL } };
+    if (/return \(\nthis\n\)/.test(String(declaration)))
+      return { result: { objectId: FRAME_GLOBAL } };
     return {
       result: {
         value: {
