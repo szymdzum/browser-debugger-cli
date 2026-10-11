@@ -229,7 +229,7 @@ void describe('secret labels', () => {
       assertNoSecret(tree, `dom a11y tree (${kind}, ${selector})`);
     }
     assert.ok(query.includes('PASSPORT11'), 'a11y query hides PASSPORT11');
-    assert.ok(tree.includes('"Show password"'), 'a11y tree hides the Show password checkbox');
+    assert.match(tree, /"\s*Show password\s*"/, 'a11y tree hides the Show password checkbox');
   });
 
   void it('masks the part of a name or description that comes from a secret field (#642)', async () => {
