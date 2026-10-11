@@ -241,6 +241,19 @@ void describe('ELEMENT_IDENTITY_JS', () => {
     assert.equal(identityOf(field), 'input[name="user[email]"]');
   });
 
+  void it('names an element with text by its aria-labelledby or aria-label', () => {
+    node('span', { id: 'hl', text: 'Hover me' });
+    const labelled = node('button', { text: 'btn', attributes: { 'aria-labelledby': 'hl' } });
+    const aria = node('button', { text: '×', attributes: { 'aria-label': 'Close dialog' } });
+    const missing = node('button', { text: 'Save', attributes: { 'aria-labelledby': 'nowhere' } });
+    node('div', {}, [labelled, aria, missing]);
+    assert.deepEqual([labelled, aria, missing].map(identityOf), [
+      'button "Hover me"',
+      'button "Close dialog"',
+      'button "Save"',
+    ]);
+  });
+
   void it('keeps the position for siblings sharing a name and a label', () => {
     node('span', { id: 'twin-label', text: 'Twin' });
     const twins = [0, 1].map(() =>

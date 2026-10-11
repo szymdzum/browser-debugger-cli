@@ -140,6 +140,23 @@ void describe('action echoes on the sign-up form (#614)', () => {
     }
   });
 
+  void it('names a button with text by its aria-labelledby', async () => {
+    await bdg([
+      'dom',
+      'eval',
+      `document.body.insertAdjacentHTML('beforeend', '<div id="hl-box"><span id="hl">Hover me</span>' +
+        '<button id="hl-btn" aria-labelledby="hl">btn</button></div>'); 1`,
+    ]);
+    try {
+      assert.equal(
+        elementRow(await bdg(['dom', 'hover', '#hl-box button'])),
+        'button#hl-btn "Hover me"'
+      );
+    } finally {
+      await bdg(['dom', 'eval', "document.getElementById('hl-box').remove(); 1"]);
+    }
+  });
+
   void it('names a password field by its name, never its value', async () => {
     await bdg(['dom', 'fill', '#signup [name=password]', 'hunter2-614']);
     const output = await bdg(['dom', 'pressKey', '#signup [name=password]', 'a']);

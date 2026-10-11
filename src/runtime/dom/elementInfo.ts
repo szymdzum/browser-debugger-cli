@@ -475,7 +475,10 @@ export const SIBLING_POSITION_JS = `(el) => {
  * ({@link ELEMENT_DESCRIPTION_JS}) and visible text (button value for button
  * inputs, decorations left out; read through the flat tree for web
  * components and slots, {@link FLAT_TEXT_JS}), e.g.
- * `button#add.btn "Add to cart"`. A `<select>` is named by its label
+ * `button#add.btn "Add to cart"`; an element with text and an
+ * `aria-labelledby` or aria-label is named by that instead, as assistive
+ * technology names it (`<button aria-labelledby="hl">` by the text of
+ * `#hl`). A `<select>` is named by its label
  * (`aria-labelledby` or `<label>`), aria-label or name, else by its selected
  * option, e.g. `select.sort "Sort products"`. An element without visible
  * text is described with its `name` attribute ({@link NAMED_DESCRIPTION_JS})
@@ -556,7 +559,9 @@ export const ELEMENT_IDENTITY_JS = `(el) => {
     return others.filter((other) => other.getAttribute('name') === name).length === 1;
   };
   const visible = shownText(el) || buttonValue(el) || (el.localName === 'select' ? selectName(el) : '');
-  if (visible) return describe(el) + quoted(visible);
+  const ariaName = () =>
+    ((el.getAttribute('aria-labelledby') || '').trim() ? labelText(el) : '') || clean(el.getAttribute('aria-label'));
+  if (visible) return describe(el) + quoted(el.localName === 'select' ? visible : ariaName() || visible);
   const attribute = attributeText(el);
   const position = siblingPosition(el);
   const label = labelText(el);
