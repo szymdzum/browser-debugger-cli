@@ -13,6 +13,7 @@ import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption, SELECTOR_OR_INDEX_ARGUMENT } from '@/commands/shared/commonOptions.js';
 import type { InspectCommandOptions } from '@/commands/shared/optionTypes.js';
 import { cssPropertiesOption, integerOption } from '@/commands/shared/validation.js';
+import { withIndexSourceLine } from '@/errors/messages.js';
 import { domInspect } from '@/ipc/client.js';
 import type { DomInspectCommand } from '@/ipc/protocol/commands.js';
 import type { InspectResult } from '@/ipc/protocol/inspectTypes.js';
@@ -77,7 +78,11 @@ export function registerInspectCommand(dom: Command): void {
     .option('--no-hints', 'Skip the check for declarations that have no effect')
     .addOption(jsonOption())
     .action(async (selectorOrIndex: string, options: InspectCommandOptions) => {
-      await runCommand(() => inspectTarget(selectorOrIndex, options), options, formatInspect);
+      await runCommand(
+        () => inspectTarget(selectorOrIndex, options),
+        options,
+        (data) => withIndexSourceLine(formatInspect(data), data.indexSource)
+      );
     });
 }
 

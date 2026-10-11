@@ -19,10 +19,10 @@ import type { DomScreenshotCommandOptions } from '@/commands/shared/optionTypes.
 import { assertFilePath, outputPathError } from '@/commands/shared/outputFile.js';
 import { positiveIntRule } from '@/commands/shared/validation.js';
 import { CommandError } from '@/errors/index.js';
-import { conflictingTargetError, genericError } from '@/errors/messages.js';
+import { conflictingTargetError, genericError, withIndexSourceLine } from '@/errors/messages.js';
 import { missingArgumentError } from '@/errors/messages.js';
 import type { DomScreenshotCommand } from '@/ipc/protocol/commands.js';
-import type { ScreenshotResult, ElementBounds } from '@/types.js';
+import type { ScreenshotResult, ElementBounds, IndexSource } from '@/types.js';
 import { OutputBuilder, buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import { formatDomScreenshot } from '@/ui/formatters/dom.js';
 import { createLogger } from '@/ui/logging/index.js';
@@ -99,25 +99,31 @@ function hasElementTarget(options: DomScreenshotCommandOptions): boolean {
   return options.selector !== undefined || options.index !== undefined;
 }
 
+/** The element to capture, and the list it comes from for a cached index */
+interface ElementTarget {
+  nodeId: number;
+  indexSource?: IndexSource;
+}
+
 /**
  * The element to capture: the selector's match (`--index` picks one), or the
  * cached query result at `--index`.
  *
  * @param options - Command options
- * @returns Its backend node id
+ * @returns Its backend node id, with the list for a cached index
  * @throws CommandError (81) when neither is given
  */
-async function resolveElementNodeId(options: DomScreenshotCommandOptions): Promise<number> {
+async function resolveElementTarget(options: DomScreenshotCommandOptions): Promise<ElementTarget> {
   if (options.selector !== undefined && options.index !== undefined) {
-    return selectMatch(options.selector, options.index);
+    return { nodeId: await selectMatch(options.selector, options.index) };
   }
   if (options.index !== undefined) {
     const node = await DomElementResolver.getInstance().getNodeIdForIndex(options.index);
-    return node.nodeId;
+    return { nodeId: node.nodeId, indexSource: node.source };
   }
 
   if (options.selector !== undefined) {
-    return resolveSelector(options.selector);
+    return { nodeId: await resolveSelector(options.selector) };
   }
 
   const err = missingArgumentError('--selector "css-selector" or --index N from a previous query');
@@ -197,7 +203,8 @@ async function handlePageScreenshot(
 
 /**
  * Capture one element; interrupted like {@link handlePageScreenshot}, also
- * while the element is looked up.
+ * while the element is looked up. A cached index names the list it comes
+ * from (`indexSource`, and a `From …` line).
  *
  * @param outputPath - File to write
  * @param options - Command options
@@ -209,15 +216,18 @@ async function handleElementScreenshot(
   const interrupt = abortOnInterrupt();
   await runCommand(
     async () => {
-      const lookup = resolveElementNodeId(options);
-      const backendNodeId = await unlessInterrupted(lookup, interrupt, screenshotInterrupted);
-      const request = buildScreenshotRequest(options, backendNodeId);
+      const lookup = resolveElementTarget(options);
+      const target = await unlessInterrupted(lookup, interrupt, screenshotInterrupted);
+      const request = buildScreenshotRequest(options, target.nodeId);
       const shot = await captureScreenshot(outputPath, request, interrupt);
-      const elementResult = addElementInfo(shot, options);
-      return { success: true, data: elementResult };
+      const data: ScreenshotResult & { indexSource?: IndexSource } = {
+        ...addElementInfo(shot, options),
+        ...(target.indexSource && { indexSource: target.indexSource }),
+      };
+      return { success: true, data };
     },
     options,
-    formatDomScreenshot
+    (data) => withIndexSourceLine(formatDomScreenshot(data), data.indexSource)
   );
 }
 
@@ -225,7 +235,9 @@ async function captureSequenceFrame(
   outputPath: string,
   options: DomScreenshotCommandOptions
 ): Promise<void> {
-  const backendNodeId = hasElementTarget(options) ? await resolveElementNodeId(options) : undefined;
+  const backendNodeId = hasElementTarget(options)
+    ? (await resolveElementTarget(options)).nodeId
+    : undefined;
   await captureScreenshot(outputPath, buildScreenshotRequest(options, backendNodeId));
 }
 

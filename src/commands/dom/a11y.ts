@@ -34,6 +34,7 @@ import {
   invalidQueryPatternError,
   noA11yNodesFoundError,
   notInAccessibilityTreeError,
+  withIndexSourceLine,
 } from '@/errors/messages.js';
 import { A11Y_CACHE_SELECTOR_PREFIX, QueryCacheManager } from '@/session/QueryCacheManager.js';
 import {
@@ -44,7 +45,7 @@ import {
   parseQueryPattern,
   resolveA11yNode,
 } from '@/telemetry/a11y.js';
-import type { A11yNode, A11yQueryResult, ListedA11yTree } from '@/types.js';
+import type { A11yNode, A11yQueryResult, IndexSource, ListedA11yTree } from '@/types.js';
 import {
   formatA11yTree,
   formatA11yQueryResult,
@@ -222,12 +223,14 @@ async function handleA11yDescribe(
   const isNumericIndex = resolver.isNumericIndex(selectorOrIndex);
 
   /**
-   * Fetch a11y node data for a given selector or index.
+   * Fetch a11y node data for a given selector or index (with the list a
+   * cached index comes from).
    */
-  async function fetchA11yNodeData(): Promise<A11yNodeWithContext> {
-    const backendNodeId = isNumericIndex
-      ? (await resolver.getNodeIdForIndex(parseInt(selectorOrIndex, 10))).nodeId
-      : (await resolveBackendNodeIds([selectorOrIndex]))[0];
+  async function fetchA11yNodeData(): Promise<A11yNodeWithContext & { indexSource?: IndexSource }> {
+    const indexed = isNumericIndex
+      ? await resolver.getNodeIdForIndex(parseInt(selectorOrIndex, 10))
+      : undefined;
+    const backendNodeId = indexed?.nodeId ?? (await resolveBackendNodeIds([selectorOrIndex]))[0];
     if (backendNodeId === undefined) {
       const err = elementNotFoundError(selectorOrIndex);
       throw new CommandError(
@@ -253,7 +256,11 @@ async function handleA11yDescribe(
       domContext = await getDomContext({ backendNodeId: domNodeId });
     }
 
-    return { node: withSecretMasked(node, domContext), domContext };
+    return {
+      node: withSecretMasked(node, domContext),
+      domContext,
+      ...(indexed && { indexSource: indexed.source }),
+    };
   }
 
   if (options.json) {
@@ -266,7 +273,7 @@ async function handleA11yDescribe(
       return { success: true, data };
     },
     options,
-    formatA11yNodeWithContext
+    (data) => withIndexSourceLine(formatA11yNodeWithContext(data), data.indexSource)
   );
 }
 

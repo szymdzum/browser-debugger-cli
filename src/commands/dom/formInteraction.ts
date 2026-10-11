@@ -639,6 +639,17 @@ function elementRow(result: ActionTarget): [string, string] {
 }
 
 /**
+ * Row naming the list a numeric index refers to, for an output without an
+ * element row (which names it otherwise).
+ *
+ * @param result - Action result
+ * @returns The row, or none for a selector argument
+ */
+function indexSourceRows(result: ActionTarget): Array<[string, string]> {
+  return result.indexSource ? [['From', indexSourceText(result.indexSource)]] : [];
+}
+
+/**
  * Selector row of an action's output; none for an index into a11y query
  * results, whose "selector" is the a11y pattern (the element row names it).
  *
@@ -691,7 +702,7 @@ function formatClickOutput(result: ActionOutput<ClickResult>): string {
 function formatSubmitOutput(result: ActionOutput<SubmitResult>): string {
   const details: [string, string][] = [
     ...selectorRows(result),
-    ...(result.element !== undefined ? [elementRow(result)] : []),
+    ...(result.element !== undefined ? [elementRow(result)] : indexSourceRows(result)),
     ['Submit Button', result.clicked ? 'used' : 'none'],
   ];
 
@@ -735,7 +746,7 @@ function formatPressKeyOutput(result: ActionOutput<PressKeyResult>): string {
 function formatScrollOutput(result: ActionOutput<ScrollResult>): string {
   const details: [string, string][] = [['Scroll Type', result.scrollType]];
   if (result.selector) details.push(...selectorRows(result));
-  if (result.element) details.push(elementRow(result));
+  details.push(...(result.element ? [elementRow(result)] : indexSourceRows(result)));
   if (result.scrolledTo)
     details.push(['Position', `(${result.scrolledTo.x}, ${result.scrolledTo.y})`]);
   if (result.scrolledBy && (result.scrolledBy.x !== 0 || result.scrolledBy.y !== 0))

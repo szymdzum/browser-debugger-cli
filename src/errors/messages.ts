@@ -1289,6 +1289,19 @@ export function indexSourceText(source: IndexSource): string {
 }
 
 /**
+ * An output with, first, the line naming the list an index resolved against
+ * (for outputs without an element row), so an index meant for one list and
+ * resolved against another is never silent.
+ *
+ * @param output - Formatted output
+ * @param source - The index and its list; none for a selector argument
+ * @returns e.g. `From index 0 of the last dom query "h3"` above the output
+ */
+export function withIndexSourceLine(output: string, source?: IndexSource): string {
+  return joinLines(source && `From ${indexSourceText(source)}`, output);
+}
+
+/**
  * The cached list an index refers to, in words.
  *
  * @param source - Where the index comes from
