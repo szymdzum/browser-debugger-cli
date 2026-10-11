@@ -352,7 +352,7 @@ export function registerA11yCommands(domCmd: Command): void {
     .description('Get accessibility properties for CSS selector or index')
     .argument(
       '<selectorOrIndex>',
-      'CSS selector (e.g., "button.submit") or numeric index from query results'
+      'CSS selector (e.g., "button.submit") or numeric index into the last dom query, dom form or dom a11y query list'
     )
     .addOption(jsonOption())
     .action(async (selectorOrIndex: string, options: A11yDescribeCommandOptions) => {

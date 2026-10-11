@@ -34,7 +34,7 @@ export const DOM_READ_BEHAVIORS: BehaviorTable = {
     whenEnabled:
       'Returns that match of the selector (0-based), in semantic and --raw output; --nth is an alias',
     automaticBehavior:
-      'Past the last match exits 81; a numeric index argument (a cached query index) past the indexed matches, or from an earlier page, exits 87 (re-run dom query)',
+      'Past the last match exits 81; a numeric index argument (a cached query index) past the indexed matches (also after a navigation: reported as out of range), or from an earlier page, exits 87 (re-run dom query). A numeric index names the list it resolved against (From index 0 of the last dom query "h3"; JSON indexSource)',
   },
   'query:--limit': {
     default:
@@ -42,7 +42,7 @@ export const DOM_READ_BEHAVIORS: BehaviorTable = {
     whenEnabled:
       'Lists that many matches (0 = all), in human and JSON output; count is always the total, JSON omitted the rest',
     automaticBehavior:
-      'Matches are cached for index-based access (bdg dom click 55 works even when 50 are listed): all of them for dom a11y query, the first 1000 (or --limit, if higher) for dom query, which describes only those, so a page with 50000 matches answers in under a second; an element the page and frame trees both report is listed once. Indices work with click, fill, hover, pressKey, scroll, submit, layout, get and listeners, also for elements of a cross-origin iframe of the same site (a consent dialog), whose scripts then run in that frame',
+      'Matches are cached for index-based access (bdg dom click 55 works even when 50 are listed): all of them for dom a11y query, the first 1000 (or --limit, if higher) for dom query, which describes only those, so a page with 50000 matches answers in under a second; an element the page and frame trees both report is listed once. Indices work with click, fill, hover, pressKey, scroll, submit, layout, get and listeners, also for elements of a cross-origin iframe of the same site (a consent dialog), whose scripts then run in that frame. One cache holds the last dom query, dom form or dom a11y query list of the session (replaced in one step, so a reader never sees a partial one); each index-based success names it (From …, or the Element row of actions; JSON indexSource), a query that matched nothing leaves an empty list (an index then says so, 81), and index commands run in parallel with one of these list commands may resolve against the new list',
     tokenImpact:
       'About one line per match (piped JSON about 160 bytes per dom query match, 230 per a11y match); a page can have thousands of links: on Wikipedia "United States" --limit 0 --json is 1.0 MB (dom query a) and 1.3 MB (dom a11y query role:link), the default 16 KB and 23 KB',
   },
