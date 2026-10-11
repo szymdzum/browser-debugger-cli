@@ -1,6 +1,6 @@
 /**
- * Shared internal helpers for form-fill operations: script errors and JS
- * string escaping.
+ * Shared internal helpers for form-fill operations: script errors and the
+ * warnings actions share.
  */
 
 import type { Protocol } from '@/connection/typed-cdp.js';
@@ -39,13 +39,6 @@ export function withValueMismatchWarning(result: FillResult): FillResult {
   if (!result.valueMismatch) return result;
   const warning = valueMismatchWarning(result.valueMismatch);
   return { ...result, warning: result.warning ? `${warning}; ${result.warning}` : warning };
-}
-
-/**
- * Escape a value for embedding in a single-quoted JS string.
- */
-export function escapeValueForJS(value: string): string {
-  return JSON.stringify(value).slice(1, -1).replace(/'/g, "\\'");
 }
 
 /**
