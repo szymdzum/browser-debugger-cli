@@ -32,6 +32,7 @@ Build only in your worktree. If another branch you depend on hasn't merged yet, 
 - Update the docs that describe this behaviour: `docs/CLI_REFERENCE.md`, help text, `.claude/skills/bdg/SKILL.md`, and the area table in `src/commands/optionBehaviors/<area>.ts` for non-obvious flags.
 - Don't edit `CHANGELOG.md`. The PR description is the changelog source: say what changed for users, and mark changed defaults, contracts and breaking changes (with what to do).
 - New fixture pages go in a new module in `src/__testutils__/fixturePages/`; don't edit `fixtureServer.ts`.
+- **Adjacent findings.** A bug you (or your reviewer) find in the same file or function you are changing, fixable in about 20 changed product lines plus its test, is fixed in this PR as its own commit (`fix: <symptom> (#<N> adjacent)`) and listed in the PR body; not if the fix changes parsed output (`--json` fields, text a test asserts), a flag, an exit code or a default (report that as a decision). Anything else goes in your report under findings; **don't open issues**, the orchestrator verifies and files them.
 
 **Tests**
 - **Red commit first.** Turn the issue's reproduction (the command recorded in the issue) and each **testable** acceptance criterion into one failing test (a criterion that is a measurement or a doc change gets no test; say so and how you checked it), and commit those alone, before any fix: `test: reproduce #<N>` (bug) or `test: specify #<N>` (feature). The commit holds tests, fixture pages and empty skeletons (below), no working product code.
@@ -43,6 +44,7 @@ Build only in your worktree. If another branch you depend on hasn't merged yet, 
 - No red commit for docs-only changes, pure refactors covered by existing tests, or CI/tooling changes; say which applies.
 - Tests must be deterministic. Wait for an observable event (a log line, a request, a DOM change, a file), never a fixed sleep. If anything is timing-sensitive, dispatch `gh workflow run ci.yml --repo szymdzum/browser-debugger-cli --ref <branch> -f smoke_files='<space-separated paths>' -f repeat=10 -f node=22` (no brace globs, no `debug=true`) and report the run ID.
 - Collect before/after evidence: real command output or a measurement on a fixture page (`npx tsx src/__testutils__/serveFixtures.ts`) or a real site.
+- `<redaction or parsing changes only, delete otherwise: the case matrix, inputs (names, header/field/URL shapes) × output surfaces (human, --json, file, log); every cell is a row of the red commit's table test, and the report gives the counts>`
 
 **Verify**
 - Environment, at the start of every shell call: `export PATH="$HOME/.nvm/versions/node/v22.15.0/bin:$PATH" BDG_TEST_SESSION_PARENT=/tmp/bt-<N> BDG_TEST_HOME_DIR=/tmp/bt-<N>-h` (yours alone; other agents have their own; each test process gets its own session dir under the parent), `BDG_SESSION_DIR=/tmp/bdg-<N>-manual` for manual runs. `node_modules` is a symlink to the main checkout: don't `npm install` through it; if your change touches `package-lock.json`, run `npm ci` in your worktree instead of the symlink.
@@ -55,11 +57,12 @@ Build only in your worktree. If another branch you depend on hasn't merged yet, 
 **Rules**
 - No `git stash`. The stash list is shared across worktrees.
 - No `git commit --no-verify`, `--no-gpg-sign` or any other hook bypass. If a hook fails, fix what it reports.
-- No `pkill`, `killall` or `pkill -P`. Kill only PIDs you started.
+- No `pkill`, `killall` or `pkill -P`. Every background process you start writes its PID to a file at start (`cmd & echo $! > /tmp/bdg-impl-<N>-<name>.pid`); kill only a PID read back from such a file, never one from memory or from `ps`/`lsof`.
 - Never touch `~/.bdg`, other worktrees, or the main checkout (including its `.tmp/`). Nothing may land in `~/Downloads`.
+- Don't open GitHub issues. Report findings; the orchestrator files them.
 - Other agents are working in parallel on `<their areas and files>`. Stay out of those, and keep your edits to shared files (registries, docs) minimal and additive.
 
-**Report.** What changed, decisions with reasons, the red commit (SHA and the failure line it produced), before/after evidence, test and CI results with run IDs, the final commit hash, the PR URL, and any finding outside your scope (I'll file it).
+**Report.** What changed, decisions with reasons, the red commit (SHA and the failure line it produced), before/after evidence, test and CI results with run IDs, the final commit hash, the PR URL, adjacent fixes made, and any finding outside your scope with its command and output (I'll verify and file it).
 
 ## Reviewer brief
 The reviewer must be a **fresh agent** that hasn't seen the implementation discussion: spawn it as a `code-reviewer` agent (read-only tools plus Bash). Give it the diff, the issue, and the risky areas. Don't give it the implementer's reasoning.
@@ -101,12 +104,12 @@ git -C ../bdg-<N> worktree remove --force /tmp/red-<N>
 ```
 They must fail on an assertion about the issue (or the CLI's real output), not on a build or import error. A missing or wrong-reason red commit is **blocking**, unless the change is docs-only, a pure refactor or CI/tooling. Quote the failure line in your report.
 
-**Rules:** no `git stash`; no `pkill`/`killall`; don't touch `~/.bdg`, the worktree, or the main checkout (including its `.tmp/`). Run tests in the foreground.
+**Rules:** no `git stash`; no `pkill`/`killall`; a background process you start writes its PID to `/tmp/bdg-review-<N>-<name>.pid` and you kill only what you read back from there; don't touch `~/.bdg`, the worktree, or the main checkout (including its `.tmp/`); don't open GitHub issues. Run tests in the foreground.
 
-**Report.** The SHA you reviewed, then findings as **blocking / should-fix / nit**, each with file:line and a concrete scenario (inputs → wrong outcome). Also list what you checked and found fine, and under **Not checked** anything from the list above you skipped and why (the orchestrator will resume you for it). Keep it short.
+**Report.** The SHA you reviewed, then findings as **blocking / should-fix / nit**, each with file:line and a concrete scenario (inputs → wrong outcome). Mark a finding **adjacent** when it is in the same file or function as the change and fixable in about 20 changed product lines plus its test without changing parsed output, flags, exit codes or defaults (the implementer fixes it in this PR); mark it **older code** when it predates the change and sits elsewhere (the orchestrator verifies and files it). Also list what you checked and found fine, and under **Not checked** anything from the list above you skipped and why (the orchestrator will resume you for it). Keep it short.
 
 ## Tester brief
-Run this on the **PR branch before merging**. The tester is a fresh `general-purpose` agent playing a real user. It gets tasks, not a description of the diff: use the **Task** lines of the scenarios that touch the change's area (`scenarios.md`), plus a task for the new behaviour if no scenario covers it yet (then add it as a scenario). Its findings about this change are fixed in the same PR; findings about older code become new issues.
+Run this on the **PR branch before merging**. The tester is a fresh `general-purpose` agent playing a real user. It gets tasks, not a description of the diff: use the **Task** lines of the scenarios that touch the change's area (`scenarios.md`), plus a task for the new behaviour if no scenario covers it yet (then add it as a scenario). Its findings about this change are fixed in the same PR; findings about older code go to the orchestrator, who sends them through the verifier and files them.
 
 Build the branch first in its worktree (`npm run build` in `../bdg-<N>`, Node pinned), and start the fixtures **from that same worktree** if the tasks need them (`cd ../bdg-<N> && npx tsx src/__testutils__/serveFixtures.ts`): a server started elsewhere serves another branch's pages.
 
@@ -133,8 +136,8 @@ bdg() { node <absolute path to ../bdg-<N>>/dist/index.js "$@"; }
 4. `<a real-world site if one is reachable>`
 
 **Rules:**
-- No `pkill`/`killall`; kill only PIDs you started.
-- No git commands and no repo edits (the main checkout and its `.tmp/` included).
+- No `pkill`/`killall`. A background process you start writes its PID to `/tmp/bdg-t-<N>-<agent>-<name>.pid`; kill only PIDs read back from those files.
+- No git commands, no repo edits (the main checkout and its `.tmp/` included), no GitHub issues: report bugs, the orchestrator files them.
 - Clean up at the end: `bdg stop`, kill your own PIDs.
 - Run `ls -A ~/Downloads` before and after; nothing may appear there.
 
@@ -143,18 +146,20 @@ bdg() { node <absolute path to ../bdg-<N>>/dist/index.js "$@"; }
 Be concise.
 
 ## Verifier brief
-After a fresh-agent round, one agent reproduces every finding about older code on current `main`, so issues are filed only for what really happens. Spawn it as a `general-purpose` agent, in the foreground.
+After a fresh-agent round, one agent reproduces every finding about older code on current `main`, so issues are filed only for what really happens. The same brief, with the **Sweep** block filled in, runs the themed sweep at session start (then "Findings" lists the theme's open issues by number). Spawn it as a `general-purpose` agent, in the foreground.
 
 ---
 
-Verify the findings below against bdg on `main` at commit `<sha>`, checked out and built for you at `<absolute path of the verify worktree>` (`export PATH="$HOME/.nvm/versions/node/v22.15.0/bin:$PATH"`, `bdg() { node <absolute path of the verify worktree>/dist/index.js "$@"; }`, `BDG_SESSION_DIR=/tmp/verify-<date>`). Start the fixtures from that directory when a finding needs them (`cd <absolute path of the verify worktree> && npx tsx src/__testutils__/serveFixtures.ts & echo $!`) and kill that PID at the end. Keep **one bdg session at a time**: other agents may be running smoke suites on this machine.
+Verify the findings below against bdg on `main` at commit `<sha>`, checked out and built for you at `<absolute path of the verify worktree>` (`export PATH="$HOME/.nvm/versions/node/v22.15.0/bin:$PATH"`, `bdg() { node <absolute path of the verify worktree>/dist/index.js "$@"; }`, `BDG_SESSION_DIR=/tmp/verify-<date>`). Start the fixtures from that directory when a finding needs them (`cd <absolute path of the verify worktree> && npx tsx src/__testutils__/serveFixtures.ts & echo $! > /tmp/bdg-verify-fixtures.pid`) and kill only the PID read back from that file at the end. Keep **one bdg session at a time**: other agents may be running smoke suites on this machine.
 
 For each finding: run the reported command (or the closest one that makes sense), paste the real output, and, when a few minutes of reading find it, name the cause with file:line. Classify it: **reproduced** (with the exact command, output and exit code), **not reproduced** (what happened instead), **by design** (where the docs or code say so, file:line), or **duplicate of** another finding or an open issue (`gh issue list --repo szymdzum/browser-debugger-cli --search "<words>"`). Group findings that share one root cause.
 
 Findings:
-1. `<finding as the tester wrote it>`
+1. `<finding as the tester wrote it, or "issue #N: re-run its recorded command">`
 2. `<…>`
 
-**Rules:** no git commands, no repo edits, no `pkill`/`killall`, don't touch `~/.bdg` or `~/Downloads`; `bdg stop` at the end.
+**Sweep** (themed sessions only; delete otherwise). The theme is `<theme>`. Build a page (or a few, under `/tmp/verify-<date>-pages`, served with `cd /tmp/verify-<date>-pages && python3 -m http.server <port> & echo $! > /tmp/bdg-verify-http.pid`) with `<the inputs the theme is about, e.g. secret-named fields, labels, URLs with tokens>`, run `<the commands and surfaces of the theme, human and --json, files and daemon.log>`, and grep every output for `<the literal markers>`. Report each hit as a finding of its own: command, output line, exit code, cause with file:line when a few minutes find it, and which listed finding (if any) shares its root cause.
+
+**Rules:** no git commands, no repo edits, no GitHub issues (the orchestrator files them), no `pkill`/`killall`, don't touch `~/.bdg` or `~/Downloads`; `bdg stop` at the end.
 
 **Report.** The commit given above; one block per finding with the classification, command, output, exit code and (when found) the cause with file:line; then the groups. Be concise.
