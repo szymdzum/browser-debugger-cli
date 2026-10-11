@@ -96,6 +96,51 @@ void describe('maskNetworkRequest', () => {
     });
   });
 
+  test('masks headers named like a secret field and keeps the CORS credentials flag', () => {
+    const { value } = mask({
+      requestHeaders: {
+        Password: 'p1',
+        'X-Password': 'p2',
+        'X-Pass': 'p3',
+        Sid: 's1',
+        'X-Credential': 'c1',
+        Cookie2: 'k1',
+      },
+      responseHeaders: { 'Access-Control-Allow-Credentials': 'true' },
+    });
+    assert.deepEqual(value.requestHeaders, {
+      Password: MASK,
+      'X-Password': MASK,
+      'X-Pass': MASK,
+      Sid: MASK,
+      'X-Credential': MASK,
+      Cookie2: MASK,
+    });
+    assert.deepEqual(value.responseHeaders, { 'Access-Control-Allow-Credentials': 'true' });
+  });
+
+  test('masks credential parameters of Link, Refresh and Content-Location', () => {
+    const { value } = mask({
+      responseHeaders: {
+        Link: '</a?token=T1&page=2>; rel="next", </b>; rel="prev"',
+        Refresh: '5; url=/cb?code=C1&state=ok',
+        'Content-Location': '/doc?access_token=T2',
+      },
+    });
+    assert.deepEqual(value.responseHeaders, {
+      Link: `</a?token=${MASK}&page=2>; rel="next", </b>; rel="prev"`,
+      Refresh: `5; url=/cb?code=${MASK}&state=ok`,
+      'Content-Location': `/doc?access_token=${MASK}`,
+    });
+  });
+
+  test('masks a JWT in any header value', () => {
+    const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl';
+    const { value, masked } = mask({ requestHeaders: { 'X-Debug': `user ${jwt}`, Accept: '*/*' } });
+    assert.equal(masked, true);
+    assert.deepEqual(value.requestHeaders, { 'X-Debug': `user ${MASK}`, Accept: '*/*' });
+  });
+
   test('masks credentials of the URL, redirect URL, Location, Referer and :path', () => {
     const callback = 'https://bob:pw@app.example.com/cb?code=C1&state=ok#access_token=T1&scope=r';
     const expected = `https://app.example.com/cb?code=${MASK}&state=ok#access_token=${MASK}&scope=r`;

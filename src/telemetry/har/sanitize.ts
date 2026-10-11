@@ -28,6 +28,7 @@ import {
   REDACTED,
   redactBase64Body,
   redactBody,
+  redactJwts,
   redactOrReplaceWhole,
   redactPairs,
 } from '@/telemetry/har/sanitizeBody.js';
@@ -58,9 +59,27 @@ const SENSITIVE_HEADER_SEGMENT =
 
 /**
  * Headers whose values are URLs that may carry credential parameters
- * (`:path` is the path and query of an HTTP/2 request)
+ * (`:path` is the path and query of an HTTP/2 request; `Refresh` is
+ * `5; url=…`; `Link` holds URLs in angle brackets)
  */
-const URL_HEADERS = new Set(['location', 'referer', ':path']);
+const URL_HEADERS = new Set([
+  'location',
+  'referer',
+  ':path',
+  'content-location',
+  'refresh',
+  'link',
+]);
+
+/**
+ * Headers whose names contain a secret field name but whose values are no
+ * credentials: a CORS flag, and a URL header whose credentials are redacted
+ * as in other URLs
+ */
+const NOT_SECRET_HEADERS = new Set(['access-control-allow-credentials', 'refresh']);
+
+/** A URL in angle brackets, as in a `Link` header */
+const BRACKETED_URL = /<([^>]*)>/g;
 
 /**
  * The user info of a URL (`user:pass@`) after its scheme (or the `//` of a
@@ -153,38 +172,61 @@ function redactWebSocketMessage(message: WebSocketMessage): WebSocketMessage {
  * Whether a header carries a credential.
  *
  * @param name - Header name (any case)
- * @returns True for auth, cookie, API key, token, secret and session headers
+ * @returns True for auth, cookie, API key, token, secret and session
+ *   headers, and headers named like a secret field (`Password`, `X-Pass`,
+ *   `Sid`, `X-Credential`, `Cookie2`; see {@link isSensitiveName})
  */
 export function isSensitiveHeader(name: string): boolean {
+  const lower = name.toLowerCase();
   return (
-    SENSITIVE_HEADERS.has(name.toLowerCase()) ||
+    SENSITIVE_HEADERS.has(lower) ||
     SENSITIVE_CUSTOM_HEADER.test(name) ||
-    SENSITIVE_HEADER_SEGMENT.test(name)
+    SENSITIVE_HEADER_SEGMENT.test(name) ||
+    (isSensitiveName(name) && !NOT_SECRET_HEADERS.has(lower))
   );
 }
 
 /**
- * Redact a header's value if it carries a credential, or the credential
- * parameters of a `Location` or `Referer` URL.
+ * Redact the credentials in a header that is not a credential header: the
+ * credential parameters of a URL header (each bracketed URL of `Link`), and
+ * any JWT in other headers.
+ *
+ * @param name - Header name (any case)
+ * @param value - Value as captured
+ * @param placeholder - Text written instead of a JWT
+ * @param urlPlaceholder - Value written instead of a URL credential, as written in a URL
+ * @returns The value with its credentials replaced; unchanged when it has none
+ */
+export function redactHeaderText(
+  name: string,
+  value: string,
+  placeholder: string,
+  urlPlaceholder: string
+): string {
+  const lower = name.toLowerCase();
+  if (lower === 'link') {
+    return value.replace(
+      BRACKETED_URL,
+      (_match, url: string) => `<${redactUrl(url, urlPlaceholder)}>`
+    );
+  }
+  if (URL_HEADERS.has(lower)) {
+    return value.replace(/^.+$/gm, (line) => redactUrl(line, urlPlaceholder));
+  }
+  return redactJwts(value, placeholder);
+}
+
+/**
+ * Redact a header's value if it carries a credential, or the credentials in
+ * it ({@link redactHeaderText}).
  *
  * @param header - HAR header
  * @returns The header, or a copy with its value redacted
  */
 function redactHeader(header: Header): Header {
   if (isSensitiveHeader(header.name)) return { ...header, value: REDACTED };
-  if (!isUrlHeader(header.name)) return header;
-  const value = redactUrl(header.value);
+  const value = redactHeaderText(header.name, header.value, REDACTED, URL_REDACTED);
   return value === header.value ? header : { ...header, value };
-}
-
-/**
- * Whether a header's value is a URL whose credentials are redacted.
- *
- * @param name - Header name (any case)
- * @returns True for `Location`, `Referer` and `:path`
- */
-export function isUrlHeader(name: string): boolean {
-  return URL_HEADERS.has(name.toLowerCase());
 }
 
 /**

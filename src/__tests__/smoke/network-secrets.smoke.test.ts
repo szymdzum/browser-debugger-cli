@@ -230,6 +230,18 @@ void describe('Secrets in network output', () => {
     );
   });
 
+  void it('--body says masked only when the body was', async () => {
+    const result = await runCommand(
+      'details',
+      ['network', requestId(requests, '/net-form'), '--body', '--json'],
+      { timeout: 60000 }
+    );
+    assert.equal(result.exitCode, 0, result.stderr);
+    const data = (JSON.parse(result.stdout) as { data: { masked?: boolean } }).data;
+    assert.equal(data.masked, undefined, 'only headers of this request were masked');
+    assert.doesNotMatch(result.stderr, /--include-sensitive/);
+  });
+
   void it('masks a multipart password part and keeps the others', async () => {
     const { stdout } = await bdg(['details', 'network', requestId(requests, '/net-upload')]);
     assert.doesNotMatch(stdout, ANY_SECRET);

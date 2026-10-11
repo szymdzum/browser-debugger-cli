@@ -112,16 +112,17 @@ function validateBodyOptions(options: DetailsCommandOptions): void {
 /**
  * The response body alone (`--body`): whole unless `--body-max` is given.
  *
- * @param shown - Captured request, masked unless `--include-sensitive`
+ * @param request - Captured request, masked unless `--include-sensitive`
  * @param bodyMax - `--body-max` (default: all)
+ * @param masked - Whether a credential in the response body was masked
  * @returns Body result, with hints for a base64, cut or masked body
  * @throws CommandError (exit 83) when the request has no body to print
  */
 function bodyOnly(
-  shown: Masked<NetworkRequest>,
-  bodyMax: number | undefined
+  request: NetworkRequest,
+  bodyMax: number | undefined,
+  masked: boolean
 ): CommandResult<NetworkBodyResult> {
-  const request = shown.value;
   const reason = missingBodyReason(request);
   if (reason !== undefined) {
     const err = responseBodyMissingError(request.requestId, reason);
@@ -138,7 +139,7 @@ function bodyOnly(
       ? [bodyCutHint(body.length, capped.bodyLength)]
       : []),
     ...(request.responseBodyBase64 ? [base64BodyHint()] : []),
-    ...(shown.masked ? [networkSecretsMaskedNote()] : []),
+    ...(masked ? [networkSecretsMaskedNote()] : []),
   ];
   return {
     success: true,
@@ -152,7 +153,7 @@ function bodyOnly(
       ...(request.responseBodyBase64 && { base64Encoded: true as const }),
       ...(capped.bodyTruncated && { bodyTruncated: true as const }),
       ...(request.mimeType !== undefined && { mimeType: request.mimeType }),
-      ...(shown.masked && { masked: true as const }),
+      ...(masked && { masked: true as const }),
     },
   };
 }
@@ -175,7 +176,9 @@ function networkDetails(
     ? { value: request, masked: false }
     : maskNetworkRequest(request);
   const result =
-    options.body === true ? bodyOnly(shown, options.bodyMax) : detailsResult(shown, options);
+    options.body === true
+      ? bodyOnly(shown.value, options.bodyMax, shown.value.responseBody !== request.responseBody)
+      : detailsResult(shown, options);
   return options.includeSensitive ? { ...result, warning: includeSensitiveWarning() } : result;
 }
 

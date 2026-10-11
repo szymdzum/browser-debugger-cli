@@ -5,8 +5,9 @@
  *
  * What counts as a credential is the HAR sanitiser's rule (sanitize.ts,
  * sanitizeBody.ts): auth, cookie, API key, token and session headers; user
- * info and credential parameters of the request URL, redirect URL and
- * `Location`, `Referer` and `:path` headers; secret-named fields of request
+ * info and credential parameters of the request URL, redirect URL and URL
+ * headers (`Location`, `Referer`, `:path`, `Link`...); JWTs in any header;
+ * secret-named fields of request
  * and response bodies and WebSocket messages, and JWTs. Only the placeholder
  * differs, and header values keep what is no secret: cookie names and
  * `Set-Cookie` attributes (`sid=••••; HttpOnly`) and the scheme of an
@@ -14,7 +15,7 @@
  */
 
 import { MASKED_VALUE } from '@/runtime/dom/elementInfo.js';
-import { isSensitiveHeader, isUrlHeader, redactUrl } from '@/telemetry/har/sanitize.js';
+import { isSensitiveHeader, redactHeaderText, redactUrl } from '@/telemetry/har/sanitize.js';
 import {
   redactBase64Body,
   redactBody,
@@ -124,7 +125,8 @@ function maskHeaders(headers: Record<string, string>): Record<string, string> {
 /**
  * Mask a header's value if it carries a credential, keeping cookie names,
  * `Set-Cookie` attributes and auth schemes; mask the credentials of a URL
- * header. A header sent several times has one value per line.
+ * header and any JWT in other headers. A header sent several times has one
+ * value per line.
  *
  * @param name - Header name (any case)
  * @param value - Value as captured
@@ -138,7 +140,7 @@ function maskHeaderValue(name: string, value: string): string {
     if (SCHEME_HEADERS.has(lower)) return value.replace(/^.+$/gm, maskCredentials);
     return value === '' ? value : MASKED_VALUE;
   }
-  return isUrlHeader(name) ? value.replace(/^.+$/gm, maskUrl) : value;
+  return redactHeaderText(name, value, MASKED_VALUE, MASKED_VALUE);
 }
 
 /**
