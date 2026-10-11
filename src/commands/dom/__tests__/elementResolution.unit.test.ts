@@ -218,6 +218,42 @@ void describe('index source messages', () => {
   });
 });
 
+void describe('DomElementResolver index checks (#610)', () => {
+  void it('says the last query matched nothing (81) instead of a range error', async () => {
+    const resolver = new DomElementResolver(
+      cacheReturning({ valid: true, cache: { selector: '#nothing-here', count: 0, nodes: [] } })
+    );
+    const result = await resolver.resolve('0', undefined, 'get');
+    assert.equal(result.success, false);
+    assert.equal(!result.success && result.exitCode, EXIT_CODES.INVALID_ARGUMENTS);
+    assert.match(
+      !result.success ? result.error : '',
+      /The last dom query "#nothing-here" matched nothing/
+    );
+  });
+
+  void it('reports an index past the list as out of range even when the page changed', async () => {
+    const resolver = new DomElementResolver(
+      cacheReturning({
+        valid: true,
+        cache: {
+          selector: '#legacy-pass',
+          count: 1,
+          nodes: [{ index: 0, nodeId: 7, tag: 'input' }],
+          document: 'a page document that is gone',
+        },
+      })
+    );
+    const result = await resolver.resolve('24', undefined, 'click');
+    assert.equal(result.success, false);
+    assert.equal(!result.success && result.exitCode, EXIT_CODES.STALE_CACHE);
+    assert.match(
+      !result.success ? result.error : '',
+      /Index 24 is out of range for the last dom query "#legacy-pass" \(1 result\)/
+    );
+  });
+});
+
 void describe('DomElementResolver with --index', () => {
   void it('refuses --index together with a numeric index (81)', async () => {
     const resolver = new DomElementResolver(cacheReturning({ valid: false, cache: null }));
