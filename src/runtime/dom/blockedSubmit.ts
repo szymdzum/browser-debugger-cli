@@ -281,6 +281,9 @@ export const WATCH_INVALID_JS = `(el) => {
  *   cancel it, the form fired no `submit` and it still has invalid fields;
  * - the fields that fired `invalid` and are still invalid, when no form
  *   fired `submit`.
+ * For a `<textarea>` the second kind counts only when `watch.keydown`, the
+ * first Enter keydown seen in the watched scopes during this press (not
+ * necessarily one aimed at the textarea), was canceled by the page.
  * Null when there are none (no probe, a submit, a canceled trigger, a form
  * removed).
  */
