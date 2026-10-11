@@ -8,7 +8,9 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 /**
- * Write the stand-in Chrome as an executable script.
+ * Write the stand-in Chrome as an executable script. The files it writes are
+ * in a JSON file next to it (`<script>.json`), so the script's source is
+ * fixed: no path is put into code.
  *
  * @param dir - Directory for the script
  * @param readyFile - File the stand-in writes its PID to once it listens
@@ -19,19 +21,19 @@ import * as path from 'node:path';
  */
 export function writeSilentChrome(dir: string, readyFile: string, requestFile?: string): string {
   const script = path.join(dir, 'silent-chrome');
+  fs.writeFileSync(`${script}.json`, JSON.stringify({ readyFile, requestFile }));
   const source = [
     `#!${process.execPath}`,
     "const fs = require('node:fs');",
     "const net = require('node:net');",
+    "const files = JSON.parse(fs.readFileSync(__filename + '.json', 'utf8'));",
     "const flag = process.argv.find((arg) => arg.startsWith('--remote-debugging-port='));",
     "const port = Number(flag.split('=')[1]);",
     'net.createServer((socket) => {',
-    requestFile
-      ? `  socket.once('data', () => fs.writeFileSync(${JSON.stringify(requestFile)}, ''));`
-      : '',
+    "  if (files.requestFile) socket.once('data', () => fs.writeFileSync(files.requestFile, ''));",
     '}).listen(port, "127.0.0.1", () => {',
     '  process.stderr.write(`DevTools listening on ws://127.0.0.1:${port}/devtools/browser/silent\\n`);',
-    `  fs.writeFileSync(${JSON.stringify(readyFile)}, String(process.pid));`,
+    '  fs.writeFileSync(files.readyFile, String(process.pid));',
     '});',
   ].join('\n');
   fs.writeFileSync(script, source, { mode: 0o755 });

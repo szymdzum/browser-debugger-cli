@@ -51,8 +51,8 @@ import {
 } from '@/runtime/dom/elementInfo.js';
 import {
   DEEP_QUERY_JS,
+  PAGE_NAMES_JS,
   UNSEARCHED_CONTENT_JS,
-  pageNamesJS,
   selectorArgsJS,
 } from '@/runtime/dom/targetNode.js';
 import type {
@@ -213,19 +213,18 @@ export async function noMatchesError(selector: string): Promise<ErrorWithSuggest
 }
 
 /**
- * Page-side index of the first leading compound that matches a shadow host
- * (an element with an open shadow root, anywhere a selector reaches) while
- * the selector after it finds something: then the selector only failed by
- * crossing into the shadow root.
+ * Selector pairs for the shadow host check of {@link NO_MATCH_FUNCTION}: each
+ * leading compound and the selector after it, without bdg's filters.
  *
  * @param compounds - Leading compounds of the selector
- * @returns Expression evaluating to the index, or -1
+ * @returns `[host, rest]` pairs
  */
-function shadowHostJS(compounds: ReadonlyArray<{ compound: string; rest: string }>): string {
-  const plain = compounds
+function shadowHostPairs(
+  compounds: ReadonlyArray<{ compound: string; rest: string }>
+): Array<[string, string]> {
+  return compounds
     .slice(0, MAX_HOST_COMPOUNDS)
     .map((entry) => [withoutFilters(entry.compound), withoutFilters(entry.rest)]);
-  return `${JSON.stringify(plain)}.findIndex(([host, rest]) => { try { const deep = ${DEEP_QUERY_JS}; return deep(host, null).some((el) => el.shadowRoot) && deep(rest, null).length > 0; } catch (e) { return false; } })`;
 }
 
 /** Leading compounds checked for a shadow host (each check walks the page) */
@@ -244,6 +243,43 @@ function withoutFilters(selector: string): string {
     '*'
   );
 }
+
+/**
+ * Page function: what the page says about a selector that matched nothing
+ * ({@link noMatchContext}). Every parameter is a `Runtime.callFunctionOn`
+ * argument: the selector and its parts without `:visible` filters (`null`
+ * when it has none), the kind of name for "did you mean" (`null` unless it
+ * is a single id or class), and the `[host, rest]` pairs of the shadow host
+ * check: the index of the first leading compound that matches a shadow host
+ * (an element with an open shadow root, anywhere a selector reaches) while
+ * the selector after it finds something, as then the selector only failed
+ * by crossing into the shadow root.
+ */
+const NO_MATCH_FUNCTION = `function (selector, unfiltered, nameKind, hostPairs) {
+  const deep = ${DEEP_QUERY_JS};
+  const hidden = (() => {
+    if (!unfiltered) return 0;
+    try { return deep(selector, unfiltered).length; } catch (e) { return 0; }
+  })();
+  const shadowHost = hostPairs.length === 0 ? -1 : hostPairs.findIndex(([host, rest]) => {
+    try {
+      return deep(host, null).some((el) => el.shadowRoot) && deep(rest, null).length > 0;
+    } catch (e) {
+      return false;
+    }
+  });
+  const closedCandidates = (() => {
+    try { return ${CLOSED_HOST_CANDIDATES_JS}.length; } catch (e) { return 0; }
+  })();
+  return {
+    hidden: hidden,
+    readyState: document.readyState,
+    unsearched: ${UNSEARCHED_CONTENT_JS},
+    names: nameKind ? (${PAGE_NAMES_JS})(nameKind) : [],
+    shadowHost: shadowHost,
+    closedCandidates: closedCandidates
+  };
+}`;
 
 /** What {@link noMatchContext} reads from the page */
 interface NoMatchPageValue {
@@ -269,20 +305,18 @@ interface NoMatchPageValue {
  */
 export async function noMatchContext(selector: string): Promise<NoMatchContext> {
   const parts = parseSelectorFilters(selector);
-  const unfiltered = parts && withoutVisibleFilters(parts);
+  const unfiltered = (parts && withoutVisibleFilters(parts)) ?? null;
   const single = parseSingleNameSelector(selector);
-  const hidden = unfiltered
-    ? `(() => { try { return (${DEEP_QUERY_JS})(${JSON.stringify(selector)}, ${JSON.stringify(unfiltered)}).length; } catch (e) { return 0; } })()`
-    : '0';
-  const names = single ? pageNamesJS(single.kind) : '[]';
   const compounds = leadingCompounds(selector);
-  const shadowHost = compounds.length > 0 ? shadowHostJS(compounds) : '-1';
+  const args = [selector, unfiltered, single?.kind ?? null, shadowHostPairs(compounds)];
   try {
-    const evaluated = await callBdgScript('Runtime.evaluate', {
-      expression: `({ hidden: ${hidden}, readyState: document.readyState, unsearched: ${UNSEARCHED_CONTENT_JS}, names: ${names}, shadowHost: ${shadowHost}, closedCandidates: (() => { try { return ${CLOSED_HOST_CANDIDATES_JS}.length; } catch (e) { return 0; } })() })`,
+    const called = await callBdgScript('Runtime.callFunctionOn', {
+      functionDeclaration: NO_MATCH_FUNCTION,
+      arguments: args.map((value) => ({ value })),
       returnByValue: true,
     });
-    const { result } = (evaluated.data?.result ?? {}) as Partial<Protocol.Runtime.EvaluateResponse>;
+    const { result } = (called.data?.result ??
+      {}) as Partial<Protocol.Runtime.CallFunctionOnResponse>;
     const value = (result?.value ?? {}) as NoMatchPageValue;
     const similar =
       single && Array.isArray(value.names)

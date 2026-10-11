@@ -36,8 +36,8 @@ import {
 import { throwIfInvalidSelector } from '@/runtime/dom/formFillHelpers/shared.js';
 import { findFrameOwner, placeInOwnerFrame } from '@/runtime/dom/frameLayout.js';
 import { measureFrameMapping } from '@/runtime/dom/frameScopedConnection.js';
-import { DEEP_QUERY_JS, missingElementError, selectorArgsJS } from '@/runtime/dom/targetNode.js';
-import { evaluateInBdgWorld, resolveNodeInBdgWorld } from '@/runtime/page/bdgWorld.js';
+import { DEEP_QUERY_JS, missingElementError, selectorArgs } from '@/runtime/dom/targetNode.js';
+import { callFunctionInBdgWorld, resolveNodeInBdgWorld } from '@/runtime/page/bdgWorld.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -107,8 +107,10 @@ const SAME_CLICK_TARGET_JS = `(node, hit) => {
 }`;
 
 /**
- * Page function: layout of the matches in `found` (all up to `limit`, or the
- * one at `index`) and of the top-level page. An element covers another when
+ * Page function: layout of the matches of `selector` and its `parts`
+ * ({@link selectorArgs}), or of `this` element for a `null` selector (all
+ * up to `limit`, or the one at `index`), and of the top-level page. Every
+ * parameter is a `Runtime.callFunctionOn` argument. An element covers another when
  * it is painted above it at the center of the largest visible part of the
  * other's boxes (a wrapped link has one per line; the strip where overlay
  * scrollbars show is avoided when possible, {@link CLEAR_OF_SCROLLBAR_JS}) and does not lie inside it,
@@ -126,7 +128,10 @@ const SAME_CLICK_TARGET_JS = `(node, hit) => {
  * its outermost fixed or sticky ancestor that does not hold the element (the
  * fixed banner, not a span inside it).
  */
-const LAYOUT_JS = `function (found, index, limit) {
+const LAYOUT_JS = `function (selector, parts, index, limit) {
+  const found = selector === null
+    ? (this.isConnected ? [this] : [])
+    : (${DEEP_QUERY_JS})(selector, parts);
   const geometryOf = ${ELEMENT_GEOMETRY_JS};
   const viewportSize = ${VIEWPORT_SIZE_JS};
   const frameOffset = ${FRAME_OFFSET_JS};
@@ -303,9 +308,10 @@ export async function inspectLayout(
  * @throws CommandError (81) invalid selector, (91) page script failure
  */
 async function measureSelector(cdp: CDPConnection, params: DomLayoutCommand): Promise<RawLayout> {
-  const found = `(${DEEP_QUERY_JS})(${selectorArgsJS(params.selector)})`;
-  const response = await evaluateInBdgWorld(cdp, {
-    expression: `(${LAYOUT_JS})(${found}, ${params.index ?? null}, ${LAYOUT_ELEMENT_LIMIT})`,
+  const args = [...selectorArgs(params.selector), params.index ?? null, LAYOUT_ELEMENT_LIMIT];
+  const response = await callFunctionInBdgWorld(cdp, {
+    functionDeclaration: LAYOUT_JS,
+    arguments: args.map((value) => ({ value })),
     returnByValue: true,
   });
   if (response.exceptionDetails) {
@@ -341,7 +347,8 @@ async function measureNode(
   if (!objectId) return { count: 0, elements: [] };
   const response = (await cdp.send('Runtime.callFunctionOn', {
     objectId,
-    functionDeclaration: `function () { return (${LAYOUT_JS})(this.isConnected ? [this] : [], null, 1); }`,
+    functionDeclaration: LAYOUT_JS,
+    arguments: [null, null, null, 1].map((value) => ({ value })),
     returnByValue: true,
   })) as Protocol.Runtime.CallFunctionOnResponse;
   const raw = (response.result.value as RawLayout | undefined) ?? { count: 0, elements: [] };

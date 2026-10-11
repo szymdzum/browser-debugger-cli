@@ -45,7 +45,13 @@ import {
   type FillResult,
   type ClickResult,
 } from '@/runtime/dom/reactEventHelpers.js';
-import { FIND_ELEMENTS_JS, LABEL_CONTROL_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
+import {
+  FIND_ELEMENTS_JS,
+  LABEL_CONTROL_JS,
+  selectorArgs,
+  selectorArgsJS,
+} from '@/runtime/dom/targetNode.js';
+import { callFunctionInMainWorld } from '@/runtime/page/bdgWorld.js';
 import { createLogger } from '@/ui/logging/index.js';
 import {
   CLICK_NOT_RECEIVED_WARNING,
@@ -317,6 +323,17 @@ const CLEAR_FILE_INPUT_FUNCTION = `function () {
 const UPLOAD_OBJECT_GROUP = 'bdg-upload';
 
 /**
+ * Page function: the file input a fill by selector (or bound node) and index
+ * acts on: the match, or the control of a matching `<label>` or the field in
+ * a matching shadow host. Every parameter is a `Runtime.callFunctionOn`
+ * argument.
+ */
+const FIND_FILE_INPUT_FUNCTION = `function (selector, parts, index) {
+  const el = (${FIND_ELEMENTS_JS})(selector, parts)[index];
+  return (${LABEL_CONTROL_JS})(el) || (${SHADOW_FIELD_JS})(el) || el;
+}`;
+
+/**
  * Resolve the files of a file-input value: one path (even with commas in its
  * name, when that file exists), several separated by commas, or none for "".
  *
@@ -384,10 +401,11 @@ async function setFileInput(
   const problem = uploadProblem(files);
   if (problem) return problem;
   try {
-    const located = (await cdp.send('Runtime.evaluate', {
-      expression: `((el) => (${LABEL_CONTROL_JS})(el) || (${SHADOW_FIELD_JS})(el) || el)((${FIND_ELEMENTS_JS})(${selectorArgsJS(selector)})[${options.index ?? 0}])`,
+    const located = await callFunctionInMainWorld(cdp, {
+      functionDeclaration: FIND_FILE_INPUT_FUNCTION,
+      arguments: [...selectorArgs(selector), options.index ?? 0].map((value) => ({ value })),
       objectGroup: UPLOAD_OBJECT_GROUP,
-    })) as { result?: { objectId?: string }; exceptionDetails?: Protocol.Runtime.ExceptionDetails };
+    });
     if (located.exceptionDetails) throwIfInvalidSelector(located.exceptionDetails, selector);
     const objectId = located.result?.objectId;
     if (!objectId) {
