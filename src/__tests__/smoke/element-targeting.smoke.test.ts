@@ -294,6 +294,7 @@ interface LayoutData {
     clippedBy?: string;
     offScreenReason?: string;
     coveredBy?: string;
+    coverTransparent?: boolean;
     invisible?: string;
   }>;
 }
@@ -471,9 +472,10 @@ void describe('Element layout', () => {
   void it('reports an ancestor ::after overlay as cover, like dom click', async () => {
     const [inCard] = (await layout('#in-card')).elements;
     assert.equal(inCard?.coveredBy, 'div.card');
+    assert.equal(inCard?.coverTransparent, true, 'dom click calls the cover transparent too');
     assert.match(
       await bdg(['dom', 'click', '#in-card']),
-      /covered by another element \(div\.card\)/
+      /under transparent div\.card \(clicks land on it\)/
     );
   });
 

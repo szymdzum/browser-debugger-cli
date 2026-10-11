@@ -74,7 +74,7 @@ export function skillBackupMessage(path: string): string {
 /**
  * Warning shown when a click falls back from mouse events to `el.click()`.
  *
- * @param reason - Why the mouse could not reach the element (e.g. "covered by another element")
+ * @param reason - Why the mouse could not reach the element (e.g. "covered by div#shield")
  * @returns Warning text
  */
 export function domClickFallbackWarning(reason: string | null | undefined): string {
@@ -491,19 +491,34 @@ export function fillNotTypedWarning(reason: FillNotTypedReason): string {
 /**
  * Warning shown when a mouse press was dispatched but the target never
  * received it (e.g. a browser dialog or bubble captured the input).
+ *
+ * @param nextStep - Command that shows what is in the way
+ * @returns Warning text
  */
-export const CLICK_NOT_RECEIVED_WARNING =
-  'The click may not have reached the element: the page saw no mouse press (the browser may be showing a dialog or bubble that captures input)';
+export function clickNotReceivedWarning(nextStep: string): string {
+  return `The click may not have reached the element: the page saw no mouse press (the browser may be showing a dialog or bubble that captures input); see what is in the way with ${nextStep}`;
+}
 
 /**
  * Warning shown when a mouse press was dispatched but landed on another
  * element (e.g. an overlay that appeared as the mouse moved onto the target).
  *
  * @param landedOn - The element the press landed on, e.g. `div#overlay`
+ * @param nextStep - Command that shows what is in the way
  * @returns Warning text
  */
-export function clickLandedElsewhereWarning(landedOn: string): string {
-  return `The click may not have reached the element: the press landed on ${landedOn}`;
+export function clickLandedElsewhereWarning(landedOn: string, nextStep: string): string {
+  return `The click may not have reached the element: the press landed on ${landedOn}; see what is in the way with ${nextStep}`;
+}
+
+/**
+ * Warning shown when the page removed the clicked element while the mouse
+ * was pressed, so it got no click (a re-render on pointerdown).
+ *
+ * @returns Warning text
+ */
+export function clickTargetReplacedWarning(): string {
+  return 'The click may not have reached the element: the page replaced it while the mouse was pressed, so it got no click; find it again and check what the page did';
 }
 
 /**

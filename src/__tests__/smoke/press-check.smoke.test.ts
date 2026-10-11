@@ -114,7 +114,6 @@ void describe('Press check', () => {
 
   for (const [name, why] of [
     ['Deep', 'two closed roots deep'],
-    ['Swap', 'whose root re-renders on pointerdown'],
     ['Guarded', 'whose press the page stops on document'],
     ['Open', 'in an open root'],
   ] as const) {
@@ -138,7 +137,10 @@ void describe('Press check', () => {
       const data = await clickJson(index);
       assert.equal(data.method, 'mouse');
       assert.match(data.warning ?? '', NOT_REACHED, JSON.stringify(data));
-      assert.match(data.warning ?? '', new RegExp(`the press landed on ${shield}$`));
+      assert.match(
+        data.warning ?? '',
+        new RegExp(`the press landed on ${shield}; see what is in the way with bdg dom layout`)
+      );
       assert.equal(data.effect, undefined, 'the shield reacted: the click had an effect');
       assert.equal(await evaluate('window.shieldPresses'), 1);
       assert.deepEqual(await evaluate('window.clicks'), []);

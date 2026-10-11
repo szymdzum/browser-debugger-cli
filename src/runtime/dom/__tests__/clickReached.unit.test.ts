@@ -10,7 +10,7 @@ import { describe, it } from 'node:test';
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CommandError } from '@/errors/index.js';
 import { clickElement, pressReachedTarget } from '@/runtime/dom/formFillHelpers/fill.js';
-import { CLICK_NOT_RECEIVED_WARNING } from '@/ui/messages/commands.js';
+import { clickNotReceivedWarning } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /** Located, hittable click target as returned by the locate script */
@@ -77,7 +77,7 @@ void describe('clickElement press check', () => {
   void it('warns when the target never received the mouse press', async () => {
     const result = await clickElement(fakeCdp(false).cdp, 'a');
     assert.equal(result.success, true);
-    assert.equal(result.warning, CLICK_NOT_RECEIVED_WARNING);
+    assert.equal(result.warning, clickNotReceivedWarning("bdg dom layout 'a'"));
   });
 
   void it('names where the press landed when the page saw it elsewhere', async () => {
@@ -87,8 +87,20 @@ void describe('clickElement press check', () => {
     );
     assert.equal(
       result.warning,
-      'The click may not have reached the element: the press landed on div#overlay'
+      "The click may not have reached the element: the press landed on div#overlay; see what is in the way with bdg dom layout 'a'"
     );
+  });
+
+  void it('warns when the page removed the target without a click (#641)', async () => {
+    const result = await clickElement(fakeCdp({ reached: true, replaced: true }).cdp, 'a');
+    assert.match(
+      result.warning ?? '',
+      /^The click may not have reached the element: the page replaced it/
+    );
+    const right = await clickElement(fakeCdp({ reached: true, replaced: true }).cdp, 'a', {
+      action: 'right',
+    });
+    assert.equal(right.warning, undefined, 'a right click gets no click event');
   });
 
   void it('adds no warning when the press arrived', async () => {
@@ -96,7 +108,7 @@ void describe('clickElement press check', () => {
     assert.equal(result.warning, undefined);
   });
 
-  void it('reads the probe once, right after the first press', async () => {
+  void it('reads the probe after the first press, and at the end', async () => {
     const { cdp, sent } = fakeCdp(true);
     await clickElement(cdp, 'a', { action: 'double' });
     assert.deepEqual(sent, [
@@ -106,6 +118,7 @@ void describe('clickElement press check', () => {
       'mouseReleased',
       'mousePressed',
       'mouseReleased',
+      'probe',
     ]);
   });
 
@@ -128,7 +141,8 @@ void describe('clickElement --strict', () => {
     ...LOCATED,
     element: 'button#save "Save"',
     hittable: false,
-    obstruction: 'covered by another element (div#shield)',
+    obstruction: null,
+    cover: { by: 'div#shield', transparent: false },
   };
 
   /**
@@ -146,14 +160,19 @@ void describe('clickElement --strict', () => {
     return error;
   }
 
+  void it('refuses a page-removed target with exit 90 (#641)', async () => {
+    const error = await refusal(
+      clickElement(fakeCdp({ reached: true, replaced: true }).cdp, 'a', { strict: true })
+    );
+    assert.equal(error.exitCode, EXIT_CODES.RESOURCE_CONFLICT);
+    assert.match(error.message, /the page replaced it while the mouse was pressed/);
+  });
+
   void it('refuses a covered element with exit 90, naming what covers it', async () => {
     const { cdp, sent } = fakeCdp(true, undefined, covered);
     const error = await refusal(clickElement(cdp, 'a', { strict: true }));
     assert.equal(error.exitCode, EXIT_CODES.RESOURCE_CONFLICT);
-    assert.match(
-      error.message,
-      /^Did not click button#save "Save": it is covered by another element \(div#shield\)/
-    );
+    assert.match(error.message, /^Did not click button#save "Save": it is covered by div#shield/);
     assert.match(error.metadata.suggestion ?? '', /bdg dom layout 'a'/);
     assert.deepEqual(sent, [], 'neither mouse nor DOM events');
   });
@@ -179,7 +198,7 @@ void describe('clickElement --strict', () => {
       error.message,
       /the press did not reach the element \(it was sent, but the page saw no press: the browser may be showing a dialog or bubble/
     );
-    assert.deepEqual(sent, ['mouseMoved', 'mousePressed', 'probe', 'mouseReleased']);
+    assert.deepEqual(sent, ['mouseMoved', 'mousePressed', 'probe', 'mouseReleased', 'probe']);
   });
 
   void it('names where a missed press landed', async () => {

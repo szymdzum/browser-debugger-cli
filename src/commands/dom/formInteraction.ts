@@ -76,7 +76,7 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /** Help of `--strict` on click and hover */
 const STRICT_OPTION_HELP =
-  'Fail (exit 90) instead of using DOM events when a real mouse cannot reach the element (covered, hidden, zero-size)';
+  'Fail (exit 90) instead of falling back to DOM events when a real mouse cannot reach the element (covered, hidden, zero-size), and on a click instead of warning when the press was sent but missed the element or the page removed it before a click';
 
 /**
  * `--dialog` of a DOM action.
