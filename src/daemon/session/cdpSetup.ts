@@ -14,6 +14,7 @@ import { CommandError } from '@/errors/index.js';
 import { navigationFailedError } from '@/errors/messages.js';
 import type { LaunchedChrome } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
+import { displayUrl } from '@/utils/displayUrl.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { fetchCDPTargets } from '@/utils/http.js';
 import { normalizeUrl } from '@/utils/url.js';
@@ -111,7 +112,7 @@ export async function navigateToTarget(
   log: Logger
 ): Promise<string | undefined> {
   const normalizedUrl = normalizeUrl(config.url);
-  log.info(`Navigating to ${normalizedUrl}...`);
+  log.info(`Navigating to ${displayUrl(normalizedUrl)}...`);
   const navigation = (await cdp.send('Page.navigate', { url: normalizedUrl })) as {
     loaderId?: string;
     errorText?: string;
@@ -133,7 +134,7 @@ export async function navigateToTarget(
     const updatedTarget = updatedTargets.find((t) => t.id === currentTargetId);
     if (updatedTarget) {
       telemetryStore.setTargetInfo(updatedTarget);
-      log.info(`Target updated: ${updatedTarget.title} (${updatedTarget.url})`);
+      log.info(`Target updated: ${updatedTarget.title} (${displayUrl(updatedTarget.url)})`);
     }
   }
   return navigation.loaderId;

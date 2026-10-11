@@ -13,6 +13,7 @@ import {
   ConnectionError,
 } from '@/connection/errors.js';
 import { Session, StartCancelledError, type SessionEndReason } from '@/daemon/session/Session.js';
+import { shownTabSwitch } from '@/daemon/session/interactions.js';
 import { detectTargetMismatch } from '@/daemon/session/targetMismatch.js';
 import { CommandError } from '@/errors/index.js';
 import {
@@ -47,6 +48,7 @@ import { createLogger } from '@/ui/logging/index.js';
 import { fetchInterceptionTimeoutCause } from '@/ui/messages/cdpEvents.js';
 import { formatChromeIssue } from '@/ui/messages/chrome.js';
 import { noActiveSessionMessage } from '@/ui/messages/sessionCommand.js';
+import { displayUrl } from '@/utils/displayUrl.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
@@ -305,7 +307,7 @@ export class SessionController {
    */
   private tabMoved(asked: boolean | undefined): { tabMoved?: TabClosedSwitch } {
     const moved = asked === true ? this.session?.takeTabMoveNotice() : undefined;
-    return moved ? { tabMoved: moved } : {};
+    return moved ? { tabMoved: shownTabSwitch(moved) } : {};
   }
 
   /**
@@ -609,7 +611,10 @@ export class SessionController {
       return {
         message: `Active session is attached to ${mismatch.current}, not ${mismatch.requested}`,
         errorCode: IPCErrorCode.SESSION_TARGET_MISMATCH,
-        existingSession: { ...existingSession, ...(current && { targetUrl: current }) },
+        existingSession: {
+          ...existingSession,
+          ...(current && { targetUrl: displayUrl(current) }),
+        },
       };
     }
     return {

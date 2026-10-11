@@ -18,6 +18,7 @@ import {
   stillLoadingWarning,
 } from '@/ui/messages/commands.js';
 import { delay } from '@/utils/async.js';
+import { displayUrl } from '@/utils/displayUrl.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { normalizeUrl } from '@/utils/url.js';
@@ -28,7 +29,8 @@ const log = createLogger('session');
 const PAGE_READY_TIMEOUT_MS = 15_000;
 
 /**
- * Navigate the session's page and wait until it has loaded.
+ * Navigate the session's page and wait until it has loaded. The URL
+ * reported has no user info and its tokens masked (#623).
  *
  * With `wait: false` the command is sent and the call returns at once (the
  * navigation may still be waiting for the server). Otherwise the server gets
@@ -49,6 +51,24 @@ export async function navigatePage(
   cdp: CDPConnection,
   action: PageAction,
   options: { url?: string; wait?: boolean; pendingRequests?: () => Iterable<PendingRequest> } = {}
+): Promise<PageNavigationResult> {
+  const result = await runNavigation(cdp, action, options);
+  return { ...result, url: displayUrl(result.url) };
+}
+
+/**
+ * Run a page action and read where the page is, its URL as Chrome reports it.
+ *
+ * @param cdp - CDP connection
+ * @param action - What to do
+ * @param options - Options of {@link navigatePage}
+ * @returns Where the page is now
+ * @throws CommandError (80) for an unreachable URL, (81) without a history entry
+ */
+async function runNavigation(
+  cdp: CDPConnection,
+  action: PageAction,
+  options: { url?: string; wait?: boolean; pendingRequests?: () => Iterable<PendingRequest> }
 ): Promise<PageNavigationResult> {
   const url = action === 'navigate' ? normalizeUrl(options.url ?? '') : undefined;
   if (options.wait === false) return startWithoutWaiting(cdp, action, url);

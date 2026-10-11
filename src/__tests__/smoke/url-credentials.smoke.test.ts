@@ -291,16 +291,23 @@ void describe('Page URLs with credentials', () => {
   });
 
   void it('network list and peek mask the URLs; --include-sensitive shows the tokens', async () => {
-    for (const args of [
-      ['network', 'list', '--last', '0'],
-      ['network', 'list', '--last', '0', '-v'],
-      ['peek', '--last', '0'],
-      ['peek', '--last', '0', '-v'],
-    ]) {
-      const { stdout } = await bdg(args);
-      assert.doesNotMatch(stdout, ANY_SECRET, args.join(' '));
-      assert.doesNotMatch(stdout, USER_INFO, args.join(' '));
-      assert.ok(stdout.includes(`access_token=${MASK}&q=plain`), `${args.join(' ')}: ${stdout}`);
+    for (const verbose of [false, true]) {
+      for (const args of [
+        ['network', 'list', '--last', '0'],
+        ['peek', '--last', '0'],
+      ]) {
+        const { stdout } = await bdg(verbose ? [...args, '-v'] : args);
+        assert.doesNotMatch(stdout, ANY_SECRET, args.join(' '));
+        assert.doesNotMatch(stdout, USER_INFO, args.join(' '));
+        assert.doesNotMatch(stdout, /%E2%80%A2/, 'the mask is not percent-encoded');
+        assert.ok(stdout.includes(`token=${MASK}`), `${args.join(' ')}: ${stdout}`);
+        if (verbose) {
+          assert.ok(
+            stdout.includes(`${origin}/url-creds-api?access_token=${MASK}&q=plain`),
+            stdout
+          );
+        }
+      }
     }
     const list = await bdgJson<{ requests: Array<{ url: string }> }>([
       'network',
@@ -337,7 +344,7 @@ void describe('Page URLs with credentials', () => {
       rawList.data.requests.some((r) => r.url.includes(`access_token=QT-FETCH${URL_SECRET_MARKER}`))
     );
     assert.match(rawList.warning ?? '', /credentials/i);
-    const rawPeek = await bdg(['peek', '--last', '0', '--include-sensitive']);
+    const rawPeek = await bdg(['peek', '--last', '0', '-v', '--include-sensitive']);
     assert.doesNotMatch(rawPeek.stdout, USER_INFO);
     assert.ok(rawPeek.stdout.includes(`token=QT-SESSION${URL_SECRET_MARKER}`), rawPeek.stdout);
     assert.match(rawPeek.stderr, /Warning: .*credentials/i);

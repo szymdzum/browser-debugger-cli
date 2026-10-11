@@ -2,7 +2,13 @@
  * Option behaviors of `bdg network` (list, details, har, headers, document).
  */
 
-import { FOLLOW_BEHAVIOR, type BehaviorTable } from '@/commands/optionBehaviors/shared.js';
+import {
+  FOLLOW_BEHAVIOR,
+  MASKED_URL_AUTOMATIC,
+  MASKED_URL_DEFAULT,
+  MASKED_URL_ENABLED,
+  type BehaviorTable,
+} from '@/commands/optionBehaviors/shared.js';
 
 /** What `details network`, `network headers` and `network document` mask by default (#615) */
 const MASKED_OUTPUT_DEFAULT =
@@ -14,10 +20,15 @@ const MASKED_OUTPUT_ENABLED =
 
 /** Hidden behaviors of masked network output */
 const MASKED_OUTPUT_AUTOMATIC =
-  'Matching is by name, so it over-masks harmless values under credential-looking names (tokenCount) and keeps credentials under other names. Everything not masked stays byte for byte, so the output is still good for debugging; Size, decodedBodyLength, encodedDataLength and the Content-Length header describe the captured body, not the masked one. Inline scripts of HTML bodies, network list/status URLs and network getCookies are not masked';
+  'Matching is by name, so it over-masks harmless values under credential-looking names (tokenCount) and keeps credentials under other names. Everything not masked stays byte for byte, so the output is still good for debugging; Size, decodedBodyLength, encodedDataLength and the Content-Length header describe the captured body, not the masked one. Inline scripts of HTML bodies and network getCookies are not masked; page URLs in network list, peek, status, sessions and page info/tabs are masked by the same URL rule (their own --include-sensitive shows the tokens)';
 
 /** Behaviors by registry key */
 export const NETWORK_BEHAVIORS: BehaviorTable = {
+  'list:--include-sensitive': {
+    default: MASKED_URL_DEFAULT,
+    whenEnabled: `${MASKED_URL_ENABLED}; with --follow the warning is printed once on stderr`,
+    automaticBehavior: MASKED_URL_AUTOMATIC,
+  },
   'list:--follow': {
     default: 'Lists the requests captured so far and exits',
     whenEnabled: 'Streams requests as they finish',

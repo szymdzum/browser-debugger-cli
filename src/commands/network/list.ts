@@ -4,8 +4,8 @@
 
 import { Option, type Command } from 'commander';
 
-import { runCommand } from '@/commands/shared/CommandRunner.js';
-import { jsonOption } from '@/commands/shared/commonOptions.js';
+import { printWarning, runCommand } from '@/commands/shared/CommandRunner.js';
+import { includeSensitiveOption, jsonOption } from '@/commands/shared/commonOptions.js';
 import { noteFollowConnected } from '@/commands/shared/daemonErrorHandler.js';
 import { fetchNetworkRequests, createErrorResult } from '@/commands/shared/dataFetcher.js';
 import {
@@ -15,7 +15,7 @@ import {
   type FollowPoll,
 } from '@/commands/shared/followMode.js';
 import { handleValidationError } from '@/commands/shared/handleValidationError.js';
-import type { BaseOptions } from '@/commands/shared/optionTypes.js';
+import type { BaseOptions, SensitiveUrlOptions } from '@/commands/shared/optionTypes.js';
 import { positiveIntRule, resourceTypeRule } from '@/commands/shared/validation.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
@@ -37,7 +37,9 @@ import {
   followingNetworkMessage,
   stoppedFollowingNetworkMessage,
   type NetworkEvictionCounts,
+  includeSensitiveWarning,
 } from '@/ui/messages/networkMessages.js';
+import { displayTabSwitch, displayUrls } from '@/utils/displayUrl.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 import {
@@ -57,7 +59,7 @@ const MAX_LAST = 10000;
 const DEFAULT_LAST = 100;
 const FOLLOW_INTERVAL = 1000;
 
-interface NetworkListCommandOptions extends BaseOptions {
+interface NetworkListCommandOptions extends BaseOptions, SensitiveUrlOptions {
   filter?: string;
   preset?: string;
   type?: string;
@@ -251,7 +253,8 @@ async function runFollowMode(
     }
     noteFollowConnected();
 
-    const { requests, currentNavigationId } = result.data;
+    const { currentNavigationId } = result.data;
+    const requests = displayUrls(result.data.requests, options.includeSensitive);
     const crashedAt = newCrash(result.data.pageCrashedAt);
     const evictions = newEviction(result.data.evictions);
     const finished = filterRequests(requests, options, resourceTypes, currentNavigationId).filter(
@@ -287,6 +290,7 @@ async function runFollowMode(
     return undefined;
   };
 
+  if (options.includeSensitive) printWarning(includeSensitiveWarning());
   await setupFollowMode(showNetwork, {
     startMessage: followingNetworkMessage,
     stopMessage: stoppedFollowingNetworkMessage,
@@ -380,6 +384,7 @@ export function registerListCommand(networkCmd: Command): void {
     )
     .addOption(new Option('-f, --follow', 'Stream network requests in real-time').default(false))
     .addOption(new Option('-v, --verbose', 'Show full URLs and additional details').default(false))
+    .addOption(includeSensitiveOption())
     .addHelpText(
       'after',
       `\n${COLUMNS_HELP}\n\n${getFilterHelpText()}\n\nPresets:\n${formatPresetHelp()}`
@@ -426,8 +431,9 @@ export function registerListCommand(networkCmd: Command): void {
             return createErrorResult(result.error, result.exitCode, result.suggestion);
           }
 
-          const { requests, currentNavigationId, pageCrashedAt, tabSwitch, evictions } =
-            result.data;
+          const { currentNavigationId, pageCrashedAt, evictions } = result.data;
+          const requests = displayUrls(result.data.requests, options.includeSensitive);
+          const tabSwitch = displayTabSwitch(result.data.tabSwitch, options.includeSensitive);
           const matching = filterRequests(requests, options, resourceTypes, currentNavigationId);
           const scope = options.page ?? defaultPageScope(options.preset);
           const scoped = scopeToPage(matching, scope, { all: requests, currentNavigationId });
@@ -446,6 +452,7 @@ export function registerListCommand(networkCmd: Command): void {
               ...(tabSwitch && { tabSwitch }),
               ...evictionFields(evictions),
             },
+            ...(options.includeSensitive && { warning: includeSensitiveWarning() }),
           };
         },
         options,

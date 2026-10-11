@@ -26,6 +26,7 @@ import type {
 import type { PageIssueLog } from '@/telemetry/issues.js';
 import type { CDPTarget, CleanupFunction } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { displayUrl } from '@/utils/displayUrl.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -246,10 +247,10 @@ export class PageSwitcher {
       this.host.tabs.markClosed(closedId);
       await this.move(fallback);
       this.host.tabs.recordClosedSwitch(closedId, fallback.targetId);
-      log.info(`The session's tab closed; switched to ${fallback.url}`);
+      log.info(`The session's tab closed; switched to ${displayUrl(fallback.url)}`);
       return true;
     } catch (error) {
-      log.info(`Could not switch to ${fallback.url}: ${getErrorMessage(error)}`);
+      log.info(`Could not switch to ${displayUrl(fallback.url)}: ${getErrorMessage(error)}`);
       return false;
     }
   }
@@ -329,7 +330,7 @@ export class PageSwitcher {
     this.host.tabs.setCurrent(tab.targetId);
     old?.close();
     this.host.switched(next);
-    log.info(`Switched to tab ${tab.url} (${tab.targetId})`);
+    log.info(`Switched to tab ${displayUrl(tab.url)} (${tab.targetId})`);
   }
 
   /**

@@ -10,6 +10,7 @@ import type { TriggeredRequest } from '@/ipc/protocol/domTypes.js';
 import { isNotableRequest } from '@/telemetry/requestKinds.js';
 import { failureReason, getRequestState } from '@/telemetry/requestState.js';
 import type { NetworkRequest, WebSocketConnection } from '@/types.js';
+import { displayUrl } from '@/utils/displayUrl.js';
 
 /** URLs that never reach the network (inline data, in-page objects) */
 const LOCAL_URL_PATTERN = /^(data|blob):/i;
@@ -168,7 +169,8 @@ function isReportable(request: NetworkRequest): boolean {
 }
 
 /**
- * Summarize a captured request.
+ * Summarize a captured request, its URL without user info and with its
+ * tokens masked (#623; `details network --include-sensitive` has it whole).
  *
  * @param request - Captured request
  * @param inFlight - Whether it was still in flight (a request with a response
@@ -181,7 +183,7 @@ export function toTriggeredRequest(request: NetworkRequest, inFlight = false): T
   return {
     requestId: request.requestId,
     method: request.method,
-    url: request.url,
+    url: displayUrl(request.url),
     ...(request.resourceType !== undefined && { resourceType: request.resourceType }),
     ...(state === 'complete' && { status: request.status }),
     ...(state === 'complete' && inFlight && { loading: true as const }),

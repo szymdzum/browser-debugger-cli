@@ -19,6 +19,7 @@ import type {
 } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { bodyFetchFailedReason, bodyGoneReason } from '@/ui/messages/networkMessages.js';
+import { displayUrl } from '@/utils/displayUrl.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { filterDefined } from '@/utils/objects.js';
 
@@ -708,7 +709,7 @@ export function startWebSocketCollection(
 
     connectionMap.set(params.requestId, connection);
     connections.push(connection);
-    log.debug(`WebSocket created: ${params.url}`);
+    log.debug(`WebSocket created: ${displayUrl(params.url)}`);
   });
 
   registry.registerTyped(typed, 'Network.webSocketWillSendHandshakeRequest', (params) => {
@@ -744,7 +745,7 @@ export function startWebSocketCollection(
     if (!connection) return;
 
     connection.errorMessage = params.errorMessage;
-    log.debug(`WebSocket frame error for ${connection.url}: ${params.errorMessage}`);
+    log.debug(`WebSocket frame error for ${displayUrl(connection.url)}: ${params.errorMessage}`);
   });
 
   registry.registerTyped(typed, 'Page.frameNavigated', ({ frame }) => {
@@ -763,7 +764,9 @@ export function startWebSocketCollection(
     connection.closedTime = Date.now();
     connectionMap.delete(params.requestId);
 
-    log.debug(`WebSocket closed: ${connection.url} (${connection.frames.length} frames captured)`);
+    log.debug(
+      `WebSocket closed: ${displayUrl(connection.url)} (${connection.frames.length} frames captured)`
+    );
   });
 
   return () => {

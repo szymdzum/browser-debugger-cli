@@ -25,6 +25,7 @@ import { UNBIND_TARGET_SCRIPT } from '@/runtime/dom/targetNode.js';
 import { toDownloadInfo } from '@/telemetry/downloads.js';
 import { mayCarrySubmit } from '@/telemetry/requestKinds.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { displayUrl } from '@/utils/displayUrl.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
 import { watchActionErrors } from './actionErrors.js';
@@ -117,7 +118,22 @@ function succeeded(result: object): boolean {
 }
 
 /**
- * The tabs opened since a mark, and the switch after the session's tab closed.
+ * A tab closed switch with its URLs as shown: without user info and with
+ * their tokens masked (#623).
+ *
+ * @param moved - The switch
+ * @returns The switch to report
+ */
+export function shownTabSwitch(moved: TabClosedSwitch): TabClosedSwitch {
+  return {
+    tabClosed: { ...moved.tabClosed, url: displayUrl(moved.tabClosed.url) },
+    switchedTo: { ...moved.switchedTo, url: displayUrl(moved.switchedTo.url) },
+  };
+}
+
+/**
+ * The tabs opened since a mark, and the switch after the session's tab
+ * closed, their URLs as shown (see {@link shownTabSwitch}).
  *
  * @param tabs - Tab reports
  * @param firstOpened - Mark taken as the interaction began
@@ -128,8 +144,9 @@ function tabReport(
   firstOpened: number
 ): Pick<ActionEffects, 'opened' | 'tabClosed' | 'switchedTo'> {
   if (!tabs) return {};
-  const opened = tabs.openedSince(firstOpened);
-  return { ...(opened.length > 0 && { opened }), ...tabs.takeClosedSwitch() };
+  const opened = tabs.openedSince(firstOpened).map((tab) => ({ ...tab, url: displayUrl(tab.url) }));
+  const moved = tabs.takeClosedSwitch();
+  return { ...(opened.length > 0 && { opened }), ...(moved && shownTabSwitch(moved)) };
 }
 
 /**

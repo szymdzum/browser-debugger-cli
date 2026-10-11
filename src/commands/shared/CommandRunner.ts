@@ -189,7 +189,7 @@ function printTabMove(shown = ''): void {
  *
  * @param warning - Warning, if any
  */
-function printWarning(warning: string | undefined): void {
+export function printWarning(warning: string | undefined): void {
   if (warning) console.error(escapeControlChars(`Warning: ${warning}`));
 }
 

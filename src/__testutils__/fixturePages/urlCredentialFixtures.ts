@@ -8,7 +8,8 @@
  * parameters (`access_token`, `code`; `password`, `cc-number`) and with an
  * `#id_token=` fragment, a button that opens {@link URL_CREDS_POPUP_PATH} in
  * a window, a button that fetches {@link URL_CREDS_API_PATH} and opens a
- * WebSocket to `/ws?token=` (the title becomes `fetched` once both
+ * WebSocket to `/ws?token=` (both through `location.origin`, as `fetch`
+ * refuses a URL with credentials; the title becomes `fetched` once both
  * answered), and a form posting to `/url-creds-landing`. The hrefs are
  * assembled in the script, so the page source holds no secret value.
  * `/url-creds-landing` and the popup are short pages; the links with a
@@ -46,7 +47,7 @@ document.getElementById('open-popup').onclick = () => {
   window.open('/url-creds-popup?token=' + m('QT-POPUP'), 'popup', 'width=400,height=400');
 };
 document.getElementById('fetch').onclick = () => {
-  const fetched = fetch('/url-creds-api?access_token=' + m('QT-FETCH') + '&q=plain');
+  const fetched = fetch(location.origin + '/url-creds-api?access_token=' + m('QT-FETCH') + '&q=plain');
   const echoed = new Promise((resolve) => {
     const socket = new WebSocket(location.origin.replace('http', 'ws') + '/ws?token=' + m('QT-WS'));
     socket.onopen = () => socket.send('hello');

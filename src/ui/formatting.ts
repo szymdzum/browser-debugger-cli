@@ -176,8 +176,8 @@ export function truncateUrl(url: string, maxLength: number = 60): string {
     return truncateEnd(url, maxLength);
   }
   const host = parsed.host;
-  const rest = `${parsed.pathname.substring(1)}${parsed.search}`;
-  const shown = parsed.pathname.length > 1 ? `${host}/${rest}` : `${host}${parsed.search}`;
+  const rest = rawPathAndQuery(url, parsed);
+  const shown = rest.startsWith('?') || rest === '' ? `${host}${rest}` : `${host}/${rest}`;
   if (shown.length <= maxLength) return shown;
   const room = maxLength - host.length - 2;
   if (room < MIN_URL_END_SHOWN) return cutMiddle(shown, maxLength);
@@ -187,6 +187,23 @@ export function truncateUrl(url: string, maxLength: number = 60): string {
 
 /** Characters of path and query a shortened URL keeps at least besides its host */
 const MIN_URL_END_SHOWN = 12;
+
+/** Scheme and authority of an absolute URL, and `#fragment` */
+const URL_AUTHORITY = /^[a-z][a-z\d+.-]*:\/\/[^/?#]*\/?/i;
+
+/**
+ * The path and query of a URL as written (not re-encoded by `URL`, so a
+ * masked token stays `••••`), without the leading slash and the fragment.
+ * A URL written without a scheme (`localhost:3000/x`) gives the parsed form.
+ *
+ * @param url - URL as written
+ * @param parsed - The URL parsed
+ * @returns Path and query, e.g. `search?q=1`, `?q=1` for the root, or empty
+ */
+function rawPathAndQuery(url: string, parsed: URL): string {
+  if (!URL_AUTHORITY.test(url)) return `${parsed.pathname.substring(1)}${parsed.search}`;
+  return url.replace(URL_AUTHORITY, '').replace(/#.*$/s, '');
+}
 
 /**
  * Cut text in the middle, marking the cut with "…" (text that fits is

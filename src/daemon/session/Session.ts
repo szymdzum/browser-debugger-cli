@@ -50,6 +50,7 @@ import type { CleanupFunction, LaunchedChrome } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { formatChromeNotice } from '@/ui/messages/chrome.js';
 import { delay } from '@/utils/async.js';
+import { displayUrl } from '@/utils/displayUrl.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
@@ -307,7 +308,8 @@ export class Session {
   }
 
   /**
-   * Summary of this session for start responses.
+   * Summary of this session for start responses: the target URL without
+   * user info and with its tokens masked (#623).
    *
    * @returns Session info
    */
@@ -319,7 +321,7 @@ export class Session {
     return {
       chromePid: this.chrome?.pid ?? 0,
       port: this.config.port,
-      targetUrl: target?.url ?? this.config.url,
+      targetUrl: displayUrl(target?.url ?? this.config.url),
       ...(target?.title && { targetTitle: target.title }),
       ...(documentStatus !== undefined && { documentStatus }),
       ...(this.loading && { loading: this.loading }),

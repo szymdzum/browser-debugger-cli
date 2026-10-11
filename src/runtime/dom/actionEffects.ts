@@ -42,6 +42,7 @@ import {
 import { evaluateInBdgWorld, hasBdgWorld } from '@/runtime/page/bdgWorld.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { delay, raceTimeout } from '@/utils/async.js';
+import { displayUrl } from '@/utils/displayUrl.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
 const log = createLogger('dom');
@@ -400,7 +401,8 @@ export function pendingChanges(
  * @param startHref - URL before the action (undefined when not read)
  * @param read - Page read after the action (undefined when not read)
  * @param events - Main-frame navigation events
- * @returns Navigation, or undefined when the location did not change
+ * @returns Navigation (its URL without user info and with its tokens
+ *   masked, #623), or undefined when the location did not change
  */
 export function pageNavigation(
   startHref: string | undefined,
@@ -410,7 +412,7 @@ export function pageNavigation(
   if (events.document) {
     const status = events.statusByLoader.get(events.document.loaderId);
     return {
-      url: read?.href ?? events.document.url,
+      url: displayUrl(read?.href ?? events.document.url),
       sameDocument: false,
       ...(status !== undefined && { status }),
     };
@@ -418,7 +420,7 @@ export function pageNavigation(
   const url = read?.href ?? events.withinDocumentUrl;
   if (url === undefined || url === startHref) return undefined;
   if (startHref === undefined && events.withinDocumentUrl === undefined) return undefined;
-  return { url, sameDocument: true };
+  return { url: displayUrl(url), sameDocument: true };
 }
 
 /**

@@ -335,6 +335,7 @@ void describe('triggered request URLs (#623)', () => {
 
   void it('masks the token of a WebSocket handshake URL', async () => {
     const store = new TelemetryStore();
+    store.activeTelemetry = ['network'];
     const interact = createInteractionRunner(store);
     const result = await interact(cdp, () => {
       store.websocketConnections.push({

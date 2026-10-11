@@ -4,8 +4,12 @@
 
 import type { Command } from 'commander';
 
-import { runCommand } from '@/commands/shared/CommandRunner.js';
-import { jsonOption, showBothSectionsWhenBothRequested } from '@/commands/shared/commonOptions.js';
+import { printWarning, runCommand } from '@/commands/shared/CommandRunner.js';
+import {
+  includeSensitiveOption,
+  jsonOption,
+  showBothSectionsWhenBothRequested,
+} from '@/commands/shared/commonOptions.js';
 import { noteFollowConnected } from '@/commands/shared/daemonErrorHandler.js';
 import {
   fetchPreviewOutput,
@@ -33,7 +37,9 @@ import {
   type PreviewJsonData,
   type PreviewOptions,
 } from '@/ui/formatters/preview.js';
+import { includeSensitiveWarning } from '@/ui/messages/networkMessages.js';
 import { followingPreviewMessage, stoppedFollowingPreviewMessage } from '@/ui/messages/preview.js';
+import { displayTabSwitch, displayUrl, displayUrls } from '@/utils/displayUrl.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 interface ProcessedPreview {
@@ -86,6 +92,28 @@ function peekSection(options: PeekCommandOptions): PeekSection | undefined {
 }
 
 /**
+ * The preview with its page URLs as shown: the target, the requests and the
+ * tab switch note, without user info and with their tokens masked unless
+ * `--include-sensitive`.
+ *
+ * @param output - Preview output from the daemon
+ * @param includeSensitive - Whether `--include-sensitive` was given
+ * @returns The output to show
+ */
+function shownPreview(output: BdgOutput, includeSensitive: boolean): BdgOutput {
+  const tabSwitch = displayTabSwitch(output.tabSwitch, includeSensitive);
+  return {
+    ...output,
+    target: { ...output.target, url: displayUrl(output.target.url, includeSensitive) },
+    data: {
+      ...output.data,
+      ...(output.data.network && { network: displayUrls(output.data.network, includeSensitive) }),
+    },
+    ...(tabSwitch && { tabSwitch }),
+  };
+}
+
+/**
  * Fetch the preview, filtering network requests by resource type first.
  *
  * With a type filter all requests are fetched and filtered before the
@@ -95,13 +123,16 @@ function peekSection(options: PeekCommandOptions): PeekSection | undefined {
  * @param lastN - Items to show (0 = all)
  * @param resourceTypes - Resource types to keep (empty = all)
  * @param only - Fetch only network or only console data
+ * @param tabMove - Whether to take the tab move notice
+ * @param includeSensitive - Whether `--include-sensitive` was given
  * @returns Preview with filtered network data and the unfiltered request count
  */
 async function fetchAndFilterPreview(
   lastN: number,
   resourceTypes: Protocol.Network.ResourceType[],
   only?: PeekSection,
-  tabMove = false
+  tabMove = false,
+  includeSensitive = false
 ): Promise<FetchResult<ProcessedPreview>> {
   const result = await fetchPreviewOutput({
     lastN: resourceTypes.length > 0 ? 0 : lastN,
@@ -110,7 +141,7 @@ async function fetchAndFilterPreview(
   });
   if (!result.success) return result;
 
-  const output = result.data;
+  const output = shownPreview(result.data, includeSensitive);
   const unfilteredNetworkCount = output.totals?.network ?? output.data.network?.length ?? 0;
   if (resourceTypes.length === 0 || !output.data.network) {
     return { success: true, data: { output, unfilteredNetworkCount } };
@@ -146,7 +177,13 @@ async function runFollowMode(
 ): Promise<void> {
   const { lastN, resourceTypes, interval } = parsed;
   const showPreview = async (): Promise<FollowPoll> => {
-    const result = await fetchAndFilterPreview(lastN, resourceTypes, peekSection(options));
+    const result = await fetchAndFilterPreview(
+      lastN,
+      resourceTypes,
+      peekSection(options),
+      false,
+      options.includeSensitive
+    );
 
     if (!result.success) {
       return followFetchFailure(result, { json: options.json, retryIntervalMs: interval });
@@ -163,6 +200,7 @@ async function runFollowMode(
     return undefined;
   };
 
+  if (options.includeSensitive) printWarning(includeSensitiveWarning());
   await setupFollowMode(showPreview, {
     startMessage: followingPreviewMessage,
     stopMessage: stoppedFollowingPreviewMessage,
@@ -224,6 +262,7 @@ export function registerPeekCommand(program: Command): void {
     .option('-n, --network', 'Show only network requests', false)
     .option('-c, --console', 'Show only console messages', false)
     .option('-f, --follow', 'Watch for updates (like tail -f)', false)
+    .addOption(includeSensitiveOption())
     .option('--interval <ms>', 'Refresh interval of --follow in ms, 100-60000 (default: 1000)')
     .option('--last <count>', 'Show last N items, 0 for all', '10')
     .option(
@@ -257,7 +296,8 @@ export function registerPeekCommand(program: Command): void {
             lastN,
             resourceTypes,
             peekSection(options),
-            true
+            true,
+            options.includeSensitive
           );
           if (!result.success) {
             return createErrorResult(result.error, result.exitCode, result.suggestion);
@@ -266,6 +306,7 @@ export function registerPeekCommand(program: Command): void {
           return {
             success: true,
             data: options.json ? buildPreviewJsonData(output, baseOptions) : output,
+            ...(options.includeSensitive && { warning: includeSensitiveWarning() }),
           };
         },
         options,

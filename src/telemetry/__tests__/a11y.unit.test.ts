@@ -586,7 +586,7 @@ describe('root URL property (#623)', () => {
         name: { type: 'computedString', value: 'App' },
         properties: [
           {
-            name: 'url' as Protocol.Accessibility.AXPropertyName,
+            name: 'url',
             value: { type: 'string', value: 'http://bob:PW@127.0.0.1:4000/app?token=T#id_token=T' },
           },
         ],

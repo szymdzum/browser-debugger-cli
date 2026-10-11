@@ -2,7 +2,12 @@
  * Option behaviors of the session commands: `bdg <url>` (root options), cleanup, stop and status.
  */
 
-import type { BehaviorTable } from '@/commands/optionBehaviors/shared.js';
+import {
+  MASKED_URL_AUTOMATIC,
+  MASKED_URL_DEFAULT,
+  MASKED_URL_ENABLED,
+  type BehaviorTable,
+} from '@/commands/optionBehaviors/shared.js';
 
 /** Behaviors by registry key */
 export const SESSION_BEHAVIORS: BehaviorTable = {
@@ -92,5 +97,25 @@ export const SESSION_BEHAVIORS: BehaviorTable = {
   'status:--verbose': {
     default: 'Basic session status (daemon running, session active, URL)',
     whenEnabled: 'Includes Chrome diagnostics and CDP connection details',
+  },
+  'status:--include-sensitive': {
+    default: `${MASKED_URL_DEFAULT} (the Session active line, the Target section, pageState.url and a starting session's URL)`,
+    whenEnabled: MASKED_URL_ENABLED,
+    automaticBehavior: MASKED_URL_AUTOMATIC,
+  },
+  'sessions:--include-sensitive': {
+    default: `${MASKED_URL_DEFAULT} (the URL column, JSON url)`,
+    whenEnabled: MASKED_URL_ENABLED,
+    automaticBehavior: MASKED_URL_AUTOMATIC,
+  },
+  'info:--include-sensitive': {
+    default: `${MASKED_URL_DEFAULT} (bdg page info: the URL line, JSON url)`,
+    whenEnabled: MASKED_URL_ENABLED,
+    automaticBehavior: MASKED_URL_AUTOMATIC,
+  },
+  'tabs:--include-sensitive': {
+    default: `${MASKED_URL_DEFAULT} (bdg page tabs: every tab; page switch and page close results are always masked)`,
+    whenEnabled: MASKED_URL_ENABLED,
+    automaticBehavior: MASKED_URL_AUTOMATIC,
   },
 };

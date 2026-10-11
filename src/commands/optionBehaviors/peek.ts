@@ -2,10 +2,21 @@
  * Option behaviors of `bdg peek`.
  */
 
-import { FOLLOW_BEHAVIOR, type BehaviorTable } from '@/commands/optionBehaviors/shared.js';
+import {
+  FOLLOW_BEHAVIOR,
+  MASKED_URL_AUTOMATIC,
+  MASKED_URL_DEFAULT,
+  MASKED_URL_ENABLED,
+  type BehaviorTable,
+} from '@/commands/optionBehaviors/shared.js';
 
 /** Behaviors by registry key */
 export const PEEK_BEHAVIORS: BehaviorTable = {
+  'peek:--include-sensitive': {
+    default: `${MASKED_URL_DEFAULT} (the target URL, the request URLs and the tab switch note)`,
+    whenEnabled: `${MASKED_URL_ENABLED}; with --follow the warning is printed once on stderr`,
+    automaticBehavior: MASKED_URL_AUTOMATIC,
+  },
   'peek:--full': {
     default:
       'Console message texts are cut: human output at 200 characters (compact output also at 2 lines) followed by "… N more chars (use --full)"; JSON text at 10000 characters with truncatedFrom (the original length)',

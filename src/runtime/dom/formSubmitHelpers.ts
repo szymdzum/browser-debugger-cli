@@ -25,6 +25,7 @@ import { FIND_ELEMENTS_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
 import { summarizePendingRequests } from '@/runtime/page/loadingState.js';
 import type { PendingRequest } from '@/telemetry/network.js';
 import type { DocumentRequestState } from '@/types.js';
+import { displayUrl } from '@/utils/displayUrl.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 import { clickElement } from './formFillHelpers/index.js';
@@ -209,7 +210,7 @@ class SubmissionWatcher {
     const answered = request.status !== undefined || request.errorText !== undefined;
     return {
       method: request.method,
-      url: request.url,
+      url: displayUrl(request.url),
       ...(!answered && { pendingMs: Date.now() - request.startedAt }),
       ...(request.status !== undefined && { status: request.status }),
       ...(request.statusText && { statusText: request.statusText }),

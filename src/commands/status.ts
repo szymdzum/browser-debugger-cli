@@ -1,6 +1,7 @@
 import type { Command } from 'commander';
 
-import { runCommand } from '@/commands/shared/CommandRunner.js';
+import { runCommand, type CommandResult } from '@/commands/shared/CommandRunner.js';
+import { includeSensitiveOption } from '@/commands/shared/commonOptions.js';
 import type { StatusCommandOptions } from '@/commands/shared/optionTypes.js';
 import type { StatusResult } from '@/commands/types.js';
 import { CommandError, isDaemonConnectionError } from '@/errors/index.js';
@@ -17,8 +18,10 @@ import {
   formatSessionStatus,
   formatStatusAsJson,
   formatNoSessionMessage,
+  withShownUrls,
   type StatusData,
 } from '@/ui/formatters/status.js';
+import { includeSensitiveWarning } from '@/ui/messages/networkMessages.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -55,6 +58,23 @@ function withSessionName(data: StatusData): StatusData {
 }
 
 /**
+ * The status as shown: page URLs without user info and with their tokens
+ * masked unless `--include-sensitive` (which warns).
+ *
+ * @param data - Status data
+ * @param options - Command options
+ * @returns Command result
+ */
+function shownStatus(data: StatusData, options: StatusCommandOptions): CommandResult<StatusData> {
+  const shown = withSessionName(withShownUrls(data, options.includeSensitive));
+  return {
+    success: true,
+    data: shown,
+    ...(options.includeSensitive && { warning: includeSensitiveWarning() }),
+  };
+}
+
+/**
  * Force-clean the selected session and start it again.
  *
  * @returns Command line
@@ -75,6 +95,7 @@ export function registerStatusCommand(program: Command): void {
     .description('Show active session status and collection statistics')
     .option('-j, --json', 'Output as JSON', false)
     .option('-v, --verbose', "Also show the session's Chrome executable, mode and profile", false)
+    .addOption(includeSensitiveOption())
     .action(async (options: StatusCommandOptions) => {
       let latestMetadata: SessionMetadata | undefined;
       let latestSessionPid: number | undefined;
@@ -109,7 +130,6 @@ export function registerStatusCommand(program: Command): void {
             }
 
             latestActivity = data.activity;
-            latestPageState = data.pageState;
 
             if (!data.sessionPid || !data.sessionMetadata) {
               latestMetadata = undefined;
@@ -121,7 +141,9 @@ export function registerStatusCommand(program: Command): void {
               if (data.pageState) {
                 jsonOutput.pageState = data.pageState;
               }
-              return { success: true, data: withSessionName(jsonOutput) };
+              const result = shownStatus(jsonOutput, options);
+              latestPageState = result.data?.pageState;
+              return result;
             }
 
             const metadata: SessionMetadata = {
@@ -154,7 +176,9 @@ export function registerStatusCommand(program: Command): void {
               jsonOutput.pageState = data.pageState;
             }
 
-            return { success: true, data: withSessionName(jsonOutput) };
+            const result = shownStatus(jsonOutput, options);
+            latestPageState = result.data?.pageState;
+            return result;
           } catch (error) {
             if (error instanceof CommandError) throw error;
             const errorMessage = getErrorMessage(error);

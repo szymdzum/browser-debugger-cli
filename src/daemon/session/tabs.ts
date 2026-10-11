@@ -26,6 +26,7 @@ import type {
   TabRef,
 } from '@/ipc/protocol/tabTypes.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { displayUrl } from '@/utils/displayUrl.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { findSimilar } from '@/utils/suggestions.js';
@@ -106,7 +107,7 @@ function urlParts(urls: readonly string[]): string[] {
       }
       parsed.searchParams.forEach((value) => value && parts.add(value));
     } catch (error) {
-      log.debug(`Tab URL not parsed (${url}): ${getErrorMessage(error)}`);
+      log.debug(`Tab URL not parsed (${displayUrl(url)}): ${getErrorMessage(error)}`);
     }
   }
   return [...parts];
@@ -493,7 +494,7 @@ export class TabTracker {
     if (!isTab(info) || known || this.gone.has(info.targetId)) return;
     this.tabs.push(toTab(info));
     this.opened.push(info.targetId);
-    log.debug(`Tab opened: ${info.url || 'about:blank'} (${info.targetId})`);
+    log.debug(`Tab opened: ${displayUrl(info.url) || 'about:blank'} (${info.targetId})`);
   }
 
   /**
