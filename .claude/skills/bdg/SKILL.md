@@ -173,7 +173,9 @@ bdg network headers <id>                      # Headers only (no id: main docume
 # --include-sensitive shows them as captured (with a warning); names and everything else stay as captured.
 # Page URLs everywhere (status, sessions, page info/tabs, network list, peek, action results, daemon.log) drop user:pass@
 # and show token/code/password parameters as ••••; status/sessions/page info/page tabs/network list/peek --include-sensitive
-# show the parameters. Action results and the start output are always masked: details network <id> --include-sensitive has the full URL.
+# show the parameters. Action results, dom frames and the start output are always masked (no --include-sensitive there):
+# details network <id> --include-sensitive has the full URL. Page content is shown as written (hrefs in dom query / dom get --raw,
+# inline scripts, HTML bodies): only the page and request URLs bdg itself reports are masked.
 bdg network list --filter "has-blocked-cookies:*"   # "Logged out after this request?" Rows end ⚠ cookie blocked; value = kind, reason, or one of the first 5 names
 bdg network getCookies
 bdg console --level error                     # Errors on the current page

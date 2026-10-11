@@ -91,6 +91,24 @@ void describe('displayUrl', () => {
     });
   }
 
+  void it('keeps an @ that is not the user info of a nested URL', () => {
+    for (const url of [
+      'http://host/p?q=a+b//c@d',
+      'http://host/p#/users//a@b',
+      'http://host/p?to=me@x.test',
+    ]) {
+      assert.equal(displayUrl(url), url);
+      assert.equal(displayUrl(url, true), url);
+    }
+  });
+
+  void it('keeps the encoding of the untouched characters of a nested URL', () => {
+    assert.equal(
+      displayUrl('http://host/p?next=http%3A%2F%2Fu%3Ap%40x%2Fa+b%20c'),
+      'http://host/p?next=http%3A%2F%2Fx%2Fa+b%20c'
+    );
+  });
+
   void it('leaves a URL without a query, fragment or user info alone', () => {
     for (const url of ['about:blank', '', 'http://host/', 'data:text/html,<p>x</p>']) {
       assert.equal(displayUrl(url), url);

@@ -30,28 +30,25 @@ export function displayUrl(url: string, includeSensitive = false): string {
 /** A `blob:` URL, which wraps the URL of the page that made it */
 const BLOB_URL = /^blob:/i;
 
-/** The user info of a URL written inside a query or fragment value */
-const NESTED_USER_INFO = /((?:[a-z][a-z\d+.-]*:)?\/\/)[^/?#]*@/i;
+/**
+ * The user info of a URL that a query or fragment value is (`http://u:p@x/`
+ * or `//u:p@x/` at its start), written raw or percent-encoded (`%3A`,
+ * `%2F`, `%40`): everything after the `scheme://` up to the last `@`
+ * before the path, query or fragment starts. Matching the encoded form in
+ * place keeps every other character as written.
+ */
+const NESTED_USER_INFO =
+  /^((?:[a-z][a-z\d+.-]*(?::|%3A))?(?:\/|%2F){2})(?:(?!%2F|%3F|%23|[/?#])[\s\S])*(?:@|%40)/i;
 
 /**
- * A query or fragment value without the user info of a URL it holds, as
+ * A query or fragment value without the user info of the URL it holds, as
  * written or percent-encoded.
  *
  * @param value - Parameter value as written
- * @returns The value, user info removed
+ * @returns The value, user info removed, otherwise byte for byte
  */
 function valueWithoutUserInfo(value: string): string {
-  const raw = value.replace(NESTED_USER_INFO, '$1');
-  if (raw !== value) return raw;
-  let decoded: string;
-  try {
-    decoded = decodeURIComponent(value);
-  } catch {
-    return value;
-  }
-  if (decoded === value) return value;
-  const stripped = decoded.replace(NESTED_USER_INFO, '$1');
-  return stripped === decoded ? value : encodeURIComponent(stripped);
+  return value.replace(NESTED_USER_INFO, '$1');
 }
 
 /**
