@@ -162,6 +162,9 @@ export function untrustedSessionText(label: string, why: string): string {
   return `${label}: ${why}`;
 }
 
+/** What became of Chrome after a lost connection: true in both modes (an attached Chrome is left alone) */
+const DISCONNECTED_CHROME_NOTE = '; a Chrome bdg launched was closed with the session';
+
 /**
  * When and why a session ended without `bdg stop`.
  *
@@ -182,7 +185,8 @@ function sessionEndText(end: { reason: string; cause?: string; endedAt: number }
   };
   const at = new Date(end.endedAt).toLocaleTimeString();
   const cause = end.cause ? ` (${because[end.cause] ?? end.cause})` : '';
-  return `at ${at}: ${why[end.reason] ?? end.reason}${cause}`;
+  const chrome = end.reason === 'disconnected' ? DISCONNECTED_CHROME_NOTE : '';
+  return `at ${at}: ${why[end.reason] ?? end.reason}${cause}${chrome}`;
 }
 
 /**

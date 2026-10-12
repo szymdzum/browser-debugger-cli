@@ -55,7 +55,7 @@ void describe('last session end', () => {
   void it('lists a session whose Chrome stopped answering with why it ended', () => {
     assert.match(
       endedSessionText('p3', { reason: 'disconnected', cause: 'no-pong', endedAt: Date.now() }),
-      /^p3 ended at .*: bdg lost its connection to Chrome \(Chrome stopped answering pings\)$/
+      /^p3 ended at .*: bdg lost its connection to Chrome \(Chrome stopped answering pings\); a Chrome bdg launched was closed with the session$/
     );
   });
 
