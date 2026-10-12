@@ -48,13 +48,54 @@ function run(cmd, args, opts = {}) {
   }).trim();
 }
 
+const TRANSIENT_GH =
+  /unexpected EOF|connection reset|ECONNRESET|timed? ?out|TLS handshake timeout|HTTP 5\d\d|\b50[0234]\b/i;
+const RETRY_BACKOFF_MS = [2000, 5000, 10_000, 20_000];
+
 /**
- * Runs a gh command against the repo and parses its JSON output.
+ * Whether a failed gh call looks like a network or GitHub hiccup worth retrying.
+ *
+ * @param {{ message?: string, stderr?: unknown }} err
+ */
+export function isTransientGhError(err) {
+  return TRANSIENT_GH.test(`${err?.message ?? ''}\n${err?.stderr ?? ''}`);
+}
+
+/**
+ * Calls fn, retrying a transient failure with a short backoff (one line per
+ * retry); a non-transient failure, or the last transient one, is thrown.
+ *
+ * @param {() => unknown} fn
+ * @param {{ backoff?: number[], wait?: (ms: number) => void }} [opts]
+ */
+export function retryTransient(fn, opts = {}) {
+  const backoff = opts.backoff ?? RETRY_BACKOFF_MS;
+  const wait =
+    opts.wait ?? ((ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms));
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return fn();
+    } catch (err) {
+      if (attempt >= backoff.length || !isTransientGhError(err)) throw err;
+      const firstLine = String(err.stderr || err.message)
+        .trim()
+        .split('\n')[0];
+      console.log(
+        `gh failed (${firstLine}); retry ${attempt + 1}/${backoff.length} in ${backoff[attempt] / 1000}s`
+      );
+      wait(backoff[attempt]);
+    }
+  }
+}
+
+/**
+ * Runs a gh command against the repo and parses its JSON output. Every poll
+ * loop reads through here, so a transient API error retries instead of ending the wait.
  *
  * @param {string[]} args
  */
 function ghJson(args) {
-  const out = run('gh', [...args, '--repo', REPO]);
+  const out = retryTransient(() => run('gh', [...args, '--repo', REPO]));
   return out ? JSON.parse(out) : null;
 }
 

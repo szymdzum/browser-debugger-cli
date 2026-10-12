@@ -13,11 +13,13 @@ import { test } from 'node:test';
 import {
   EXIT,
   inScope,
+  isTransientGhError,
   judgeConclusions,
   overlappingFiles,
   parseArgs,
   parseBriefs,
   renderBrief,
+  retryTransient,
   tempWorktrees,
   worktreeOfBranch,
 } from './ship.mjs';
@@ -167,4 +169,63 @@ test('inScope matches a number as a whole token only', () => {
   assert.equal(inScope('/private/tmp/mc-6110', ['611']), false);
   assert.equal(inScope('bdg-impl-6110-fixtures.pid', ['611']), false);
   assert.equal(inScope('bdg-t-612-a-http.pid', ['611', '673']), false);
+});
+
+test('isTransientGhError spots network and 5xx failures, not 404 or auth', () => {
+  for (const m of [
+    'Post "https://api.github.com/graphql": unexpected EOF',
+    'read: connection reset by peer',
+    'net/http: TLS handshake timeout',
+    'HTTP 502: Bad Gateway',
+    'HTTP 503',
+  ])
+    assert.equal(isTransientGhError({ message: m }), true, m);
+  for (const m of ['HTTP 404: Not Found', 'HTTP 401: Bad credentials', 'unknown flag: --bogus'])
+    assert.equal(isTransientGhError({ message: 'Command failed', stderr: m }), false, m);
+});
+
+test('retryTransient retries a transient failure, then returns', () => {
+  const waits = [];
+  let calls = 0;
+  const out = retryTransient(
+    () => {
+      if (++calls < 3) throw new Error('unexpected EOF');
+      return 'ok';
+    },
+    { backoff: [1, 2, 3], wait: (ms) => waits.push(ms) }
+  );
+  assert.equal(out, 'ok');
+  assert.deepEqual(waits, [1, 2]);
+});
+
+test('retryTransient gives up after the bounded retries', () => {
+  let calls = 0;
+  assert.throws(
+    () =>
+      retryTransient(
+        () => {
+          calls++;
+          throw new Error('HTTP 503');
+        },
+        { backoff: [1, 1], wait: () => {} }
+      ),
+    /503/
+  );
+  assert.equal(calls, 3);
+});
+
+test('retryTransient fails at once on a non-transient error', () => {
+  let calls = 0;
+  assert.throws(
+    () =>
+      retryTransient(
+        () => {
+          calls++;
+          throw new Error('HTTP 404: Not Found');
+        },
+        { backoff: [1, 1], wait: () => {} }
+      ),
+    /404/
+  );
+  assert.equal(calls, 1);
 });
