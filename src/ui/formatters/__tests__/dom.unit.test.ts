@@ -282,14 +282,18 @@ void describe('formatDomQuery key attributes', () => {
     );
   });
 
-  void it("shows a select's selected option and a button's default type", () => {
+  void it("shows a select's selected option and a button's type only as written", () => {
     assert.match(
       line({ index: 0, nodeId: 1, tag: 'select', attributes: { selected: 'Name (A to Z)' } }),
       /<select selected="Name \(A to Z\)">/
     );
     assert.match(
       line({ index: 0, nodeId: 1, tag: 'button', attributes: { type: 'submit' } }),
-      /<button type="submit">/
+      /<button>/
+    );
+    assert.match(
+      line({ index: 0, nodeId: 1, tag: 'button', type: 'button', attributes: { type: 'button' } }),
+      /<button type="button">/
     );
   });
 });

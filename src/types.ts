@@ -494,6 +494,8 @@ export interface DomContext {
   shadowRootMode?: 'open' | 'closed';
   /** Attributes that identify it by its type (see {@link KeyAttributes}) */
   attributes?: KeyAttributes;
+  /** Its `type` attribute as the page wrote it; `attributes.type` is the live type, which a missing attribute defaults (human output shows only this one) */
+  typeAttribute?: string;
   /** A field holding a secret (password, card, one-time code): its value is shown masked */
   sensitive?: boolean;
 }

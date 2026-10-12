@@ -448,6 +448,7 @@ bdg dom query "div" --limit 0                 # Every match (slower on a large p
 ```
 
 **Output:**
+- Each match shows its `type` only when the page sets the attribute, as written (`<input type="EMAIL">`). An implicit type (a field without `type` is text, a `<button>` in a form submits) is not shown, because no selector `[type=…]` matches it; `--json` `attributes.type` is the live type (`text`, `submit`) and `dom get --json` has the written one as `typeAttribute`
 - Shows the count of all matches and a preview of the first 50 (`--json`: 100), with `... and 49953 more (--limit 0 lists all; indices 0-999 work with other commands)`; `--limit <n>` lists that many (0 = all). JSON has `count` (all matches), `nodes` (the listed ones), `omitted` and, when not every match can be used by index, `indexed`
 - The first 1000 matches (or `--limit` of them, if more) are described and cached, so indices past the listed ones work with other commands; an index past them says so and how to index more. A page with 50000 matches answers in about half a second instead of 20 s
 - Lists nodeId, tag, the first class and how many more there are (`class="px-2 +4"`, the count `dom inspect` shows as `(+4)`; on utility-CSS pages the full list was most of a row), and text preview (the text as rendered: hidden parts left out). Declaration-like tokens (ending in `:`, `;` or `,`, as in `class="brush: js;"`) are left out of the row and of the count, as in `dom inspect`. `--json` has every class in `classes` (`[]` when it has none), as do `dom get <index> --json` (`domContext.classes`) and `dom get <index> --raw`; human `dom get` output names classes only for an element without an accessible name
@@ -1798,6 +1799,8 @@ When the session ends, it prints one error envelope and stops with exit 83; othe
 page, a timeout) print an error envelope per refresh and are retried.
 
 Put `--json` after the command (`bdg peek --json`); `bdg --json peek` also works.
+
+Bare `bdg --json` (no command or URL) prints the machine-readable help document, the same as `bdg --help --json`, and exits 0. Its output has no `success` field, so a script that builds `bdg $URL --json` must check that `$URL` is not empty (an empty variable gives this document, not a session error).
 
 ### Machine-readable help
 
