@@ -8,6 +8,7 @@
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import { ChromeLaunchError } from '@/connection/errors.js';
+import type { ConnectionLossCause } from '@/connection/types.js';
 import { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
 import { CaptureGate, TELEMETRY_READS } from '@/daemon/session/captureGate.js';
 import { connectCDP, connectPage, navigateToTarget } from '@/daemon/session/cdpSetup.js';
@@ -60,7 +61,24 @@ import { validateUrl } from '@/utils/url.js';
 const log = createLogger('session');
 
 /** Why a session ended. */
-export type SessionEndReason = 'normal' | 'crash' | 'timeout' | 'closed';
+export type SessionEndReason = 'normal' | 'crash' | 'timeout' | 'closed' | 'disconnected';
+
+/** What bdg knows of Chrome after the page connection was lost */
+export type ChromeAfterLoss = 'running' | 'exited' | 'unknown';
+
+/**
+ * Why a session whose page connection was lost ended.
+ *
+ * @param _chrome - Launched Chrome still running or exited; unknown for an attached Chrome
+ * @param _cause - Why the connection was lost, when the connection knows
+ * @returns End reason
+ */
+export function lossEndReason(
+  _chrome: ChromeAfterLoss,
+  _cause: ConnectionLossCause | undefined
+): SessionEndReason {
+  throw new Error('not implemented');
+}
 
 /** How long Chrome gets to exit after the page connection drops, before the end is called a closed tab */
 const CRASH_SETTLE_MS = 500;

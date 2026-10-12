@@ -5,6 +5,7 @@
 
 import * as fs from 'fs';
 
+import type { ConnectionLossCause } from '@/connection/types.js';
 import { getSessionDir, getSessionFilePath, sessionFilePathIn } from '@/session/paths.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { AtomicFileWriter } from '@/utils/atomicFile.js';
@@ -13,11 +14,13 @@ import { getErrorMessage } from '@/utils/errors.js';
 const log = createLogger('session');
 
 /** Why a session ended without `bdg stop` */
-export type UnexpectedEndReason = 'crash' | 'closed' | 'timeout';
+export type UnexpectedEndReason = 'crash' | 'closed' | 'timeout' | 'disconnected';
 
 /** Record of the last session's unexpected end */
 export interface LastSessionEnd {
   reason: UnexpectedEndReason;
+  /** Why the connection to Chrome was lost (`disconnected` only) */
+  cause?: ConnectionLossCause;
   /** Epoch ms */
   endedAt: number;
 }
@@ -26,8 +29,9 @@ export interface LastSessionEnd {
  * Record how the session ended.
  *
  * @param reason - Why it ended
+ * @param _cause - Why the connection to Chrome was lost
  */
-export function writeLastSessionEnd(reason: UnexpectedEndReason): void {
+export function writeLastSessionEnd(reason: UnexpectedEndReason, _cause?: ConnectionLossCause): void {
   try {
     AtomicFileWriter.writeSync(
       getSessionFilePath('LAST_SESSION'),

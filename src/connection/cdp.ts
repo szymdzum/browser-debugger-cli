@@ -1,7 +1,13 @@
 import WebSocket from 'ws';
 
 import type { CDPEventSource, EventCleanup } from './events.js';
-import type { CDPMessage, ConnectionOptions, CreateOptions, Logger } from './types.js';
+import type {
+  CDPMessage,
+  ConnectionLossCause,
+  ConnectionOptions,
+  CreateOptions,
+  Logger,
+} from './types.js';
 
 import { delay as asyncDelay } from '@/utils/async.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -791,6 +797,15 @@ export class CDPConnection implements CDPEventSource {
     }
 
     this.removeAllListeners();
+  }
+
+  /**
+   * Why the connection was lost, once it was: set before `onDisconnect` runs.
+   *
+   * @returns The cause, or undefined (open, closed by bdg, or closed by the peer without an error)
+   */
+  get lossCause(): ConnectionLossCause | undefined {
+    return undefined;
   }
 
   /**

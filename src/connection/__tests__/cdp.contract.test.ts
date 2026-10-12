@@ -14,6 +14,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { constants as bufferConstants } from 'node:buffer';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import type WebSocket from 'ws';
@@ -351,18 +352,19 @@ describe('CDPConnection contract', () => {
       assert.equal(mockWebSocket.getPingSent(), 2);
     });
 
-    it('should close connection after 3 missed pongs', async () => {
-      // Arrange: Connect with 1s keepalive
-      await connectAndOpen({ keepaliveInterval: 1000, maxRetries: 1 });
+    it('terminates the socket after 3 missed pongs, within 90 s at the default interval', async () => {
+      let cause: unknown = 'not lost';
+      await connectAndOpen({
+        maxRetries: 1,
+        onDisconnect: () => {
+          cause = cdp.lossCause;
+        },
+      });
 
-      // Act: Miss 3 pongs (don't call simulatePong)
-      clockHelper.tick(1000); // 1st ping
-      clockHelper.tick(1000); // 2nd ping
-      clockHelper.tick(1000); // 3rd ping - should close
+      clockHelper.tick(90_000);
 
-      // Assert: Connection closed after 3 missed pongs
-      assert.equal(mockWebSocket.getCloseCode(), 1001);
-      assert.match(mockWebSocket.getCloseReason() ?? '', /No pong received/i);
+      assert.equal(mockWebSocket.getCloseReason(), 'Connection terminated');
+      assert.equal(cause, 'no-pong');
     });
 
     it('should reset missed pong counter on pong received', async () => {
@@ -380,6 +382,81 @@ describe('CDPConnection contract', () => {
 
       // Assert: Still connected (would close on 3rd consecutive miss)
       assert.equal(cdp.isConnected(), true);
+    });
+  });
+
+  describe('Connection loss cause', () => {
+    /**
+     * Connect with a logger that keeps its lines and note the loss cause
+     * when the connection is lost.
+     *
+     * @returns Logged lines and a getter for the cause seen on disconnect
+     */
+    async function connectWatchingLoss(): Promise<{ lines: string[]; cause: () => unknown }> {
+      const lines: string[] = [];
+      let cause: unknown = 'not lost';
+      cdp = new CDPConnection(
+        { info: (line) => lines.push(line), debug: () => undefined },
+        () => mockWebSocket as unknown as WebSocket
+      );
+      await connectAndOpen({
+        onDisconnect: () => {
+          cause = cdp.lossCause;
+        },
+      });
+      return { lines, cause: () => cause };
+    }
+
+    it('names a message over the size limit as the cause and logs the ws error', async () => {
+      const { lines, cause } = await connectWatchingLoss();
+
+      mockWebSocket.simulateError(
+        Object.assign(new RangeError('Max payload size exceeded'), {
+          code: 'WS_ERR_UNSUPPORTED_MESSAGE_LENGTH',
+        })
+      );
+      mockWebSocket.simulateClose(1006, '');
+
+      assert.equal(cause(), 'message-too-large');
+      assert.ok(
+        lines.some((line) => line.includes('Max payload size exceeded')),
+        lines.join('\n')
+      );
+    });
+
+    it('names any other socket error as a socket error', async () => {
+      const { lines, cause } = await connectWatchingLoss();
+
+      mockWebSocket.simulateError(
+        Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' })
+      );
+      mockWebSocket.simulateClose(1006, '');
+
+      assert.equal(cause(), 'socket-error');
+      assert.ok(
+        lines.some((line) => line.includes('read ECONNRESET')),
+        lines.join('\n')
+      );
+    });
+
+    it('has no cause when the peer closes the socket without an error', async () => {
+      const { cause } = await connectWatchingLoss();
+
+      mockWebSocket.simulateClose(1000, '');
+
+      assert.equal(cause(), undefined);
+    });
+
+    it('accepts messages up to the longest string Node can hold', async () => {
+      let maxPayload: number | undefined;
+      cdp = new CDPConnection(console, (_url, options) => {
+        maxPayload = options?.maxPayload;
+        return mockWebSocket as unknown as WebSocket;
+      });
+      await connectAndOpen();
+
+      assert.ok((maxPayload ?? 0) > 110 * 1024 * 1024, `maxPayload ${maxPayload}`);
+      assert.ok((maxPayload ?? 0) <= bufferConstants.MAX_STRING_LENGTH, `maxPayload ${maxPayload}`);
     });
   });
 

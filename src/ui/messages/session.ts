@@ -140,7 +140,10 @@ export function lastSessionEndText(end: { reason: string; endedAt: number }): st
  * @param end - How and when it ended
  * @returns One line
  */
-export function endedSessionText(label: string, end: { reason: string; endedAt: number }): string {
+export function endedSessionText(
+  label: string,
+  end: { reason: string; cause?: string; endedAt: number }
+): string {
   return `${label} ended ${sessionEndText(end)}`;
 }
 

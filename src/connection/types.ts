@@ -95,6 +95,13 @@ export interface LaunchedChrome {
  *
  * Compatible with both console and bdg's Logger interface.
  */
+/**
+ * Why an open CDP connection was lost, when bdg knows: a message over the
+ * size limit, a peer that stopped answering pings, or another socket error.
+ * A peer that closed the socket without an error has no cause.
+ */
+export type ConnectionLossCause = 'message-too-large' | 'no-pong' | 'socket-error';
+
 export interface Logger {
   /** Log informational message */
   info(message: string): void;
