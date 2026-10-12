@@ -52,4 +52,27 @@ void describe('BDG_IPC_TIMEOUT_MS validation', () => {
   void it('accepts a valid value', () => {
     assert.notEqual(run('2000').status, EXIT_CODES.INVALID_ARGUMENTS);
   });
+
+  for (const value of ['abc', '0', '30s']) {
+    for (const json of [false, true]) {
+      void it(`bdg <url> with BDG_IPC_TIMEOUT_MS="${value}"${json ? ' --json' : ''} exits 81 and spawns no daemon`, () => {
+        const result = spawnSync(
+          process.execPath,
+          ['--import', 'tsx', 'src/index.ts', 'http://localhost:9', ...(json ? ['--json'] : [])],
+          {
+            encoding: 'utf8',
+            env: { ...process.env, BDG_SESSION_DIR: sessionDir, BDG_IPC_TIMEOUT_MS: value },
+          }
+        );
+        assert.equal(result.status, EXIT_CODES.INVALID_ARGUMENTS);
+        const output = json ? String(result.stdout) : String(result.stderr);
+        assert.match(output, /BDG_IPC_TIMEOUT_MS/);
+        assert.match(output, /2147483647/);
+        assert.deepEqual(
+          fs.readdirSync(sessionDir).filter((f) => /^daemon\./.test(f)),
+          []
+        );
+      });
+    }
+  }
 });

@@ -1727,7 +1727,7 @@ Things bdg does without being asked, and how to change them:
 - **`BDG_IPC_TIMEOUT_MS`**: how long a command waits for the session, in milliseconds (default 45000; quick requests such as `status` wait at most 10000). A whole number from 1 to 2147483647; anything else (`abc`, `0`, `-5`, `1.5`, a larger number) fails the command with exit 81 before it contacts the session. An empty value counts as unset
 - **`BDG_SESSION`**, **`BDG_SESSION_DIR`**: session name and base directory (see Sessions above)
 
-A request the running session does not know (it was started by an older bdg than the command) fails with exit 90 and the advice to run `bdg stop`, then `bdg <url>` again.
+A request the running session does not know (it was started by an older bdg than the command or the type is mistyped) fails with exit 90 and the advice to run `bdg stop`, then `bdg <url>` again.
 
 ## Session Files
 

@@ -418,6 +418,16 @@ void describe('IPC Server Contract Tests', () => {
       assert.equal(reply.sessionId, 's-9');
     });
 
+    void it('still answers a valid request after a malformed frame on the same connection', async () => {
+      const first = await requestError('not json{\n');
+      assert.equal(first.type, 'error_response');
+      client.send({ type: 'handshake_request', sessionId: 'after-bad' });
+      const reply = JSON.parse(await client.waitForResponse(1000)) as HandshakeResponse;
+      assert.equal(reply.type, 'handshake_response');
+      assert.equal(reply.sessionId, 'after-bad');
+      assert.equal(reply.status, 'ok');
+    });
+
     void it('answers an unknown type with an error that names the command and the restart', async () => {
       const reply = await requestError('{"type":"bogus_request","sessionId":"s-1"}\n');
       assert.equal(reply.type, 'error_response');

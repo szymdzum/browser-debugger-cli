@@ -210,7 +210,7 @@ export function malformedIpcFrameError(reason: string): string {
  */
 export function unknownIpcRequestError(requestType: string): ErrorWithSuggestion {
   return {
-    message: `The running session does not know the request ${escapeControlChars(requestType)}; it was probably started by an older bdg`,
+    message: `The running session does not know the request ${escapeControlChars(requestType)} (a mistyped type, or a session started by an older bdg)`,
     suggestion: `Restart the session: ${sessionCommand('bdg stop')}, then ${sessionCommand('bdg <url>')}`,
   };
 }
