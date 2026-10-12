@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import * as fs from 'fs';
+
 import { CommanderError, type Command } from 'commander';
 
 import {
@@ -327,4 +329,20 @@ function handleFatalError(error: unknown): never {
   process.exit(exitCode);
 }
 
+/** Test-only: holds startup until the test releases it (see {@link holdStartupForTest}) */
+const STARTUP_GATE_ENV = 'BDG_TEST_STARTUP_GATE';
+
+/**
+ * Test-only startup gate, inert unless `BDG_TEST_STARTUP_GATE` is set: writes
+ * one byte to fd 3 (the test's "ready" pipe), then blocks until a byte
+ * arrives on stdin. A test signals bdg between the two, so the signal lands
+ * at a known point of startup without a timed delay.
+ */
+function holdStartupForTest(): void {
+  if (process.env[STARTUP_GATE_ENV] === undefined) return;
+  fs.writeSync(3, 'r');
+  fs.readSync(0, Buffer.alloc(1));
+}
+
+holdStartupForTest();
 main().catch(handleFatalError);
