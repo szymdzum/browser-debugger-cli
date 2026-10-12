@@ -11,7 +11,7 @@ import {
 import { assertKnownHelpTopic, helpTopicPath, usageErrorDetails } from '@/commands/helpTopic.js';
 import { assertNotMistypedCommand } from '@/commands/start.js';
 import { CommandError } from '@/errors/index.js';
-import { genericError } from '@/errors/messages.js';
+import { genericError, jsonTakenAsValueError } from '@/errors/messages.js';
 import { buildProgram } from '@/program.js';
 import { selectSession } from '@/session/sessionName.js';
 import { OutputBuilder, buildSuccessResponse, stringifyEnvelope } from '@/ui/OutputBuilder.js';
@@ -23,6 +23,9 @@ import { VERSION } from '@/utils/version.js';
 
 /** Asks `bdg --help --json` for every command's full metadata instead of the compact tree */
 const FULL_HELP_FLAG = '--full';
+
+/** The spellings of the JSON output flag */
+const JSON_FLAGS = ['--json', '-j'];
 
 /**
  * CLI arguments that can be flags: everything before a literal `--`.
@@ -55,7 +58,44 @@ function commandWords(): string[] {
  */
 function isJsonMode(): boolean {
   const args = flagArgs();
-  return args.includes('--json') || args.includes('-j');
+  return JSON_FLAGS.some((flag) => args.includes(flag));
+}
+
+/**
+ * Before parsing, reject `--json` / `-j` typed where an option's value belongs
+ * (`bdg network list --last --json`): Commander would take it as the value
+ * and the command would answer in human mode. The arguments are read left to
+ * right as Commander does, so a value-taking option swallows the next word
+ * (`--filter --last --json` has the value `--last` and a real `--json`).
+ * `--last=--json` and values after `--` are values.
+ *
+ * @param command - Command about to run
+ * @throws CommandError (81) naming the option that lacks its value
+ */
+function assertJsonNotTakenAsValue(command: Command): void {
+  const valueOptions = new Map<string, string>();
+  for (let level: Command | null = command; level; level = level.parent) {
+    for (const option of level.options.filter((o) => o.required)) {
+      const long = option.long ?? option.short ?? '';
+      for (const flag of [option.long, option.short]) if (flag) valueOptions.set(flag, long);
+    }
+  }
+  const args = flagArgs();
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] ?? '';
+    const long = valueOptions.get(arg);
+    if (long === undefined) continue;
+    const next = args[i + 1] ?? '';
+    if (JSON_FLAGS.includes(next)) {
+      const err = jsonTakenAsValueError(arg, next, long);
+      throw new CommandError(
+        err.message,
+        { suggestion: err.suggestion },
+        EXIT_CODES.INVALID_ARGUMENTS
+      );
+    }
+    i++;
+  }
 }
 
 /**
@@ -147,6 +187,8 @@ async function main(): Promise<void> {
     console.log(JSON.stringify(helpJson(program)));
     process.exit(0);
   }
+
+  assertJsonNotTakenAsValue(resolveCommand(program, commandWords()));
 
   try {
     await program.parseAsync();
