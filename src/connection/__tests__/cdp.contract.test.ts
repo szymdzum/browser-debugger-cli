@@ -361,7 +361,9 @@ describe('CDPConnection contract', () => {
         },
       });
 
-      clockHelper.tick(90_000);
+      clockHelper.tick(30_000);
+      clockHelper.tick(30_000);
+      clockHelper.tick(30_000);
 
       assert.equal(mockWebSocket.getCloseReason(), 'Connection terminated');
       assert.equal(cause, 'no-pong');
