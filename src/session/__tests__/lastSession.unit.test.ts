@@ -15,6 +15,7 @@ import {
   writeLastSessionEnd,
 } from '@/session/lastSession.js';
 import { formatNoSessionMessage } from '@/ui/formatters/status.js';
+import { endedSessionText } from '@/ui/messages/session.js';
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-last-'));
 const saved = process.env['BDG_SESSION_DIR'];
@@ -38,6 +39,24 @@ void describe('last session end', () => {
     );
     clearLastSessionEnd();
     assert.equal(readLastSessionEnd(), null);
+  });
+
+  void it('says the connection to Chrome was lost and why, not that the page was closed', () => {
+    writeLastSessionEnd('disconnected', 'message-too-large');
+    const end = readLastSessionEnd();
+    assert.equal(end?.reason, 'disconnected');
+    assert.equal(end?.cause, 'message-too-large');
+    const text = formatNoSessionMessage({ active: false, ...(end && { lastSession: end }) });
+    assert.match(text, /lost its connection to Chrome \(a CDP message was over the size limit/);
+    assert.doesNotMatch(text, /page was closed/);
+    clearLastSessionEnd();
+  });
+
+  void it('lists a session whose Chrome stopped answering with why it ended', () => {
+    assert.match(
+      endedSessionText('p3', { reason: 'disconnected', cause: 'no-pong', endedAt: Date.now() }),
+      /^p3 ended at .*: bdg lost its connection to Chrome \(Chrome stopped answering pings\); a Chrome bdg launched was closed with the session$/
+    );
   });
 
   void it('counts the removed record of an ended session as cleaned', async () => {

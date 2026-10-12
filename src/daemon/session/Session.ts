@@ -8,6 +8,7 @@
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import { ChromeLaunchError } from '@/connection/errors.js';
+import type { ConnectionLossCause } from '@/connection/types.js';
 import { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
 import { CaptureGate, TELEMETRY_READS } from '@/daemon/session/captureGate.js';
 import { connectCDP, connectPage, navigateToTarget } from '@/daemon/session/cdpSetup.js';
@@ -60,7 +61,37 @@ import { validateUrl } from '@/utils/url.js';
 const log = createLogger('session');
 
 /** Why a session ended. */
-export type SessionEndReason = 'normal' | 'crash' | 'timeout' | 'closed';
+export type SessionEndReason = 'normal' | 'crash' | 'timeout' | 'closed' | 'disconnected';
+
+/** What bdg knows of Chrome after the page connection was lost */
+export type ChromeAfterLoss = 'running' | 'exited' | 'unknown';
+
+/** Called once when a launched session ends, with the connection loss cause for `disconnected` */
+export type SessionEndedCallback = (reason: SessionEndReason, cause?: ConnectionLossCause) => void;
+
+/**
+ * Why a session whose page connection was lost ended: Chrome exited
+ * (`crash`); the connection named a cause such as a message over the size
+ * limit or missed pongs (`disconnected`); a launched Chrome still running
+ * closed the connection without one, so its tab was closed (`closed`). An
+ * attached Chrome whose connection closed without a cause or with a socket
+ * error stays `crash`: bdg cannot tell whether that Chrome still runs, and a
+ * dying Chrome often resets the socket. Missed pongs and an oversized
+ * message show Chrome was there, so they are `disconnected` in attach mode too.
+ *
+ * @param chrome - Launched Chrome still running or exited; unknown for an attached Chrome
+ * @param cause - Why the connection was lost, when the connection knows
+ * @returns End reason
+ */
+export function lossEndReason(
+  chrome: ChromeAfterLoss,
+  cause: ConnectionLossCause | undefined
+): SessionEndReason {
+  if (chrome === 'exited') return 'crash';
+  if (cause === 'socket-error' && chrome === 'unknown') return 'crash';
+  if (cause) return 'disconnected';
+  return chrome === 'running' ? 'closed' : 'crash';
+}
 
 /** How long Chrome gets to exit after the page connection drops, before the end is called a closed tab */
 const CRASH_SETTLE_MS = 500;
@@ -191,7 +222,7 @@ export class Session {
 
   private constructor(
     private config: SessionConfig,
-    private readonly onEnded: (reason: SessionEndReason) => void
+    private readonly onEnded: SessionEndedCallback
   ) {
     this.store.includeAll = config.includeAll ?? false;
   }
@@ -208,11 +239,7 @@ export class Session {
    * @returns Unlaunched session
    * @throws CommandError for an invalid URL
    */
-  static create(
-    url: string,
-    options: SessionOptions,
-    onEnded: (reason: SessionEndReason) => void
-  ): Session {
+  static create(url: string, options: SessionOptions, onEnded: SessionEndedCallback): Session {
     const validation = validateUrl(url);
     if (!validation.valid) {
       throw new CommandError(
@@ -406,18 +433,19 @@ export class Session {
    * while launching; the launch then aborts and releases what it acquired.
    *
    * @param reason - Why the session is ending
+   * @param cause - Why the connection to Chrome was lost (`disconnected`)
    * @returns Promise resolved when teardown is complete
    */
-  stop(reason: SessionEndReason): Promise<void> {
+  stop(reason: SessionEndReason, cause?: ConnectionLossCause): Promise<void> {
     this.stopReason ??= reason;
     this.launchAbort.abort();
     this.stopping ??= (async () => {
       if (this.timeoutTimer) clearTimeout(this.timeoutTimer);
-      log.info(`Stopping session (reason: ${reason})`);
+      log.info(`Stopping session (reason: ${reason}${cause ? `, cause: ${cause}` : ''})`);
       await this.releaseResources();
       if (!this.started) return;
       removeSessionFiles(process.pid);
-      this.onEnded(reason);
+      this.onEnded(reason, cause);
     })();
     return this.stopping;
   }
@@ -554,7 +582,7 @@ export class Session {
       startPage: (cdp, start) => this.startPage(cdp, start),
       assertTabFree: (targetId, pageWsUrl) => this.assertTabFree(targetId, pageWsUrl),
       chromeRunning: (tabClosed) => this.chromeRunning(tabClosed),
-      endAfterLoss: () => this.endAfterDisconnect(),
+      endAfterLoss: (lost) => this.endAfterDisconnect(lost.lossCause),
       endBroken: () => this.stop('crash'),
       switched: (cdp) => this.switchedTo(cdp),
       isStarted: () => this.started,
@@ -659,16 +687,24 @@ export class Session {
   }
 
   /**
-   * End the session after its page connection was lost. A launched Chrome
-   * still running a moment later means the tab was closed (e.g.
-   * `Target.closeTarget`), a normal end; otherwise Chrome went away (a
-   * crashing Chrome can drop the connection just before it exits).
+   * End the session after its page connection was lost. Chrome gets a
+   * moment to exit first (a crashing Chrome can drop the connection just
+   * before it exits); `lossEndReason` then tells a crash, a lost connection
+   * with a known cause and a closed tab (e.g. `Target.closeTarget`) apart.
+   *
+   * @param cause - Why the connection was lost, when the connection knows
    */
-  private async endAfterDisconnect(): Promise<void> {
+  private async endAfterDisconnect(cause?: ConnectionLossCause): Promise<void> {
     if (this.chrome) await delay(CRASH_SETTLE_MS);
-    const tabClosed = this.chrome !== null && isProcessAlive(this.chrome.pid);
-    if (tabClosed) log.info('The page was closed; ending the session');
-    await this.stop(tabClosed ? 'closed' : 'crash');
+    const chrome: ChromeAfterLoss = !this.chrome
+      ? 'unknown'
+      : isProcessAlive(this.chrome.pid)
+        ? 'running'
+        : 'exited';
+    const reason = lossEndReason(chrome, cause);
+    if (reason === 'closed') log.info('The page was closed; ending the session');
+    if (reason === 'disconnected') log.info(`The connection to Chrome was lost (${cause})`);
+    await this.stop(reason, cause);
   }
 
   /**

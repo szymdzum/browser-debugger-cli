@@ -57,7 +57,7 @@ export interface PageHost {
   /** After a lost connection: whether Chrome still runs (given time to exit unless the tab said it closed) */
   chromeRunning: (tabClosed: boolean) => Promise<boolean>;
   /** End the session after its tab's connection was lost for good */
-  endAfterLoss: () => Promise<void>;
+  endAfterLoss: (lost: CDPConnection) => Promise<void>;
   /** End a session left without a working tab */
   endBroken: () => Promise<void>;
   /** The session moved to another tab's connection */
@@ -208,7 +208,7 @@ export class PageSwitcher {
     if (this.losses.has(lost) || (started && lost !== this.cdp)) return;
     const handled = started
       ? this.exclusive(() => this.recover(lost, tabClosed))
-      : this.host.endAfterLoss();
+      : this.host.endAfterLoss(lost);
     this.losses.set(
       lost,
       handled.catch(() => undefined)
@@ -217,7 +217,9 @@ export class PageSwitcher {
 
   /**
    * After the session tab's connection was lost: return to the tab's opener
-   * (or the tab used before it) while Chrome runs, else end the session.
+   * (or the tab used before it) while Chrome runs, else end the session. A
+   * connection lost for a known cause (a message over the size limit, missed
+   * pongs) ends it too: the tab was not closed.
    *
    * @param lost - The lost connection
    * @param tabClosed - Chrome said the tab closed
@@ -227,11 +229,11 @@ export class PageSwitcher {
     const running = await this.host.chromeRunning(tabClosed);
     const closedId = this.host.store.targetInfo?.id;
     const fallback =
-      running && closedId && !this.host.isStopping()
+      running && closedId && !lost.lossCause && !this.host.isStopping()
         ? this.host.tabs.fallbackFor(closedId)
         : undefined;
     if (closedId && fallback && (await this.returnTo(closedId, fallback))) return;
-    await this.host.endAfterLoss();
+    await this.host.endAfterLoss(lost);
   }
 
   /**

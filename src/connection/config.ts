@@ -1,3 +1,7 @@
+import { constants } from 'node:buffer';
+
+const { MAX_STRING_LENGTH } = constants;
+
 /**
  * CDP connection configuration.
  *
@@ -20,18 +24,12 @@ export interface CDPConfig {
   keepaliveInterval: number;
   /** Maximum connection retry attempts (default: 3) */
   maxConnectionRetries: number;
-  /** Maximum reconnection attempts (default: 5) */
-  maxReconnectAttempts: number;
   /** Base retry delay in milliseconds (default: 1000) */
   baseRetryDelay: number;
   /** Maximum retry delay in milliseconds (default: 5000) */
   maxRetryDelay: number;
-  /** Maximum reconnect delay in milliseconds (default: 10000) */
-  maxReconnectDelay: number;
   /** Maximum missed pongs before considering connection dead (default: 3) */
   maxMissedPongs: number;
-  /** Pong timeout in milliseconds (default: 5000) */
-  pongTimeout: number;
 }
 
 /**
@@ -49,12 +47,9 @@ export const DEFAULT_CDP_CONFIG: CDPConfig = {
   connectionTimeout: 10000,
   keepaliveInterval: 30000,
   maxConnectionRetries: 3,
-  maxReconnectAttempts: 5,
   baseRetryDelay: 1000,
   maxRetryDelay: 5000,
-  maxReconnectDelay: 10000,
   maxMissedPongs: 3,
-  pongTimeout: 5000,
 };
 
 /**
@@ -63,12 +58,15 @@ export const DEFAULT_CDP_CONFIG: CDPConfig = {
 export const WEBSOCKET_CONFIG = {
   /** WebSocket handshake timeout in milliseconds */
   handshakeTimeout: 5000,
-  /** Maximum payload size in bytes (100MB for large DOM snapshots) */
-  maxPayload: 100 * 1024 * 1024,
+  /**
+   * Maximum message size in bytes: Node's longest string (about 512 MiB).
+   * A UTF-8 message never has more characters than bytes, so every accepted
+   * message converts to a string; a larger one closes the socket (ws code
+   * 1009) and the connection names `message-too-large` as the cause.
+   */
+  maxPayload: MAX_STRING_LENGTH,
   /** Normal closure code */
   normalClosure: 1000,
-  /** No pong received closure code */
-  noPongClosure: 1001,
 } as const;
 
 /**

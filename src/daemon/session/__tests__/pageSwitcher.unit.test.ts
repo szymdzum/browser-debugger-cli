@@ -323,6 +323,24 @@ void describe('PageSwitcher', () => {
     assert.deepEqual(host.ended, ['loss']);
   });
 
+  void it('hands the lost connection to the session end, so it can tell why it was lost', async () => {
+    const host = await fakeHost();
+    host.chromeRunning = () => Promise.resolve(false);
+    const handed: unknown[] = [];
+    host.endAfterLoss = (...args: unknown[]) => {
+      handed.push(args[0]);
+      return Promise.resolve();
+    };
+    const switcher = new PageSwitcher(host);
+    const popup = new FakeConnection('P');
+    switcher.adopt(popup as unknown as CDPConnection, []);
+
+    switcher.onPageDisconnected(popup as unknown as CDPConnection);
+    await switcher.pageLost(popup as unknown as CDPConnection);
+
+    assert.deepEqual(handed, [popup]);
+  });
+
   void it('drops the requests in flight before a failed switch', async () => {
     const host = await fakeHost((_cdp, start) =>
       start.kind === 'switched' ? Promise.reject(new Error('failed')) : Promise.resolve([])

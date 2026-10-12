@@ -40,9 +40,15 @@ export function formatSessionList(data: { sessions: RunningSessionInfo[] }): str
         .trimEnd()
     );
   }
-  const ended = data.sessions.flatMap(({ name, endReason, endedAt }) =>
+  const ended = data.sessions.flatMap(({ name, endReason, endCause, endedAt }) =>
     endReason && endedAt !== undefined
-      ? [endedSessionText(name ?? DEFAULT_SESSION_LABEL, { reason: endReason, endedAt })]
+      ? [
+          endedSessionText(name ?? DEFAULT_SESSION_LABEL, {
+            reason: endReason,
+            ...(endCause && { cause: endCause }),
+            endedAt,
+          }),
+        ]
       : []
   );
   if (ended.length > 0) {

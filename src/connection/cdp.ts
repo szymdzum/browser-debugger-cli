@@ -1,7 +1,13 @@
 import WebSocket from 'ws';
 
 import type { CDPEventSource, EventCleanup } from './events.js';
-import type { CDPMessage, ConnectionOptions, CreateOptions, Logger } from './types.js';
+import type {
+  CDPMessage,
+  ConnectionLossCause,
+  ConnectionOptions,
+  CreateOptions,
+  Logger,
+} from './types.js';
 
 import { delay as asyncDelay } from '@/utils/async.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -14,11 +20,11 @@ const WEBSOCKET_CONNECTION_CLOSED_ERROR = 'WebSocket connection closed';
 const CONNECTION_CLOSED_ERROR = 'Connection closed';
 const NOT_CONNECTED_BROWSER_ERROR = 'Not connected to browser';
 const NOT_CONNECTED_URL_ERROR = 'Not connected - no WebSocket URL available';
-const RECONNECTED_SUCCESS_MESSAGE = 'Reconnected successfully';
-const CONNECTION_LOST_MESSAGE = 'Connection lost: no pong received';
-const PONG_TIMEOUT_MESSAGE = 'Pong timeout - connection may be stale';
-const NO_PONG_RECEIVED_REASON = 'No pong received';
+const CONNECTION_LOST_MESSAGE = (missed: number): string =>
+  `Connection lost: no pong for ${missed} pings; terminating the socket`;
 const NORMAL_CLOSURE_REASON = 'Normal closure';
+/** ws error code for a message over `maxPayload` */
+const MESSAGE_TOO_LARGE_CODE = 'WS_ERR_UNSUPPORTED_MESSAGE_LENGTH';
 
 const CONNECTION_ATTEMPT_FAILED_MESSAGE = (attempt: number, delay: number): string =>
   `Connection attempt ${attempt + 1} failed, retrying in ${delay}ms...`;
@@ -28,16 +34,9 @@ const FAILED_CONNECT_ATTEMPTS_ERROR = (maxRetries: number, lastErrorMessage?: st
   `Failed to connect after ${maxRetries} attempts: ${lastErrorMessage}`;
 const WEBSOCKET_CLOSED_MESSAGE = (code: number, reason: string): string =>
   `WebSocket closed: ${code} - ${reason}`;
-const RECONNECTING_MESSAGE = (delay: number, attempt: number, maxAttempts: number): string =>
-  `Reconnecting in ${delay}ms... (attempt ${attempt}/${maxAttempts})`;
-const UNEXPECTED_DATA_TYPE_ERROR = (dataType: string): string =>
-  `Unexpected data type in CDP message: ${dataType}`;
-const DATA_CONVERSION_ERROR = (errorMsg: string): string =>
-  `Failed to convert message data: ${errorMsg}`;
-const JSON_PARSE_ERROR = (errorMsg: string): string => `Failed to parse JSON message: ${errorMsg}`;
-const MESSAGE_ROUTING_ERROR = (errorMsg: string): string => `Failed to route message: ${errorMsg}`;
-
-const RECONNECTION_FAILED_ERROR = (errorMsg: string): string => `Reconnection failed: ${errorMsg}`;
+const SOCKET_ERROR_MESSAGE = (errorMsg: string): string => `WebSocket error: ${errorMsg}`;
+const UNEXPECTED_DATA_TYPE_ERROR = 'Unexpected data type in CDP message: not a Buffer';
+const NO_ID_OR_METHOD_MESSAGE = 'Received CDP message with neither ID nor method - ignoring';
 const INVALID_WEBSOCKET_URL_ERROR = (url: string, errorMsg: string): string =>
   `Invalid WebSocket URL: ${url}. Error: ${errorMsg}`;
 
@@ -47,7 +46,7 @@ const INVALID_WEBSOCKET_URL_ERROR = (url: string, errorMsg: string): string =>
  * Handles bidirectional communication with Chrome via CDP:
  * - Request/response correlation with message IDs
  * - Event subscription and handling
- * - Connection lifecycle (connect, reconnect, keepalive)
+ * - Connection lifecycle (connect, keepalive, loss cause)
  * - Graceful error handling and cleanup
  */
 
@@ -81,16 +80,12 @@ export class CDPConnection implements CDPEventSource {
   >();
 
   private pingInterval: NodeJS.Timeout | null = null;
-  private pongTimeout: NodeJS.Timeout | null = null;
   private missedPongs = 0;
 
   private wsUrl = '';
-  private autoReconnect = false;
-  private reconnectAttempts = 0;
   private isIntentionallyClosed = false;
-  private onReconnect?: (() => Promise<void>) | undefined;
+  private lostBecause: ConnectionLossCause | undefined;
   private onDisconnect?: ((code: number, reason: string) => void | Promise<void>) | undefined;
-  private connectionOptions: ConnectionOptions = {};
   private readonly createWebSocket: WebSocketFactory;
   private readonly logger: Logger;
   private readonly config = DEFAULT_CDP_CONFIG;
@@ -123,7 +118,6 @@ export class CDPConnection implements CDPEventSource {
    * // With options
    * const cdp = await CDPConnection.create(wsUrl, {
    *   timeout: 10000,
-   *   autoReconnect: true,
    *   logger: customLogger
    * });
    *
@@ -143,9 +137,8 @@ export class CDPConnection implements CDPEventSource {
    * Connect to Chrome via WebSocket.
    *
    * We retry with exponential backoff because Chrome startup can be slow and
-   * network conditions may cause temporary failures. Auto-reconnect defaults
-   * to false for CLI tools where connection loss should fail fast rather than
-   * continue indefinitely.
+   * network conditions may cause temporary failures. A connection lost once
+   * open is not reopened: `onDisconnect` is called and the caller decides.
    *
    * @param wsUrl - WebSocket debugger URL from CDP target
    * @param options - Connection configuration options (`signal` stops retrying)
@@ -153,21 +146,16 @@ export class CDPConnection implements CDPEventSource {
    */
   async connect(wsUrl: string, options: ConnectionOptions = {}): Promise<void> {
     const maxRetries = options.maxRetries ?? this.config.maxConnectionRetries;
-    const autoReconnect = options.autoReconnect ?? false;
-    const { onReconnect, onDisconnect } = options;
 
     this.wsUrl = wsUrl;
-    this.autoReconnect = autoReconnect;
-    this.onReconnect = onReconnect;
-    this.onDisconnect = onDisconnect;
+    this.onDisconnect = options.onDisconnect;
     this.isIntentionallyClosed = false;
-    this.connectionOptions = options;
+    this.lostBecause = undefined;
 
     let lastError: Error | undefined;
     for (let attempt = 0; attempt < maxRetries && !options.signal?.aborted; attempt++) {
       try {
         await this.attemptConnection(wsUrl, options);
-        this.reconnectAttempts = 0;
         return;
       } catch (error) {
         lastError = error as Error;
@@ -244,10 +232,10 @@ export class CDPConnection implements CDPEventSource {
   /**
    * Configure WebSocket event handlers for connection lifecycle.
    *
-   * We handle close events asynchronously to prevent blocking the WebSocket
-   * event loop during cleanup and reconnection attempts. A socket that never
-   * opened is a failed attempt, not a disconnect: `connect()` retries it, so it
-   * must not trigger `onDisconnect` or auto-reconnect.
+   * A socket that never opened is a failed attempt, not a disconnect:
+   * `connect()` retries it, so it must not trigger `onDisconnect`. An error on
+   * an open socket (ws closes it right after) is logged and kept as the loss
+   * cause, read through `lossCause` by `onDisconnect`.
    *
    * @param resolve - Promise resolve function for successful connection
    * @param reject - Promise reject function for connection failure
@@ -271,33 +259,27 @@ export class CDPConnection implements CDPEventSource {
       resolve();
     });
 
-    this.ws.on('error', (error) => {
+    this.ws.on('error', (error: Error & { code?: string }) => {
       clearTimeout(connectTimeout);
-      reject(error);
+      if (!opened) {
+        reject(error);
+        return;
+      }
+      this.logger.info(SOCKET_ERROR_MESSAGE(getErrorMessage(error)));
+      this.lostBecause ??=
+        error.code === MESSAGE_TOO_LARGE_CODE ? 'message-too-large' : 'socket-error';
     });
 
     this.ws.on('close', (code, reason) => {
-      void (async () => {
-        this.stopKeepalive();
-
-        if (this.isIntentionallyClosed || !opened) {
-          return;
-        }
-
-        this.logger.info(WEBSOCKET_CLOSED_MESSAGE(code, reason.toString()));
-
-        this.clearPendingMessages(new CDPConnectionError(WEBSOCKET_CONNECTION_CLOSED_ERROR));
-
-        if (this.onDisconnect) {
-          void Promise.resolve(this.onDisconnect(code, reason.toString())).catch((error) => {
-            this.logger.info(`[cdp] onDisconnect callback error: ${error}`);
-          });
-        }
-
-        if (this.autoReconnect && this.reconnectAttempts < this.config.maxReconnectAttempts) {
-          await this.attemptReconnection();
-        }
-      })();
+      this.stopKeepalive();
+      if (this.isIntentionallyClosed || !opened) return;
+      this.logger.info(WEBSOCKET_CLOSED_MESSAGE(code, reason.toString()));
+      this.clearPendingMessages(new CDPConnectionError(WEBSOCKET_CONNECTION_CLOSED_ERROR));
+      if (this.onDisconnect) {
+        void Promise.resolve(this.onDisconnect(code, reason.toString())).catch((error) => {
+          this.logger.info(`[cdp] onDisconnect callback error: ${getErrorMessage(error)}`);
+        });
+      }
     });
 
     this.ws.on('ping', () => {
@@ -306,10 +288,6 @@ export class CDPConnection implements CDPEventSource {
 
     this.ws.on('pong', () => {
       this.missedPongs = 0;
-      if (this.pongTimeout) {
-        clearTimeout(this.pongTimeout);
-        this.pongTimeout = null;
-      }
     });
 
     this.ws.on('message', (incomingData: WebSocket.RawData) => {
@@ -338,34 +316,17 @@ export class CDPConnection implements CDPEventSource {
   }
 
   /**
-   * Convert WebSocket raw data to string using appropriate method.
-   *
-   * Handles all WebSocket data types with a clean conversion strategy.
-   * Uses a lookup approach for better maintainability and performance.
+   * Convert WebSocket raw data to a string. ws 8 delivers every text message
+   * as one Buffer (fragments already joined); `maxPayload` keeps it within
+   * Node's longest string.
    *
    * @param data - Raw WebSocket data to convert
-   * @returns Converted string message
-   * @throws Error if data type is unsupported
+   * @returns Message text
+   * @throws Error if the data is not a Buffer
    */
   private convertRawDataToString(data: WebSocket.RawData): string {
-    try {
-      if (typeof data === 'string') {
-        return data;
-      }
-
-      if (Buffer.isBuffer(data)) {
-        return data.toString(UTF8_ENCODING);
-      }
-
-      if (Array.isArray(data)) {
-        return Buffer.concat(data).toString(UTF8_ENCODING);
-      }
-
-      throw new Error(UNEXPECTED_DATA_TYPE_ERROR(typeof data));
-    } catch (error) {
-      console.error(DATA_CONVERSION_ERROR(getErrorMessage(error)));
-      throw error;
-    }
+    if (!Buffer.isBuffer(data)) throw new Error(UNEXPECTED_DATA_TYPE_ERROR);
+    return data.toString(UTF8_ENCODING);
   }
 
   /**
@@ -379,18 +340,11 @@ export class CDPConnection implements CDPEventSource {
    * @throws Error if JSON is invalid or message structure is malformed
    */
   private parseJSONMessage(messageText: string): CDPMessage {
-    try {
-      const message = JSON.parse(messageText) as CDPMessage;
-
-      if (typeof message !== 'object' || message === null) {
-        throw new Error('CDP message must be an object');
-      }
-
-      return message;
-    } catch (error) {
-      console.error(JSON_PARSE_ERROR(getErrorMessage(error)));
-      throw error;
+    const message = JSON.parse(messageText) as CDPMessage;
+    if (typeof message !== 'object' || message === null) {
+      throw new Error('CDP message must be an object');
     }
+    return message;
   }
 
   /**
@@ -400,24 +354,16 @@ export class CDPConnection implements CDPEventSource {
    * Some messages may have both, which is valid and should be handled.
    *
    * @param message - Parsed CDP message to route
-   * @throws Error if routing fails
    */
   private routeCDPMessage(message: CDPMessage): void {
-    try {
-      if (message.id !== undefined) {
-        this.handleCDPResponse(message);
-      }
-
-      if (message.method) {
-        this.handleCDPEvent(message);
-      }
-
-      if (message.id === undefined && !message.method) {
-        console.warn('Received CDP message with neither ID nor method - ignoring');
-      }
-    } catch (error) {
-      console.error(MESSAGE_ROUTING_ERROR(getErrorMessage(error)));
-      throw error;
+    if (message.id !== undefined) {
+      this.handleCDPResponse(message);
+    }
+    if (message.method) {
+      this.handleCDPEvent(message);
+    }
+    if (message.id === undefined && !message.method) {
+      this.logger.debug(NO_ID_OR_METHOD_MESSAGE);
     }
   }
 
@@ -502,76 +448,37 @@ export class CDPConnection implements CDPEventSource {
   }
 
   /**
-   * Attempt to reconnect to the WebSocket after connection loss.
-   *
-   * Uses exponential backoff with longer delays than initial connection
-   * attempts because reconnection typically indicates more serious issues.
-   * Calls the onReconnect callback after successful reconnection to allow
-   * callers to re-enable CDP domains or reinitialize state.
-   *
-   * @throws Never throws - errors are logged but not propagated to avoid
-   *         breaking reconnection loops
-   */
-  private async attemptReconnection(): Promise<void> {
-    this.reconnectAttempts++;
-    const delay = this.calculateBackoffDelay(
-      this.reconnectAttempts - 1,
-      this.config.maxReconnectDelay
-    );
-    this.logger.info(
-      RECONNECTING_MESSAGE(delay, this.reconnectAttempts, this.config.maxReconnectAttempts)
-    );
-
-    await asyncDelay(delay);
-
-    try {
-      await this.attemptConnection(this.wsUrl, this.connectionOptions);
-      this.reconnectAttempts = 0;
-      this.logger.info(RECONNECTED_SUCCESS_MESSAGE);
-
-      if (this.onReconnect) {
-        await this.onReconnect();
-      }
-    } catch (error) {
-      this.logger.info(RECONNECTION_FAILED_ERROR(getErrorMessage(error)));
-    }
-  }
-
-  /**
    * Start keepalive ping/pong mechanism.
    *
    * We use 3 missed pongs as the threshold because network conditions can
    * cause occasional packet loss, but 3 consecutive failures likely indicates
-   * a dead connection that should be terminated rather than waiting longer.
+   * a dead connection. The socket is terminated, not closed: a frozen peer
+   * never answers a close frame, and ws would wait 30 s more for it. With
+   * the default 30 s interval the loss is noticed 60–90 s after the last pong.
+   *
+   * @param interval - Milliseconds between pings
    */
   private startKeepalive(interval: number): void {
     this.pingInterval = setInterval(() => {
-      if (this.ws?.readyState === WebSocket.OPEN) {
-        this.missedPongs++;
-
-        if (this.missedPongs >= this.config.maxMissedPongs) {
-          this.logger.info(CONNECTION_LOST_MESSAGE);
-          this.ws.close(WEBSOCKET_CONFIG.noPongClosure, NO_PONG_RECEIVED_REASON);
-          return;
-        }
-
-        this.ws.ping();
-
-        this.pongTimeout = setTimeout(() => {
-          this.logger.info(PONG_TIMEOUT_MESSAGE);
-        }, this.config.pongTimeout);
+      if (this.ws?.readyState !== WebSocket.OPEN) return;
+      this.missedPongs++;
+      if (this.missedPongs >= this.config.maxMissedPongs) {
+        this.logger.info(CONNECTION_LOST_MESSAGE(this.missedPongs));
+        this.lostBecause ??= 'no-pong';
+        this.ws.terminate();
+        return;
       }
+      this.ws.ping();
     }, interval);
   }
 
+  /**
+   * Stop sending keepalive pings.
+   */
   private stopKeepalive(): void {
     if (this.pingInterval) {
       clearInterval(this.pingInterval);
       this.pingInterval = null;
-    }
-    if (this.pongTimeout) {
-      clearTimeout(this.pongTimeout);
-      this.pongTimeout = null;
     }
   }
 
@@ -748,7 +655,6 @@ export class CDPConnection implements CDPEventSource {
    */
   close(code = WEBSOCKET_CONFIG.normalClosure, reason = NORMAL_CLOSURE_REASON): void {
     this.isIntentionallyClosed = true;
-    this.autoReconnect = false;
     this.stopKeepalive();
 
     this.clearPendingMessages(new CDPConnectionError(CONNECTION_CLOSED_ERROR));
@@ -780,7 +686,6 @@ export class CDPConnection implements CDPEventSource {
    */
   terminate(): void {
     this.isIntentionallyClosed = true;
-    this.autoReconnect = false;
     this.stopKeepalive();
 
     this.clearPendingMessages(new CDPConnectionError('Connection terminated'));
@@ -791,6 +696,15 @@ export class CDPConnection implements CDPEventSource {
     }
 
     this.removeAllListeners();
+  }
+
+  /**
+   * Why the connection was lost, once it was: set before `onDisconnect` runs.
+   *
+   * @returns The cause, or undefined (open, closed by bdg, or closed by the peer without an error)
+   */
+  get lossCause(): ConnectionLossCause | undefined {
+    return this.lostBecause;
   }
 
   /**

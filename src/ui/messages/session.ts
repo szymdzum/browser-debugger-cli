@@ -129,7 +129,11 @@ export function stopFailedError(reason: string): string {
  * @param end - How and when it ended
  * @returns One line
  */
-export function lastSessionEndText(end: { reason: string; endedAt: number }): string {
+export function lastSessionEndText(end: {
+  reason: string;
+  cause?: string;
+  endedAt: number;
+}): string {
   return `The last session ended ${sessionEndText(end)}`;
 }
 
@@ -140,7 +144,10 @@ export function lastSessionEndText(end: { reason: string; endedAt: number }): st
  * @param end - How and when it ended
  * @returns One line
  */
-export function endedSessionText(label: string, end: { reason: string; endedAt: number }): string {
+export function endedSessionText(
+  label: string,
+  end: { reason: string; cause?: string; endedAt: number }
+): string {
   return `${label} ended ${sessionEndText(end)}`;
 }
 
@@ -155,20 +162,31 @@ export function untrustedSessionText(label: string, why: string): string {
   return `${label}: ${why}`;
 }
 
+/** What became of Chrome after a lost connection: true in both modes (an attached Chrome is left alone) */
+const DISCONNECTED_CHROME_NOTE = '; a Chrome bdg launched was closed with the session';
+
 /**
  * When and why a session ended without `bdg stop`.
  *
  * @param end - How and when it ended
  * @returns `at <time>: <why>`
  */
-function sessionEndText(end: { reason: string; endedAt: number }): string {
+function sessionEndText(end: { reason: string; cause?: string; endedAt: number }): string {
   const why: Record<string, string> = {
     crash: 'Chrome crashed or was closed',
     closed: 'its page was closed',
     timeout: 'the --timeout was reached',
+    disconnected: 'bdg lost its connection to Chrome',
+  };
+  const because: Record<string, string> = {
+    'message-too-large': 'a CDP message was over the size limit of about 512 MiB',
+    'no-pong': 'Chrome stopped answering pings',
+    'socket-error': 'a socket error, see daemon.log',
   };
   const at = new Date(end.endedAt).toLocaleTimeString();
-  return `at ${at}: ${why[end.reason] ?? end.reason}`;
+  const cause = end.cause ? ` (${because[end.cause] ?? end.cause})` : '';
+  const chrome = end.reason === 'disconnected' ? DISCONNECTED_CHROME_NOTE : '';
+  return `at ${at}: ${why[end.reason] ?? end.reason}${cause}${chrome}`;
 }
 
 /**

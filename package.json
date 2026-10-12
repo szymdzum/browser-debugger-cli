@@ -61,7 +61,7 @@
     "chrome-launcher": "^1.2.2",
     "commander": "^15.0.0",
     "devtools-protocol": "^0.0.1710668",
-    "ws": "^8.18.0"
+    "ws": "^8.21.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

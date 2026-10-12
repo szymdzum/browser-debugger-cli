@@ -12,6 +12,7 @@ import {
   ChromeLaunchError,
   ConnectionError,
 } from '@/connection/errors.js';
+import type { ConnectionLossCause } from '@/connection/types.js';
 import { MAX_TIMER_DELAY_MS } from '@/constants.js';
 import { Session, StartCancelledError, type SessionEndReason } from '@/daemon/session/Session.js';
 import { shownTabSwitch } from '@/daemon/session/interactions.js';
@@ -508,8 +509,8 @@ export class SessionController {
   ): Promise<Omit<StartSessionResponse, 'type' | 'sessionId'>> {
     const { type: _type, sessionId: _sessionId, url, ...options } = request;
     try {
-      const session = Session.create(url, filterDefined(options), (reason) =>
-        this.handleSessionEnded(reason)
+      const session = Session.create(url, filterDefined(options), (reason, cause) =>
+        this.handleSessionEnded(reason, cause)
       );
       onCreated(session);
       if (this.closing) {
@@ -565,10 +566,11 @@ export class SessionController {
    * React to the session ending (stop, crash, or timeout).
    *
    * @param reason - Why the session ended
+   * @param cause - Why the connection to Chrome was lost (`disconnected`)
    */
-  private handleSessionEnded(reason: SessionEndReason): void {
-    log.info(`Session ended (reason: ${reason})`);
-    if (reason !== 'normal') writeLastSessionEnd(reason);
+  private handleSessionEnded(reason: SessionEndReason, cause?: ConnectionLossCause): void {
+    log.info(`Session ended (reason: ${reason}${cause ? `, cause: ${cause}` : ''})`);
+    if (reason !== 'normal') writeLastSessionEnd(reason, cause);
     this.session = null;
     this.closing = true;
     this.onSessionEnded(reason);
