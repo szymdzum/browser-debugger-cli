@@ -591,7 +591,7 @@ export async function onScriptTarget<
   },
 >(
   cdp: CDPConnection,
-  params: { selector?: string; index?: number; backendNodeId?: number },
+  params: { selector?: string; index?: number; backendNodeId?: number; listIndex?: number },
   work: (target: ScriptTarget) => Promise<T>
 ): Promise<T> {
   const err = staleNodeError();
@@ -616,7 +616,7 @@ export async function onScriptTarget<
   } catch (error) {
     const replaced = target?.replacedBuiltins ?? [];
     if (error instanceof ActionScriptError) {
-      throw actionScriptFailure(error, replaced, params.selector ?? '');
+      throw actionScriptFailure(error, replaced, params.selector ?? '', params.listIndex);
     }
     if (error instanceof CommandError && replaced.length > 0) {
       const suggestion = error.metadata['suggestion'];
@@ -646,12 +646,14 @@ export async function onScriptTarget<
  * @param error - What the action reported
  * @param replaced - Built-ins the page replaced
  * @param selector - Selector the user gave (or the cached query's selector)
+ * @param listIndex - Index the user gave for a listed element
  * @returns Error to throw
  */
 function actionScriptFailure(
   error: ActionScriptError,
   replaced: string[],
-  selector: string
+  selector: string,
+  listIndex: number | undefined
 ): CommandError {
   if (replaced.length > 0) {
     const err = actionBrokenByPageError(error.action, error.exception, replaced);
@@ -661,7 +663,7 @@ function actionScriptFailure(
       EXIT_CODES.RESOURCE_CONFLICT
     );
   }
-  const err = actionScriptFailedError(error.action, error.exception, selector);
+  const err = actionScriptFailedError(error.action, error.exception, selector, listIndex);
   return new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SOFTWARE_ERROR);
 }
 
