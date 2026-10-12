@@ -102,7 +102,7 @@ void describe('Element class lists', () => {
   void it('shows no class for an element without classes in human output', async () => {
     await bdg(['page', 'navigate', `${fixture.url}classes`]);
     const query = await bdg(['dom', 'query', 'input, p, button']);
-    assert.match(query, /\[0\] <input id="plain" name="plain" type="text">\n/);
+    assert.match(query, /\[0\] <input id="plain" name="plain">\n/);
     assert.match(query, /\[1\] <p id="empty"> Empty class\n/);
     assert.match(query, /\[2\] <p id="blank"> Blank class\n/);
     assert.match(query, /\[3\] <button id="styled" class="primary \+1"> Save\n/);
