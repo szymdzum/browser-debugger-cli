@@ -23,8 +23,13 @@ import {
 import { COMPOSED_JS, FLAT_TEXT_JS } from '@/runtime/dom/elementInfo.js';
 import { ActionScriptError, throwIfInvalidSelector } from '@/runtime/dom/formFillHelpers/shared.js';
 import { frameScopedConnection } from '@/runtime/dom/frameScopedConnection.js';
-import { callFunctionInBdgWorld, callFunctionInMainWorld } from '@/runtime/page/bdgWorld.js';
+import {
+  callFunctionInBdgWorld,
+  callFunctionInMainWorld,
+  resolveNodeInBdgWorld,
+} from '@/runtime/page/bdgWorld.js';
 import { findReplacedBuiltins } from '@/runtime/page/replacedBuiltins.js';
+import { indexSourceOf } from '@/session/QueryCacheManager.js';
 import type { CDPSender } from '@/telemetry/objectExpander.js';
 import { createLogger } from '@/ui/logging/index.js';
 import {
@@ -365,6 +370,11 @@ export interface ScriptTarget {
   replacedBuiltins?: string[];
   /** The page replaced the selector search, so the matches were found in bdg's world */
   boundInBdgWorld?: boolean;
+  /**
+   * A listed element that has no selector of its own (an `a11y query` match):
+   * a selector that finds it again, or `null` when none finds exactly it.
+   */
+  nodeSelector?: string | null;
 }
 
 /**
@@ -414,7 +424,7 @@ async function bindTargetNode(cdp: CDPConnection, backendNodeId: number): Promis
  */
 async function resolveScriptTarget(
   cdp: CDPConnection,
-  params: { selector?: string; index?: number; backendNodeId?: number }
+  params: { selector?: string; index?: number; backendNodeId?: number; listIndex?: number }
 ): Promise<ScriptTarget> {
   if (params.backendNodeId === undefined) {
     const selector = params.selector ?? '';
@@ -431,11 +441,100 @@ async function resolveScriptTarget(
   }
   const scriptCdp = await bindTargetNode(cdp, params.backendNodeId);
   const replaced = await replacedBuiltins(scriptCdp);
+  const nodeSelector = namesCacheKey(params)
+    ? await selectorOfNode(cdp, params.backendNodeId)
+    : undefined;
   return {
     selector: BOUND_TARGET_SELECTOR,
     cdp: scriptCdp,
+    ...(nodeSelector !== undefined && { nodeSelector }),
     ...(replaced.length > 0 && { replacedBuiltins: replaced }),
   };
+}
+
+/**
+ * Whether the request's selector is the key of a cache whose elements carry
+ * no selector (`a11y query`, `dom form`), not one the user can run.
+ *
+ * @param params - Request with the selector and the index the user gave
+ * @returns True for an index into such a cache
+ */
+function namesCacheKey(params: { selector?: string; listIndex?: number }): boolean {
+  if (params.listIndex === undefined) return false;
+  return indexSourceOf(params.listIndex, params.selector ?? '').command !== 'dom query';
+}
+
+/**
+ * Page function: a selector that finds `this` again with the selector search
+ * ({@link DEEP_QUERY_JS}) and nothing else, or null: `#id` when unique, else
+ * a path from the nearest ancestor with a unique id (or from the top of its
+ * tree, shadow roots included). An element in a frame gets none, as the top
+ * page's search finds elements of every frame.
+ */
+const NODE_SELECTOR_FUNCTION = `function () {
+  const deepQuery = ${DEEP_QUERY_JS};
+  const finds = (selector, expected) => {
+    try {
+      const matches = deepQuery(selector, null);
+      return matches.length === 1 && matches[0] === expected;
+    } catch (e) {
+      return false;
+    }
+  };
+  const segment = (el) => {
+    if (el.id && finds('#' + CSS.escape(el.id), el)) return '#' + CSS.escape(el.id);
+    const tag = el.tagName.toLowerCase();
+    const parent = el.parentElement;
+    const same = parent ? Array.from(parent.children).filter((c) => c.tagName === el.tagName) : [];
+    return same.length > 1 ? tag + ':nth-of-type(' + (same.indexOf(el) + 1) + ')' : tag;
+  };
+  if (window.top !== window) return null;
+  const parts = [];
+  for (let el = this; el; el = el.parentElement) {
+    const part = segment(el);
+    parts.unshift(part);
+    if (part.startsWith('#')) break;
+  }
+  const selector = parts.join(' > ');
+  return finds(selector, this) ? selector : null;
+}`;
+
+/**
+ * A selector that finds a cached element again (see {@link NODE_SELECTOR_FUNCTION}),
+ * built in bdg's world so a page that replaced `CSS.escape` or
+ * `querySelectorAll` cannot spoil it.
+ *
+ * @param cdp - CDP connection
+ * @param backendNodeId - Backend node id from the query cache
+ * @returns The selector, or null when none finds exactly that element
+ *   (the handle used to build it is always released, best effort)
+ */
+export async function selectorOfNode(
+  cdp: CDPConnection,
+  backendNodeId: number
+): Promise<string | null> {
+  const objectGroup = `bdg-selector-${Date.now()}`;
+  try {
+    const resolved = await resolveNodeInBdgWorld(cdp, { backendNodeId, objectGroup });
+    const { objectId } = resolved.object;
+    if (!objectId) return null;
+    const answer = (await cdp.send('Runtime.callFunctionOn', {
+      objectId,
+      functionDeclaration: NODE_SELECTOR_FUNCTION,
+      returnByValue: true,
+    })) as { result?: { value?: unknown } };
+    const value = answer.result?.value;
+    return typeof value === 'string' ? value : null;
+  } catch (error) {
+    log.debug(`No selector for the element: ${getErrorMessage(error)}`);
+    return null;
+  } finally {
+    await cdp
+      .send('Runtime.releaseObjectGroup', { objectGroup })
+      .catch((error: unknown) =>
+        log.debug(`Selector handle not released: ${getErrorMessage(error)}`)
+      );
+  }
 }
 
 /**
@@ -591,7 +690,7 @@ export async function onScriptTarget<
   },
 >(
   cdp: CDPConnection,
-  params: { selector?: string; index?: number; backendNodeId?: number },
+  params: { selector?: string; index?: number; backendNodeId?: number; listIndex?: number },
   work: (target: ScriptTarget) => Promise<T>
 ): Promise<T> {
   const err = staleNodeError();
@@ -600,7 +699,10 @@ export async function onScriptTarget<
     target = await resolveScriptTarget(cdp, params);
     const replaced = target.replacedBuiltins ?? [];
     const result = withReplacedBuiltins(
-      withUserSelector(await work(target), params.selector),
+      withUserSelector(
+        await work(target),
+        target.nodeSelector === undefined ? params.selector : target.nodeSelector
+      ),
       target.boundInBdgWorld ? replaced : []
     );
     if (result.error && replaced.length > 0) {
@@ -616,7 +718,7 @@ export async function onScriptTarget<
   } catch (error) {
     const replaced = target?.replacedBuiltins ?? [];
     if (error instanceof ActionScriptError) {
-      throw actionScriptFailure(error, replaced, params.selector ?? '');
+      throw actionScriptFailure(error, replaced, params.selector ?? '', params.listIndex);
     }
     if (error instanceof CommandError && replaced.length > 0) {
       const suggestion = error.metadata['suggestion'];
@@ -646,12 +748,14 @@ export async function onScriptTarget<
  * @param error - What the action reported
  * @param replaced - Built-ins the page replaced
  * @param selector - Selector the user gave (or the cached query's selector)
+ * @param listIndex - Index the user gave for a listed element
  * @returns Error to throw
  */
 function actionScriptFailure(
   error: ActionScriptError,
   replaced: string[],
-  selector: string
+  selector: string,
+  listIndex: number | undefined
 ): CommandError {
   if (replaced.length > 0) {
     const err = actionBrokenByPageError(error.action, error.exception, replaced);
@@ -661,7 +765,7 @@ function actionScriptFailure(
       EXIT_CODES.RESOURCE_CONFLICT
     );
   }
-  const err = actionScriptFailedError(error.action, error.exception, selector);
+  const err = actionScriptFailedError(error.action, error.exception, selector, listIndex);
   return new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SOFTWARE_ERROR);
 }
 
@@ -719,14 +823,18 @@ function withReplacedBuiltins<T extends { warning?: string; replacedBuiltins?: s
  * Report the user's selector instead of the internal placeholder.
  *
  * @param result - Script result
- * @param selector - Selector the user gave (or the cached query's selector)
- * @returns Result with the placeholder replaced
+ * @param selector - Selector the user gave (or the cached query's selector); null for none
+ * @returns Result with the placeholder replaced, or without a selector for null
  */
 function withUserSelector<T extends { selector?: string }>(
   result: T,
-  selector: string | undefined
+  selector: string | null | undefined
 ): T {
   if (result.selector !== BOUND_TARGET_SELECTOR) return result;
+  if (selector === null) {
+    const { selector: _placeholder, ...rest } = result;
+    return rest as T;
+  }
   return { ...result, ...(selector !== undefined && { selector }) };
 }
 

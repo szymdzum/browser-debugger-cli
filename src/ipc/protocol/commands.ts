@@ -352,6 +352,8 @@ export interface DomSubmitCommand extends DialogChoice {
   index?: number;
   /** Exact element from the query cache (overrides selector/index) */
   backendNodeId?: number;
+  /** The index the user gave for that element (named in suggestions) */
+  listIndex?: number;
   waitNavigation?: boolean;
   waitNetwork?: number;
   timeout?: number;
@@ -368,6 +370,8 @@ export interface DomPressKeyCommand extends DialogChoice {
   index?: number;
   /** Exact element from the query cache (overrides selector/index) */
   backendNodeId?: number;
+  /** The index the user gave for that element (named in suggestions) */
+  listIndex?: number;
   times?: number;
   modifiers?: string;
   wait?: boolean;
@@ -383,6 +387,8 @@ export interface DomScrollCommand extends DialogChoice {
   index?: number;
   /** Exact element from the query cache (overrides selector/index) */
   backendNodeId?: number;
+  /** The index the user gave for that element (named in suggestions) */
+  listIndex?: number;
   down?: number;
   up?: number;
   left?: number;

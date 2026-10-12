@@ -2175,13 +2175,21 @@ export function clickTargetDetachedError(selector: string): ErrorWithSuggestion 
  * @param action - The action, e.g. `fill`
  * @param exception - What the script threw, e.g. `TypeError: x is not a function`
  * @param selector - Selector the action was for
+ * @param listIndex - Index the user gave for a listed element; named instead of the selector (the cached query's key, not a selector the user can run)
  * @returns Error naming the exception
  */
 export function actionScriptFailedError(
   action: string,
   exception: string,
-  selector: string
+  selector: string,
+  listIndex?: number
 ): ErrorWithSuggestion {
+  if (Number.isInteger(listIndex) && (listIndex ?? -1) >= 0) {
+    return {
+      message: `The ${action} script failed in the page: ${exception}`,
+      suggestion: `Check the element with ${sessionCommand(`bdg dom get ${listIndex}`)}, or act on it with ${sessionCommand("bdg dom eval '…'")}`,
+    };
+  }
   const damage = detectSelectorQuoteDamage(selector);
   return {
     message: `The ${action} script failed in the page: ${exception}`,

@@ -252,8 +252,9 @@ export function registerFormInteractionCommands(program: Command): void {
           return runElementCommand<Parameters<typeof domSubmit>[0], SubmitResult>({
             selectorOrIndex,
             index: options.index,
-            buildRequest: (target) => ({
+            buildRequest: (target, source) => ({
               ...target,
+              ...(source && { listIndex: source.index }),
               ...dialogs,
               ...(options.waitNavigation !== undefined && {
                 waitNavigation: options.waitNavigation,
@@ -299,8 +300,9 @@ export function registerFormInteractionCommands(program: Command): void {
           return runElementCommand<Parameters<typeof domPressKey>[0], PressKeyResult>({
             selectorOrIndex,
             index: options.index,
-            buildRequest: (target) => ({
+            buildRequest: (target, source) => ({
               ...target,
+              ...(source && { listIndex: source.index }),
               ...dialogs,
               key,
               ...(options.times !== undefined && { times: options.times }),
@@ -379,7 +381,11 @@ async function runScroll(
     return runElementCommand<Parameters<typeof domScroll>[0], ScrollResult>({
       selectorOrIndex: selector,
       index: options.index,
-      buildRequest: (target) => ({ ...target, ...request }),
+      buildRequest: (target, source) => ({
+        ...target,
+        ...(source && { listIndex: source.index }),
+        ...request,
+      }),
       call: domScroll,
       command: 'scroll',
       action: 'scroll',
