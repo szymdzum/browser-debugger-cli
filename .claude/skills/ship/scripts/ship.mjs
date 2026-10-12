@@ -8,15 +8,7 @@
  */
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import {
-  appendFileSync,
-  existsSync,
-  readFileSync,
-  readdirSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -49,16 +41,18 @@ function run(cmd, args, opts = {}) {
 }
 
 const TRANSIENT_GH =
-  /unexpected EOF|connection reset|ECONNRESET|timed? ?out|TLS handshake timeout|HTTP 5\d\d|\b50[0234]\b/i;
+  /unexpected EOF|connection reset|ECONNRESET|i\/o timeout|context deadline exceeded|Client\.Timeout|TLS handshake timeout|HTTP 5\d\d/i;
 const RETRY_BACKOFF_MS = [2000, 5000, 10_000, 20_000];
 
 /**
  * Whether a failed gh call looks like a network or GitHub hiccup worth retrying.
+ * Only gh's stderr counts: the error message starts with the command line, whose
+ * numbers (a PR 502, `--limit 500`) must not look like an HTTP status.
  *
- * @param {{ message?: string, stderr?: unknown }} err
+ * @param {{ stderr?: unknown }} err
  */
 export function isTransientGhError(err) {
-  return TRANSIENT_GH.test(`${err?.message ?? ''}\n${err?.stderr ?? ''}`);
+  return TRANSIENT_GH.test(String(err?.stderr ?? ''));
 }
 
 /**
@@ -80,7 +74,7 @@ export function retryTransient(fn, opts = {}) {
       const firstLine = String(err.stderr || err.message)
         .trim()
         .split('\n')[0];
-      console.log(
+      console.error(
         `gh failed (${firstLine}); retry ${attempt + 1}/${backoff.length} in ${backoff[attempt] / 1000}s`
       );
       wait(backoff[attempt]);
@@ -953,7 +947,24 @@ function brief(argv) {
 }
 
 /**
- * Appends one row per merged PR to log.md, the data the retro reads.
+ * Inserts a row at the end of the main PR table of log.md (the table whose
+ * header starts with `| merged`), before any later section such as Escaped.
+ *
+ * @param {string} text log.md content
+ * @param {string} row
+ */
+export function insertLogRow(text, row) {
+  const lines = text.split('\n');
+  const header = lines.findIndex((l) => l.startsWith('| merged'));
+  if (header === -1) throw new Error('log.md has no PR table (header "| merged")');
+  let end = header + 1;
+  while (lines[end + 1]?.startsWith('|')) end++;
+  lines.splice(end + 1, 0, row);
+  return lines.join('\n');
+}
+
+/**
+ * Inserts one row per merged PR into log.md, the data the retro reads.
  *
  * @param {string[]} argv `<pr> tier= review=b/s/n tester=bugs rounds= model= tokens= note=`
  */
@@ -973,7 +984,8 @@ function log(argv) {
   const issues = pr.closingIssuesReferences.map((i) => `#${i.number}`).join(' ') || '-';
   const cell = (k) => (keys[k] ?? '-').replace(/\|/g, '/');
   const row = `| ${(pr.mergedAt ?? new Date().toISOString()).slice(0, 10)} | #${pr.number} | ${issues} | ${cell('tier')} | ${cell('review')} | ${cell('tester')} | ${cell('rounds')} | ${cell('model')} | ${cell('tokens')} | ${cell('note')} |`;
-  appendFileSync(join(SKILL_DIR, 'log.md'), `${row}\n`);
+  const file = join(SKILL_DIR, 'log.md');
+  writeFileSync(file, insertLogRow(readFileSync(file, 'utf8'), row));
   console.log(row);
   return EXIT.ok;
 }
