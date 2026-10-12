@@ -192,6 +192,20 @@ export function invalidIpcTimeoutEnvError(value: string, max: number): ErrorWith
 }
 
 /**
+ * An option that takes a value was followed directly by `--json` / `-j`.
+ *
+ * @param option - The option as typed (`--last`)
+ * @param token - The flag that stands where its value should be
+ * @returns Message and suggestion
+ */
+export function jsonTakenAsValueError(option: string, token: string): ErrorWithSuggestion {
+  return {
+    message: `Option ${option} needs a value, but ${token} follows it`,
+    suggestion: `Give ${option} a value before ${token}, or write ${option}=${token} to use "${token}" as the value`,
+  };
+}
+
+/**
  * The daemon cannot parse a request frame.
  *
  * @param reason - What is wrong with the frame

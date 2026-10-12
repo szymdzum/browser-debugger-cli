@@ -233,7 +233,7 @@ bdg dom screenshot /tmp/vp.png --no-full-page       # Viewport only
 
 ## JSON Output and Exit Codes
 
-Add `--json` (`-j`) to any command for `{ version, success, data }` (or `{ success: false, error, exitCode, suggestion }`); read it with `jq`, not line by line. Lists (`dom query`, `dom a11y query`) are bounded; `count` is the total, `--limit 0` lists all. `bdg --help --json` lists every command, flag and exit code; `bdg <command> --help --json` describes one in full.
+Add `--json` (`-j`) to any command for `{ version, success, data }` (or `{ success: false, error, exitCode, suggestion }`); read it with `jq`, not line by line. Lists (`dom query`, `dom a11y query`) are bounded; `count` is the total, `--limit 0` lists all. `bdg --help --json` lists every command, flag and exit code; `bdg <command> --help --json` describes one in full. `--json` typed right after an option that needs a value (`--last --json`) is exit 81 with an envelope, not the value; write `--opt=--json` to pass that text.
 
 If a command is interrupted, Ctrl-C (exit 130) or SIGTERM (exit 143) still prints the envelope, with `error: "Interrupted"` and a suggestion saying what may have happened; after an interrupted action (click, fill, navigate, ...), check with `bdg peek` before repeating it.
 

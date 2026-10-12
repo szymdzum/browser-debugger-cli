@@ -151,4 +151,15 @@ void describe('--json right after an option that takes a value (#669)', () => {
     assert.equal(envelopeOf(run).success, false);
     assert.equal(run.stderr, '');
   });
+
+  void it('--json inside a value or attached with = is a value, not a missing one', async () => {
+    const inside = await runCli(['cdp', 'Runtime.evaluate', '--params', '{"--json":1}', '--json']);
+    assert.equal(inside.status, EXIT_CODES.RESOURCE_NOT_FOUND);
+    assert.doesNotMatch(inside.stdout, /needs a value/);
+
+    const attached = await runCli(['network', 'list', '--last=--json', '--json']);
+    assert.equal(attached.status, EXIT_CODES.INVALID_ARGUMENTS);
+    assert.match(envelopeOf(attached).error ?? '', /Invalid --last/);
+    assert.equal(attached.stderr, '');
+  });
 });
