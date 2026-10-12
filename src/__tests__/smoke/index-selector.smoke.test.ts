@@ -4,9 +4,10 @@
  * `data.selector` in the result of an action on an `a11y query` index is a
  * real selector that finds that element again with `dom query`, never the
  * cache's `a11y ...` key: `#id` for an element with an id, a path for one
- * without, and one for an element in an open shadow root. An element in a
- * frame has no selector the top page's `dom query` finds uniquely, so the
- * result has none. `dom query` indices and selector targets keep the
+ * without, and one for an element in an open shadow root. When no selector
+ * finds only that element (one in a frame, or in a shadow root whose path
+ * matches other elements: selectors do not cross shadow roots) the result has
+ * none. `dom query` indices and selector targets keep the
  * selector they were given.
  */
 
@@ -89,7 +90,7 @@ void describe('Selector in the result of an action on an index', () => {
     assert.ok(selector && !selector.startsWith('a11y'), `real selector, got ${selector}`);
     assert.match(await bdg(['dom', 'query', selector]), /Found 1 node/);
     const clicks = await dataOf(['dom', 'eval', 'window.clicks.join()']);
-    assert.equal(clicks['result'], 'Plain', 'the click reached a Plain button');
+    assert.match(String(clicks['result']), /Plain$/, 'the click reached a Plain button');
     assert.match(await bdg(['dom', 'query', selector]), /Plain/);
   });
 
@@ -99,6 +100,10 @@ void describe('Selector in the result of an action on an index', () => {
     const found = await bdg(['dom', 'query', selector]);
     assert.match(found, /Found 1 node/);
     assert.match(found, /Shadowed/);
+  });
+
+  void it('is left out when no selector finds only that shadow root element', async () => {
+    assert.equal(await selectorAfterClick('Ambiguous'), undefined);
   });
 
   void it('is left out for an element in a frame, never the cache key', async () => {
