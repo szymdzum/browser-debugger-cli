@@ -7,6 +7,8 @@ import { CDPTimeoutError } from '@/connection/errors.js';
 import { trackInFlightRequests, type InFlightRequests } from '@/connection/inFlightRequests.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import {
+  NO_MATCH_PREFIX,
+  NO_MATCH_SUFFIX,
   invalidFormMessage,
   submitNetworkBusyWarning,
   submitTimeoutError,
@@ -62,7 +64,7 @@ const PREPARE_SUBMIT_SCRIPT = `
 (function(selector, parts, index) {
   const matches = (${FIND_ELEMENTS_JS})(selector, parts);
   if (matches.length === 0) {
-    return { action: 'fail', reason: 'not-found', error: 'Element not found: ' + selector };
+    return { action: 'fail', reason: 'not-found', error: '${NO_MATCH_PREFIX}' + selector + '${NO_MATCH_SUFFIX}' };
   }
   const el = typeof index === 'number' ? matches[index] : matches[0];
   if (!el) {

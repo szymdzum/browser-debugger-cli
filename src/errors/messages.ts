@@ -397,6 +397,23 @@ export function invalidResponseError(reason: string): string {
   return `[bdg] Invalid response from daemon: ${reason}`;
 }
 
+/** Start of the message for a selector that matches nothing (page scripts put the selector between this and {@link NO_MATCH_SUFFIX}) */
+export const NO_MATCH_PREFIX = 'No nodes found matching "';
+
+/** End of the message for a selector that matches nothing */
+export const NO_MATCH_SUFFIX = '"';
+
+/**
+ * The one message for a selector that matches nothing, on every command
+ * that takes a selector.
+ *
+ * @param selector - Selector as given
+ * @returns e.g. `No nodes found matching "#nothing"`
+ */
+export function noMatchMessage(selector: string): string {
+  return `${NO_MATCH_PREFIX}${selector}${NO_MATCH_SUFFIX}`;
+}
+
 /**
  * Generate element not found error with shell quote detection and CDP fallback.
  *
@@ -418,7 +435,7 @@ export function invalidResponseError(reason: string): string {
  * ```
  */
 export function elementNotFoundError(selector: string): ErrorWithSuggestion {
-  const message = `Element not found: ${selector}`;
+  const message = noMatchMessage(selector);
   const discovery = [
     'Discovery path:',
     `  1. Query first:  ${sessionCommand(`bdg dom query '${selector}'`)}`,
@@ -1720,7 +1737,7 @@ export function noNodesFoundError(
       : '';
   const note = unreachableElementsNote(selector, context.unsearched);
   return {
-    message: `No nodes found matching "${selector}"`,
+    message: noMatchMessage(selector),
     suggestion: withLoadingHint(
       joinLines(
         context.similar,
@@ -2076,7 +2093,7 @@ export function notInAccessibilityTreeError(
  */
 export function fillableElementNotFoundError(selector: string): ErrorWithSuggestion {
   return {
-    message: `Element not found: ${selector}`,
+    message: noMatchMessage(selector),
     suggestion: 'Verify the selector matches a fillable element (input, textarea, select)',
   };
 }
