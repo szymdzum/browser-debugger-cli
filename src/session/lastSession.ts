@@ -29,13 +29,16 @@ export interface LastSessionEnd {
  * Record how the session ended.
  *
  * @param reason - Why it ended
- * @param _cause - Why the connection to Chrome was lost
+ * @param cause - Why the connection to Chrome was lost (`disconnected`)
  */
-export function writeLastSessionEnd(reason: UnexpectedEndReason, _cause?: ConnectionLossCause): void {
+export function writeLastSessionEnd(
+  reason: UnexpectedEndReason,
+  cause?: ConnectionLossCause
+): void {
   try {
     AtomicFileWriter.writeSync(
       getSessionFilePath('LAST_SESSION'),
-      JSON.stringify({ reason, endedAt: Date.now() })
+      JSON.stringify({ reason, ...(cause && { cause }), endedAt: Date.now() })
     );
   } catch (error) {
     log.debug(`Could not record how the session ended: ${getErrorMessage(error)}`);

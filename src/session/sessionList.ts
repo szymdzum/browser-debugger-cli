@@ -5,6 +5,7 @@
 
 import * as fs from 'fs';
 
+import type { ConnectionLossCause } from '@/connection/types.js';
 import { getStatus } from '@/ipc/client.js';
 import type { StatusResponseData } from '@/ipc/session/queries.js';
 import { isSessionChrome, readLiveDaemonPid } from '@/session/cleanup/staleSession.js';
@@ -57,6 +58,8 @@ export interface RunningSessionInfo {
   cleanup?: string;
   /** Why an `ended` session ended */
   endReason?: UnexpectedEndReason;
+  /** Why the connection to Chrome was lost (`endReason: disconnected`) */
+  endCause?: ConnectionLossCause;
   /** When an `ended` session ended (epoch ms) */
   endedAt?: number;
   /** Why an `untrusted` session's directory is not safe to use */
@@ -185,6 +188,7 @@ function describeEnded({ name, dir }: SessionDirEntry): RunningSessionInfo | nul
     name,
     state: 'ended',
     endReason: end.reason,
+    ...(end.cause && { endCause: end.cause }),
     endedAt: end.endedAt,
     cleanup: sessionCommand('bdg cleanup', name),
   };

@@ -261,6 +261,8 @@ bdg cleanup --force       # Kill a stuck session (daemon + its Chrome)
 bdg https://localhost:5173 --chrome-flags="--ignore-certificate-errors --allow-insecure-localhost"   # Self-signed certs; several flags in one space-separated string, no quoting (or BDG_CHROME_FLAGS)
 ```
 
+A session that is gone says why in `bdg status` (`The last session ended at …: bdg lost its connection to Chrome (Chrome stopped answering pings)`; JSON `lastSession.reason`/`cause`). `disconnected` means Chrome still ran: start a new session.
+
 ## When NOT to Use bdg
 
 Static HTML or plain API calls: `curl` (+ `jq`) is faster. Use bdg for JavaScript-rendered pages, interaction, layout and styling, console errors and browser network traffic.

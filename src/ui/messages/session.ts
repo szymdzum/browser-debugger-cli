@@ -129,7 +129,11 @@ export function stopFailedError(reason: string): string {
  * @param end - How and when it ended
  * @returns One line
  */
-export function lastSessionEndText(end: { reason: string; endedAt: number }): string {
+export function lastSessionEndText(end: {
+  reason: string;
+  cause?: string;
+  endedAt: number;
+}): string {
   return `The last session ended ${sessionEndText(end)}`;
 }
 
@@ -164,14 +168,21 @@ export function untrustedSessionText(label: string, why: string): string {
  * @param end - How and when it ended
  * @returns `at <time>: <why>`
  */
-function sessionEndText(end: { reason: string; endedAt: number }): string {
+function sessionEndText(end: { reason: string; cause?: string; endedAt: number }): string {
   const why: Record<string, string> = {
     crash: 'Chrome crashed or was closed',
     closed: 'its page was closed',
     timeout: 'the --timeout was reached',
+    disconnected: 'bdg lost its connection to Chrome',
+  };
+  const because: Record<string, string> = {
+    'message-too-large': 'a CDP message was over the size limit of about 512 MiB',
+    'no-pong': 'Chrome stopped answering pings',
+    'socket-error': 'a socket error, see daemon.log',
   };
   const at = new Date(end.endedAt).toLocaleTimeString();
-  return `at ${at}: ${why[end.reason] ?? end.reason}`;
+  const cause = end.cause ? ` (${because[end.cause] ?? end.cause})` : '';
+  return `at ${at}: ${why[end.reason] ?? end.reason}${cause}`;
 }
 
 /**
