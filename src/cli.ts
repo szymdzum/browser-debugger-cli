@@ -15,7 +15,7 @@ import {
 import { assertKnownHelpTopic, helpTopicPath, usageErrorDetails } from '@/commands/helpTopic.js';
 import { assertNotMistypedCommand } from '@/commands/start.js';
 import { CommandError } from '@/errors/index.js';
-import { genericError, jsonTakenAsValueError } from '@/errors/messages.js';
+import { genericError, jsonTakenAsValueError, noCommandOrUrlError } from '@/errors/messages.js';
 import { buildProgram } from '@/program.js';
 import { selectSession } from '@/session/sessionName.js';
 import { OutputBuilder, buildSuccessResponse, stringifyEnvelope } from '@/ui/OutputBuilder.js';
@@ -90,13 +90,22 @@ function wantsHelp(): boolean {
 const BARE_JSON_FLAGS = new Set(['--json', '-j', '--debug', FULL_HELP_FLAG]);
 
 /**
- * Whether `bdg --json` was run on its own (no command, URL or other option),
- * which answers with the machine-readable help.
+ * Whether `bdg --json` was run with no command and no URL: only the JSON
+ * flag and global options (`--debug`, `--full`, `--session <name>`).
  *
  * @returns True for a bare `bdg --json`
  */
 function hasNoArguments(): boolean {
-  return process.argv.slice(2).every((arg) => BARE_JSON_FLAGS.has(arg));
+  const args = process.argv.slice(2);
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] ?? '';
+    if (arg === '--session') {
+      if (args[i + 1]?.startsWith('-') ?? true) return false;
+      i++;
+    } else if (arg === '--session=') return false;
+    else if (!arg.startsWith('--session=') && !BARE_JSON_FLAGS.has(arg)) return false;
+  }
+  return true;
 }
 
 /**
@@ -160,10 +169,16 @@ async function main(): Promise<void> {
   assertKnownHelpTopic(program, helpTopic);
   assertNotMistypedCommand(program, process.argv);
 
-  if (jsonMode && (wantsHelp() || hasNoArguments())) {
+  if (jsonMode && wantsHelp()) {
     selectSession(sessionFromArgv(process.argv));
     console.log(JSON.stringify(helpJson(program)));
     process.exit(0);
+  }
+  if (jsonMode && hasNoArguments()) {
+    const { message, suggestion } = noCommandOrUrlError();
+    const exitCode = EXIT_CODES.INVALID_ARGUMENTS;
+    console.log(stringifyEnvelope(OutputBuilder.buildJsonError(message, { exitCode, suggestion })));
+    process.exit(exitCode);
   }
 
   assertJsonNotTakenAsValue(resolveCommand(program, commandWords()));

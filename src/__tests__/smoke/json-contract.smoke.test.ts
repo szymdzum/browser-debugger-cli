@@ -9,9 +9,9 @@
  */
 
 import * as assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
-import { rmSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
@@ -107,12 +107,7 @@ void describe('JSON contract', () => {
     await expectEnvelope(['dom', '--json'], 81);
     await expectEnvelope(['dom', 'a11y', '--json'], 81);
 
-    const bare = await runCommand('--json', [], { timeout: 15000 });
-    assert.equal(bare.exitCode, 0);
-    assert.ok(
-      'command' in (JSON.parse(bare.stdout) as object),
-      'bare --json prints the help schema'
-    );
+    await expectEnvelope(['--json'], 81);
     const status = await expectEnvelope(['--json', 'status'], 0);
     assert.equal(status.data?.['active'], false, '--json before the subcommand is honored');
 
@@ -120,6 +115,70 @@ void describe('JSON contract', () => {
     assert.equal(help.exitCode, 0);
     assert.match(help.stdout, /Usage: bdg dom/);
     assert.equal(await isDaemonRunning(), false, '`bdg help` must not start a session');
+  });
+
+  void it('answers a bare --json with one error envelope, not the help document (#695)', async () => {
+    for (const args of [
+      ['--json'],
+      ['-j'],
+      ['--json', '--debug'],
+      ['--debug', '--json'],
+      ['--json', '--session', 'x'],
+      ['--session', 'x', '--json'],
+      ['--session=x', '--json'],
+    ]) {
+      const result = await runCommand(args[0] ?? '', args.slice(1), { timeout: 15000 });
+      const label = `bdg ${args.join(' ')}`;
+      const envelope = JSON.parse(result.stdout) as Envelope;
+      assert.equal(envelope.success, false, `${label}: success`);
+      assert.equal(envelope.exitCode, 81, `${label}: envelope exitCode`);
+      assert.equal(result.exitCode, 81, `${label}: process exit code`);
+      assert.match(envelope.error ?? '', /No command or URL given/, `${label}: message`);
+      assert.match(envelope.suggestion ?? '', /bdg <url>/, `${label}: suggests starting`);
+      assert.match(envelope.suggestion ?? '', /bdg --help --json/, `${label}: suggests help`);
+      assert.equal(result.stderr, '', `${label}: stderr`);
+    }
+  });
+
+  void it('keeps the precise errors for a --session without a value (#695)', () => {
+    const cases: Array<[string[], RegExp]> = [
+      [['--session', '--json'], /Option --session needs a value, but --json follows it/],
+      [['--json', '--session', '--debug'], /Invalid session name "--debug"/],
+      [['--json', '--session'], /argument missing/],
+      [['--json', '--session='], /Invalid session name ""/],
+    ];
+    const sessionDir = path.join(os.tmpdir(), `bdg-695-nosession-${process.pid}`);
+    rmSync(sessionDir, { recursive: true, force: true });
+    for (const [args, message] of cases) {
+      const result = spawnSync('node', [CLI_PATH, ...args], {
+        encoding: 'utf8',
+        timeout: 15000,
+        env: { ...process.env, BDG_SESSION_DIR: sessionDir },
+      });
+      const label = `bdg ${args.join(' ')}`;
+      const envelope = JSON.parse(result.stdout) as Envelope;
+      assert.equal(result.status, 81, `${label}: exit`);
+      assert.equal(envelope.success, false, `${label}: success`);
+      assert.match(envelope.error ?? '', message, `${label}: message`);
+      assert.doesNotMatch(envelope.error ?? '', /No command or URL given/, label);
+    }
+    assert.equal(existsSync(sessionDir), false, 'no session directory is created');
+  });
+
+  void it('keeps the machine-readable help and the human help (#695)', async () => {
+    for (const args of [
+      ['--help', '--json'],
+      ['--json', '--help'],
+      ['-h', '-j'],
+    ]) {
+      const result = await runCommand(args[0] ?? '', args.slice(1), { timeout: 15000 });
+      assert.equal(result.exitCode, 0, `bdg ${args.join(' ')}`);
+      assert.ok('command' in (JSON.parse(result.stdout) as object), 'help document');
+    }
+    const human = spawnSync('node', [CLI_PATH], { encoding: 'utf8', timeout: 15000 });
+    assert.equal(human.status, 0);
+    assert.match(human.stderr, /For AI Agents/);
+    assert.equal(human.stdout, '');
   });
 
   void it('reports usage and validation errors with exit 81', async () => {
