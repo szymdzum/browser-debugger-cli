@@ -8,6 +8,7 @@ import {
   pageClosedDuringEvalError,
   pageNavigatedDuringEvalError,
   promiseTimeoutError,
+  resultNotSentError,
   scriptExecutionError,
   scriptTimeoutError,
 } from '@/errors/messages.js';
@@ -619,27 +620,58 @@ export interface EvalTarget {
 }
 
 /**
- * The error for an evaluation that did not answer in time: a target that
- * still answers was only waiting for a promise that never settled
- * (`await new Promise(() => {})`); one that does not answer is busy, and its
- * scripts are terminated.
+ * Whether a script has the `await` keyword. REPL mode makes Chrome wait for
+ * a script's top-level `await` itself, so a script with one that gets no
+ * answer may be waiting for a promise (a false positive, `await` in a
+ * string, only keeps the wider message).
+ *
+ * @param script - The script
+ * @returns True when `await` appears in it
+ */
+function mentionsAwait(script: string): boolean {
+  return /\bawait\b/.test(script);
+}
+
+/**
+ * The error for an evaluation that did not answer in time. A script without
+ * `await` that returned a promise is answered at once (the evaluation does
+ * not await, see {@link settlePromise}), so when the target still answers
+ * yet sent nothing, Chrome could not send the result (about 256 MiB and
+ * more). A script with `await` may instead be waiting for a promise. A
+ * target that does not answer is busy, and its scripts are terminated.
  *
  * @param cdp - CDP connection of the target
  * @param scope - Whether the script ran in the page or an iframe
+ * @param script - The script
  * @returns The error to report (102)
  */
-async function evaluationTimeoutError(cdp: CDPSender, scope: BusyScope): Promise<CommandError> {
-  if (await isAnswering(cdp, LIVENESS_CHECK_MS)) return promiseTimeout();
-  return terminatePageScripts(cdp, scope);
+async function evaluationTimeoutError(
+  cdp: CDPSender,
+  scope: BusyScope,
+  script: string
+): Promise<CommandError> {
+  if (!(await isAnswering(cdp, LIVENESS_CHECK_MS))) return terminatePageScripts(cdp, scope);
+  return mentionsAwait(script) ? promiseTimeout(true) : resultUnsent();
+}
+
+/**
+ * The page ran the script but Chrome never sent its result.
+ *
+ * @returns Command error (102)
+ */
+function resultUnsent(): CommandError {
+  const err = resultNotSentError(EVAL_TIMEOUT_MS);
+  return new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.CDP_TIMEOUT);
 }
 
 /**
  * A promise the script awaited or returned did not settle in time.
  *
+ * @param resultMayBeUnsent - Whether the script may have finished, its result unsent
  * @returns Command error (102)
  */
-function promiseTimeout(): CommandError {
-  const err = promiseTimeoutError(EVAL_TIMEOUT_MS);
+function promiseTimeout(resultMayBeUnsent = false): CommandError {
+  const err = promiseTimeoutError(EVAL_TIMEOUT_MS, resultMayBeUnsent);
   return new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.CDP_TIMEOUT);
 }
 
@@ -700,6 +732,7 @@ function evaluateOptions(
 ): Omit<Protocol.Runtime.EvaluateRequest, 'expression'> {
   return {
     returnByValue: false,
+    awaitPromise: false,
     generatePreview: true,
     replMode: true,
     objectGroup,
@@ -738,12 +771,12 @@ export async function evaluateScript(
     const response = await withDeadline(
       executeScript(session, script, evaluateOptions(target, objectGroup)),
       EVAL_TIMEOUT_MS + TERMINATION_GRACE_MS,
-      () => evaluationTimeoutError(target.recovery ?? session, scope)
+      () => evaluationTimeoutError(target.recovery ?? session, scope, script)
     );
     const settled = await withDeadline(
       settlePromise(session, response.result, script),
       EVAL_TIMEOUT_MS,
-      promiseTimeout
+      () => promiseTimeout()
     );
     return await toEvalResult(session, settled, target.full ?? false);
   } catch (error) {

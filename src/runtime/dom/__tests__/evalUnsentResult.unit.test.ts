@@ -51,4 +51,17 @@ void describe('evaluateScript with a result Chrome cannot send', () => {
     assert.doesNotMatch(error.message, /promise/i);
     assert.match(`${error.message} ${String(error.metadata['suggestion'])}`, /too large to send/i);
   });
+
+  void it('keeps the promise message for a script that awaits, naming the large result as a second cause', async () => {
+    const script = 'await new Promise(() => {})';
+    const outcome = evaluateScript(pageThatCannotSend(script), script).catch(
+      (error: unknown) => error
+    );
+    await clock.tickAndFlush(30_000);
+    const error = await outcome;
+    assert.ok(error instanceof CommandError);
+    assert.equal(error.exitCode, 102);
+    assert.match(error.message, /The awaited promise did not settle within 20s/);
+    assert.match(String(error.metadata['suggestion']), /too large to send/);
+  });
 });

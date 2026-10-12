@@ -36,6 +36,12 @@ const WEBSOCKET_CLOSED_MESSAGE = (code: number, reason: string): string =>
   `WebSocket closed: ${code} - ${reason}`;
 const SOCKET_ERROR_MESSAGE = (errorMsg: string): string => `WebSocket error: ${errorMsg}`;
 const UNEXPECTED_DATA_TYPE_ERROR = 'Unexpected data type in CDP message: not a Buffer';
+/** Start of a response text: Chrome writes the command id first (`{"id":7,`) */
+const UNPARSABLE_RESPONSE_ID = /^\s*\{\s*"id"\s*:\s*(\d+)\s*[,}]/;
+
+/** Error text of a command whose response could not be parsed */
+const UNPARSABLE_RESPONSE_ERROR = 'CDP response could not be parsed';
+
 const NO_ID_OR_METHOD_MESSAGE = 'Received CDP message with neither ID nor method - ignoring';
 const INVALID_WEBSOCKET_URL_ERROR = (url: string, errorMsg: string): string =>
   `Invalid WebSocket URL: ${url}. Error: ${errorMsg}`;
@@ -306,13 +312,36 @@ export class CDPConnection implements CDPEventSource {
    * @param incomingData - Raw WebSocket message data to parse
    */
   private parseIncomingMessage(incomingData: WebSocket.RawData): void {
+    let messageText: string | undefined;
     try {
-      const messageText = this.convertRawDataToString(incomingData);
+      messageText = this.convertRawDataToString(incomingData);
       const message = this.parseJSONMessage(messageText);
       this.routeCDPMessage(message);
     } catch (error) {
       this.logger.debug(`Failed to process CDP message: ${getErrorMessage(error)}`);
+      if (messageText !== undefined) this.rejectUnparsableResponse(messageText, error);
     }
+  }
+
+  /**
+   * Reject the pending command an unparsable response answers, when its id
+   * can be read from the start of the text (Chrome writes `{"id":N,`
+   * first), instead of leaving the command to wait out its timeout.
+   *
+   * @param messageText - Raw text of the response
+   * @param cause - Why it could not be parsed
+   */
+  private rejectUnparsableResponse(messageText: string, cause: unknown): void {
+    const id = UNPARSABLE_RESPONSE_ID.exec(messageText)?.[1];
+    if (id === undefined) return;
+    const pending = this.pendingMessages.get(Number(id));
+    if (!pending) return;
+    this.logger.info(
+      `CDP response for command ${id} could not be parsed: ${getErrorMessage(cause)}`
+    );
+    this.pendingMessages.delete(Number(id));
+    clearTimeout(pending.timeout);
+    pending.reject(new Error(`${UNPARSABLE_RESPONSE_ERROR}: ${getErrorMessage(cause)}`));
   }
 
   /**
