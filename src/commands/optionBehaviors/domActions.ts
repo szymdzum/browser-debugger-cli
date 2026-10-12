@@ -119,7 +119,8 @@ export const DOM_ACTION_BEHAVIORS: BehaviorTable = {
   },
   'pressKey:--times': {
     default: 'Presses key once',
-    whenEnabled: 'Presses key N times (useful for ArrowDown in autocomplete, Tab navigation)',
+    whenEnabled:
+      'Presses key N times, 1-1000 (useful for ArrowDown in autocomplete, Tab navigation); another number exits 81 ("Use a value between 1 and 1000")',
   },
   'pressKey:--modifiers': {
     whenEnabled:

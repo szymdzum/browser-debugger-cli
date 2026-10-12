@@ -130,7 +130,7 @@ const KEY_CASES: KeyCase[] = [
   { input: 'Foo', suggestion: GROUPS, notSuggested: /Did you mean/ },
   { input: 'Entr', suggestion: /^Did you mean: Enter/ },
   { input: 'F13', suggestion: GROUPS, notSuggested: /Did you mean/ },
-  { input: 'ab', suggestion: GROUPS, notSuggested: /Did you mean|Tab/ },
+  { input: 'ab', suggestion: GROUPS, notSuggested: /Did you mean/ },
 ];
 
 /**

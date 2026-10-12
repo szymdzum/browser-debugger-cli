@@ -20,6 +20,8 @@ export interface KeyDefinition {
   text?: string;
   /** Text typed with Shift on a US layout, when it is not just the uppercased `text` */
   shiftText?: string;
+  /** Modifier the key itself holds down while pressed (Shift, Control, Alt, Meta) */
+  modifier?: keyof typeof MODIFIER_FLAGS;
 }
 
 /**
@@ -55,6 +57,13 @@ const KEY_DEFINITIONS: Record<string, KeyDefinition> = {
   end: { code: 'End', key: 'End', keyCode: 35 },
   pageup: { code: 'PageUp', key: 'PageUp', keyCode: 33 },
   pagedown: { code: 'PageDown', key: 'PageDown', keyCode: 34 },
+
+  numpadenter: { code: 'NumpadEnter', key: 'Enter', keyCode: 13, text: '\r' },
+
+  shift: { code: 'ShiftLeft', key: 'Shift', keyCode: 16, modifier: 'shift' },
+  control: { code: 'ControlLeft', key: 'Control', keyCode: 17, modifier: 'ctrl' },
+  alt: { code: 'AltLeft', key: 'Alt', keyCode: 18, modifier: 'alt' },
+  meta: { code: 'MetaLeft', key: 'Meta', keyCode: 91, modifier: 'meta' },
 
   f1: { code: 'F1', key: 'F1', keyCode: 112 },
   f2: { code: 'F2', key: 'F2', keyCode: 113 },
@@ -92,6 +101,65 @@ for (let i = 0; i < 10; i++) {
   };
 }
 
+/** Other names users write for keys (PUNCTUATION_KEYS adds the DOM code names, e.g. period) */
+const KEY_ALIASES: Record<string, string> = {
+  ctrl: 'control',
+  cmd: 'meta',
+  command: 'meta',
+  esc: 'escape',
+  return: 'enter',
+  del: 'delete',
+  spacebar: 'space',
+  ' ': 'space',
+  up: 'arrowup',
+  down: 'arrowdown',
+  left: 'arrowleft',
+  right: 'arrowright',
+  pgup: 'pageup',
+  pgdn: 'pagedown',
+  pagedn: 'pagedown',
+};
+
+/**
+ * Punctuation keys of a US layout: character, character with Shift, DOM code
+ * and Windows virtual key code.
+ */
+const PUNCTUATION_KEYS: ReadonlyArray<readonly [string, string, string, number]> = [
+  ['`', '~', 'Backquote', 192],
+  ['-', '_', 'Minus', 189],
+  ['=', '+', 'Equal', 187],
+  ['[', '{', 'BracketLeft', 219],
+  [']', '}', 'BracketRight', 221],
+  ['\\', '|', 'Backslash', 220],
+  [';', ':', 'Semicolon', 186],
+  ["'", '"', 'Quote', 222],
+  [',', '<', 'Comma', 188],
+  ['.', '>', 'Period', 190],
+  ['/', '?', 'Slash', 191],
+];
+
+/** Characters typed with Shift on the digit keys 0-9 (US layout) */
+const SHIFTED_DIGITS = ')!@#$%^&*(';
+
+/** Shifted character to the key (as named in {@link KEY_DEFINITIONS}) that types it */
+const SHIFTED_KEYS: Record<string, string> = {};
+
+for (const [character, shifted, code, keyCode] of PUNCTUATION_KEYS) {
+  KEY_DEFINITIONS[character] = {
+    code,
+    key: character,
+    keyCode,
+    text: character,
+    shiftText: shifted,
+  };
+  SHIFTED_KEYS[shifted] = character;
+  KEY_ALIASES[code.toLowerCase()] = character;
+}
+
+for (const [digit, shifted] of [...SHIFTED_DIGITS].entries()) {
+  SHIFTED_KEYS[shifted] = String(digit);
+}
+
 /**
  * Get key definition by name (case-insensitive).
  *
@@ -109,52 +177,40 @@ for (let i = 0; i < 10; i++) {
  */
 export function getKeyDefinition(keyName: string): KeyDefinition | undefined {
   const name = keyName.toLowerCase();
-  const digit = keyName.length === 1 ? SHIFTED_DIGITS.indexOf(keyName) : -1;
-  if (digit !== -1) return KEY_DEFINITIONS[String(digit)];
+  const shiftedKey = keyName.length === 1 ? SHIFTED_KEYS[keyName] : undefined;
+  if (shiftedKey) return KEY_DEFINITIONS[shiftedKey];
   return KEY_DEFINITIONS[KEY_ALIASES[name] ?? name];
 }
 
-/** Other names users write for keys */
-const KEY_ALIASES: Record<string, string> = {
-  esc: 'escape',
-  return: 'enter',
-  del: 'delete',
-  spacebar: 'space',
-  ' ': 'space',
-  up: 'arrowup',
-  down: 'arrowdown',
-  left: 'arrowleft',
-  right: 'arrowright',
-  pgup: 'pageup',
-  pgdn: 'pagedown',
-  pagedn: 'pagedown',
-};
-
-/** Characters typed with Shift on the digit keys 0-9 (US layout) */
-const SHIFTED_DIGITS = ')!@#$%^&*(';
-
 /**
  * Whether a key name needs Shift to produce it (an uppercase letter, or a
- * symbol on a digit key such as "!").
+ * shifted symbol such as "!" or "_").
  *
  * @param keyName - Key name as given
  * @returns True if Shift is implied
  */
 export function impliesShift(keyName: string): boolean {
-  return /^[A-Z]$/.test(keyName) || (keyName.length === 1 && SHIFTED_DIGITS.includes(keyName));
+  return /^[A-Z]$/.test(keyName) || (keyName.length === 1 && keyName in SHIFTED_KEYS);
 }
 
 /**
  * Key names closest to an unknown one.
  *
+ * Only names within a third of the input's length (rounded up) count, so a
+ * one- or two-character input matches nothing, and a function key number
+ * out of range (`F13`) is not matched to its neighbours.
+ *
  * @param keyName - Unknown key name
- * @returns Up to three key names, in their usual spelling
+ * @returns Up to three key names, in their usual spelling; empty when none is close
  */
 export function similarKeyNames(keyName: string): string[] {
-  const names = Object.values(KEY_DEFINITIONS)
-    .map((definition) => definition.key)
-    .filter((key) => key.length > 1);
-  return findSimilar(keyName, names);
+  if (keyName.length < 3 || /^f\d+$/i.test(keyName)) return [];
+  const names = new Set(
+    Object.values(KEY_DEFINITIONS)
+      .map((definition) => definition.key)
+      .filter((key) => key.length > 1)
+  );
+  return findSimilar(keyName, [...names], { maxDistance: Math.ceil(keyName.length / 3) });
 }
 
 /** Accepted modifier names (and common aliases) mapped to their flag. */

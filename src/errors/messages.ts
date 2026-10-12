@@ -1082,18 +1082,20 @@ export function scrollOptionsError(problem: keyof typeof SCROLL_PROBLEMS): Error
   return { message, suggestion };
 }
 
+/** The key groups `dom pressKey` accepts, listed when no key name is close to the input */
+const KEY_GROUPS_SUGGESTION =
+  "Keys: Enter, NumpadEnter, Tab, Escape, Space, Backspace, Delete, ArrowUp/Down/Left/Right, Home, End, PageUp, PageDown, F1-F12, Shift, Control, Alt, Meta, a-z, A-Z, 0-9, punctuation and shifted symbols (. , - _ / ; ' [ ] \\ = ` ! @ ? ...), or a DOM code name (Period, Minus)";
+
 /**
- * A key name `dom pressKey` does not know.
+ * A key name `dom pressKey` does not know (or an empty one).
  *
  * @param keyName - Key as given
  * @param similar - Similar key names
  */
 export function unknownKeyError(keyName: string, similar: string[]): ErrorWithSuggestion {
   return {
-    message: `Unknown key: "${keyName}"`,
-    suggestion: similar.length
-      ? `Did you mean: ${similar.join(', ')}?`
-      : 'Keys: Enter, Tab, Escape, Space, Backspace, Delete, ArrowUp/Down/Left/Right, Home, End, PageUp, PageDown, F1-F12, a-z, A-Z, 0-9, !@#$%^&*()',
+    message: keyName === '' ? 'Key name required' : `Unknown key: "${keyName}"`,
+    suggestion: similar.length ? `Did you mean: ${similar.join(', ')}?` : KEY_GROUPS_SUGGESTION,
   };
 }
 

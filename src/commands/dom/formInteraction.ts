@@ -277,9 +277,12 @@ export function registerFormInteractionCommands(program: Command): void {
     .command('pressKey')
     .description('Press a key on an element (for Enter-to-submit, keyboard navigation)')
     .argument('<selectorOrIndex>', SELECTOR_OR_INDEX_ARGUMENT)
-    .argument('<key>', 'Key to press (Enter, Tab, Escape, Space, ArrowUp, etc.)')
+    .argument(
+      '<key>',
+      'Key to press: a name (Enter, Tab, Escape, Space, ArrowUp, Shift, F5, NumpadEnter), a character (a, A, 5, ., _, /) or a DOM code name (Period); unknown names list the keys'
+    )
     .option('--index <n>', 'Element index if selector matches multiple (0-based)', integerOption(0))
-    .option('--times <n>', 'Press key multiple times (default: 1)', integerOption(1, 1000))
+    .option('--times <n>', 'Press key multiple times (1-1000, default: 1)', integerOption(1, 1000))
     .option(
       '--modifiers <mods>',
       'Modifier keys: shift,ctrl,alt,meta (comma-separated; aliases cmd, control, option)',

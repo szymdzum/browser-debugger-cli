@@ -1071,7 +1071,7 @@ Scroll output reports the viewport without scrollbars (`Viewport: 1905×993`) an
 | Option | Description |
 |--------|-------------|
 | `--index <n>` | Element index if selector matches multiple (0-based) |
-| `--times <n>` | Press key multiple times (default: 1) |
+| `--times <n>` | Press key multiple times (1-1000, default: 1) |
 | `--modifiers <mods>` | Modifier keys: shift,ctrl,alt,meta (comma-separated) |
 | `--no-wait` | Skip network stability check |
 
@@ -1082,6 +1082,10 @@ Scroll output reports the viewport without scrollbars (`Viewport: 1905×993`) an
 - Letters: `a`-`z`
 - Digits: `0`-`9`
 - Function: `F1`-`F12`
+- Modifier keys: `Shift`, `Control` (`Ctrl`), `Alt`, `Meta` (`Cmd`); the key holds its modifier down for its `keydown` (`shiftKey: true`)
+- Numpad: `NumpadEnter` (`key` is `Enter`, `code` is `NumpadEnter`)
+- Punctuation (US layout): `` ` - = [ ] \ ; ' , . / `` and their shifted characters (`~ _ + { } | : " < > ?`, and `! @ # $ % ^ & * ( )` on the digits). A shifted character or a capital letter is sent with Shift, as typed: `_` is `key: "_"`, `code: "Minus"`, `shiftKey: true`. DOM code names work too: `Period`, `Minus`, `Slash`, `Comma`, `Semicolon`, `Quote`, `Backquote`, `Equal`, `BracketLeft`, `BracketRight`, `Backslash`
+- An unknown name (exit 81) suggests close names only (`Entr` suggests `Enter`); short or distant input lists the key groups, and an empty name says `Key name required`
 
 ### Screen Capture
 
