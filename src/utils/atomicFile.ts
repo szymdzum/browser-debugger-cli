@@ -1,10 +1,19 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
+import { promisify } from 'util';
 
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
+import { TEMP_FILE_FLAGS } from '@/utils/safeFile.js';
+import { createTrackedTempFile } from '@/utils/tempFiles.js';
 
 const log = createLogger('atomic-file');
+
+/** Write a whole file through its descriptor */
+const writeToFd = promisify(fs.writeFile);
+
+/** Close a file descriptor */
+const closeFd = promisify(fs.close);
 
 /**
  * Atomic file operations using tmp-file-then-rename pattern.
@@ -78,23 +87,7 @@ export class AtomicFileWriter {
     data: string,
     options: { encoding?: BufferEncoding; mode?: number } = {}
   ): Promise<void> {
-    const tmpPath = this.getTempPath(filePath);
-
-    try {
-      await fs.promises.writeFile(tmpPath, data, {
-        encoding: options.encoding ?? 'utf-8',
-        flag: 'wx',
-        ...(options.mode !== undefined && { mode: options.mode }),
-      });
-      await fs.promises.rename(tmpPath, filePath);
-    } catch (error) {
-      try {
-        await fs.promises.unlink(tmpPath);
-      } catch (cleanupError) {
-        log.debug(`Failed to cleanup temp file ${tmpPath}: ${getErrorMessage(cleanupError)}`);
-      }
-      throw error;
-    }
+    await this.writeThroughTemp(filePath, data, options.encoding ?? 'utf-8', options.mode);
   }
 
   /**
@@ -112,10 +105,36 @@ export class AtomicFileWriter {
    * @throws Error if write operation fails
    */
   static async writeBufferAsync(filePath: string, buffer: Buffer): Promise<void> {
+    await this.writeThroughTemp(filePath, buffer);
+  }
+
+  /**
+   * Write a new temp file (created exclusively, never through a symlink) and
+   * rename it over the target. The temp file is removed when the write fails,
+   * and also when the process exits before the write ends (Ctrl-C, SIGTERM;
+   * #678).
+   *
+   * @param filePath - Target file path
+   * @param data - Data to write
+   * @param encoding - Encoding of string data
+   * @param mode - Permissions of the new file, less the umask (default 0666)
+   * @throws Error if write operation fails
+   */
+  private static async writeThroughTemp(
+    filePath: string,
+    data: string | Buffer,
+    encoding?: BufferEncoding,
+    mode?: number
+  ): Promise<void> {
     const tmpPath = this.getTempPath(filePath);
+    const { fd, untrack } = createTrackedTempFile(tmpPath, TEMP_FILE_FLAGS, mode);
 
     try {
-      await fs.promises.writeFile(tmpPath, buffer);
+      try {
+        await writeToFd(fd, data, encoding === undefined ? {} : { encoding });
+      } finally {
+        await closeFd(fd);
+      }
       await fs.promises.rename(tmpPath, filePath);
     } catch (error) {
       try {
@@ -124,6 +143,8 @@ export class AtomicFileWriter {
         log.debug(`Failed to cleanup temp file ${tmpPath}: ${getErrorMessage(cleanupError)}`);
       }
       throw error;
+    } finally {
+      untrack();
     }
   }
 }
