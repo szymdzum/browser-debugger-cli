@@ -124,8 +124,9 @@ jobs:
       - name: Build package
         run: npm run build
 
-      # The CLI is two files (dist/index.js loads dist/cli.js): run the packed
-      # package (its dependencies from this checkout's node_modules)
+      # The CLI is two files (dist/index.js loads dist/cli.js): run the packed package.
+      # node_modules is linked because --help --json requires devtools-protocol/package.json
+      # at run time; the link would hide a runtime dependency missing from package.json.
       - name: Run the packed CLI
         run: |
           dir="$(mktemp -d)"
