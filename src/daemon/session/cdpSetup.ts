@@ -71,7 +71,6 @@ export async function connectPage(
 ): Promise<CDPConnection> {
   const cdp = new CDPConnection(log);
   await cdp.connect(wsUrl, {
-    autoReconnect: false,
     maxRetries: options.attempts ?? EXTERNAL_CONNECT_ATTEMPTS,
     signal: options.signal,
     onDisconnect: (code, reason) => {

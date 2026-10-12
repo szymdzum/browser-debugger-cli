@@ -50,12 +50,8 @@ export interface ConnectionOptions {
   timeout?: number;
   /** Number of connection attempts before failing */
   maxRetries?: number;
-  /** Reconnect automatically when the socket closes */
-  autoReconnect?: boolean;
   /** Interval between ping frames to keep CDP alive */
   keepaliveInterval?: number;
-  /** Async hook invoked after a successful reconnect */
-  onReconnect?: (() => Promise<void>) | undefined;
   /** Async hook invoked when WebSocket closes unexpectedly */
   onDisconnect?: ((code: number, reason: string) => void | Promise<void>) | undefined;
   /** Stops connection attempts (e.g. the session was stopped while starting) */

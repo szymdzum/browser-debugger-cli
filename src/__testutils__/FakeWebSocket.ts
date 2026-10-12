@@ -149,14 +149,14 @@ export class FakeWebSocket extends EventEmitter {
 
   /**
    * TEST CONTROL - Simulate receiving a message
-   * Only valid in OPEN state
+   * Only valid in OPEN state. Text arrives as a Buffer, as ws 8 delivers it.
    */
   simulateMessage(data: string | Buffer): void {
     if (this.readyState !== OPEN) {
       throw new Error('Cannot receive message when not OPEN');
     }
 
-    this.emit('message', data);
+    this.emit('message', Buffer.isBuffer(data) ? data : Buffer.from(data));
   }
 
   /**
