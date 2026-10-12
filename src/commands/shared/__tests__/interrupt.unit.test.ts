@@ -12,6 +12,7 @@ import {
   interruptExitCode,
   onOwnInterrupt,
   reportInterrupts,
+  reportInterruptsUntilHandedOver,
   interruptSignal,
   unlessInterrupted,
 } from '@/commands/shared/interrupt.js';
@@ -189,5 +190,91 @@ void describe('reportInterrupts', () => {
     assert.equal(own, 1);
     assert.deepEqual(reported, []);
     assert.deepEqual(exits, []);
+  });
+});
+
+void describe('reportInterruptsUntilHandedOver', () => {
+  /** Signals reported and exit codes asked for by the test's reporter */
+  let reported: string[];
+  let exits: Array<number | undefined>;
+
+  /** Count of SIGINT and SIGTERM listeners */
+  const counts = (): number[] =>
+    ['SIGINT', 'SIGTERM'].map((signal) => process.listenerCount(signal));
+
+  /** Listener counts plus the listeners added */
+  const plus = (base: number[], more: number[]): number[] =>
+    base.map((count, i) => count + (more[i] ?? 0));
+
+  /** Wait for the hand-over, which removes the report on the next tick */
+  const nextTick = (): Promise<void> => new Promise((resolve) => process.nextTick(resolve));
+
+  /**
+   * Install the startup report with `process.exit` mocked.
+   *
+   * @returns Listener counts before it was installed
+   */
+  function installStartupReport(): number[] {
+    const before = counts();
+    reported = [];
+    exits = [];
+    mock.method(process, 'exit', (code?: number) => {
+      exits.push(code);
+      throw new Exit(code);
+    });
+    reportInterruptsUntilHandedOver((signal) => reported.push(signal));
+    return before;
+  }
+
+  /**
+   * Add a SIGINT or SIGTERM listener (removed after the test).
+   *
+   * @param signal - The signal
+   * @returns The listener's call count
+   */
+  function addListener(signal: 'SIGINT' | 'SIGTERM'): { calls: number } {
+    const seen = { calls: 0 };
+    const listener = (): void => {
+      seen.calls += 1;
+    };
+    process.on(signal, listener);
+    added.push([signal, listener]);
+    return seen;
+  }
+
+  afterEach(async () => {
+    addListener('SIGINT');
+    await nextTick();
+    for (const [signal, listener] of added.splice(0)) process.removeListener(signal, listener);
+    mock.restoreAll();
+  });
+
+  void it('reports a signal that comes before anything else listens', () => {
+    installStartupReport();
+    assert.throws(() => process.emit('SIGTERM'), Exit);
+    assert.deepEqual(reported, ['SIGTERM']);
+    assert.deepEqual(exits, [143]);
+  });
+
+  void it('hands both signals over to the first other listener, once it is in place', async () => {
+    const before = installStartupReport();
+    const own = addListener('SIGTERM');
+    assert.deepEqual(counts(), plus(before, [1, 2]));
+    await nextTick();
+    assert.deepEqual(counts(), plus(before, [0, 1]));
+    process.emit('SIGTERM');
+    process.emit('SIGINT');
+    assert.equal(own.calls, 1);
+    assert.deepEqual(reported, []);
+    assert.deepEqual(exits, []);
+  });
+
+  void it('keeps reporting when other events get listeners', async () => {
+    const before = installStartupReport();
+    const listener = (): void => undefined;
+    process.on('SIGHUP', listener);
+    process.removeListener('SIGHUP', listener);
+    await nextTick();
+    assert.deepEqual(counts(), plus(before, [1, 1]));
   });
 });

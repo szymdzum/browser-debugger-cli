@@ -1,8 +1,5 @@
-import {
-  interruptExitCode,
-  reportInterrupts,
-  type InterruptSignal,
-} from '@/commands/shared/interrupt.js';
+import { reportInterrupts } from '@/commands/shared/interrupt.js';
+import { interruptReporter, withTabMove } from '@/commands/shared/interruptReport.js';
 import { type BaseOptions } from '@/commands/shared/optionTypes.js';
 import { getQuickIPCRequestTimeout } from '@/constants.js';
 import { CommandError, isDaemonConnectionError } from '@/errors/index.js';
@@ -13,8 +10,6 @@ import {
   commandTimedOutError,
   sessionNotRespondingError,
   sessionEndedDuringCommandError,
-  commandInterruptedError,
-  commandInterruptedLine,
   type InterruptedWork,
 } from '@/errors/messages.js';
 import { IPCEarlyCloseError, IPCTimeoutError } from '@/ipc/transport/IPCError.js';
@@ -169,19 +164,6 @@ function sessionEndedError(): CommandError {
 }
 
 /**
- * Add a move of the session to another tab that a daemon response of this
- * command carried (its tab closed on its own and no command reported it
- * yet) to a `--json` envelope: top-level `tabClosed` and `switchedTo`.
- *
- * @param envelope - Response envelope
- * @returns The envelope, with the move when there was one
- */
-function withTabMove<T extends object>(envelope: T): T {
-  const moved = takeTabMove();
-  return moved ? { ...envelope, ...moved } : envelope;
-}
-
-/**
  * Print a move of the session to another tab that a daemon response of this
  * command carried on stderr (text output), unless the text shown already
  * says it (an action refused because of it).
@@ -202,37 +184,6 @@ function printTabMove(shown = ''): void {
  */
 export function printWarning(warning: string | undefined): void {
   if (warning) console.error(escapeControlChars(`Warning: ${warning}`));
-}
-
-/**
- * Print an interrupted command's error: the `--json` envelope on stdout, or
- * one line on stderr.
- *
- * @param json - Whether `--json` was given
- * @param work - What the command may already have done
- * @returns Prints the error for a signal
- */
-function interruptReporter(
-  json: boolean,
-  work?: InterruptedWork
-): (signal: InterruptSignal) => void {
-  return (signal) => {
-    const err = commandInterruptedError(work);
-    if (!json) {
-      console.error(escapeControlChars(commandInterruptedLine(err)));
-      return;
-    }
-    console.log(
-      stringifyEnvelope(
-        withTabMove(
-          OutputBuilder.buildJsonError(err.message, {
-            suggestion: err.suggestion,
-            exitCode: interruptExitCode(signal),
-          })
-        )
-      )
-    );
-  };
 }
 
 /**
