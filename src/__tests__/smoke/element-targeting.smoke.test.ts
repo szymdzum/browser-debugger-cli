@@ -690,14 +690,11 @@ void describe('Key attributes in dom query and dom get', () => {
     );
     assert.match(output, /<a id="about" href="\/\/saucelabs\.com\/about\/company">/);
     assert.match(output, /<form id="login" action="\/authenticate" method="post">/);
-    assert.match(
-      output,
-      /<input id="user" name="user" type="text" placeholder="Username" value="ada">/
-    );
+    assert.match(output, /<input id="user" name="user" placeholder="Username" value="ada">/);
     assert.match(output, /<input id="pass" name="pass" type="password" value="••••">/);
     assert.match(output, /<input name="size" type="radio" value="medium" checked>/);
     assert.match(output, /<select id="sort" name="sort" selected="Price \(low to high\)">/);
-    assert.match(output, /<button id="go" type="submit">/);
+    assert.match(output, /<button id="go">/);
     assert.match(output, /<iframe id="pay" src="\/frame-child\?x=1">/);
     assert.doesNotMatch(output, /secret/);
   });
@@ -726,8 +723,8 @@ void describe('Key attributes in dom query and dom get', () => {
     assert.match(query, /"value": ?"••••"/);
     const human = await bdg(['dom', 'query', '#csrf, #card, #shown']);
     assert.match(human, /<input id="csrf" name="csrf" type="hidden">/);
-    assert.match(human, /<input id="card" name="card" type="text" value="••••">/);
-    assert.match(human, /<input id="shown" name="password2" type="text" value="••••">/);
+    assert.match(human, /<input id="card" name="card" value="••••">/);
+    assert.match(human, /<input id="shown" name="password2" value="••••">/);
     assert.match(await bdg(['dom', 'get', '#pass']), /value: "••••"/);
   });
 
@@ -745,7 +742,7 @@ void describe('Key attributes in dom query and dom get', () => {
       await bdg(['dom', 'get', '#logo']),
       /"Sauce Labs Backpack" src="…\/sl-404\.168b1cce\.jpg"$/m
     );
-    assert.match(await bdg(['dom', 'get', '#user']), / type="text" name="user"/);
+    assert.match(await bdg(['dom', 'get', '#user']), / name="user"/);
   });
 
   void it('says in --help what selectors search', async () => {

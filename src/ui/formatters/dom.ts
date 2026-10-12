@@ -2,7 +2,7 @@ import { MAX_VALUE_LENGTH } from '@/constants.js';
 import type { DomFrame } from '@/ipc/protocol/commands.js';
 import { labelClasses } from '@/runtime/dom/elementInfo.js';
 import type { DomQueryResult, DomGetResult, ScreenshotResult } from '@/types.js';
-import { keyAttributeItems } from '@/ui/formatters/keyAttributes.js';
+import { keyAttributeItems, withWrittenType } from '@/ui/formatters/keyAttributes.js';
 import { capForDisplay } from '@/ui/formatters/longValues.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import {
@@ -87,10 +87,11 @@ function queryTagAttributes(node: DomQueryResult['nodes'][number]): string[] {
     ...(node.type && { type: node.type }),
     ...(node.value !== undefined && { value: node.value }),
   };
+  const keys = withWrittenType(node.attributes, node.type);
   const classes = node.classes ? classAttribute(node.classes) : undefined;
   return [
     ...(node.id ? [`id="${node.id}"`] : []),
-    ...keyAttributeItems(node.tag ?? '', { ...identifying, ...node.attributes }),
+    ...keyAttributeItems(node.tag ?? '', { ...identifying, ...keys }),
     ...(classes ? [classes] : []),
   ];
 }

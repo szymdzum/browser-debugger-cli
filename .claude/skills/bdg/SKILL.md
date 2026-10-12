@@ -233,7 +233,7 @@ bdg dom screenshot /tmp/vp.png --no-full-page       # Viewport only
 
 ## JSON Output and Exit Codes
 
-Add `--json` (`-j`) to any command for `{ version, success, data }` (or `{ success: false, error, exitCode, suggestion }`); read it with `jq`, not line by line. Lists (`dom query`, `dom a11y query`) are bounded; `count` is the total, `--limit 0` lists all. `bdg --help --json` lists every command, flag and exit code; `bdg <command> --help --json` describes one in full. `--json` typed right after an option that needs a value (`--last --json`) is exit 81 with an envelope, not the value; write the long form `--opt=--json` to pass that text.
+Add `--json` (`-j`) to any command for `{ version, success, data }` (or `{ success: false, error, exitCode, suggestion }`); read it with `jq`, not line by line. Lists (`dom query`, `dom a11y query`) are bounded; `count` is the total, `--limit 0` lists all. `bdg --help --json` lists every command, flag and exit code; bare `bdg --json` prints the same document (exit 0, no `success` field), so check a `$URL` variable is not empty before `bdg $URL --json`; `bdg <command> --help --json` describes one in full. `--json` typed right after an option that needs a value (`--last --json`) is exit 81 with an envelope, not the value; write the long form `--opt=--json` to pass that text.
 
 If a command is interrupted, Ctrl-C (exit 130) or SIGTERM (exit 143) still prints the envelope, with `error: "Interrupted"` and a suggestion saying what may have happened; after an interrupted action (click, fill, navigate, ...), check with `bdg peek` before repeating it.
 
@@ -241,11 +241,11 @@ If a command is interrupted, Ctrl-C (exit 130) or SIGTERM (exit 143) still print
 |------|---------|--------|
 | 0 | Success | - |
 | 80 | Invalid or unreachable URL | Check the URL / dev server |
-| 81 | Invalid arguments (incl. blocked CDP methods) | Read the suggestion |
+| 81 | Invalid arguments (incl. blocked CDP methods; an index after a query that matched nothing, or before any query) | Read the suggestion |
 | 83 | Not found (element, session, file) | Fix the selector, or start a session |
 | 84 | Session already running | `bdg page navigate <url>` to reuse it, `bdg stop`, or `--session <name>` |
 | 85 | Session busy (starting/stopping) | Retry shortly |
-| 87 | Stale index (page changed since the query) | Re-run the query |
+| 87 | Index out of range, or stale (page changed since the query) | Re-run the query |
 | 91 | `eval` script threw | Fix the JavaScript |
 | 100 | Chrome failed to launch | `bdg cleanup --force`, retry |
 | 101 | CDP connection failure | `bdg cleanup --force`, then restart |

@@ -790,6 +790,7 @@ export async function getDomContext(
     tag,
     classes,
     ...(keys && { attributes: keys }),
+    ...(attributes['type'] && { typeAttribute: attributes['type'] }),
     ...(state.sensitive && { sensitive: true }),
     ...(preview && { preview }),
     ...(longer !== preview && { text: longer }),

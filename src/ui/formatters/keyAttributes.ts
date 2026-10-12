@@ -87,3 +87,22 @@ export function keyAttributeItems(
     return [`${name}="${shortValue(tag, name, value)}"`];
   });
 }
+
+/**
+ * Key attributes with `type` as the page wrote it: the live type of a form
+ * control (`text` for an input without `type`, `submit` for a button in a
+ * form) is not an attribute, so a selector built from it would match
+ * nothing. Human output shows the result; `--json` keeps the live type.
+ *
+ * @param attributes - Key attributes (with the live `type`)
+ * @param typeAttribute - The `type` attribute as written, if the element has one
+ * @returns Key attributes with `type` replaced or left out
+ */
+export function withWrittenType(
+  attributes: KeyAttributes | undefined,
+  typeAttribute: string | undefined
+): KeyAttributes | undefined {
+  if (!attributes || !('type' in attributes)) return attributes;
+  const { type: _live, ...rest } = attributes;
+  return typeAttribute ? { type: typeAttribute, ...rest } : rest;
+}

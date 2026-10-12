@@ -10,7 +10,7 @@ import type { DomContext } from '@/commands/dom/helpers/index.js';
 import { MASKED_VALUE, labelClasses } from '@/runtime/dom/elementInfo.js';
 import { synthesizeA11yNode } from '@/telemetry/roleInference.js';
 import type { A11yNode } from '@/types.js';
-import { keyAttributeItems } from '@/ui/formatters/keyAttributes.js';
+import { keyAttributeItems, withWrittenType } from '@/ui/formatters/keyAttributes.js';
 import { joinLines } from '@/ui/formatting.js';
 import { elementTextLine, emptyElementLine } from '@/ui/messages/commands.js';
 
@@ -64,12 +64,13 @@ function buildContextText(node: A11yNode, domContext: DomContext | null): string
  * @returns ` src="…/logo.png"`-style text, or empty
  */
 function buildKeyAttributesText(node: A11yNode, domContext: DomContext | null): string {
-  if (!domContext?.attributes) return '';
-  const shown = Object.entries(domContext.attributes)
+  const attributes = withWrittenType(domContext?.attributes, domContext?.typeAttribute);
+  if (!domContext || !attributes) return '';
+  const shown = Object.entries(attributes)
     .filter(([, value]) => Boolean(node.name) && value === node.name)
     .map(([name]) => name);
   if (node.value !== undefined && node.value !== '') shown.push('value');
-  const items = keyAttributeItems(domContext.tag, domContext.attributes, new Set(shown));
+  const items = keyAttributeItems(domContext.tag, attributes, new Set(shown));
   return items.length > 0 ? ` ${items.join(' ')}` : '';
 }
 

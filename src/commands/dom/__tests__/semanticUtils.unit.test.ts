@@ -119,9 +119,21 @@ void describe('formatSemanticNodeWithContext key attributes', () => {
           tag: 'input',
           classes: [],
           attributes: { type: 'text', name: 'custname', value: 'Ada' },
+          typeAttribute: 'text',
         },
       }),
       '[Textbox] "Name" type="text" name="custname" (value: "Ada", focusable)'
+    );
+    assert.equal(
+      formatSemanticNodeWithContext({
+        node: { nodeId: '2', role: 'textbox', name: 'Name', value: 'Ada', focusable: true },
+        domContext: {
+          tag: 'input',
+          classes: [],
+          attributes: { type: 'text', name: 'custname', value: 'Ada' },
+        },
+      }),
+      '[Textbox] "Name" name="custname" (value: "Ada", focusable)'
     );
   });
 });
