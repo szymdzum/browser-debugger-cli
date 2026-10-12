@@ -9,7 +9,7 @@
  */
 
 import * as assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { rmSync } from 'node:fs';
 import os from 'node:os';
@@ -120,6 +120,37 @@ void describe('JSON contract', () => {
     assert.equal(help.exitCode, 0);
     assert.match(help.stdout, /Usage: bdg dom/);
     assert.equal(await isDaemonRunning(), false, '`bdg help` must not start a session');
+  });
+
+  void it('answers a bare --json with one error envelope, not the help document (#695)', async () => {
+    for (const args of [['--json'], ['-j'], ['--json', '--session', 'x'], ['--debug', '--json']]) {
+      const result = await runCommand(args[0] ?? '', args.slice(1), { timeout: 15000 });
+      const label = `bdg ${args.join(' ')}`;
+      const envelope = JSON.parse(result.stdout) as Envelope;
+      assert.equal(envelope.success, false, `${label}: success`);
+      assert.equal(envelope.exitCode, 81, `${label}: envelope exitCode`);
+      assert.equal(result.exitCode, 81, `${label}: process exit code`);
+      assert.match(envelope.error ?? '', /No command or URL given/, `${label}: message`);
+      assert.match(envelope.suggestion ?? '', /bdg <url>/, `${label}: suggests starting`);
+      assert.match(envelope.suggestion ?? '', /bdg --help --json/, `${label}: suggests help`);
+      assert.equal(result.stderr, '', `${label}: stderr`);
+    }
+  });
+
+  void it('keeps the machine-readable help and the human help (#695)', async () => {
+    for (const args of [
+      ['--help', '--json'],
+      ['--json', '--help'],
+      ['-h', '-j'],
+    ]) {
+      const result = await runCommand(args[0] ?? '', args.slice(1), { timeout: 15000 });
+      assert.equal(result.exitCode, 0, `bdg ${args.join(' ')}`);
+      assert.ok('command' in (JSON.parse(result.stdout) as object), 'help document');
+    }
+    const human = spawnSync('node', [CLI_PATH], { encoding: 'utf8', timeout: 15000 });
+    assert.equal(human.status, 0);
+    assert.match(human.stderr, /For AI Agents/);
+    assert.equal(human.stdout, '');
   });
 
   void it('reports usage and validation errors with exit 81', async () => {
