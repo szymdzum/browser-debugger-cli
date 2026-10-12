@@ -52,7 +52,7 @@ Build only in your worktree. If another branch you depend on hasn't merged yet, 
 - Run `npm run check`, `npm test`, `npm run build`, and the affected smoke files (`npx tsx --test --test-concurrency=1 src/__tests__/smoke/<file>.smoke.test.ts`). CI runs the full smoke suite; don't run it locally. Run every suite in the **foreground** (a background run is lost when your turn ends; the report must contain its exit line).
 - You commit and push in your worktree; this brief grants that. Push over SSH: `git push -u git@github.com:szymdzum/browser-debugger-cli.git <branch>`. If you must rewrite a pushed branch, use `git push --force-with-lease=<branch>:<old sha> git@github.com:szymdzum/browser-debugger-cli.git <branch>` (plain `--force-with-lease` refuses on a URL remote); after a review, force-push only for a rebase the orchestrator asked for (say so in the PR).
 - Open a **draft PR** (`gh pr create --draft --head <branch> --repo szymdzum/browser-debugger-cli`; `--head` is needed after a push to the SSH URL) with a full body: what changed for users, before/after, verification with run IDs, decisions you made, and known limits. Link the issue (`Closes #N`).
-- **Return as soon as the draft PR is open.** Don't wait for or poll CI (the orchestrator does); if GitHub shows no `pull_request` run within 3 minutes of your push, say so in the report instead of dispatching one. Your report's **last line** is exactly `PR <url> HEAD <sha>`; a report without it is treated as unfinished.
+- **Return as soon as the draft PR is open.** Don't wait for or poll CI (the orchestrator does); if GitHub shows no `pull_request` run within 3 minutes of your push, say so in the report instead of re-pushing or dispatching a run yourself. Your report's **last line** is exactly `PR <url> HEAD <sha>`; a report without it is treated as unfinished.
 - No AI attribution in commits or the PR.
 
 **Rules**
@@ -93,7 +93,7 @@ Scratch files go in `/tmp/review-<N>-work`. Remove the worktree at the end (`git
 - **Tests:** do they test the claim? Does the red commit cover the issue's reproduction and each testable acceptance criterion (the PR names the rest)? Are they deterministic (no fixed sleeps)? Did a later commit weaken an assertion from the red commit? Any **tautological** test, whose expected value is computed the way the code computes it instead of coming from the issue, a worked example or a known-good literal?
 - **Docs and PR description:** do `docs/CLI_REFERENCE.md`, help text, the bdg skill and the PR description say exactly what the code does? `CHANGELOG.md` must not be edited.
 - **Conventions (CLAUDE.md):** CommandRunner, CommandError or `{success, error}` never both, the `BdgResponse` envelope, semantic exit codes, centralized messages, option behavior keys `<command>:--flag`, TSDoc, no inline comments, no empty catch, ~30 lines per function.
-- `<change-specific risky questions; for input parsing, selectors or secret handling, ask for a sweep over a matrix of inputs and report the counts, e.g. "every form field type × every fill path"; for detection heuristics, a false-positive matrix on scratch pages of your own (unmount on press, label change, sibling under the mouse, page-wide ticker/aria-live, unrelated toast), counts of wrong outcomes>`
+- `<change-specific risky questions; for input parsing, selectors or secret handling, ask for a sweep over a matrix of inputs and report the counts, e.g. "every form field type × every fill path"; for detection heuristics, the implementer brief's false-positive matrix rebuilt on scratch pages of your own, counts of wrong outcomes>`
 
 **Run** in `/tmp/review-<N>` with `export PATH="$HOME/.nvm/versions/node/v22.15.0/bin:$PATH" BDG_TEST_SESSION_PARENT=/tmp/rv-<N>-t BDG_TEST_HOME_DIR=/tmp/rv-<N>-h BDG_SESSION_DIR=/tmp/rv-<N>`: `npm run build`, `<the targeted unit tests>` and `<one targeted smoke test>`. If a claim is cheap to check by hand (`node /tmp/review-<N>/dist/index.js …`), do it.
 
@@ -140,7 +140,7 @@ bdg() { node <absolute path to ../bdg-<N>>/dist/index.js "$@"; }
 3. `<edge case: interrupt, failure, odd input>`
 4. `<a real-world site if one is reachable>`
 
-**Budget.** At most 40 tool calls; no background processes except a server with a PID file; save long outputs to files under your scratch dir and `grep` them instead of reading them whole (`| head -40` on anything you print).
+**Budget.** At most `<40, or 20 for a fix with no new output or flag>` tool calls; no background processes except a server with a PID file; save long outputs to files under your scratch dir and `grep` them instead of reading them whole (`| head -40` on anything you print).
 
 **Rules:**
 - No `pkill`/`killall`. A background process you start writes its PID to `/tmp/bdg-t-<N>-<agent>-<name>.pid`; kill only PIDs read back from those files.
