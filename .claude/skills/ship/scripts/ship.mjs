@@ -8,7 +8,15 @@
  */
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { appendFileSync, existsSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  existsSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -17,7 +25,10 @@ const SKILL_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = process.env.SHIP_REPO ?? 'szymdzum/browser-debugger-cli';
 const NODE_BIN = join(homedir(), '.nvm/versions/node/v22.15.0/bin');
 const POLL_MS = 60_000;
-const SNAPSHOT = { bdg: '/tmp/ship-snapshot-bdg.txt', downloads: '/tmp/ship-snapshot-downloads.txt' };
+const SNAPSHOT = {
+  bdg: '/tmp/ship-snapshot-bdg.txt',
+  downloads: '/tmp/ship-snapshot-downloads.txt',
+};
 
 /** Exit codes of this script, so the orchestrator can branch on them */
 export const EXIT = { ok: 0, failed: 1, usage: 2, superseded: 3, timeout: 4 };
@@ -30,7 +41,11 @@ export const EXIT = { ok: 0, failed: 1, usage: 2, superseded: 3, timeout: 4 };
  * @param {object} [opts]
  */
 function run(cmd, args, opts = {}) {
-  return execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts }).trim();
+  return execFileSync(cmd, args, {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    ...opts,
+  }).trim();
 }
 
 /**
@@ -94,7 +109,10 @@ export function parseArgs(argv) {
  */
 function prInfo(pr) {
   return ghJson([
-    'pr', 'view', String(pr), '--json',
+    'pr',
+    'view',
+    String(pr),
+    '--json',
     'number,title,headRefName,headRefOid,baseRefName,mergeable,state,isDraft,files,mergeCommit',
   ]);
 }
@@ -108,8 +126,18 @@ function prInfo(pr) {
  */
 function latestRun(sha, workflow, event) {
   const runs = ghJson([
-    'run', 'list', '--commit', sha, '--workflow', workflow, '--event', event,
-    '--json', 'databaseId,status,conclusion', '--limit', '1',
+    'run',
+    'list',
+    '--commit',
+    sha,
+    '--workflow',
+    workflow,
+    '--event',
+    event,
+    '--json',
+    'databaseId,status,conclusion',
+    '--limit',
+    '1',
   ]);
   return runs?.[0] ?? null;
 }
@@ -125,7 +153,10 @@ export function judgeConclusions(conclusions) {
   const summary = entries.map(([wf, c]) => `${wf} ${c}`).join(', ');
   if (entries.every(([, c]) => c === 'success')) return { code: EXIT.ok, summary };
   if (entries.some(([, c]) => c === 'cancelled')) {
-    return { code: EXIT.superseded, summary: `${summary} (cancelled: superseded by a newer run; wait for that one)` };
+    return {
+      code: EXIT.superseded,
+      summary: `${summary} (cancelled: superseded by a newer run; wait for that one)`,
+    };
   }
   return { code: EXIT.failed, summary };
 }
@@ -152,23 +183,31 @@ async function ciWait(argv) {
     if (pr.baseRefName !== 'main') workflows = ['CI'];
   }
   const event = push ? 'push' : 'pull_request';
-  console.log(`waiting for ${workflows.join(' + ')} (${event}) on ${sha.slice(0, 10)}${pr ? ` (PR #${pr.number})` : ''}`);
+  console.log(
+    `waiting for ${workflows.join(' + ')} (${event}) on ${sha.slice(0, 10)}${pr ? ` (PR #${pr.number})` : ''}`
+  );
   for (;;) {
     if (pr) {
       const head = prInfo(pr.number).headRefOid;
       if (head !== sha) {
-        console.log(`superseded: PR #${pr.number} head moved to ${head.slice(0, 10)}; wait for that one`);
+        console.log(
+          `superseded: PR #${pr.number} head moved to ${head.slice(0, 10)}; wait for that one`
+        );
         return EXIT.superseded;
       }
     }
     const runs = Object.fromEntries(workflows.map((wf) => [wf, latestRun(sha, wf, event)]));
     if (workflows.every((wf) => runs[wf]?.status === 'completed')) {
-      const { code, summary } = judgeConclusions(Object.fromEntries(workflows.map((wf) => [wf, runs[wf].conclusion])));
+      const { code, summary } = judgeConclusions(
+        Object.fromEntries(workflows.map((wf) => [wf, runs[wf].conclusion]))
+      );
       console.log(summary);
       return code;
     }
     if (Date.now() > deadline) {
-      console.log(`timeout: ${workflows.map((wf) => `${wf} ${runs[wf]?.status ?? 'not started'}`).join(', ')}`);
+      console.log(
+        `timeout: ${workflows.map((wf) => `${wf} ${runs[wf]?.status ?? 'not started'}`).join(', ')}`
+      );
       return EXIT.timeout;
     }
     await sleep(POLL_MS);
@@ -202,25 +241,49 @@ async function runWait(argv) {
 async function repeat(argv) {
   const { positional, keys } = parseArgs(argv);
   const [prNumber, ...files] = positional;
-  if (!prNumber || files.length === 0) return usage('repeat <pr> <smoke files...> [repeat=10] [node=22]');
+  if (!prNumber || files.length === 0)
+    return usage('repeat <pr> <smoke files...> [repeat=10] [node=22]');
   const pr = prInfo(prNumber);
   run('gh', [
-    'workflow', 'run', 'ci.yml', '--repo', REPO, '--ref', pr.headRefName,
-    '-f', `smoke_files=${files.join(' ')}`, '-f', `repeat=${keys.repeat ?? 10}`, '-f', `node=${keys.node ?? 22}`,
+    'workflow',
+    'run',
+    'ci.yml',
+    '--repo',
+    REPO,
+    '--ref',
+    pr.headRefName,
+    '-f',
+    `smoke_files=${files.join(' ')}`,
+    '-f',
+    `repeat=${keys.repeat ?? 10}`,
+    '-f',
+    `node=${keys.node ?? 22}`,
   ]);
   for (let i = 0; i < 10; i++) {
     await sleep(5000);
     const runs = ghJson([
-      'run', 'list', '--branch', pr.headRefName, '--event', 'workflow_dispatch',
-      '--json', 'databaseId,headSha', '--limit', '5',
+      'run',
+      'list',
+      '--branch',
+      pr.headRefName,
+      '--event',
+      'workflow_dispatch',
+      '--json',
+      'databaseId,headSha',
+      '--limit',
+      '5',
     ]);
     const hit = runs.find((r) => r.headSha === pr.headRefOid);
     if (hit) {
-      console.log(`repeat run ${hit.databaseId} on ${pr.headRefOid.slice(0, 10)}; wait with: ship run-wait ${hit.databaseId}`);
+      console.log(
+        `repeat run ${hit.databaseId} on ${pr.headRefOid.slice(0, 10)}; wait with: ship run-wait ${hit.databaseId}`
+      );
       return EXIT.ok;
     }
   }
-  console.log('dispatched, but the run did not show up within 50 s; look with gh run list --event workflow_dispatch');
+  console.log(
+    'dispatched, but the run did not show up within 50 s; look with gh run list --event workflow_dispatch'
+  );
   return EXIT.failed;
 }
 
@@ -271,9 +334,19 @@ function inTempWorktree(commit, path, steps) {
  * @param {object} [env]
  */
 function step(label, command, cwd, env = {}) {
-  const r = spawnSync('sh', ['-c', command], { cwd, env: pinnedEnv(env), encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
-  const lines = `${r.stdout}\n${r.stderr}`.replace(/\x1b\[[0-9;]*m/g, '').split('\n').filter((l) => /^# (pass|fail)|^not ok|problems|error TS|Error:/.test(l));
-  console.log(`${r.status === 0 ? 'ok  ' : 'FAIL'} ${label}${lines.length ? `\n     ${lines.slice(-6).join('\n     ')}` : ''}`);
+  const r = spawnSync('sh', ['-c', command], {
+    cwd,
+    env: pinnedEnv(env),
+    encoding: 'utf8',
+    maxBuffer: 256 * 1024 * 1024,
+  });
+  const lines = `${r.stdout}\n${r.stderr}`
+    .replace(/\x1b\[[0-9;]*m/g, '')
+    .split('\n')
+    .filter((l) => /^# (pass|fail)|^not ok|problems|error TS|Error:/.test(l));
+  console.log(
+    `${r.status === 0 ? 'ok  ' : 'FAIL'} ${label}${lines.length ? `\n     ${lines.slice(-6).join('\n     ')}` : ''}`
+  );
   return r.status === 0;
 }
 
@@ -290,21 +363,45 @@ function mergeCheck(argv) {
   const pr = prInfo(prNumber);
   run('git', ['fetch', '-q', 'origin']);
   const main = run('git', ['rev-parse', 'origin/main']);
-  const merged = spawnSync('git', ['merge-tree', '--write-tree', main, pr.headRefOid], { encoding: 'utf8' });
+  const merged = spawnSync('git', ['merge-tree', '--write-tree', main, pr.headRefOid], {
+    encoding: 'utf8',
+  });
   if (merged.status !== 0) {
-    console.log(`FAIL conflict merging PR #${pr.number} into main ${main.slice(0, 10)}:\n${merged.stdout.split('\n').slice(1, 12).join('\n')}`);
+    console.log(
+      `FAIL conflict merging PR #${pr.number} into main ${main.slice(0, 10)}:\n${merged.stdout.split('\n').slice(1, 12).join('\n')}`
+    );
     return EXIT.failed;
   }
   const tree = merged.stdout.split('\n')[0];
-  const commit = run('git', ['commit-tree', tree, '-p', main, '-p', pr.headRefOid, '-m', 'merge-check']);
-  console.log(`merge-check of PR #${pr.number} (${pr.headRefOid.slice(0, 10)}) on main ${main.slice(0, 10)}`);
-  const env = { BDG_TEST_SESSION_PARENT: `/tmp/bt-mc${pr.number}`, BDG_TEST_HOME_DIR: `/tmp/bt-mc${pr.number}-h` };
+  const commit = run('git', [
+    'commit-tree',
+    tree,
+    '-p',
+    main,
+    '-p',
+    pr.headRefOid,
+    '-m',
+    'merge-check',
+  ]);
+  console.log(
+    `merge-check of PR #${pr.number} (${pr.headRefOid.slice(0, 10)}) on main ${main.slice(0, 10)}`
+  );
+  const env = {
+    BDG_TEST_SESSION_PARENT: `/tmp/bt-mc${pr.number}`,
+    BDG_TEST_HOME_DIR: `/tmp/bt-mc${pr.number}-h`,
+  };
   const smoke = files.filter((f) => f.includes('.smoke.'));
   const unit = files.filter((f) => !f.includes('.smoke.'));
   const passed = inTempWorktree(commit, `/tmp/mc-${pr.number}`, (cwd) => {
-    const results = [step('npm run check', 'npm run check', cwd), step('npm run build', 'npm run build', cwd)];
+    const results = [
+      step('npm run check', 'npm run check', cwd),
+      step('npm run build', 'npm run build', cwd),
+    ];
     if (unit.length) results.push(step('unit', `npx tsx --test ${unit.join(' ')}`, cwd, env));
-    if (smoke.length) results.push(step('smoke', `npx tsx --test --test-concurrency=1 ${smoke.join(' ')}`, cwd, env));
+    if (smoke.length)
+      results.push(
+        step('smoke', `npx tsx --test --test-concurrency=1 ${smoke.join(' ')}`, cwd, env)
+      );
     return results.every(Boolean);
   });
   if (passed) writeFileSync(`/tmp/ship-mc-${pr.number}.ok`, `${main} ${pr.headRefOid}\n`);
@@ -357,48 +454,79 @@ async function gates(argv) {
   run('git', ['fetch', '-q', 'origin']);
 
   const ci = latestRun(head, 'CI', 'pull_request');
-  check(ci?.status === 'completed' && ci.conclusion === 'success', `5 CI (pull_request) on head: ${ci ? `${ci.status} ${ci.conclusion ?? ''}` : 'no run'}`);
+  check(
+    ci?.status === 'completed' && ci.conclusion === 'success',
+    `5 CI (pull_request) on head: ${ci ? `${ci.status} ${ci.conclusion ?? ''}` : 'no run'}`
+  );
   if (ci?.status === 'completed') {
     const jobs = ghJson(['run', 'view', String(ci.databaseId), '--json', 'jobs']).jobs;
     const job = (re) => jobs.find((j) => re.test(j.name));
-    check(job(/^CI OK$/)?.conclusion === 'success', `5 required check CI OK: ${job(/^CI OK$/)?.conclusion ?? 'missing'}`);
-    if (flags.has('macos')) check(job(/macOS/)?.conclusion === 'success', `5 macOS smoke: ${job(/macOS/)?.conclusion ?? 'missing'}`);
+    check(
+      job(/^CI OK$/)?.conclusion === 'success',
+      `5 required check CI OK: ${job(/^CI OK$/)?.conclusion ?? 'missing'}`
+    );
+    if (flags.has('macos'))
+      check(
+        job(/macOS/)?.conclusion === 'success',
+        `5 macOS smoke: ${job(/macOS/)?.conclusion ?? 'missing'}`
+      );
   }
   if (pr.baseRefName === 'main') {
     const sec = latestRun(head, 'Security', 'pull_request');
-    check(sec?.conclusion === 'success', `5 Security on head: ${sec ? `${sec.status} ${sec.conclusion ?? ''}` : 'no run'}`);
+    check(
+      sec?.conclusion === 'success',
+      `5 Security on head: ${sec ? `${sec.status} ${sec.conclusion ?? ''}` : 'no run'}`
+    );
   }
   if (keys.repeat || tier === 3) {
-    if (!keys.repeat) check(false, '4 repeat run: none given (tier 3: ship repeat <pr> <smoke files>, then --repeat=<id>)');
+    if (!keys.repeat)
+      check(
+        false,
+        '4 repeat run: none given (tier 3: ship repeat <pr> <smoke files>, then --repeat=<id>)'
+      );
     else {
       const r = ghJson(['run', 'view', keys.repeat, '--json', 'headSha,conclusion,status']);
-      check(r.headSha === head && r.conclusion === 'success', `4 repeat run ${keys.repeat}: ${r.status} ${r.conclusion ?? ''} on ${r.headSha.slice(0, 10)}${r.headSha === head ? '' : ' (not the head)'}`);
+      check(
+        r.headSha === head && r.conclusion === 'success',
+        `4 repeat run ${keys.repeat}: ${r.status} ${r.conclusion ?? ''} on ${r.headSha.slice(0, 10)}${r.headSha === head ? '' : ' (not the head)'}`
+      );
     }
   }
 
   const mergeable = await mergeableState(pr.number);
   check(mergeable === 'MERGEABLE', `6 mergeable: ${mergeable}`);
   const base = run('git', ['merge-base', 'origin/main', head]);
-  const mainFiles = run('git', ['diff', '--name-only', base, 'origin/main']).split('\n').filter(Boolean);
-  const overlap = overlappingFiles(mainFiles, pr.files.map((f) => f.path));
+  const mainFiles = run('git', ['diff', '--name-only', base, 'origin/main'])
+    .split('\n')
+    .filter(Boolean);
+  const overlap = overlappingFiles(
+    mainFiles,
+    pr.files.map((f) => f.path)
+  );
   if (overlap.length) {
     const marker = `/tmp/ship-mc-${pr.number}.ok`;
     const want = `${run('git', ['rev-parse', 'origin/main'])} ${head}`;
     const done = existsSync(marker) && readFileSync(marker, 'utf8').trim() === want;
-    check(done, `6 main changed ${overlap.length} of the PR's files since its base (${overlap.slice(0, 4).join(', ')}${overlap.length > 4 ? ', …' : ''}): ${done ? 'merge-check passed on this main and head' : 'run ship merge-check, or have the implementer rebase'}`);
+    check(
+      done,
+      `6 main changed ${overlap.length} of the PR's files since its base (${overlap.slice(0, 4).join(', ')}${overlap.length > 4 ? ', …' : ''}): ${done ? 'merge-check passed on this main and head' : 'run ship merge-check, or have the implementer rebase'}`
+    );
   } else {
-    check(true, '6 main has not changed the PR\'s files since its base');
+    check(true, "6 main has not changed the PR's files since its base");
   }
 
   check(!pr.files.some((f) => f.path === 'CHANGELOG.md'), '7 CHANGELOG.md untouched');
   if (tier > 1) {
-    const first = run('git', ['log', '--reverse', '--format=%s', `${base}..${head}`]).split('\n')[0] ?? '';
+    const first =
+      run('git', ['log', '--reverse', '--format=%s', `${base}..${head}`]).split('\n')[0] ?? '';
     check(/^test: /.test(first), `3 first commit is the red commit: "${first}"`);
   }
   const left = leftoverLines();
   check(left.length === 0, `8 leftovers: ${left.length ? left.join('; ') : 'none'}`);
 
-  console.log('manual: 1 review findings resolved · 2 fresh-agent test done (tier 2-3) · 3 reviewer ran the red commit · 7 docs match the behaviour');
+  console.log(
+    'manual: 1 review findings resolved · 2 fresh-agent test done (tier 2-3) · 3 reviewer ran the red commit · 7 docs match the behaviour'
+  );
   return results.every(Boolean) ? EXIT.ok : EXIT.failed;
 }
 
@@ -437,7 +565,10 @@ function alive(pid) {
  */
 function leftoverLines() {
   const lines = [];
-  for (const [key, dir] of [['bdg', '.bdg'], ['downloads', 'Downloads']]) {
+  for (const [key, dir] of [
+    ['bdg', '.bdg'],
+    ['downloads', 'Downloads'],
+  ]) {
     if (!existsSync(SNAPSHOT[key])) continue;
     const before = new Set(readFileSync(SNAPSHOT[key], 'utf8').split('\n'));
     const added = listDir(join(homedir(), dir)).filter((e) => !before.has(e));
@@ -493,8 +624,16 @@ async function merge(argv) {
   }
   if (pr.isDraft) run('gh', ['pr', 'ready', String(pr.number), '--repo', REPO]);
   run('gh', [
-    'pr', 'merge', String(pr.number), '--repo', REPO, '--merge',
-    '--match-head-commit', pr.headRefOid, '--subject', `${pr.title} (#${pr.number})`,
+    'pr',
+    'merge',
+    String(pr.number),
+    '--repo',
+    REPO,
+    '--merge',
+    '--match-head-commit',
+    pr.headRefOid,
+    '--subject',
+    `${pr.title} (#${pr.number})`,
   ]);
   const mergeSha = prInfo(prNumber).mergeCommit?.oid;
   console.log(`merged PR #${pr.number} as ${mergeSha}`);
@@ -544,7 +683,16 @@ export function parseBriefs(text) {
 }
 
 /** Placeholders the agent itself fills in at run time, not the orchestrator */
-const LITERAL_PLACEHOLDERS = new Set(['<url>', '<sha>', '<old sha>', '<port>', '<pid>', '<words>', '<file>', '<area>']);
+const LITERAL_PLACEHOLDERS = new Set([
+  '<url>',
+  '<sha>',
+  '<old sha>',
+  '<port>',
+  '<pid>',
+  '<words>',
+  '<file>',
+  '<area>',
+]);
 
 /** PID-file tag per role, for the forbidden block */
 const ROLE_TAGS = { implementer: 'impl', reviewer: 'review', tester: 't', verifier: 'verify' };
@@ -560,11 +708,14 @@ const ROLE_TAGS = { implementer: 'impl', reviewer: 'review', tester: 't', verifi
  */
 export function renderBrief(text, role, values) {
   const { blocks, briefs } = parseBriefs(text);
-  if (!(role in briefs)) throw new Error(`no brief "${role}"; known: ${Object.keys(briefs).join(', ')}`);
+  if (!(role in briefs))
+    throw new Error(`no brief "${role}"; known: ${Object.keys(briefs).join(', ')}`);
   const insert = (s) => s.replace(/\{\{([\w-]+)\}\}/g, (all, name) => blocks[name] ?? all);
   let brief = insert(insert(briefs[role]));
   for (const [key, value] of Object.entries(values)) brief = brief.split(`<${key}>`).join(value);
-  const unfilled = [...new Set(brief.match(/<[^<>\n]{2,80}>/g) ?? [])].filter((p) => !LITERAL_PLACEHOLDERS.has(p));
+  const unfilled = [...new Set(brief.match(/<[^<>\n]{2,80}>/g) ?? [])].filter(
+    (p) => !LITERAL_PLACEHOLDERS.has(p)
+  );
   const unknown = [...new Set(brief.match(/\{\{[\w-]+\}\}/g) ?? [])];
   if (unknown.length) throw new Error(`unknown blocks: ${unknown.join(', ')}`);
   return { brief, unfilled };
@@ -577,9 +728,14 @@ export function renderBrief(text, role, values) {
  */
 function brief(argv) {
   const { positional, keys } = parseArgs(argv);
-  if (!positional[0]) return usage('brief <implementer|reviewer|tester|verifier> N=<n> MAIN=<path> ...');
+  if (!positional[0])
+    return usage('brief <implementer|reviewer|tester|verifier> N=<n> MAIN=<path> ...');
   const values = { MAIN: mainCheckout(), ROLE: ROLE_TAGS[positional[0]] ?? positional[0], ...keys };
-  const { brief: text, unfilled } = renderBrief(readFileSync(join(SKILL_DIR, 'briefs.md'), 'utf8'), positional[0], values);
+  const { brief: text, unfilled } = renderBrief(
+    readFileSync(join(SKILL_DIR, 'briefs.md'), 'utf8'),
+    positional[0],
+    values
+  );
   console.log(text);
   if (unfilled.length) console.error(`still to fill: ${unfilled.join(' ')}`);
   return EXIT.ok;
@@ -592,8 +748,17 @@ function brief(argv) {
  */
 function log(argv) {
   const { positional, keys } = parseArgs(argv);
-  if (!positional[0]) return usage('log <pr> tier=2 review=0/1/2 tester=1 rounds=1 model=sonnet tokens=240k note="…"');
-  const pr = ghJson(['pr', 'view', positional[0], '--json', 'number,closingIssuesReferences,mergedAt']);
+  if (!positional[0])
+    return usage(
+      'log <pr> tier=2 review=0/1/2 tester=1 rounds=1 model=sonnet tokens=240k note="…"'
+    );
+  const pr = ghJson([
+    'pr',
+    'view',
+    positional[0],
+    '--json',
+    'number,closingIssuesReferences,mergedAt',
+  ]);
   const issues = pr.closingIssuesReferences.map((i) => `#${i.number}`).join(' ') || '-';
   const cell = (k) => (keys[k] ?? '-').replace(/\|/g, '/');
   const row = `| ${(pr.mergedAt ?? new Date().toISOString()).slice(0, 10)} | #${pr.number} | ${issues} | ${cell('tier')} | ${cell('review')} | ${cell('tester')} | ${cell('rounds')} | ${cell('model')} | ${cell('tokens')} | ${cell('note')} |`;
@@ -617,12 +782,35 @@ function codexReview(argv) {
   const out = `/tmp/codex-review-${pr.number}.md`;
   const prompt = instructions ? readFileSync(instructions, 'utf8') : '';
   const ok = inTempWorktree(pr.headRefOid, `/tmp/codex-${pr.number}`, (cwd) => {
-    const r = spawnSync('codex', ['exec', '-s', 'read-only', '-C', cwd, '-o', out, 'review', '--base', base, ...(prompt ? ['-'] : [])], {
-      input: prompt, encoding: 'utf8', env: pinnedEnv(), maxBuffer: 256 * 1024 * 1024,
-    });
+    const r = spawnSync(
+      'codex',
+      [
+        'exec',
+        '-s',
+        'read-only',
+        '-C',
+        cwd,
+        '-o',
+        out,
+        'review',
+        '--base',
+        base,
+        ...(prompt ? ['-'] : []),
+      ],
+      {
+        input: prompt,
+        encoding: 'utf8',
+        env: pinnedEnv(),
+        maxBuffer: 256 * 1024 * 1024,
+      }
+    );
     return r.status === 0;
   });
-  console.log(ok ? `codex review of PR #${pr.number} at ${pr.headRefOid.slice(0, 10)}: ${out}` : 'codex review failed');
+  console.log(
+    ok
+      ? `codex review of PR #${pr.number} at ${pr.headRefOid.slice(0, 10)}: ${out}`
+      : 'codex review failed'
+  );
   return ok ? EXIT.ok : EXIT.failed;
 }
 
@@ -653,7 +841,8 @@ function usage(line) {
 
 /** Prints every command with its one-line description */
 function help() {
-  for (const [name, [, text]] of Object.entries(COMMANDS)) console.log(`${name.padEnd(13)} ${text}`);
+  for (const [name, [, text]] of Object.entries(COMMANDS))
+    console.log(`${name.padEnd(13)} ${text}`);
   return EXIT.ok;
 }
 

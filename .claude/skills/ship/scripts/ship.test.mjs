@@ -10,19 +10,35 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { EXIT, judgeConclusions, overlappingFiles, parseArgs, parseBriefs, renderBrief } from './ship.mjs';
+import {
+  EXIT,
+  judgeConclusions,
+  overlappingFiles,
+  parseArgs,
+  parseBriefs,
+  renderBrief,
+} from './ship.mjs';
 
 const BRIEFS = readFileSync(join(import.meta.dirname, '..', 'briefs.md'), 'utf8');
 
 test('parseArgs splits positional, key=value and flags', () => {
-  const { positional, keys, flags } = parseArgs(['675', 'tier=3', '--macos', '--repeat=123', 'note=a=b']);
+  const { positional, keys, flags } = parseArgs([
+    '675',
+    'tier=3',
+    '--macos',
+    '--repeat=123',
+    'note=a=b',
+  ]);
   assert.deepEqual(positional, ['675']);
   assert.deepEqual(keys, { tier: '3', repeat: '123', note: 'a=b' });
   assert.deepEqual([...flags], ['macos']);
 });
 
 test('parseArgs keeps file paths positional', () => {
-  assert.deepEqual(parseArgs(['src/a.smoke.test.ts', './b.ts']).positional, ['src/a.smoke.test.ts', './b.ts']);
+  assert.deepEqual(parseArgs(['src/a.smoke.test.ts', './b.ts']).positional, [
+    'src/a.smoke.test.ts',
+    './b.ts',
+  ]);
 });
 
 test('judgeConclusions: all success is ok', () => {
@@ -46,9 +62,17 @@ test('overlappingFiles keeps only files both sides changed', () => {
 
 test('renderBrief inserts blocks and fills placeholders', () => {
   const text = [
-    '<!-- block:env -->', 'export X=/tmp/bt-<N>', '<!-- /block -->',
-    '<!-- block:rules -->', 'rules for <N>; {{env}}', '<!-- /block -->',
-    '<!-- brief:demo -->', 'Issue <N> in <MAIN>.', '{{rules}}', 'Scope: <what to do>', '<!-- /brief -->',
+    '<!-- block:env -->',
+    'export X=/tmp/bt-<N>',
+    '<!-- /block -->',
+    '<!-- block:rules -->',
+    'rules for <N>; {{env}}',
+    '<!-- /block -->',
+    '<!-- brief:demo -->',
+    'Issue <N> in <MAIN>.',
+    '{{rules}}',
+    'Scope: <what to do>',
+    '<!-- /brief -->',
   ].join('\n');
   const { brief, unfilled } = renderBrief(text, 'demo', { N: '42', MAIN: '/repo' });
   assert.equal(brief, 'Issue 42 in /repo.\nrules for 42; export X=/tmp/bt-42\nScope: <what to do>');
@@ -57,7 +81,10 @@ test('renderBrief inserts blocks and fills placeholders', () => {
 
 test('renderBrief rejects an unknown role and an unknown block', () => {
   assert.throws(() => renderBrief('<!-- brief:a -->\nx\n<!-- /brief -->', 'b', {}), /no brief "b"/);
-  assert.throws(() => renderBrief('<!-- brief:a -->\n{{nope}}\n<!-- /brief -->', 'a', {}), /unknown blocks/);
+  assert.throws(
+    () => renderBrief('<!-- brief:a -->\n{{nope}}\n<!-- /brief -->', 'a', {}),
+    /unknown blocks/
+  );
 });
 
 test('briefs.md has the four briefs and every block they use', () => {
