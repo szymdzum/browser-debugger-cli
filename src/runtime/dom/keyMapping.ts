@@ -4,7 +4,7 @@
  * Maps human-readable key names to Chrome DevTools Protocol Input.dispatchKeyEvent parameters.
  */
 
-import { findSimilar } from '@/utils/suggestions.js';
+import { levenshteinDistance } from '@/utils/levenshtein.js';
 
 /**
  * CDP key event parameters for a specific key.
@@ -194,23 +194,44 @@ export function impliesShift(keyName: string): boolean {
 }
 
 /**
+ * Names users can type for keys that have one: the key value when it is a word
+ * (`Enter`), else the code (`Space`, `Period`); letters and digits have none.
+ */
+function suggestableKeyNames(): string[] {
+  const names = new Set<string>();
+  for (const { key, code } of Object.values(KEY_DEFINITIONS)) {
+    if (key.length > 1) names.add(key);
+    if (key.length === 1 ? !/^(Key|Digit)/.test(code) : code.startsWith('Numpad')) names.add(code);
+  }
+  return [...names];
+}
+
+/**
  * Key names closest to an unknown one.
  *
  * Only names within a third of the input's length (rounded up) count, so a
  * one- or two-character input matches nothing, and a function key number
- * out of range (`F13`) is not matched to its neighbours.
+ * out of range (`F13`) is not matched to its neighbours. When some names are
+ * closer than others, only the closest are returned.
  *
  * @param keyName - Unknown key name
  * @returns Up to three key names, in their usual spelling; empty when none is close
  */
 export function similarKeyNames(keyName: string): string[] {
   if (keyName.length < 3 || /^f\d+$/i.test(keyName)) return [];
-  const names = new Set(
-    Object.values(KEY_DEFINITIONS)
-      .map((definition) => definition.key)
-      .filter((key) => key.length > 1)
-  );
-  return findSimilar(keyName, [...names], { maxDistance: Math.ceil(keyName.length / 3) });
+  const maxDistance = Math.ceil(keyName.length / 3);
+  const scored = suggestableKeyNames()
+    .map((name) => ({
+      name,
+      distance: levenshteinDistance(keyName.toLowerCase(), name.toLowerCase()),
+    }))
+    .filter(({ distance }) => distance > 0 && distance <= maxDistance)
+    .sort((x, y) => x.distance - y.distance);
+  const closest = scored[0]?.distance;
+  return scored
+    .filter(({ distance }) => distance === closest)
+    .slice(0, 3)
+    .map(({ name }) => name);
 }
 
 /** Accepted modifier names (and common aliases) mapped to their flag. */

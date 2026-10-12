@@ -128,7 +128,9 @@ const KEY_CASES: KeyCase[] = [
   { input: 'Period', event: { key: '.', code: 'Period', shiftKey: false } },
   { input: 'Enter', event: { key: 'Enter', code: 'Enter', shiftKey: false } },
   { input: 'Foo', suggestion: GROUPS, notSuggested: /Did you mean/ },
-  { input: 'Entr', suggestion: /^Did you mean: Enter/ },
+  { input: 'Entr', suggestion: /^Did you mean: Enter\?$/ },
+  { input: 'Ener', suggestion: /^Did you mean: Enter\?$/ },
+  { input: 'Spce', suggestion: /^Did you mean: Space\?$/ },
   { input: 'F13', suggestion: GROUPS, notSuggested: /Did you mean/ },
   { input: 'ab', suggestion: GROUPS, notSuggested: /Did you mean/ },
 ];

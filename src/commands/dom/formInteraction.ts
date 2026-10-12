@@ -279,13 +279,13 @@ export function registerFormInteractionCommands(program: Command): void {
     .argument('<selectorOrIndex>', SELECTOR_OR_INDEX_ARGUMENT)
     .argument(
       '<key>',
-      'Key to press: a name (Enter, Tab, Escape, Space, ArrowUp, Shift, F5, NumpadEnter), a character (a, A, 5, ., _, /) or a DOM code name (Period); unknown names list the keys'
+      'Key to press: a name (Enter, Tab, Escape, Space, ArrowUp, Shift, F5, NumpadEnter), a character (a, A, 5, ., _, /) or a DOM code name (Period); a capital or shifted symbol (A, ?, _) implies Shift; unknown names list the keys'
     )
     .option('--index <n>', 'Element index if selector matches multiple (0-based)', integerOption(0))
     .option('--times <n>', 'Press key multiple times (1-1000, default: 1)', integerOption(1, 1000))
     .option(
       '--modifiers <mods>',
-      'Modifier keys: shift,ctrl,alt,meta (comma-separated; aliases cmd, control, option)',
+      'Modifier keys: shift,ctrl,alt,meta (comma-separated; aliases cmd, control, option); for shortcuts, e.g. pressKey "#t" a --modifiers ctrl',
       modifiersOption
     )
     .option('--no-wait', 'Skip waiting for network stability after key press')
