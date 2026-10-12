@@ -30,6 +30,7 @@ import {
   STATE_FILE_WARNING,
   stateWithChromeWsUrlError,
 } from '@/ui/messages/stateMessages.js';
+import { parseChromeFlags } from '@/utils/chromeFlags.js';
 import { directoryProblem } from '@/utils/directories.js';
 import { hasDisplay } from '@/utils/display.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -269,8 +270,8 @@ function buildSessionOptions(options: CollectorOptions): {
   const timeout = options.timeout !== undefined ? timeoutRule.validate(options.timeout) : undefined;
 
   // Merge env var flags with CLI flags (CLI flags come after, taking precedence)
-  const envFlags = process.env['BDG_CHROME_FLAGS']?.split(' ').filter(Boolean) ?? [];
-  const cliFlags = options.chromeFlags?.split(' ').filter(Boolean) ?? [];
+  const envFlags = parseChromeFlags(process.env['BDG_CHROME_FLAGS']);
+  const cliFlags = parseChromeFlags(options.chromeFlags);
   const { userDataDir: flagUserDataDir, rest: combinedFlags } = extractUserDataDirFromFlags([
     ...envFlags,
     ...cliFlags,
@@ -413,8 +414,8 @@ function validateStartInput(
   if (options.userDataDir !== undefined) assertUserDataDir(options.userDataDir);
   if (options.chromeWsUrl === undefined)
     assertChromeFlags([
-      ...(process.env['BDG_CHROME_FLAGS']?.split(' ') ?? []),
-      ...(options.chromeFlags?.split(' ') ?? []),
+      ...parseChromeFlags(process.env['BDG_CHROME_FLAGS']),
+      ...parseChromeFlags(options.chromeFlags),
     ]);
   const sessionOptions = buildSessionOptions(options);
   if (sessionOptions.userDataDir !== undefined) assertUsableProfile(sessionOptions.userDataDir);

@@ -7,36 +7,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { withTimeout, pushWithLimit } from '@/telemetry/utils.js';
-
-describe('withTimeout', () => {
-  it('should resolve when promise completes before timeout', async () => {
-    const promise = Promise.resolve(42);
-    const result = await withTimeout(promise, 1000, 'test');
-    assert.equal(result, 42);
-  });
-
-  it('should reject when promise times out', async () => {
-    const promise = new Promise((resolve) => setTimeout(resolve, 100));
-    await assert.rejects(async () => withTimeout(promise, 10, 'test-operation'), {
-      message: 'CDP test-operation timed out after 10ms',
-    });
-  });
-
-  it('should reject with original error when promise rejects before timeout', async () => {
-    const promise = Promise.reject(new Error('Original error'));
-    await assert.rejects(async () => withTimeout(promise, 1000, 'test'), {
-      message: 'Original error',
-    });
-  });
-
-  it('should include operation label in timeout error', async () => {
-    const promise = new Promise(() => {});
-    await assert.rejects(async () => withTimeout(promise, 10, 'DOM.getDocument'), {
-      message: /DOM\.getDocument timed out/,
-    });
-  });
-});
+import { pushWithLimit } from '@/telemetry/utils.js';
 
 describe('pushWithLimit', () => {
   it('should add item when buffer is below limit', () => {

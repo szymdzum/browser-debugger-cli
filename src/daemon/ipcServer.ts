@@ -12,7 +12,13 @@ import type { Socket } from 'net';
 
 import { SessionController } from '@/daemon/SessionController.js';
 import { SocketServer } from '@/daemon/server/SocketServer.js';
-import { type ClientRequestUnion, type IPCMessageType, isCommandRequest } from '@/ipc/index.js';
+import { malformedIpcFrameError, unknownIpcRequestError } from '@/errors/messages.js';
+import {
+  type ClientRequestUnion,
+  type IPCErrorFrame,
+  type IPCMessageType,
+  isCommandRequest,
+} from '@/ipc/index.js';
 import { JSONLBuffer, toJSONLFrame } from '@/ipc/transport/jsonl.js';
 import { ensureSessionDir, getSessionFilePath } from '@/session/paths.js';
 import { readDaemonPid } from '@/session/pid.js';
@@ -20,6 +26,7 @@ import { createLogger } from '@/ui/logging/index.js';
 import { delay } from '@/utils/async.js';
 import { AtomicFileWriter } from '@/utils/atomicFile.js';
 import { getErrorMessage } from '@/utils/errors.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 const log = createLogger('daemon');
 
@@ -48,6 +55,47 @@ function isValidIPCMessage(obj: unknown): obj is IPCMessageType | ClientRequestU
     return false;
   }
   return 'type' in obj && typeof obj.type === 'string' && 'sessionId' in obj;
+}
+
+/**
+ * Error reply to a frame that cannot be routed.
+ *
+ * @param frame - The parsed frame, if it parsed (its `sessionId` is echoed when it is a string)
+ * @param error - What is wrong with it
+ * @param suggestion - How to recover, if there is a way
+ * @param exitCode - Exit code the client ends with
+ * @returns Error frame the client matches by session id
+ */
+function errorFrame(
+  frame: unknown,
+  error: string,
+  suggestion?: string,
+  exitCode: number = EXIT_CODES.SOFTWARE_ERROR
+): IPCErrorFrame {
+  const id =
+    typeof frame === 'object' && frame !== null
+      ? (frame as { sessionId?: unknown }).sessionId
+      : undefined;
+  return {
+    type: 'error_response',
+    sessionId: typeof id === 'string' ? id : 'unknown',
+    status: 'error',
+    error,
+    ...(suggestion !== undefined && { suggestion }),
+    exitCode,
+  };
+}
+
+/**
+ * Error reply to a request type this daemon does not know (the session was
+ * started by an older bdg than the command).
+ *
+ * @param message - The request
+ * @returns Error frame with a restart suggestion (exit 90: the request conflicts with the running session)
+ */
+function unknownRequestFrame(message: { type: string }): IPCErrorFrame {
+  const err = unknownIpcRequestError(message.type);
+  return errorFrame(message, err.message, err.suggestion, EXIT_CODES.RESOURCE_CONFLICT);
 }
 
 /**
@@ -190,22 +238,38 @@ export class IPCServer {
       message = JSON.parse(line);
     } catch (error) {
       log.debug(`Failed to parse IPC message: ${getErrorMessage(error)}`);
+      this.reply(
+        socket,
+        errorFrame(undefined, malformedIpcFrameError('the frame is not valid JSON'))
+      );
       return;
     }
     if (!isValidIPCMessage(message)) {
       log.debug(`Invalid message structure: missing 'type' or 'sessionId' field`);
+      this.reply(
+        socket,
+        errorFrame(message, malformedIpcFrameError("the frame has no 'type' or 'sessionId'"))
+      );
       return;
     }
 
     this.inFlightRequests++;
     try {
       const response = await this.route(message, disconnected);
-      if (response !== null && !socket.destroyed) {
-        socket.write(toJSONLFrame(response));
-      }
+      if (response !== null) this.reply(socket, response);
     } finally {
       this.inFlightRequests--;
     }
+  }
+
+  /**
+   * Write one response frame unless the client has gone.
+   *
+   * @param socket - Client socket
+   * @param response - Response to send
+   */
+  private reply(socket: Socket, response: unknown): void {
+    if (!socket.destroyed) socket.write(toJSONLFrame(response));
   }
 
   /**
@@ -243,6 +307,9 @@ export class IPCServer {
       case 'stop_session_response':
         log.debug(`Unexpected response message from client: ${message.type}`);
         return null;
+      // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check -- a client from another bdg version can send a type the union lacks
+      default:
+        return unknownRequestFrame(message);
     }
   }
 

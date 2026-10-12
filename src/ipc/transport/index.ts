@@ -9,6 +9,7 @@ import * as path from 'path';
 import { getIPCRequestTimeout } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
 import { untrustedSessionDirError } from '@/errors/messages.js';
+import type { IPCErrorFrame } from '@/ipc/session/index.js';
 import { noteTabMove } from '@/ipc/utils/tabMove.js';
 import { getDaemonSocketPath, secureSessionDir } from '@/session/paths.js';
 import { createLogger } from '@/ui/logging/index.js';
@@ -37,6 +38,31 @@ export {
 const log = createLogger('client');
 
 type WithTypeAndSession = { type: string; sessionId: string };
+
+/**
+ * Whether a frame is the daemon's error reply to a frame it could not answer
+ * with a response of its type.
+ *
+ * @param frame - Parsed response frame
+ * @returns True for an `error_response` frame
+ */
+function isErrorFrame(frame: WithTypeAndSession): frame is IPCErrorFrame {
+  return frame.type === 'error_response';
+}
+
+/**
+ * The daemon's error reply as the error the command ends with.
+ *
+ * @param frame - Error frame
+ * @returns Command error with the frame's suggestion and exit code
+ */
+function errorFrameToCommandError(frame: IPCErrorFrame): CommandError {
+  return new CommandError(
+    frame.error,
+    frame.suggestion ? { suggestion: frame.suggestion } : {},
+    frame.exitCode ?? EXIT_CODES.SOFTWARE_ERROR
+  );
+}
 
 /**
  * Send IPC request and wait for response.
@@ -115,6 +141,11 @@ export async function sendRequest<
             try {
               const response = parseJSONLFrame<TResponse>(line);
               log.debug(`${requestName} response received`);
+
+              if (isErrorFrame(response)) {
+                resolveOnce(cleanup, errorFrameToCommandError(response));
+                return;
+              }
 
               validateSessionId(request, response, requestName);
               if (expectedType) {

@@ -256,7 +256,7 @@ Add `--json` (`-j`) to any command for `{ version, success, data }` (or `{ succe
 ```bash
 bdg cleanup               # Remove files left by a crashed session
 bdg cleanup --force       # Kill a stuck session (daemon + its Chrome)
-bdg https://localhost:5173 --chrome-flags="--ignore-certificate-errors --allow-insecure-localhost"   # Self-signed certs; several flags in one space-separated string (or BDG_CHROME_FLAGS)
+bdg https://localhost:5173 --chrome-flags="--ignore-certificate-errors --allow-insecure-localhost"   # Self-signed certs; several flags in one space-separated string, no quoting (or BDG_CHROME_FLAGS)
 ```
 
 ## When NOT to Use bdg

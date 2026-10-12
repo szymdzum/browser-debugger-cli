@@ -1720,6 +1720,15 @@ Things bdg does without being asked, and how to change them:
 - **`--timeout <seconds>`** (1-3600) stops the session that many seconds after the page has loaded, as with `bdg stop`; the start output shows the time (`autoStopAt` with `--json`)
 - **The CDP port is remembered**: without `--port`, the port is saved in `port.txt` and reused while it is free (and not claimed by another running session), so each session directory keeps its port
 
+## Environment Variables
+
+- **`BDG_CHROME_FLAGS`**: extra Chrome flags for `bdg <url>`, space-separated (`BDG_CHROME_FLAGS="--ignore-certificate-errors --allow-insecure-localhost"`); `--chrome-flags` is added after them. There is no quoting, so a flag value cannot contain a space
+- **`BDG_NO_SANDBOX`**: `1`, `true` or `yes` (any case) starts Chrome with `--no-sandbox` where its sandbox cannot work (Docker and root on Linux get it without the variable)
+- **`BDG_IPC_TIMEOUT_MS`**: how long a command waits for the session, in milliseconds (default 45000; quick requests such as `status` wait at most 10000). A whole number from 1 to 2147483647; anything else (`abc`, `0`, `-5`, `1.5`, a larger number) fails the command with exit 81 before it contacts the session. An empty value counts as unset
+- **`BDG_SESSION`**, **`BDG_SESSION_DIR`**: session name and base directory (see Sessions above)
+
+A request the running session does not know (it was started by an older bdg than the command) fails with exit 90 and the advice to run `bdg stop`, then `bdg <url>` again.
+
 ## Session Files
 
 bdg stores session data in `~/.bdg/` (override with `BDG_SESSION_DIR`); a named session (`--session <name>`) uses `~/.bdg/sessions/<name>/` with the same files:

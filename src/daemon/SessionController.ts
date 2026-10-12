@@ -12,6 +12,7 @@ import {
   ChromeLaunchError,
   ConnectionError,
 } from '@/connection/errors.js';
+import { MAX_TIMER_DELAY_MS } from '@/constants.js';
 import { Session, StartCancelledError, type SessionEndReason } from '@/daemon/session/Session.js';
 import { shownTabSwitch } from '@/daemon/session/interactions.js';
 import { detectTargetMismatch } from '@/daemon/session/targetMismatch.js';
@@ -94,12 +95,6 @@ function commandTimeoutMs(name: CommandName, params: unknown): number {
 class CommandTimeoutError extends Error {
   override readonly name = 'CommandTimeoutError';
 }
-
-/**
- * Longest delay Node's `setTimeout` takes (about 24.8 days): a longer one,
- * or one that is not a number, fires after 1 ms.
- */
-const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 /**
  * Run a promise with a timeout, clearing the timer either way. A timeout

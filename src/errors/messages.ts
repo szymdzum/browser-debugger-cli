@@ -178,6 +178,44 @@ export function sessionNotRespondingError(seconds: number): ErrorWithSuggestion 
 }
 
 /**
+ * BDG_IPC_TIMEOUT_MS is set to something that is not a usable timeout.
+ *
+ * @param value - The variable's value
+ * @param max - Largest accepted value in milliseconds
+ * @returns Message and suggestion
+ */
+export function invalidIpcTimeoutEnvError(value: string, max: number): ErrorWithSuggestion {
+  return {
+    message: `BDG_IPC_TIMEOUT_MS must be a whole number of milliseconds between 1 and ${max} (got "${escapeControlChars(value)}")`,
+    suggestion: `Set BDG_IPC_TIMEOUT_MS to a whole number from 1 to ${max} (e.g. 60000), or unset it to use the default (45000)`,
+  };
+}
+
+/**
+ * The daemon cannot parse a request frame.
+ *
+ * @param reason - What is wrong with the frame
+ * @returns Message
+ */
+export function malformedIpcFrameError(reason: string): string {
+  return `The session could not read the request: ${reason}`;
+}
+
+/**
+ * The running session does not know a request type: it was started by an
+ * older bdg than the command that sent it.
+ *
+ * @param requestType - The unknown request type
+ * @returns Message and suggestion
+ */
+export function unknownIpcRequestError(requestType: string): ErrorWithSuggestion {
+  return {
+    message: `The running session does not know the request ${escapeControlChars(requestType)}; it was probably started by an older bdg`,
+    suggestion: `Restart the session: ${sessionCommand('bdg stop')}, then ${sessionCommand('bdg <url>')}`,
+  };
+}
+
+/**
  * The daemon answered, but the command did not finish in time (slow or
  * frozen page work).
  *

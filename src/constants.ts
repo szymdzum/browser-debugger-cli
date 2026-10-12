@@ -5,6 +5,10 @@
  * Centralizing these values makes it easier to tune performance characteristics and maintain the codebase.
  */
 
+import { CommandError } from '@/errors/CommandError.js';
+import { invalidIpcTimeoutEnvError } from '@/errors/messages.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
+
 // ============================================================================
 // CHROME & CDP CONFIGURATION
 // ============================================================================
@@ -279,19 +283,38 @@ export const DEFAULT_PAGE_READINESS_TIMEOUT_MS = 2000;
 export const MAX_JSONL_BUFFER_SIZE = 256 * 1024 * 1024;
 
 /**
+ * Longest delay Node's `setTimeout` takes (about 24.8 days): a longer one,
+ * or one that is not a number, fires after 1 ms. Every timer whose delay
+ * comes from user input is capped with it.
+ */
+export const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
+/**
  * IPC request timeout in milliseconds (45 seconds in production, 5 seconds in tests)
  * Maximum time to wait for IPC responses from daemon
  * Must accommodate: Chrome launch (~2s) + Page readiness detection (up to 30s) + buffer (~13s)
  *
- * Can be overridden via BDG_IPC_TIMEOUT_MS environment variable (used by tests)
+ * Can be overridden via BDG_IPC_TIMEOUT_MS environment variable (used by tests):
+ * a whole number of milliseconds from 1 to {@link MAX_TIMER_DELAY_MS}. An empty
+ * value counts as unset.
  *
  * @returns IPC request timeout in milliseconds
+ * @throws CommandError (81) if BDG_IPC_TIMEOUT_MS is set to anything else
  * @see docs/IMPROVEMENTS_ANALYSIS.md - Issue #3: Smart Page Readiness Detection
  */
 export function getIPCRequestTimeout(): number {
-  return process.env['BDG_IPC_TIMEOUT_MS'] !== undefined
-    ? parseInt(process.env['BDG_IPC_TIMEOUT_MS'], 10)
-    : 45000;
+  const raw = process.env['BDG_IPC_TIMEOUT_MS'];
+  if (raw === undefined || raw === '') return 45000;
+  const value = /^\d+$/.test(raw.trim()) ? Number(raw) : NaN;
+  if (!Number.isSafeInteger(value) || value < 1 || value > MAX_TIMER_DELAY_MS) {
+    const err = invalidIpcTimeoutEnvError(raw, MAX_TIMER_DELAY_MS);
+    throw new CommandError(
+      err.message,
+      { suggestion: err.suggestion },
+      EXIT_CODES.INVALID_ARGUMENTS
+    );
+  }
+  return value;
 }
 
 /**
@@ -301,6 +324,7 @@ export function getIPCRequestTimeout(): number {
  * excluded: a large session's requests and bodies take longer to transfer.
  *
  * @returns Timeout in milliseconds (10 s, or the IPC timeout if shorter)
+ * @throws CommandError (81) if BDG_IPC_TIMEOUT_MS is invalid
  */
 export function getQuickIPCRequestTimeout(): number {
   return Math.min(10000, getIPCRequestTimeout());

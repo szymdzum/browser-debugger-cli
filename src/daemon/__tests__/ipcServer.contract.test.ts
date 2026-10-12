@@ -437,8 +437,8 @@ void describe('IPC Server Contract Tests', () => {
       // Send invalid JSON
       client.writeRaw('{ invalid json }\n');
 
-      // Wait a bit to ensure server processes it
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      const errorReply = JSON.parse(await client.waitForResponse()) as { type: string };
+      assert.equal(errorReply.type, 'error_response');
 
       // Server should still accept valid messages after error
       const request: HandshakeRequest = {
