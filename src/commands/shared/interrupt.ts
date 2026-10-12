@@ -2,7 +2,9 @@
  * Ctrl-C and SIGTERM: every command run by `CommandRunner` reports them
  * ({@link reportInterrupts}: the `--json` envelope or one line, exit 130 or
  * 143); a command that cancels its daemon request instead of dying
- * mid-request reports them itself ({@link abortOnInterrupt}).
+ * mid-request reports them itself ({@link abortOnInterrupt}). Before any
+ * command runs, the entry point reports them the same way
+ * ({@link reportInterruptsUntilHandedOver}).
  */
 
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -102,6 +104,30 @@ export function reportInterrupts(report: (signal: InterruptSignal) => void): () 
   return () => {
     for (const { signal, listener } of listeners) process.removeListener(signal, listener);
   };
+}
+
+/**
+ * Report Ctrl-C or SIGTERM ({@link reportInterrupts}) until anything else
+ * installs a SIGINT or SIGTERM listener, then stop reporting both: from then
+ * on the signals are handled exactly as they would be without this. The
+ * report is removed on the next tick, once the new listener is in place, so
+ * no signal finds the process without a listener (no signal is handled
+ * before then).
+ *
+ * For the CLI's startup: a signal before a command handles them itself
+ * (`runCommand`, a follow mode, a start) is reported like an interrupted
+ * command instead of killing bdg with no output.
+ *
+ * @param report - Prints the interrupt (synchronously)
+ */
+export function reportInterruptsUntilHandedOver(report: (signal: InterruptSignal) => void): void {
+  const stopReporting = reportInterrupts(report);
+  const handOver = (event: string | symbol): void => {
+    if (!INTERRUPT_SIGNALS.includes(event as InterruptSignal)) return;
+    process.removeListener('newListener', handOver);
+    process.nextTick(stopReporting);
+  };
+  process.on('newListener', handOver);
 }
 
 /**

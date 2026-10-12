@@ -124,6 +124,19 @@ jobs:
       - name: Build package
         run: npm run build
 
+      # The CLI is two files (dist/index.js loads dist/cli.js): run the packed package.
+      # node_modules is linked because --help --json requires devtools-protocol/package.json
+      # at run time; the link would hide a runtime dependency missing from package.json.
+      - name: Run the packed CLI
+        run: |
+          dir="$(mktemp -d)"
+          tarball="$(npm pack --ignore-scripts --silent --pack-destination "$dir")"
+          tar -xzf "$dir/$tarball" -C "$dir"
+          ln -s "$PWD/node_modules" "$dir/package/node_modules"
+          node "$dir/package/dist/index.js" --version
+          help="$(node "$dir/package/dist/index.js" --help --json)"
+          test "${help:0:1}" = '{'
+
       # Save cache for other jobs (only runs if cache didn't exist)
       - name: Cache node_modules
         if: steps.cache.outputs.cache-hit != 'true'

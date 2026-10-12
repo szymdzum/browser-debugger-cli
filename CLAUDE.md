@@ -37,7 +37,7 @@ await runCommand(
 
 ### Error Handling
 
-**Convention:** `process.exit` and `console.error` belong at entrypoints only (`src/index.ts`, `CommandRunner`, signal handlers, daemon bootstrap). Below that layer, choose one of two structured styles:
+**Convention:** `process.exit` and `console.error` belong at entrypoints only (`src/index.ts`, `src/cli.ts`, `CommandRunner`, signal handlers, daemon bootstrap). Below that layer, choose one of two structured styles:
 
 - **Throw `CommandError`** — from deep helpers when the caller can't reasonably recover. `CommandRunner` catches and formats.
 - **Return `{ success, error?, exitCode?, errorContext? }`** — from composable operations whose callers branch on failure (e.g., CLI command action handlers, `FetchResult`).
