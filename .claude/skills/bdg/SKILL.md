@@ -102,7 +102,7 @@ bdg dom fill 0 "value"                         # By index from the last query/fo
 bdg dom fill "#password" "short"               # Typed like a user: minlength applies (warning, submitBlocked); secret fields echo ••••; exit 90 if the page moved the text to another field
 bdg dom click "button.submit" --index 1        # Second match
 bdg dom submit "form" --wait-navigation        # Traditional form post
-bdg dom pressKey "input" Enter
+bdg dom pressKey "input" Enter                # Also Tab, Escape, ArrowDown --times 3, Shift, NumpadEnter, characters (a, ., _, /); unknown names list the keys
 bdg dom scroll "footer"                        # Or --down 500, --bottom
 bdg dom wait '.toast' --text 'Saved'           # Also --visible, --gone, --load
 ```

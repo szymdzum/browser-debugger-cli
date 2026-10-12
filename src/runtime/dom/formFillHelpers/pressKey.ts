@@ -49,9 +49,6 @@ export interface PressKeyOptions {
 
 export type { PressKeyResult } from '@/ipc/protocol/domTypes.js';
 
-/** Keys (by code) that can submit a form: Enter, and Space on a submit button */
-const SUBMIT_KEYS = ['Enter', 'Space'];
-
 /**
  * A key press's result, with whether its script left a probe for the submit
  * the key starts (`readBlockedSubmit` reads it; not part of the CLI result)
@@ -186,7 +183,7 @@ export async function pressKeyElement(
   const times = options.times ?? 1;
   const implicitShift = impliesShift(keyName) ? MODIFIER_FLAGS.shift : 0;
   const modifierFlags = parseModifiers(options.modifiers) | implicitShift;
-  const submitKey = SUBMIT_KEYS.includes(keyDef.code) ? keyDef.code : null;
+  const submitKey = keyDef.key === 'Enter' ? 'Enter' : keyDef.code === 'Space' ? 'Space' : null;
 
   try {
     const focusResponse = await callFunctionInMainWorld(cdp, {
@@ -297,6 +294,7 @@ async function dispatchKeyEvent(
   modifiers: number
 ): Promise<void> {
   const text = keyText(keyDef, modifiers);
+  const held = type === 'keyDown' && keyDef.modifier ? MODIFIER_FLAGS[keyDef.modifier] : 0;
   const key = text && text !== '\r' ? text : keyDef.key;
   const commands = type === 'keyDown' ? shortcutCommands(keyDef.code, modifiers) : [];
   await cdp.send('Input.dispatchKeyEvent', {
@@ -304,7 +302,7 @@ async function dispatchKeyEvent(
     code: keyDef.code,
     key,
     windowsVirtualKeyCode: keyDef.keyCode,
-    modifiers,
+    modifiers: modifiers | held,
     ...(type === 'keyDown' && text && { text, unmodifiedText: keyDef.text }),
     ...(commands.length > 0 && { commands }),
   });
