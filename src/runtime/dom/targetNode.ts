@@ -507,10 +507,15 @@ const NODE_SELECTOR_FUNCTION = `function () {
  * @param cdp - CDP connection
  * @param backendNodeId - Backend node id from the query cache
  * @returns The selector, or null when none finds exactly that element
+ *   (the handle used to build it is always released, best effort)
  */
-async function selectorOfNode(cdp: CDPConnection, backendNodeId: number): Promise<string | null> {
+export async function selectorOfNode(
+  cdp: CDPConnection,
+  backendNodeId: number
+): Promise<string | null> {
+  const objectGroup = `bdg-selector-${Date.now()}`;
   try {
-    const resolved = await resolveNodeInBdgWorld(cdp, { backendNodeId });
+    const resolved = await resolveNodeInBdgWorld(cdp, { backendNodeId, objectGroup });
     const { objectId } = resolved.object;
     if (!objectId) return null;
     const answer = (await cdp.send('Runtime.callFunctionOn', {
@@ -523,6 +528,12 @@ async function selectorOfNode(cdp: CDPConnection, backendNodeId: number): Promis
   } catch (error) {
     log.debug(`No selector for the element: ${getErrorMessage(error)}`);
     return null;
+  } finally {
+    await cdp
+      .send('Runtime.releaseObjectGroup', { objectGroup })
+      .catch((error: unknown) =>
+        log.debug(`Selector handle not released: ${getErrorMessage(error)}`)
+      );
   }
 }
 
