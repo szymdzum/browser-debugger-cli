@@ -31,7 +31,7 @@ Every feature or behaviour-change PR runs the scenarios that touch its area on t
    # ... round ...
    ls -A ~/Downloads | diff /tmp/downloads-before.txt - && echo "Downloads untouched"
    ```
-5. **Brief the agents** with the scenario's task text only (the **Task** line), the bdg command, the session directory and, for fixtures, the URL. Don't mention the feature, the issue or the expected output. Screenshots are allowed. Run at most 4 agents in parallel, and not while implementers' suites are running: each agent runs its own Chrome, and smoke tests flake under that load.
+5. **Brief the agents** with the scenario's task text only (the **Task** line), the bdg command, the session directory and, for fixtures, the URL. Don't mention the feature, the issue or the expected output. Screenshots are allowed. Run at most 4 agents in parallel, or at most 1 while implementers' smoke suites are running: each agent runs its own Chrome, and smoke tests flake under heavy load.
 6. **Interrupts**: to test Ctrl-C, send SIGINT to the `node` PID of that bdg command directly (`kill -INT <pid>`), not through a shell function or a process group. Kill only PIDs you started; no `pkill`/`killall`.
 7. **Clean up**: `bdg stop` in each session directory (`BDG_SESSION_DIR=… node dist/index.js stop`), stop the fixture server, remove the `/tmp/bdg-round-*` directories once the reports are in.
 
