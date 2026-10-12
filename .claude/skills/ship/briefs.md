@@ -72,7 +72,7 @@ Implement issue #<N> in bdg (github.com/szymdzum/browser-debugger-cli). Read the
 {{node}}
 export BDG_TEST_SESSION_PARENT=/tmp/bt-<N> BDG_TEST_HOME_DIR=/tmp/bt-<N>-h   # manual runs: BDG_SESSION_DIR=/tmp/bdg-<N>-manual
 ```
-Run `npm run check`, `npm test`, `npm run build` and the affected smoke files (`npx tsx --test --test-concurrency=1 src/__tests__/smoke/<file>.smoke.test.ts`); CI runs the full smoke suite. Collect before/after evidence on a fixture page (`npx tsx src/__testutils__/serveFixtures.ts`) or a real site: two lines, not a capture of every command; case matrices up to ~30 cells unless the scope asks for more.
+Run `npm run check`, `npm test`, `npm run build` and the affected smoke files (`npx tsx --test --test-concurrency=1 src/__tests__/smoke/<file>.smoke.test.ts`); CI runs the full smoke suite. When the change alters human or `--json` output, also run every test that asserts the old text (`rg` the old string across `src/`), not only the files you added (a shared formatter change passed 2 smoke files and CI found a third, #691). Collect before/after evidence on a fixture page (`npx tsx src/__testutils__/serveFixtures.ts`) or a real site: two lines, not a capture of every command; case matrices up to ~30 cells unless the scope asks for more.
 
 {{foreground}}
 

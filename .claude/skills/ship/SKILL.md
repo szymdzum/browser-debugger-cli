@@ -36,7 +36,7 @@ Files:
 ```
 #<N> <slug>  tier <1|2|3>
 - [ ] Implementer: ship brief implementer N=<N> BRANCH=<type>/<slug> → fill scope → spawn (background)
-- [ ] Report ends with `PR <url> HEAD <sha>`; ship ci-wait <pr> (background)
+- [ ] Report ends with `PR <url> HEAD <sha>`; ship ci-wait <pr> (background, 60-minute timeout)
 - [ ] Reviewer: ship brief reviewer … → findings to the same implementer; Not-checked risks resumed
 - [ ] Tester (tier 2–3): ship brief tester … → findings routed
 - [ ] Fix rounds ≤ 2; the reviewer re-checks each fix commit (SendMessage to the same reviewer)
@@ -47,9 +47,9 @@ Files:
 
 ### Implement
 
-Render the implementer brief, fill in scope, decisions and the other agents' files, and spawn it in the **background** (models and caps: the table in `briefs.md`). Every subagent starts from a fresh context (`general-purpose` with its brief), never a fork of this conversation. Name 5–8 files to read first yourself, from the issue and memory; no Explore agent for a file map. Keep the user informed with one line per step change (started, red commit, draft PR, report in).
+Render the implementer brief, fill in scope, decisions and the other agents' files, and spawn it in the **background** (models and caps: the table in `briefs.md`). Every subagent starts from a fresh context (`general-purpose` with its brief), never a fork of this conversation. Name 5–8 files to read first yourself, from the issue and memory; no Explore agent for a file map. A CLAUDE.md change the user approved is made by you on the PR's branch: implementers refuse CLAUDE.md edits relayed by an orchestrator, even approved ones. Keep the user informed with one line per step change (started, red commit, draft PR, report in).
 
-An implementer's report ends with `PR <url> HEAD <sha>`. Without that line the work isn't done: read the PR (`gh pr view`) and resume the agent with what's missing. Then `ship ci-wait <pr>` in the background (one per PR; it exits `superseded` when the head moves, so an old waiter never answers for a new push). A push with no `pull_request` run after 3 minutes gets a close/reopen of the PR, not a dispatch: the required `CI OK` must come from a `pull_request` run.
+An implementer's report ends with `PR <url> HEAD <sha>`. Without that line the work isn't done: read the PR (`gh pr view`) and resume the agent with what's missing. Then `ship ci-wait <pr>` in the background with a 60-minute timeout (the harness default of 30 minutes killed waiters twice; same for `run-wait`; one waiter per PR; it exits `superseded` when the head moves, so an old waiter never answers for a new push). A push with no `pull_request` run after 3 minutes gets a close/reopen of the PR, not a dispatch: the required `CI OK` must come from a `pull_request` run.
 
 ### Review
 
@@ -105,6 +105,7 @@ A red `main` is fixed before any new work. After a merge, `ship ci-wait <merge s
 - **Shared registries** conflict between parallel PRs: fixture pages go in a new module in `src/__testutils__/fixturePages/`, option behaviors in their area table.
 - **Heuristics pass their own fixtures.** For any detection heuristic (action effects, press or cover checks), reviewers build false-positive matrices on scratch pages; fixture-only tests passed every broken version so far.
 - **"Flaky" can be a real bug.** Root-cause a flake before calling it one.
+- **Secret and marker regexes in tests need boundaries**, e.g. `(?<![\d:])4111`: a bare `/4111/` matched the fixture port `127.0.0.1:44111` and turned `main` red (#682). Ports, ids and timestamps must not match.
 - **CodeQL or linters on test fixtures** (a variable named `SECRET`): rename, don't suppress. An open CodeQL alert on `main` gets an issue the day it appears.
 
 ## Project settings

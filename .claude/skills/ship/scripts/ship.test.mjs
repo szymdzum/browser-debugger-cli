@@ -13,11 +13,14 @@ import { test } from 'node:test';
 import {
   EXIT,
   inScope,
+  insertLogRow,
+  isTransientGhError,
   judgeConclusions,
   overlappingFiles,
   parseArgs,
   parseBriefs,
   renderBrief,
+  retryTransient,
   tempWorktrees,
   worktreeOfBranch,
 } from './ship.mjs';
@@ -167,4 +170,93 @@ test('inScope matches a number as a whole token only', () => {
   assert.equal(inScope('/private/tmp/mc-6110', ['611']), false);
   assert.equal(inScope('bdg-impl-6110-fixtures.pid', ['611']), false);
   assert.equal(inScope('bdg-t-612-a-http.pid', ['611', '673']), false);
+});
+
+test('isTransientGhError spots network and 5xx failures, not 404 or auth', () => {
+  for (const m of [
+    'Post "https://api.github.com/graphql": unexpected EOF',
+    'read: connection reset by peer',
+    'net/http: TLS handshake timeout',
+    'HTTP 502: Bad Gateway',
+    'HTTP 503',
+  ])
+    assert.equal(isTransientGhError({ stderr: m }), true, m);
+  for (const m of ['HTTP 404: Not Found', 'HTTP 401: Bad credentials', 'unknown flag: --bogus'])
+    assert.equal(isTransientGhError({ message: 'Command failed', stderr: m }), false, m);
+});
+
+test('isTransientGhError ignores numbers in the command line', () => {
+  const pr502 = {
+    message: 'Command failed: gh pr view 502 --repo x',
+    stderr: 'HTTP 404: Not Found',
+  };
+  const limit = { message: 'Command failed: gh run list --limit 500', stderr: 'unknown flag' };
+  assert.equal(isTransientGhError(pr502), false);
+  assert.equal(isTransientGhError(limit), false);
+});
+
+test('retry covers reads only: run() has no retry, ghJson alone wraps it', () => {
+  const src = readFileSync(join(import.meta.dirname, 'ship.mjs'), 'utf8');
+  const runFn = src.slice(src.indexOf('function run('), src.indexOf('const TRANSIENT_GH'));
+  assert.ok(!runFn.includes('retryTransient'));
+  assert.equal(src.match(/retryTransient\(\(\) =>/g).length, 1);
+  assert.ok(/function ghJson[\s\S]*?retryTransient\(\(\) => run\('gh'/.test(src));
+});
+
+test('insertLogRow adds to the main table, before a non-empty or empty Escaped section', () => {
+  const main = '| merged | PR |\n|---|---|\n| a | #1 |';
+  for (const escaped of ['| found | PR |\n|---|---|\n| b | #2 |\n', '']) {
+    const text = `# Log\n\n${main}\n\n## Escaped\n\n${escaped}`;
+    const out = insertLogRow(text, '| c | #3 |');
+    assert.equal(out, text.replace(`${main}\n`, `${main}\n| c | #3 |\n`));
+  }
+  assert.equal(insertLogRow(`${main}\n`, '| c | #3 |'), `${main}\n| c | #3 |\n`);
+  assert.throws(() => insertLogRow('# nothing', 'x'), /no PR table/);
+});
+
+test('retryTransient retries a transient failure, then returns', () => {
+  const waits = [];
+  let calls = 0;
+  const out = retryTransient(
+    () => {
+      if (++calls < 3)
+        throw Object.assign(new Error('Command failed'), { stderr: 'unexpected EOF' });
+      return 'ok';
+    },
+    { backoff: [1, 2, 3], wait: (ms) => waits.push(ms) }
+  );
+  assert.equal(out, 'ok');
+  assert.deepEqual(waits, [1, 2]);
+});
+
+test('retryTransient gives up after the bounded retries', () => {
+  let calls = 0;
+  assert.throws(
+    () =>
+      retryTransient(
+        () => {
+          calls++;
+          throw Object.assign(new Error('Command failed'), { stderr: 'HTTP 503' });
+        },
+        { backoff: [1, 1], wait: () => {} }
+      ),
+    { stderr: /503/ }
+  );
+  assert.equal(calls, 3);
+});
+
+test('retryTransient fails at once on a non-transient error', () => {
+  let calls = 0;
+  assert.throws(
+    () =>
+      retryTransient(
+        () => {
+          calls++;
+          throw Object.assign(new Error('Command failed'), { stderr: 'HTTP 404: Not Found' });
+        },
+        { backoff: [1, 1], wait: () => {} }
+      ),
+    { stderr: /404/ }
+  );
+  assert.equal(calls, 1);
 });
