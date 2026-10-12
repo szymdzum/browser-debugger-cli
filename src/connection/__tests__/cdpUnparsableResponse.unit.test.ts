@@ -67,4 +67,30 @@ void describe('CDPConnection unparsable response', () => {
       cdp.close();
     }
   });
+
+  void it('shows no response text in the error or the log', async () => {
+    const logged: string[] = [];
+    const record = (message: string): void => void logged.push(message);
+    const socket = new FakeWebSocket();
+    const cdp = new CDPConnection(
+      { info: record, debug: record, error: record, warn: record } as unknown as Console,
+      () => socket as unknown as WebSocket
+    );
+    const connecting = cdp.connect('ws://localhost:9222/devtools/browser');
+    socket.simulateOpen();
+    await connecting;
+    try {
+      const pending = cdp.send('Network.getCookies');
+      const failure = pending.then(
+        () => '',
+        (error: unknown) => String(error)
+      );
+      socket.simulateMessage(`{"id":${lastSentId(socket)},"result":{"v":SECRETCOOKIEVALUE}}`);
+      const shown = [await failure, ...logged].join('\n');
+      assert.match(shown, /CDP response could not be parsed/);
+      assert.doesNotMatch(shown, /SECRET|COOKIE/);
+    } finally {
+      cdp.close();
+    }
+  });
 });

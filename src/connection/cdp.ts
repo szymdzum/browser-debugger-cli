@@ -42,6 +42,20 @@ const UNPARSABLE_RESPONSE_ID = /^\s*\{\s*"id"\s*:\s*(\d+)\s*[,}]/;
 /** Error text of a command whose response could not be parsed */
 const UNPARSABLE_RESPONSE_ERROR = 'CDP response could not be parsed';
 
+/**
+ * What can be said about an unparsable response without quoting it: V8's
+ * parse error quotes the text around the bad token, which may hold cookies,
+ * bodies or storage values.
+ *
+ * @param cause - The parse error
+ * @param messageText - Raw text of the response
+ * @returns Length of the text and the error position, if known
+ */
+function describeParseFailure(cause: unknown, messageText: string): string {
+  const position = /position (\d+)/.exec(getErrorMessage(cause))?.[1];
+  return `${messageText.length} chars${position === undefined ? '' : `, error at position ${position}`}`;
+}
+
 const NO_ID_OR_METHOD_MESSAGE = 'Received CDP message with neither ID nor method - ignoring';
 const INVALID_WEBSOCKET_URL_ERROR = (url: string, errorMsg: string): string =>
   `Invalid WebSocket URL: ${url}. Error: ${errorMsg}`;
@@ -318,8 +332,14 @@ export class CDPConnection implements CDPEventSource {
       const message = this.parseJSONMessage(messageText);
       this.routeCDPMessage(message);
     } catch (error) {
+      if (error instanceof SyntaxError && messageText !== undefined) {
+        this.logger.debug(
+          `Failed to process CDP message: ${describeParseFailure(error, messageText)}`
+        );
+        this.rejectUnparsableResponse(messageText, error);
+        return;
+      }
       this.logger.debug(`Failed to process CDP message: ${getErrorMessage(error)}`);
-      if (messageText !== undefined) this.rejectUnparsableResponse(messageText, error);
     }
   }
 
@@ -336,12 +356,11 @@ export class CDPConnection implements CDPEventSource {
     if (id === undefined) return;
     const pending = this.pendingMessages.get(Number(id));
     if (!pending) return;
-    this.logger.info(
-      `CDP response for command ${id} could not be parsed: ${getErrorMessage(cause)}`
-    );
+    const detail = describeParseFailure(cause, messageText);
+    this.logger.info(`CDP response for command ${id} could not be parsed (${detail})`);
     this.pendingMessages.delete(Number(id));
     clearTimeout(pending.timeout);
-    pending.reject(new Error(`${UNPARSABLE_RESPONSE_ERROR}: ${getErrorMessage(cause)}`));
+    pending.reject(new Error(`${UNPARSABLE_RESPONSE_ERROR} (${detail})`));
   }
 
   /**
