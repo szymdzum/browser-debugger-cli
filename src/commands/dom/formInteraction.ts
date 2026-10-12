@@ -12,6 +12,7 @@ import { InvalidArgumentError, Option, type Command } from 'commander';
 import { runElementCommand } from '@/commands/dom/helpers/runElementCommand.js';
 import { runCommand, type CommandResult } from '@/commands/shared/CommandRunner.js';
 import { jsonOption, SELECTOR_OR_INDEX_ARGUMENT } from '@/commands/shared/commonOptions.js';
+import { createErrorResult } from '@/commands/shared/dataFetcher.js';
 import type {
   FillCommandOptions,
   ClickCommandOptions,
@@ -19,7 +20,6 @@ import type {
   PressKeyCommandOptions,
   ScrollCommandOptions,
 } from '@/commands/shared/optionTypes.js';
-import { createErrorResult } from '@/commands/shared/dataFetcher.js';
 import { dialogChoice, integerOption } from '@/commands/shared/validation.js';
 import { CommandError } from '@/errors/index.js';
 import {
@@ -179,7 +179,8 @@ export function registerFormInteractionCommands(program: Command): void {
           });
         },
         options,
-        formatFillOutput
+        formatFillOutput,
+        { sent: 'fill' }
       );
     });
 
@@ -267,7 +268,8 @@ export function registerFormInteractionCommands(program: Command): void {
           });
         },
         options,
-        formatSubmitOutput
+        formatSubmitOutput,
+        { sent: 'submit' }
       );
     });
 
@@ -309,7 +311,8 @@ export function registerFormInteractionCommands(program: Command): void {
           });
         },
         options,
-        formatPressKeyOutput
+        formatPressKeyOutput,
+        { sent: 'key press' }
       );
     });
 
@@ -332,7 +335,9 @@ export function registerFormInteractionCommands(program: Command): void {
     .addOption(promptTextOption())
     .addOption(jsonOption())
     .action(async (selector: string | undefined, options: ScrollCommandOptions) => {
-      await runCommand(() => runScroll(selector, options), options, formatScrollOutput);
+      await runCommand(() => runScroll(selector, options), options, formatScrollOutput, {
+        sent: 'scroll',
+      });
     });
 }
 
@@ -451,9 +456,18 @@ async function hoverOff(
       return { success: true, data: { pointer: 'off' } };
     },
     options,
-    () => HOVER_OFF_DONE
+    () => HOVER_OFF_DONE,
+    { sent: 'hover' }
   );
 }
+
+/** What a pointer action is called in an interrupted command's suggestion */
+const POINTER_ACTION_NAMES: Record<NonNullable<ClickResult['action']>, string> = {
+  click: 'click',
+  double: 'double-click',
+  right: 'right-click',
+  hover: 'hover',
+};
 
 async function runPointerCommand(
   selectorOrIndex: string,
@@ -489,7 +503,8 @@ async function runPointerCommand(
       });
     },
     options,
-    formatClickOutput
+    formatClickOutput,
+    { sent: POINTER_ACTION_NAMES[action] }
   );
 }
 

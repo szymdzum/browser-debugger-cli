@@ -14,6 +14,7 @@ import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type { NetworkHarCommandOptions } from '@/commands/shared/optionTypes.js';
 import { assertFilePath, writeOutputFile } from '@/commands/shared/outputFile.js';
+import type { InterruptedFileWrite } from '@/errors/messages.js';
 import { callCDP } from '@/ipc/client.js';
 import { getSessionFilePath } from '@/session/paths.js';
 import { applyFilters, parseFilterString } from '@/telemetry/filterDsl.js';
@@ -127,6 +128,7 @@ export function registerHarCommand(networkCmd: Command): void {
     .addOption(filterDslOption)
     .addOption(includeSensitiveOption)
     .action(async (outputFile: string | undefined, options: HarFilterOptions) => {
+      const work: InterruptedFileWrite = { file: 'HAR file' };
       await runCommand(
         async () => {
           let requests = await getNetworkRequests();
@@ -158,6 +160,7 @@ export function registerHarCommand(networkCmd: Command): void {
             };
           }
 
+          work.writing = outputPath;
           const file = await writeOutputFile(
             outputPath,
             JSON.stringify(har, null, 2),
@@ -173,7 +176,8 @@ export function registerHarCommand(networkCmd: Command): void {
           return { success: true, data };
         },
         options,
-        formatHARExport
+        formatHARExport,
+        work
       );
     });
 }

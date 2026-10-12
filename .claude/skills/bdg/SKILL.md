@@ -235,6 +235,8 @@ bdg dom screenshot /tmp/vp.png --no-full-page       # Viewport only
 
 Add `--json` (`-j`) to any command for `{ version, success, data }` (or `{ success: false, error, exitCode, suggestion }`); read it with `jq`, not line by line. Lists (`dom query`, `dom a11y query`) are bounded; `count` is the total, `--limit 0` lists all. `bdg --help --json` lists every command, flag and exit code; `bdg <command> --help --json` describes one in full.
 
+If a command is interrupted, Ctrl-C (exit 130) or SIGTERM (exit 143) still prints the envelope, with `error: "Interrupted"` and a suggestion saying what may have happened; after an interrupted action (click, fill, navigate, ...), check with `bdg peek` before repeating it.
+
 | Code | Meaning | Action |
 |------|---------|--------|
 | 0 | Success | - |
@@ -249,7 +251,7 @@ Add `--json` (`-j`) to any command for `{ version, success, data }` (or `{ succe
 | 101 | CDP connection failure | `bdg cleanup --force`, then restart |
 | 102 | Timeout (CDP, `dom wait`) or no response | Check page load, raise `--timeout` |
 | 107 | Page crashed | `bdg page reload` |
-| 130 / 143 | Interrupted (Ctrl-C) / SIGTERM | - |
+| 130 / 143 | Interrupted (Ctrl-C) / SIGTERM | Read `suggestion`; after an action, `bdg peek` before repeating |
 
 ## Troubleshooting
 

@@ -47,6 +47,8 @@ export async function runCommand(
     interruptWith?: NodeJS.Signals;
     /** Called with everything read from stdout so far, after each chunk */
     onStdout?: (stdout: string) => void;
+    /** Called with everything read from stderr so far, after each chunk */
+    onStderr?: (stderr: string) => void;
   } = {}
 ): Promise<CommandResult> {
   const {
@@ -56,6 +58,7 @@ export async function runCommand(
     interrupt,
     interruptWith = 'SIGINT',
     onStdout,
+    onStderr,
   } = options;
 
   // Path to compiled CLI entry point (ESM module compatibility)
@@ -97,6 +100,7 @@ export async function runCommand(
 
     child.stderr?.on('data', (chunk: Buffer) => {
       stderr += chunk.toString();
+      onStderr?.(stderr);
     });
 
     child.on('error', (error: Error) => {

@@ -23,6 +23,7 @@ import {
   daemonNotRunningError,
   invalidResponseError,
   genericError,
+  startCancelledSuggestion,
 } from '@/errors/messages.js';
 import {
   startSession as sendStartSessionRequest,
@@ -312,7 +313,13 @@ export async function afterSpawnedDaemonExit(
  */
 function interruptedOutcome(signal: InterruptSignal): Extract<StartOutcome, { ok: false }> {
   const message = `Start cancelled (${signal === 'SIGINT' ? 'interrupted' : 'terminated'})`;
-  return { ok: false, error: message, human: message, exitCode: interruptExitCode(signal) };
+  return {
+    ok: false,
+    error: message,
+    human: message,
+    exitCode: interruptExitCode(signal),
+    details: { suggestion: startCancelledSuggestion() },
+  };
 }
 
 /**

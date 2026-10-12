@@ -207,6 +207,74 @@ export function screenshotInterruptedError(signal: 'SIGINT' | 'SIGTERM'): ErrorW
 }
 
 /**
+ * What an interrupted command may already have done: sent an action to the
+ * page (`sent`: what, e.g. `click`), changed the session itself
+ * (`session`: `stop` or `cleanup`), or a file it writes (`file`: what kind;
+ * `writing`: its path once the write has started, absent before).
+ */
+export type InterruptedWork =
+  { sent: string } | { session: 'stop' | 'cleanup' } | InterruptedFileWrite;
+
+/** A file an interruptible command writes; `writing` is set as the write starts */
+export interface InterruptedFileWrite {
+  file: string;
+  writing?: string | undefined;
+}
+
+/**
+ * Any command interrupted by Ctrl-C or SIGTERM before it reported: says
+ * what may already have happened.
+ *
+ * @param work - What the command may have done, when it changes something
+ * @returns Message and suggestion
+ */
+export function commandInterruptedError(work?: InterruptedWork): ErrorWithSuggestion {
+  return { message: 'Interrupted', suggestion: interruptedWorkText(work) };
+}
+
+/**
+ * The suggestion of {@link commandInterruptedError}.
+ *
+ * @param work - What the command may have done
+ * @returns Text
+ */
+function interruptedWorkText(work: InterruptedWork | undefined): string {
+  if (!work) return 'The command stopped before it reported; run it again for its result';
+  if ('sent' in work) {
+    return `The ${work.sent} may already have reached the page; check with ${sessionCommand('bdg peek')} before repeating it`;
+  }
+  if ('session' in work) {
+    const begun =
+      work.session === 'stop'
+        ? 'The stop request may already have been sent'
+        : 'The cleanup may already have ended processes or removed files';
+    return `${begun}; check with ${sessionCommand('bdg status')} before running it again`;
+  }
+  return work.writing
+    ? `The ${work.file} may or may not have been written to ${work.writing}; check it, or run the command again`
+    : `The ${work.file} was not written (an existing file is unchanged); run the command again`;
+}
+
+/**
+ * The suggestion of a start cancelled by Ctrl-C or SIGTERM.
+ *
+ * @returns Suggestion
+ */
+export function startCancelledSuggestion(): string {
+  return `Start again with: ${sessionCommand('bdg <url>')}`;
+}
+
+/**
+ * The one line an interrupted command prints on stderr (text output).
+ *
+ * @param err - From {@link commandInterruptedError}
+ * @returns Line
+ */
+export function commandInterruptedLine(err: ErrorWithSuggestion): string {
+  return `${err.message}. ${err.suggestion}`;
+}
+
+/**
  * What to do when a command finds no session to work with.
  *
  * @param exitCode - 85 while a start is in progress, otherwise 83

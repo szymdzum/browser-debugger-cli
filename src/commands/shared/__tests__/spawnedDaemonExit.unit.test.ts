@@ -226,6 +226,7 @@ void describe('attemptStart interrupted (Ctrl-C)', () => {
     assert.equal(outcome.exitCode, 130);
     assert.match(outcome.human, /Start cancelled \(interrupted\)/);
     assert.equal(outcome.details?.['daemonStillRunning'], undefined);
+    assert.match(String(outcome.details?.['suggestion']), /^Start again with: bdg <url>/);
   });
 
   void it('reports 143 for SIGTERM, with a hint when the daemon outlives the wait', async () => {
