@@ -107,12 +107,7 @@ void describe('JSON contract', () => {
     await expectEnvelope(['dom', '--json'], 81);
     await expectEnvelope(['dom', 'a11y', '--json'], 81);
 
-    const bare = await runCommand('--json', [], { timeout: 15000 });
-    assert.equal(bare.exitCode, 0);
-    assert.ok(
-      'command' in (JSON.parse(bare.stdout) as object),
-      'bare --json prints the help schema'
-    );
+    await expectEnvelope(['--json'], 81);
     const status = await expectEnvelope(['--json', 'status'], 0);
     assert.equal(status.data?.['active'], false, '--json before the subcommand is honored');
 

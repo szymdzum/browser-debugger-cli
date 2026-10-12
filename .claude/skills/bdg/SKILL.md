@@ -233,7 +233,7 @@ bdg dom screenshot /tmp/vp.png --no-full-page       # Viewport only
 
 ## JSON Output and Exit Codes
 
-Add `--json` (`-j`) to any command for `{ version, success, data }` (or `{ success: false, error, exitCode, suggestion }`); read it with `jq`, not line by line. Lists (`dom query`, `dom a11y query`) are bounded; `count` is the total, `--limit 0` lists all. `bdg --help --json` lists every command, flag and exit code; bare `bdg --json` prints the same document (exit 0, no `success` field), so check a `$URL` variable is not empty before `bdg $URL --json`; `bdg <command> --help --json` describes one in full. `--json` typed right after an option that needs a value (`--last --json`) is exit 81 with an envelope, not the value; write the long form `--opt=--json` to pass that text.
+Add `--json` (`-j`) to any command for `{ version, success, data }` (or `{ success: false, error, exitCode, suggestion }`); read it with `jq`, not line by line. Lists (`dom query`, `dom a11y query`) are bounded; `count` is the total, `--limit 0` lists all. `bdg --help --json` lists every command, flag and exit code; bare `bdg --json` (no command or URL) is an error envelope with exit 81, so an empty `$URL` in `bdg $URL --json` fails loudly; `bdg <command> --help --json` describes one in full. `--json` typed right after an option that needs a value (`--last --json`) is exit 81 with an envelope, not the value; write the long form `--opt=--json` to pass that text.
 
 If a command is interrupted, Ctrl-C (exit 130) or SIGTERM (exit 143) still prints the envelope, with `error: "Interrupted"` and a suggestion saying what may have happened; after an interrupted action (click, fill, navigate, ...), check with `bdg peek` before repeating it.
 

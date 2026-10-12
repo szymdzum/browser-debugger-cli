@@ -1800,7 +1800,7 @@ page, a timeout) print an error envelope per refresh and are retried.
 
 Put `--json` after the command (`bdg peek --json`); `bdg --json peek` also works.
 
-Bare `bdg --json` (no command or URL) prints the machine-readable help document, the same as `bdg --help --json`, and exits 0. Its output has no `success` field, so a script that builds `bdg $URL --json` must check that `$URL` is not empty (an empty variable gives this document, not a session error).
+Bare `bdg --json` (or `-j`, with no command and no URL) is an error envelope: `success: false`, exit 81, suggesting `bdg <url>` and `bdg --help --json`. An empty `$URL` in `bdg $URL --json` therefore fails loudly instead of printing the help document; `bdg --help --json` is the machine-readable help.
 
 ### Machine-readable help
 

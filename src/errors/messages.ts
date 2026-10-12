@@ -211,6 +211,20 @@ export function jsonTakenAsValueError(
 }
 
 /**
+ * `bdg --json` with no command and no URL (often `bdg $URL --json` with an
+ * empty `$URL`).
+ *
+ * @returns Message and suggestion
+ */
+export function noCommandOrUrlError(): ErrorWithSuggestion {
+  return {
+    message: 'No command or URL given',
+    suggestion:
+      'Start a session with: bdg <url>, or run a command (bdg <command> --json); for the machine-readable help run: bdg --help --json',
+  };
+}
+
+/**
  * The daemon cannot parse a request frame.
  *
  * @param reason - What is wrong with the frame
