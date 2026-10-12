@@ -8,6 +8,7 @@
 import type { Command } from 'commander';
 
 import { runCommand, type CommandResult } from '@/commands/shared/CommandRunner.js';
+import type { InterruptedFileWrite } from '@/errors/messages.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type { BaseOptions } from '@/commands/shared/optionTypes.js';
 import { readStateFile, writeStateFile } from '@/commands/shared/stateFile.js';
@@ -105,11 +106,13 @@ function parseOrigins(values: string[]): string[] {
  *
  * @param file - Path given
  * @param options - Command options
+ * @param work - Gets the path as the write starts, for an interrupt
  * @returns Where it was written and what it holds (counts)
  */
 async function saveState(
   file: string,
-  options: StateSaveOptions
+  options: StateSaveOptions,
+  work: InterruptedFileWrite
 ): Promise<CommandResult<StateSaveResult>> {
   const origins = parseOrigins(options.origin ?? []);
   const response = await stateSave(origins.length ? { origins } : {});
@@ -117,6 +120,7 @@ async function saveState(
     return failed(response, 'Failed to read the browser state');
   }
   const { state, skipped } = response.data;
+  work.writing = file;
   const written = await writeStateFile(file, state);
   return { success: true, data: { file: written, ...summarizeState(state, skipped) } };
 }
@@ -163,10 +167,12 @@ export function registerStateCommands(program: Command): void {
     .addOption(jsonOption())
     .addHelpText('after', `\n${STATE_FILE_WARNING}.`)
     .action(async (file: string, options: StateSaveOptions) => {
+      const work: InterruptedFileWrite = { file: 'state file' };
       await runCommand(
-        () => saveState(file, options),
+        () => saveState(file, options, work),
         options,
-        (data) => stateSavedMessage(data.file, data)
+        (data) => stateSavedMessage(data.file, data),
+        work
       );
     });
 
@@ -178,6 +184,8 @@ export function registerStateCommands(program: Command): void {
     .addOption(jsonOption())
     .addHelpText('after', `\n${STATE_FILE_WARNING}.`)
     .action(async (file: string, options: StateLoadOptions) => {
-      await runCommand(() => loadState(file, options), options, stateLoadedMessage);
+      await runCommand(() => loadState(file, options), options, stateLoadedMessage, {
+        sent: 'state load',
+      });
     });
 }

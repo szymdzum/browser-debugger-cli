@@ -289,7 +289,9 @@ async function runCdpCommand(
     return runCommand(async () => handleDescribeMethod(method), options, formatCdpDescription);
   }
   if (method) {
-    return runCommand(async () => handleExecuteMethod(method, options), options, formatCdpResult);
+    return runCommand(async () => handleExecuteMethod(method, options), options, formatCdpResult, {
+      sent: 'CDP call',
+    });
   }
   return runCommand(async () => {
     const err = missingArgumentError(CDP_USAGE);

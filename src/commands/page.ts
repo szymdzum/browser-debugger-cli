@@ -167,7 +167,8 @@ async function runPageAction(
       return { success: true, data: response.data };
     },
     options,
-    formatPageResult
+    formatPageResult,
+    { sent: action === 'navigate' ? 'navigation' : action }
   );
 }
 
@@ -267,7 +268,8 @@ async function emulate(options: PageEmulateOptions): Promise<void> {
       new OutputFormatter()
         .text('✓ Page emulation changed')
         .keyValueList(pageEmulationLines(result), 10)
-        .build()
+        .build(),
+    { sent: 'emulation change' }
   );
 }
 
@@ -288,13 +290,15 @@ interface TabResponse<T> {
  * @param format - Human-readable output
  * @param failure - Error when the daemon gives none
  * @param shown - The answer with its URLs as shown
+ * @param sent - What an interrupt may leave sent to the browser (an action)
  */
 async function runTabCommand<T>(
   request: () => Promise<TabResponse<T>>,
   options: PageReadOptions,
   format: (data: T) => string,
   failure: string,
-  shown: (data: T, includeSensitive: boolean) => T
+  shown: (data: T, includeSensitive: boolean) => T,
+  sent?: string
 ): Promise<void> {
   await runCommand(
     async () => {
@@ -314,7 +318,8 @@ async function runTabCommand<T>(
       };
     },
     options,
-    format
+    format,
+    sent === undefined ? undefined : { sent }
   );
 }
 
@@ -490,7 +495,8 @@ function registerTabCommands(page: Command): void {
         options,
         formatClose,
         'Failed to close the tab',
-        (data) => ({ ...data, closed: shownTab(data.closed), current: shownTab(data.current) })
+        (data) => ({ ...data, closed: shownTab(data.closed), current: shownTab(data.current) }),
+        'tab close'
       );
     });
 }
