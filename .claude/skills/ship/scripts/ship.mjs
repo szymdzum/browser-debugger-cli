@@ -691,7 +691,7 @@ export function inScope(name, scope) {
 export function tempWorktrees(porcelain) {
   return porcelain
     .split('\n')
-    .filter((l) => /^worktree \/(private\/)?tmp\/(review|review2|red|mc|codex)-/.test(l))
+    .filter((l) => /^worktree \/(private\/)?tmp\/(review|review2|red|mc)-/.test(l))
     .map((l) => l.slice('worktree '.length));
 }
 
@@ -937,53 +937,6 @@ function log(argv) {
   return EXIT.ok;
 }
 
-/**
- * Runs Codex as an extra reviewer on another model family, read-only, on the
- * PR's head in a temporary worktree; prints where the review was written.
- *
- * @param {string[]} argv `<pr> [instructions file]`
- */
-function codexReview(argv) {
-  const [prNumber, instructions] = argv;
-  if (!prNumber) return usage('codex-review <pr> [file with review instructions]');
-  const pr = prInfo(prNumber);
-  run('git', ['fetch', '-q', 'origin']);
-  const base = run('git', ['merge-base', `origin/${pr.baseRefName}`, pr.headRefOid]);
-  const out = `/tmp/codex-review-${pr.number}.md`;
-  const prompt = instructions ? readFileSync(instructions, 'utf8') : '';
-  const ok = inTempWorktree(pr.headRefOid, `/tmp/codex-${pr.number}`, (cwd) => {
-    const r = spawnSync(
-      'codex',
-      [
-        'exec',
-        '-s',
-        'read-only',
-        '-C',
-        cwd,
-        '-o',
-        out,
-        'review',
-        '--base',
-        base,
-        ...(prompt ? ['-'] : []),
-      ],
-      {
-        input: prompt,
-        encoding: 'utf8',
-        env: pinnedEnv(),
-        maxBuffer: 256 * 1024 * 1024,
-      }
-    );
-    return r.status === 0;
-  });
-  console.log(
-    ok
-      ? `codex review of PR #${pr.number} at ${pr.headRefOid.slice(0, 10)}: ${out}`
-      : 'codex review failed'
-  );
-  return ok ? EXIT.ok : EXIT.failed;
-}
-
 const COMMANDS = {
   snapshot: [snapshot, 'session start: snapshot ~/.bdg and ~/Downloads (gate 8)'],
   worktree: [worktree, '<N> <branch>: agent worktree from origin/main, node_modules linked'],
@@ -995,7 +948,6 @@ const COMMANDS = {
   gates: [gates, '<pr> --tier=N [--macos] [--timing] [--repeat=<id>]: mechanical gates'],
   merge: [merge, '<pr> --tier=N [gate flags]: gates, merge on that head, clean up'],
   leftovers: [leftovers, '[--clean]: gate 8; --clean drops PID files of dead processes'],
-  'codex-review': [codexReview, '<pr> [instructions file]: extra read-only review by Codex'],
   log: [log, '<pr> tier= review= tester= rounds= model= tokens= note=: append to log.md'],
 };
 
