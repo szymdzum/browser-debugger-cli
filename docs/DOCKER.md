@@ -36,7 +36,7 @@ bdg detects containers (`/.dockerenv`, `/run/.containerenv`, or a docker/contain
 
 - **Docker** (`/.dockerenv`): the default seccomp profile blocks the user namespaces the sandbox needs, for root and non-root users alike. Without the flag Chrome exits on start.
 - **root on Linux**: Chrome refuses to start sandboxed as root.
-- **`BDG_NO_SANDBOX=1`**: explicit opt-in for other restricted environments (e.g. a Podman container where the sandbox fails).
+- **`BDG_NO_SANDBOX=1`** (or `true`/`yes`): explicit opt-in for other restricted environments (e.g. a Podman container where the sandbox fails).
 
 Podman-based dev containers (toolbox, distrobox) keep the sandbox on.
 

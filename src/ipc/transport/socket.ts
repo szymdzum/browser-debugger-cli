@@ -8,6 +8,7 @@ import { connect } from 'net';
 
 import type { Socket } from 'net';
 
+import { MAX_TIMER_DELAY_MS } from '@/constants.js';
 import { createLogger } from '@/ui/logging/index.js';
 
 const log = createLogger('client');
@@ -41,9 +42,12 @@ export function createSocket(
   socket.setNoDelay(true);
 
   if (handlers.onTimeout) {
-    timeoutHandle = setTimeout(() => {
-      handlers.onTimeout?.();
-    }, config.timeoutMs);
+    timeoutHandle = setTimeout(
+      () => {
+        handlers.onTimeout?.();
+      },
+      Math.min(config.timeoutMs, MAX_TIMER_DELAY_MS)
+    );
   }
 
   if (handlers.onConnect) {

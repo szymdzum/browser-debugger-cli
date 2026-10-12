@@ -43,38 +43,3 @@ export function pushWithLimit<T>(
     }
   }
 }
-
-/**
- * Wrap a CDP operation with a timeout to prevent hanging.
- *
- * Prevents telemetry collectors from hanging indefinitely on slow or
- * unresponsive CDP commands. Useful for operations like DOM capture,
- * screenshot capture, or other potentially slow CDP calls.
- *
- * @param promise - CDP operation to wrap
- * @param timeoutMs - Timeout in milliseconds
- * @param label - Human-readable label for error messages
- * @returns Promise that resolves with the CDP result or rejects on timeout
- * @throws Error if the operation times out
- *
- * @example
- * ```typescript
- * const doc = await withTimeout(
- *   cdp.send('DOM.getDocument', { depth: -1 }),
- *   5000,
- *   'DOM.getDocument'
- * );
- * ```
- */
-export async function withTimeout<T>(
-  promise: Promise<T>,
-  timeoutMs: number,
-  label: string
-): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error(`CDP ${label} timed out after ${timeoutMs}ms`)), timeoutMs)
-    ),
-  ]);
-}

@@ -8,7 +8,7 @@ import { handleValidationError } from '@/commands/shared/handleValidationError.j
 import { startSessionViaDaemon } from '@/commands/shared/startHelpers.js';
 import { readStateFile } from '@/commands/shared/stateFile.js';
 import { parseDialogAnswer, positiveIntRule } from '@/commands/shared/validation.js';
-import { PORT_OPTION_DESCRIPTION } from '@/constants.js';
+import { getIPCRequestTimeout, PORT_OPTION_DESCRIPTION } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
 import {
   chromeWsUrlConflictError,
@@ -30,6 +30,7 @@ import {
   STATE_FILE_WARNING,
   stateWithChromeWsUrlError,
 } from '@/ui/messages/stateMessages.js';
+import { parseChromeFlags } from '@/utils/chromeFlags.js';
 import { directoryProblem } from '@/utils/directories.js';
 import { hasDisplay } from '@/utils/display.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -269,8 +270,8 @@ function buildSessionOptions(options: CollectorOptions): {
   const timeout = options.timeout !== undefined ? timeoutRule.validate(options.timeout) : undefined;
 
   // Merge env var flags with CLI flags (CLI flags come after, taking precedence)
-  const envFlags = process.env['BDG_CHROME_FLAGS']?.split(' ').filter(Boolean) ?? [];
-  const cliFlags = options.chromeFlags?.split(' ').filter(Boolean) ?? [];
+  const envFlags = parseChromeFlags(process.env['BDG_CHROME_FLAGS']);
+  const cliFlags = parseChromeFlags(options.chromeFlags);
   const { userDataDir: flagUserDataDir, rest: combinedFlags } = extractUserDataDirFromFlags([
     ...envFlags,
     ...cliFlags,
@@ -378,7 +379,7 @@ export function assertNotMistypedCommand(program: Command, argv: string[]): void
 }
 
 /**
- * Validate the URL and all start options before anything is spawned.
+ * Validate the URL, all start options and `BDG_IPC_TIMEOUT_MS` before anything is spawned.
  *
  * @param url - Target URL
  * @param options - Parsed command-line options from Commander
@@ -405,6 +406,7 @@ function validateStartInput(
     program.commands.map((command) => command.name())
   );
   assertValidUrl(url);
+  getIPCRequestTimeout();
   assertStateNotAttached(options);
   if (options.chromeWsUrl !== undefined) {
     assertValidChromeWsUrl(options.chromeWsUrl);
@@ -413,8 +415,8 @@ function validateStartInput(
   if (options.userDataDir !== undefined) assertUserDataDir(options.userDataDir);
   if (options.chromeWsUrl === undefined)
     assertChromeFlags([
-      ...(process.env['BDG_CHROME_FLAGS']?.split(' ') ?? []),
-      ...(options.chromeFlags?.split(' ') ?? []),
+      ...parseChromeFlags(process.env['BDG_CHROME_FLAGS']),
+      ...parseChromeFlags(options.chromeFlags),
     ]);
   const sessionOptions = buildSessionOptions(options);
   if (sessionOptions.userDataDir !== undefined) assertUsableProfile(sessionOptions.userDataDir);

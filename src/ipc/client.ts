@@ -24,7 +24,11 @@ import type {
 } from './session/index.js';
 import type { NoType } from './utils/index.js';
 
-import { getIPCRequestTimeout, getQuickIPCRequestTimeout } from '@/constants.js';
+import {
+  getIPCRequestTimeout,
+  getQuickIPCRequestTimeout,
+  MAX_TIMER_DELAY_MS,
+} from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
 import type { CdpCollectParams, CdpEventsCommand } from '@/ipc/protocol/cdpEventTypes.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -628,10 +632,13 @@ const WAIT_IPC_MARGIN_MS = 10_000;
  * reports that wait running out first.
  *
  * @param waitMs - The request's own wait
- * @returns Timeout in milliseconds
+ * @returns Timeout in milliseconds, at most {@link MAX_TIMER_DELAY_MS}
  */
 function waitingTimeoutMs(waitMs: number): number {
-  return Math.max(getIPCRequestTimeout(), waitMs + WAIT_IPC_MARGIN_MS);
+  return Math.min(
+    Math.max(getIPCRequestTimeout(), waitMs + WAIT_IPC_MARGIN_MS),
+    MAX_TIMER_DELAY_MS
+  );
 }
 
 /**

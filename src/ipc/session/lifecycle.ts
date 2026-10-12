@@ -20,6 +20,21 @@ export interface IPCMessage {
 }
 
 /**
+ * Reply to a frame the daemon cannot answer with a response of its type:
+ * unreadable JSON, a frame without `type` or `sessionId`, or a request type it
+ * does not know. `sessionId` echoes the frame's when it has one, else
+ * `unknown`.
+ */
+export interface IPCErrorFrame extends IPCMessage {
+  type: 'error_response';
+  status: 'error';
+  error: string;
+  suggestion?: string;
+  /** Exit code the client ends with */
+  exitCode?: number;
+}
+
+/**
  * Handshake request (client → daemon).
  */
 export interface HandshakeRequest extends IPCMessage {

@@ -48,6 +48,16 @@ export function chromeSessionMarkerFlag(sessionDir: string): string {
 const NO_SANDBOX_ENV = 'BDG_NO_SANDBOX';
 
 /**
+ * Whether a `BDG_NO_SANDBOX` value asks for `--no-sandbox`.
+ *
+ * @param value - The variable's value
+ * @returns True for `1`, `true` or `yes` (case-insensitive)
+ */
+function isNoSandboxRequested(value: string | undefined): boolean {
+  return ['1', 'true', 'yes'].includes(value?.trim().toLowerCase() ?? '');
+}
+
+/**
  * Whether Chrome must run with `--no-sandbox`.
  *
  * Only where the sandbox cannot work, so it stays on everywhere else
@@ -55,12 +65,12 @@ const NO_SANDBOX_ENV = 'BDG_NO_SANDBOX';
  * - Docker: the default seccomp profile blocks the user namespaces the
  *   sandbox needs, for root and non-root users alike
  * - root on Linux: Chrome refuses to start sandboxed as root
- * - `BDG_NO_SANDBOX=1`: explicit opt-in for other restricted environments
+ * - `BDG_NO_SANDBOX=1` (or `true`/`yes`, any case): explicit opt-in for other restricted environments
  *
  * @returns True if `--no-sandbox` should be added
  */
 export function needsNoSandbox(): boolean {
-  if (process.env[NO_SANDBOX_ENV] === '1') return true;
+  if (isNoSandboxRequested(process.env[NO_SANDBOX_ENV])) return true;
   if (process.platform === 'linux' && process.getuid?.() === 0) return true;
   return fs.existsSync('/.dockerenv');
 }

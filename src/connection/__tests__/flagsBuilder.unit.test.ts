@@ -86,6 +86,13 @@ describe('buildChromeFlags sandbox', () => {
     assert.ok(buildChromeFlags({ port: 9222 }).includes('--no-sandbox'));
   });
 
+  for (const value of ['true', 'TRUE', 'True', 'yes', 'YES']) {
+    test(`adds --no-sandbox when BDG_NO_SANDBOX=${value}`, () => {
+      process.env['BDG_NO_SANDBOX'] = value;
+      assert.ok(buildChromeFlags({ port: 9222 }).includes('--no-sandbox'));
+    });
+  }
+
   test('keeps the sandbox on a regular (non-root, non-Docker) host', () => {
     if (process.getuid?.() === 0 || fs.existsSync('/.dockerenv')) return;
     assert.ok(!buildChromeFlags({ port: 9222 }).includes('--no-sandbox'));
