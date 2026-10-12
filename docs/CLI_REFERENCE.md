@@ -1147,6 +1147,7 @@ bdg network list --filter "status-code:>=500"      # Server errors only
 bdg network list --filter "domain:api.*"           # API subdomain
 bdg network list --filter "domain:*.example.com"   # All subdomains
 bdg network list --filter "!domain:cdn.*"          # Exclude CDN
+bdg network list --filter "domain:localhost:3000"  # One host and port
 
 # Filter by HTTP method
 bdg network list --filter "method:POST"
@@ -1256,7 +1257,7 @@ A request on which Chrome blocked a cookie ends with `⚠ cookie blocked` (`bdg 
 | Filter | Description | Examples |
 |--------|-------------|----------|
 | `status-code:<op><n>` | HTTP status code | `status-code:404`, `status-code:>=400` |
-| `domain:<pattern>` | Domain with wildcards | `domain:api.*`, `domain:*.example.com` |
+| `domain:<pattern>[:<port>]` | Domain with wildcards; with a port only that port matches (a URL without one counts as 80 for http, 443 for https); IPv6 in brackets; a port outside 1-65535 exits 81 | `domain:api.*`, `domain:*.example.com`, `domain:localhost:3000`, `domain:[::1]:8080` |
 | `method:<method>` | HTTP method | `method:POST`, `method:DELETE` |
 | `mime-type:<type>` | Response MIME type | `mime-type:application/json` |
 | `resource-type:<types>` | CDP resource type(s) | `resource-type:XHR,Fetch` |

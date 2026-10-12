@@ -167,7 +167,7 @@ Exit 91 means the script threw. Prefer `dom query` / `dom get` / `dom inspect` w
 
 ```bash
 bdg network list                              # Requests of all page loads (--page current: the current one; only --preset errors|failed|slow default to current)
-bdg network list --filter "status-code:>=400 domain:api.*"   # DevTools DSL: status-code:, domain:, method:, mime-type:, ! negates; space = AND
+bdg network list --filter "status-code:>=400 domain:api.*"   # DevTools DSL: status-code:, domain: (host or host:port), method:, mime-type:, ! negates; space = AND
 bdg network list --sort size --last 5         # 5 heaviest requests (--sort duration: slowest; --page current|all; DSL page:current)
 bdg details network <id>                      # Headers, timing, body (cut at 20000 chars; --json bodyTruncated/bodyLength); Blocked Cookies: set rejected / not sent + reason
 bdg details network <id> --no-body            # Metadata only; --body prints just the whole raw body (pipe to jq); --body-max <chars>
