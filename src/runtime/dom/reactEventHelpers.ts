@@ -10,6 +10,8 @@ import {
   FILL_REFUSALS,
   LABEL_WITHOUT_CONTROL,
   NAME_QUERY_PLACEHOLDER,
+  NO_MATCH_PREFIX,
+  NO_MATCH_SUFFIX,
   VIA_LABEL_SUFFIX,
 } from '@/errors/messages.js';
 import type { FillResult, ClickResult } from '@/ipc/protocol/domTypes.js';
@@ -418,7 +420,7 @@ export const REACT_FILL_SCRIPT = `
   if (allMatches.length === 0) {
     return { 
       success: false, 
-      error: 'Element not found: ' + selector,
+      error: '${NO_MATCH_PREFIX}' + selector + '${NO_MATCH_SUFFIX}',
       selector: selector
     };
   }
@@ -838,7 +840,7 @@ export const CLICK_ELEMENT_SCRIPT = `
   if (allMatches.length === 0) {
     return {
       success: false,
-      error: 'Element not found: ' + selector,
+      error: '${NO_MATCH_PREFIX}' + selector + '${NO_MATCH_SUFFIX}',
       selector: selector
     };
   }

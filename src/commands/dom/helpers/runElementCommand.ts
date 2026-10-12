@@ -8,6 +8,7 @@
 import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
 import { noMatchContext } from '@/commands/dom/helpers/query.js';
 import {
+  NO_MATCH_PREFIX,
   type NoMatchContext,
   otherIndexSourceNote,
   staleNodeError,
@@ -180,7 +181,7 @@ function failedResultFailure<Req, Res extends ResultPayload>(
 ): CommandResult<never> {
   const exitCode =
     result.exitCode ??
-    (result.error?.includes('not found')
+    (result.error?.includes('not found') || result.error?.startsWith(NO_MATCH_PREFIX)
       ? EXIT_CODES.RESOURCE_NOT_FOUND
       : EXIT_CODES.INVALID_ARGUMENTS);
   return {

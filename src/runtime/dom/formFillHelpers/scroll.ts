@@ -6,7 +6,7 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
-import { scrollNoEffectWarning } from '@/errors/messages.js';
+import { NO_MATCH_PREFIX, NO_MATCH_SUFFIX, scrollNoEffectWarning } from '@/errors/messages.js';
 import type { ScrollResult } from '@/ipc/protocol/domTypes.js';
 import {
   SCROLL_RANGE_JS,
@@ -44,7 +44,7 @@ const SCROLL_TO_ELEMENT_SCRIPT = `
 (function(selector, parts, index) {
   const allMatches = (${FIND_ELEMENTS_JS})(selector, parts);
   if (allMatches.length === 0) {
-    return { success: false, error: 'No nodes found matching selector: ' + selector };
+    return { success: false, error: '${NO_MATCH_PREFIX}' + selector + '${NO_MATCH_SUFFIX}' };
   }
 
   let el;

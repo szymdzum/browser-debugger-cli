@@ -17,7 +17,7 @@ void describe('elementNotFoundError', () => {
   void it('has a one-line message without an "Error:" prefix', () => {
     for (const selector of ['#missing', '[data-id=x]', 'input[name=email]']) {
       const { message } = elementNotFoundError(selector);
-      assert.equal(message, `Element not found: ${selector}`);
+      assert.equal(message, `No nodes found matching "${selector}"`);
     }
   });
 

@@ -8,6 +8,8 @@ import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import {
+  NO_MATCH_PREFIX,
+  NO_MATCH_SUFFIX,
   VIA_LABEL_SUFFIX,
   keyPressFailedError,
   operationFailedError,
@@ -68,7 +70,7 @@ const FOCUS_ELEMENT_SCRIPT = `
   ${CLEAR_SUBMIT_PROBE_JS}
   const allMatches = (${FIND_ELEMENTS_JS})(selector, parts);
   if (allMatches.length === 0) {
-    return { success: false, reason: 'not-found', error: 'Element not found: ' + selector };
+    return { success: false, reason: 'not-found', error: '${NO_MATCH_PREFIX}' + selector + '${NO_MATCH_SUFFIX}' };
   }
 
   let el;
