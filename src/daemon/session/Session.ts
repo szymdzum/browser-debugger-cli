@@ -74,8 +74,10 @@ export type SessionEndedCallback = (reason: SessionEndReason, cause?: Connection
  * (`crash`); the connection named a cause such as a message over the size
  * limit or missed pongs (`disconnected`); a launched Chrome still running
  * closed the connection without one, so its tab was closed (`closed`). An
- * attached Chrome that closed it without a cause stays `crash`, as bdg
- * cannot tell whether that Chrome still runs.
+ * attached Chrome whose connection closed without a cause or with a socket
+ * error stays `crash`: bdg cannot tell whether that Chrome still runs, and a
+ * dying Chrome often resets the socket. Missed pongs and an oversized
+ * message show Chrome was there, so they are `disconnected` in attach mode too.
  *
  * @param chrome - Launched Chrome still running or exited; unknown for an attached Chrome
  * @param cause - Why the connection was lost, when the connection knows
@@ -86,6 +88,7 @@ export function lossEndReason(
   cause: ConnectionLossCause | undefined
 ): SessionEndReason {
   if (chrome === 'exited') return 'crash';
+  if (cause === 'socket-error' && chrome === 'unknown') return 'crash';
   if (cause) return 'disconnected';
   return chrome === 'running' ? 'closed' : 'crash';
 }

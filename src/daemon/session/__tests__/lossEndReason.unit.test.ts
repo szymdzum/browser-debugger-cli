@@ -12,7 +12,9 @@ void describe('lossEndReason', () => {
   void it('ends as disconnected when the connection names a cause and Chrome still runs', () => {
     assert.equal(lossEndReason('running', 'message-too-large'), 'disconnected');
     assert.equal(lossEndReason('running', 'no-pong'), 'disconnected');
-    assert.equal(lossEndReason('unknown', 'socket-error'), 'disconnected');
+    assert.equal(lossEndReason('running', 'socket-error'), 'disconnected');
+    assert.equal(lossEndReason('unknown', 'no-pong'), 'disconnected');
+    assert.equal(lossEndReason('unknown', 'message-too-large'), 'disconnected');
   });
 
   void it('keeps closed for a running Chrome whose connection closed without a cause', () => {
@@ -23,5 +25,9 @@ void describe('lossEndReason', () => {
     assert.equal(lossEndReason('exited', 'socket-error'), 'crash');
     assert.equal(lossEndReason('exited', undefined), 'crash');
     assert.equal(lossEndReason('unknown', undefined), 'crash');
+  });
+
+  void it('keeps crash for a socket error on an attached Chrome, whose liveness bdg cannot check', () => {
+    assert.equal(lossEndReason('unknown', 'socket-error'), 'crash');
   });
 });
