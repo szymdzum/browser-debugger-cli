@@ -435,7 +435,7 @@ export const REACT_FILL_SCRIPT = `
         selector: selector,
         matchCount: allMatches.length,
         requestedIndex: index,
-        suggestion: 'Use --index between 0 and ' + (allMatches.length - 1)
+        suggestion: allMatches.length === 1 ? 'The only --index is 0' : 'Use --index between 0 and ' + (allMatches.length - 1)
       };
     }
     el = allMatches[index];
@@ -854,7 +854,7 @@ export const CLICK_ELEMENT_SCRIPT = `
         selector: selector,
         matchCount: allMatches.length,
         requestedIndex: index,
-        suggestion: 'Use --index between 0 and ' + (allMatches.length - 1)
+        suggestion: allMatches.length === 1 ? 'The only --index is 0' : 'Use --index between 0 and ' + (allMatches.length - 1)
       };
     }
     el = allMatches[index];

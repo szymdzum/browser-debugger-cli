@@ -82,12 +82,14 @@ void describe('Query cache', () => {
   });
 
   void it('says the only index is 0 for a one-result list', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}raw-legacy`]);
     await bdg(['dom', 'query', '#legacy-pass']);
 
     const output = await bdg(['dom', 'get', '5'], 87);
 
     assert.match(output, /the only index is 0/);
     assert.doesNotMatch(output, /between 0 and 0/);
+    await bdg(['page', 'navigate', `${fixture.url}components`]);
   });
 
   void it('hints at 0-based indices for a negative or fractional number', async () => {
