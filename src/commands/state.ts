@@ -8,11 +8,11 @@
 import type { Command } from 'commander';
 
 import { runCommand, type CommandResult } from '@/commands/shared/CommandRunner.js';
-import type { InterruptedFileWrite } from '@/errors/messages.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type { BaseOptions } from '@/commands/shared/optionTypes.js';
 import { readStateFile, writeStateFile } from '@/commands/shared/stateFile.js';
 import { CommandError } from '@/errors/index.js';
+import type { InterruptedFileWrite } from '@/errors/messages.js';
 import { stateLoad, stateSave } from '@/ipc/client.js';
 import type { StateLoadData, StateSummary } from '@/ipc/protocol/stateTypes.js';
 import {

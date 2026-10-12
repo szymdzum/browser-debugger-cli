@@ -11,10 +11,10 @@ import * as path from 'path';
 import { Option, type Command } from 'commander';
 
 import { runCommand } from '@/commands/shared/CommandRunner.js';
-import type { InterruptedFileWrite } from '@/errors/messages.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type { NetworkHarCommandOptions } from '@/commands/shared/optionTypes.js';
 import { assertFilePath, writeOutputFile } from '@/commands/shared/outputFile.js';
+import type { InterruptedFileWrite } from '@/errors/messages.js';
 import { callCDP } from '@/ipc/client.js';
 import { getSessionFilePath } from '@/session/paths.js';
 import { applyFilters, parseFilterString } from '@/telemetry/filterDsl.js';

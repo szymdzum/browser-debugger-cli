@@ -1,9 +1,9 @@
-import { type BaseOptions } from '@/commands/shared/optionTypes.js';
 import {
   interruptExitCode,
   reportInterrupts,
   type InterruptSignal,
 } from '@/commands/shared/interrupt.js';
+import { type BaseOptions } from '@/commands/shared/optionTypes.js';
 import { getQuickIPCRequestTimeout } from '@/constants.js';
 import { CommandError, isDaemonConnectionError } from '@/errors/index.js';
 import {
