@@ -17,6 +17,9 @@ import { makeTempDir, removeTempDirs } from '@/__testutils__/tempDirs.js';
 /** The child script */
 const CHILD = path.resolve('src/__testutils__/interruptedWrite.ts');
 
+/** Bound on one child's run; the child is killed after it */
+const CHILD_TIMEOUT_MS = 30_000;
+
 /** Content of the target before the write */
 const OLD_CONTENT = 'old content';
 
@@ -53,8 +56,17 @@ function interruptWrite(
     if (chunk.includes('waiting') || chunk.includes('aborted')) child.kill(signal);
   });
   return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      reject(
+        new Error(`the child did not exit within ${CHILD_TIMEOUT_MS} ms (no "waiting" line?)`)
+      );
+    }, CHILD_TIMEOUT_MS);
     child.on('error', reject);
-    child.on('exit', (code) => resolve(code));
+    child.on('exit', (code) => {
+      clearTimeout(timer);
+      resolve(code);
+    });
   });
 }
 

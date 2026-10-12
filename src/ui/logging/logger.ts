@@ -62,6 +62,7 @@ export type LogContext =
   | 'diagnostics'
   | 'readiness'
   | 'atomic-file'
+  | 'temp-files'
   | 'object-expander'
   | 'fetcher'
   | 'targets';

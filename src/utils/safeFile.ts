@@ -11,8 +11,18 @@
 import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import { promisify } from 'util';
 
-import { trackTempFile } from '@/utils/tempFiles.js';
+import { createTrackedTempFile } from '@/utils/tempFiles.js';
+
+/** Set the mode of an open file */
+const changeFdMode = promisify(fs.fchmod);
+
+/** Write a whole file through its descriptor */
+const writeToFd = promisify(fs.writeFile);
+
+/** Close a file descriptor */
+const closeFd = promisify(fs.close);
 
 /** Flags of a temp file: created new (never an existing file or a symlink) */
 export const TEMP_FILE_FLAGS =
@@ -56,19 +66,18 @@ export async function writeFileSafely(file: string, data: string, mode: number):
   const target = await fs.promises.stat(file).catch(() => undefined);
   if (target?.isDirectory()) throw Object.assign(new Error('directory'), { code: 'EISDIR' });
   const temp = tempPathFor(file);
-  const untrack = trackTempFile(temp);
+  const { fd, untrack } = createTrackedTempFile(temp, TEMP_FILE_FLAGS, mode);
   try {
-    const handle = await fs.promises.open(temp, TEMP_FILE_FLAGS, mode);
     try {
-      await handle.chmod(mode);
-      await handle.writeFile(data, 'utf8');
-      await handle.close();
-      await fs.promises.rename(temp, file);
-    } catch (error) {
-      await handle.close().catch(() => undefined);
-      await fs.promises.rm(temp, { force: true });
-      throw error;
+      await changeFdMode(fd, mode);
+      await writeToFd(fd, data, 'utf8');
+    } finally {
+      await closeFd(fd);
     }
+    await fs.promises.rename(temp, file);
+  } catch (error) {
+    await fs.promises.rm(temp, { force: true });
+    throw error;
   } finally {
     untrack();
   }

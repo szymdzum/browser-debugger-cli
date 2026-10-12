@@ -11,7 +11,7 @@ import * as fs from 'fs';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
-const log = createLogger('atomic-file');
+const log = createLogger('temp-files');
 
 /** Temp files of writes in progress */
 const pendingTempFiles = new Set<string>();
@@ -34,20 +34,45 @@ function removePendingTempFiles(): void {
   pendingTempFiles.clear();
 }
 
+/** A temp file created and tracked by {@link createTrackedTempFile} */
+export interface TrackedTempFile {
+  /** Its file descriptor, open for writing */
+  fd: number;
+  /** Stops tracking it (call once the write has renamed or removed it) */
+  untrack: () => void;
+}
+
 /**
- * Track the temp file of a write until it ends: should the process exit
- * first, the file is removed.
+ * Create a temp file and track it until its write ends: should the process
+ * exit first, the file is removed. It is created synchronously, so no exit
+ * can come between its creation and its tracking.
  *
  * @param file - Path of the temp file
- * @returns Stops tracking it (call once the write has renamed or removed it)
+ * @param flags - Open flags (they must create the file exclusively)
+ * @param mode - Mode of the new file (less the umask)
+ * @returns The open file and its untrack function
+ * @throws The file-system error of the create (nothing is tracked then)
  */
-export function trackTempFile(file: string): () => void {
+export function createTrackedTempFile(file: string, flags: number, mode = 0o666): TrackedTempFile {
+  const fd = fs.openSync(file, flags, mode);
   if (!exitListenerInstalled) {
     exitListenerInstalled = true;
     process.on('exit', removePendingTempFiles);
   }
   pendingTempFiles.add(file);
-  return () => {
-    pendingTempFiles.delete(file);
+  return {
+    fd,
+    untrack: () => {
+      pendingTempFiles.delete(file);
+    },
   };
+}
+
+/**
+ * Number of temp files tracked now (writes in progress), for diagnostics.
+ *
+ * @returns Count of tracked temp files
+ */
+export function pendingTempFileCount(): number {
+  return pendingTempFiles.size;
 }
