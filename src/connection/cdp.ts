@@ -36,6 +36,26 @@ const WEBSOCKET_CLOSED_MESSAGE = (code: number, reason: string): string =>
   `WebSocket closed: ${code} - ${reason}`;
 const SOCKET_ERROR_MESSAGE = (errorMsg: string): string => `WebSocket error: ${errorMsg}`;
 const UNEXPECTED_DATA_TYPE_ERROR = 'Unexpected data type in CDP message: not a Buffer';
+/** Start of a response text: Chrome writes the command id first (`{"id":7,`) */
+const UNPARSABLE_RESPONSE_ID = /^\s*\{\s*"id"\s*:\s*(\d+)\s*[,}]/;
+
+/** Error text of a command whose response could not be parsed */
+const UNPARSABLE_RESPONSE_ERROR = 'CDP response could not be parsed';
+
+/**
+ * What can be said about an unparsable response without quoting it: V8's
+ * parse error quotes the text around the bad token, which may hold cookies,
+ * bodies or storage values.
+ *
+ * @param cause - The parse error
+ * @param messageText - Raw text of the response
+ * @returns Length of the text and the error position, if known
+ */
+function describeParseFailure(cause: unknown, messageText: string): string {
+  const position = /position (\d+)/.exec(getErrorMessage(cause))?.[1];
+  return `${messageText.length} chars${position === undefined ? '' : `, error at position ${position}`}`;
+}
+
 const NO_ID_OR_METHOD_MESSAGE = 'Received CDP message with neither ID nor method - ignoring';
 const INVALID_WEBSOCKET_URL_ERROR = (url: string, errorMsg: string): string =>
   `Invalid WebSocket URL: ${url}. Error: ${errorMsg}`;
@@ -306,13 +326,41 @@ export class CDPConnection implements CDPEventSource {
    * @param incomingData - Raw WebSocket message data to parse
    */
   private parseIncomingMessage(incomingData: WebSocket.RawData): void {
+    let messageText: string | undefined;
     try {
-      const messageText = this.convertRawDataToString(incomingData);
+      messageText = this.convertRawDataToString(incomingData);
       const message = this.parseJSONMessage(messageText);
       this.routeCDPMessage(message);
     } catch (error) {
+      if (error instanceof SyntaxError && messageText !== undefined) {
+        this.logger.debug(
+          `Failed to process CDP message: ${describeParseFailure(error, messageText)}`
+        );
+        this.rejectUnparsableResponse(messageText, error);
+        return;
+      }
       this.logger.debug(`Failed to process CDP message: ${getErrorMessage(error)}`);
     }
+  }
+
+  /**
+   * Reject the pending command an unparsable response answers, when its id
+   * can be read from the start of the text (Chrome writes `{"id":N,`
+   * first), instead of leaving the command to wait out its timeout.
+   *
+   * @param messageText - Raw text of the response
+   * @param cause - Why it could not be parsed
+   */
+  private rejectUnparsableResponse(messageText: string, cause: unknown): void {
+    const id = UNPARSABLE_RESPONSE_ID.exec(messageText)?.[1];
+    if (id === undefined) return;
+    const pending = this.pendingMessages.get(Number(id));
+    if (!pending) return;
+    const detail = describeParseFailure(cause, messageText);
+    this.logger.info(`CDP response for command ${id} could not be parsed (${detail})`);
+    this.pendingMessages.delete(Number(id));
+    clearTimeout(pending.timeout);
+    pending.reject(new Error(`${UNPARSABLE_RESPONSE_ERROR} (${detail})`));
   }
 
   /**

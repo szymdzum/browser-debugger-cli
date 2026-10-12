@@ -160,3 +160,50 @@ void describe('page that removes globalThis', () => {
     );
   });
 });
+
+void describe('page whose replaced getRootNode breaks the key press and fill scripts (#687)', () => {
+  let fixture: FixtureServer;
+
+  before(async () => {
+    await cleanupAllSessions();
+    fixture = await startFixtureServer();
+    const port = await getFreePort();
+    await bdg([`${fixture.url}broken-root`, '--port', String(port), '--headless']);
+  });
+
+  after(async () => {
+    await cleanupAllSessions();
+    await fixture.close();
+  });
+
+  void it('reports a key press like a fill: replaced built-ins, the exception, exit 90', async () => {
+    const press = await bdg(['dom', 'pressKey', '#name', 'a'], 90);
+    const fill = await bdg(['dom', 'fill', '#name', 'x'], 90);
+    assert.match(
+      press,
+      /The page replaced built-ins bdg's press script uses \(.*Node\.prototype\.getRootNode.*\), and the script failed: Error: anti-bot: getRootNode/
+    );
+    assert.match(
+      fill,
+      /The page replaced built-ins bdg's fill script uses \(.*Node\.prototype\.getRootNode.*\), and the script failed: Error: anti-bot: getRootNode/
+    );
+  });
+
+  void it('puts the same message in --json error, with exit 90', async () => {
+    for (const [command, args] of [
+      ['press', ['dom', 'pressKey', '--json', '#name', 'a']],
+      ['fill', ['dom', 'fill', '--json', '#name', 'x']],
+    ] as const) {
+      const result = await runCommand(args[0], args.slice(1), { timeout: 60000 });
+      assert.equal(result.exitCode, 90, result.stdout + result.stderr);
+      const response = JSON.parse(result.stdout) as { success: boolean; error: string };
+      assert.equal(response.success, false);
+      assert.match(
+        response.error,
+        new RegExp(
+          `bdg's ${command} script uses \\(.*Node\\.prototype\\.getRootNode.*\\), and the script failed: Error: anti-bot: getRootNode`
+        )
+      );
+    }
+  });
+});

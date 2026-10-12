@@ -2365,12 +2365,16 @@ export function textTypedElsewhereError(
 }
 
 /**
- * Key press failed.
+ * Key press failed (not in the page's script: sending the key events, or the
+ * connection).
+ *
+ * @param cause - What failed, e.g. the error's message
+ * @returns Error carrying the cause in its message
  */
-export function keyPressFailedError(details: string): ErrorWithSuggestion {
+export function keyPressFailedError(cause: string): ErrorWithSuggestion {
   return {
-    message: 'Failed to press key',
-    suggestion: details,
+    message: `Failed to press key: ${cause}`,
+    suggestion: `Check that the page is still open with ${sessionCommand('bdg status')}, then retry`,
   };
 }
 
@@ -2439,12 +2443,32 @@ export function emptyScriptError(): ErrorWithSuggestion {
  * A promise returned by `dom eval` that did not settle in time.
  *
  * @param timeoutMs - Time waited
+ * @param resultMayBeUnsent - The script may have finished, its result too large to send
  */
-export function promiseTimeoutError(timeoutMs: number): ErrorWithSuggestion {
+export function promiseTimeoutError(
+  timeoutMs: number,
+  resultMayBeUnsent = false
+): ErrorWithSuggestion {
+  const unsent = resultMayBeUnsent
+    ? '; if the script finished, its result may be too large to send (about 256 MiB): return a slice or the .length'
+    : '';
   return {
     message: `The awaited promise did not settle within ${Math.round(timeoutMs / 1000)}s`,
+    suggestion: `Nothing was busy; check that the promise resolves or rejects, or race it with a timeout in the script${unsent}`,
+  };
+}
+
+/**
+ * A `dom eval` result Chrome never sent (about 256 MiB and more).
+ *
+ * @param timeoutMs - Time waited
+ * @returns Error naming the likely cause and how to get a smaller result
+ */
+export function resultNotSentError(timeoutMs: number): ErrorWithSuggestion {
+  return {
+    message: `The script ran, but its result did not arrive within ${Math.round(timeoutMs / 1000)}s: it is probably too large to send`,
     suggestion:
-      'Nothing was busy; check that the promise resolves or rejects, or race it with a timeout in the script',
+      'Return a slice or the .length instead, or write the data to a file from the page and read that',
   };
 }
 

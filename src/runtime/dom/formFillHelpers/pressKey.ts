@@ -12,7 +12,6 @@ import {
   NO_MATCH_SUFFIX,
   VIA_LABEL_SUFFIX,
   keyPressFailedError,
-  operationFailedError,
   unknownKeyError,
 } from '@/errors/messages.js';
 import type { PressKeyResult } from '@/ipc/protocol/domTypes.js';
@@ -23,6 +22,8 @@ import {
 } from '@/runtime/dom/blockedSubmit.js';
 import { DISABLED_CAUSE_JS, ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
 import {
+  ActionScriptError,
+  exceptionSummary,
   throwIfInvalidSelector,
   withMultipleMatchesWarning,
 } from '@/runtime/dom/formFillHelpers/shared.js';
@@ -203,11 +204,10 @@ export async function pressKeyElement(
 
     if (focusCdpResponse.exceptionDetails) {
       throwIfInvalidSelector(focusCdpResponse.exceptionDetails, selector);
-      const err = keyPressFailedError(`focus: ${focusCdpResponse.exceptionDetails.text}`);
-      throw new CommandError(
-        err.message,
-        { suggestion: err.suggestion },
-        EXIT_CODES.SOFTWARE_ERROR
+      throw new ActionScriptError(
+        'press',
+        exceptionSummary(focusCdpResponse.exceptionDetails),
+        selector
       );
     }
 
@@ -256,7 +256,7 @@ export async function pressKeyElement(
       throw error;
     }
     const errorMessage = error instanceof Error ? error.message : String(error);
-    const err = operationFailedError('press key', errorMessage);
+    const err = keyPressFailedError(errorMessage);
     throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SOFTWARE_ERROR);
   }
 }
