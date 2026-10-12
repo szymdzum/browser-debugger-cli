@@ -41,7 +41,7 @@ Files:
 - [ ] Tester (tier 2–3): ship brief tester … → findings routed
 - [ ] Fix rounds ≤ 2; the reviewer re-checks each fix commit (SendMessage to the same reviewer)
 - [ ] Tier 3: second review of the fix commit; ship repeat for timing; optional ship codex-review
-- [ ] ship gates <pr> --tier=N [--macos] [--repeat=<id>]; ship merge-check when it says the base changed the PR's files; ship merge <pr> (same flags)
+- [ ] ship gates <pr> --tier=N [--macos] [--timing --repeat=<id>] (timing PRs: always --timing); ship merge-check when it says the base changed the PR's files; ship merge <pr> (same flags)
 - [ ] ship ci-wait <merge sha> --push; ship log <pr> …; issue closed or commented
 ```
 

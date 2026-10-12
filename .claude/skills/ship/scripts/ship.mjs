@@ -209,6 +209,10 @@ async function ciWait(argv) {
         Object.fromEntries(workflows.map((wf) => [wf, runs[wf].conclusion])),
         { push }
       );
+      if (code !== EXIT.ok && pr && prInfo(pr.number).headRefOid !== sha) {
+        console.log(`${summary}; superseded: PR #${pr.number} head moved while waiting`);
+        return EXIT.superseded;
+      }
       console.log(summary);
       return code;
     }
@@ -820,6 +824,8 @@ function removeBranchWorktree(branch) {
     run('git', ['worktree', 'remove', path]);
     console.log(`removed worktree ${path}`);
   }
+  if (spawnSync('git', ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]).status !== 0)
+    return;
   run('git', ['fetch', '-q', 'origin']);
   const merged = spawnSync('git', ['merge-base', '--is-ancestor', branch, 'origin/main']);
   if (merged.status !== 0) {
