@@ -157,9 +157,20 @@ void describe('--json right after an option that takes a value (#669)', () => {
         const label = batch[index]?.label ?? '?';
         try {
           assert.equal(run.status, EXIT_CODES.INVALID_ARGUMENTS);
-          const envelope = envelopeOf(run) as { success: boolean; suggestion?: string };
+          const envelope = envelopeOf(run) as {
+            success: boolean;
+            error?: string;
+            suggestion?: string;
+          };
           assert.equal(envelope.success, false);
-          assert.equal(typeof envelope.suggestion, 'string');
+          assert.match(
+            envelope.error ?? '',
+            /^Option \S+ needs a value, but (--json|-j) follows it$/
+          );
+          assert.match(
+            envelope.suggestion ?? '',
+            /^Give \S+ a value before .*, or write --[\w-]+=(--json|-j) /
+          );
           assert.equal(run.stderr, '');
         } catch {
           failures.push(`${label} (exit ${String(run.status)}, stderr ${run.stderr.length} bytes)`);
@@ -192,5 +203,12 @@ void describe('--json right after an option that takes a value (#669)', () => {
     assert.equal(attached.status, EXIT_CODES.INVALID_ARGUMENTS);
     assert.match(envelopeOf(attached).error ?? '', /Invalid --last/);
     assert.equal(attached.stderr, '');
+  });
+
+  void it('--index=--json still reaches the argParser', async () => {
+    const run = await runCli(['dom', 'click', 'x', '--index=--json', '--json']);
+    assert.equal(run.status, EXIT_CODES.INVALID_ARGUMENTS);
+    assert.match(envelopeOf(run).error ?? '', /--index/);
+    assert.doesNotMatch(envelopeOf(run).error ?? '', /needs a value/);
   });
 });

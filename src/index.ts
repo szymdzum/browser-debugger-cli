@@ -62,7 +62,7 @@ function isJsonMode(): boolean {
 }
 
 /**
- * Reject `--json` / `-j` typed where an option's value belongs
+ * Before parsing, reject `--json` / `-j` typed where an option's value belongs
  * (`bdg network list --last --json`): Commander would take it as the value
  * and the command would answer in human mode. The arguments are read left to
  * right as Commander does, so a value-taking option swallows the next word
@@ -188,6 +188,8 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
+  assertJsonNotTakenAsValue(resolveCommand(program, commandWords()));
+
   try {
     await program.parseAsync();
   } catch (error) {
@@ -255,10 +257,9 @@ function nearestOption<T>(command: Command, key: string): T | undefined {
  *
  * @param program - Root command
  * @param actionCommand - Command whose action is about to run
- * @throws CommandError (81) for an invalid session name, or `--json` where an option's value belongs
+ * @throws CommandError (81) for an invalid session name
  */
 function applyGlobalOptions(program: Command, actionCommand: Command): void {
-  assertJsonNotTakenAsValue(actionCommand);
   const root = program.opts<{ json?: boolean }>();
   if (nearestOption<boolean>(actionCommand, 'debug')) enableDebugLogging();
   selectSession(nearestOption<string>(actionCommand, 'session'));
