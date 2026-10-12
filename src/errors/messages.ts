@@ -2892,7 +2892,7 @@ export function tabIndexOutOfRangeError(
   tabs: readonly ListedTab[]
 ): ErrorWithSuggestion {
   return {
-    message: `Tab index ${index} out of range (${tabs.length} tab${tabs.length === 1 ? '' : 's'}: 0-${tabs.length - 1})`,
+    message: `Tab index ${index} out of range (${tabs.length === 1 ? '1 tab: the only index is 0' : `${tabs.length} tabs: 0-${tabs.length - 1}`})`,
     suggestion: joinLines(
       'Open tabs:',
       ...tabLines(tabs),

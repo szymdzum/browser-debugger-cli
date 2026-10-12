@@ -10,6 +10,7 @@ import {
   cachedIndexOutOfRangeError,
   indexOutOfRangeError,
   invalidSelectorError,
+  tabIndexOutOfRangeError,
 } from '@/errors/messages.js';
 import type { IndexSource } from '@/types.js';
 
@@ -57,5 +58,19 @@ void describe('only-index wording', () => {
   void it('keeps the --limit hint when the list was cut to one entry', () => {
     const { suggestion } = cachedIndexOutOfRangeError({ ...SOURCE, index: 1 }, 1, 3);
     assert.doesNotMatch(suggestion, /between 0 and 0/);
+  });
+});
+
+void describe('tabIndexOutOfRangeError', () => {
+  void it('names the only tab instead of 0-0', () => {
+    const tab = { id: 'A', url: 'http://x/', title: 'x', type: 'page' } as never;
+    assert.equal(
+      tabIndexOutOfRangeError(4, [tab]).message,
+      'Tab index 4 out of range (1 tab: the only index is 0)'
+    );
+    assert.equal(
+      tabIndexOutOfRangeError(4, [tab, tab, tab]).message,
+      'Tab index 4 out of range (3 tabs: 0-2)'
+    );
   });
 });

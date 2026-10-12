@@ -431,7 +431,7 @@ export const REACT_FILL_SCRIPT = `
     if (index >= allMatches.length) {
       return {
         success: false,
-        error: 'Index out of range',
+        error: 'Index ' + index + ' out of range (found ' + allMatches.length + (allMatches.length === 1 ? ' node)' : ' nodes)'),
         selector: selector,
         matchCount: allMatches.length,
         requestedIndex: index,
@@ -850,7 +850,7 @@ export const CLICK_ELEMENT_SCRIPT = `
     if (index >= allMatches.length) {
       return {
         success: false,
-        error: 'Index out of range',
+        error: 'Index ' + index + ' out of range (found ' + allMatches.length + (allMatches.length === 1 ? ' node)' : ' nodes)'),
         selector: selector,
         matchCount: allMatches.length,
         requestedIndex: index,
