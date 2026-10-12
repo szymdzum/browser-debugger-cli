@@ -266,6 +266,69 @@ describe('Filter application', () => {
       assert.equal(result[0]?.requestId, 'cdn-image');
     });
 
+    describe('domain with a port (#635)', () => {
+      const portRequests = [
+        createRequest({ requestId: 'p1', url: 'http://127.0.0.1:8080/a' }),
+        createRequest({ requestId: 'p2', url: 'http://127.0.0.1:9090/b' }),
+        createRequest({ requestId: 'p3', url: 'https://example.com/' }),
+        createRequest({ requestId: 'p4', url: 'http://example.com/' }),
+        createRequest({ requestId: 'p5', url: 'https://api.example.com:8443/x' }),
+        createRequest({ requestId: 'p6', url: 'http://[::1]:8080/v6' }),
+      ];
+      const ids = (filter: string): string[] =>
+        applyFilters(portRequests, parseFilterString(filter)).map((r) => r.requestId);
+
+      it('matches host and port', () => {
+        assert.deepEqual(ids('domain:127.0.0.1:8080'), ['p1']);
+      });
+
+      it('matches nothing on another port', () => {
+        assert.deepEqual(ids('domain:127.0.0.1:7070'), []);
+      });
+
+      it('without a port still matches every port', () => {
+        assert.deepEqual(ids('domain:127.0.0.1'), ['p1', 'p2']);
+      });
+
+      it('uses 443 for https and 80 for http when the URL has no port', () => {
+        assert.deepEqual(ids('domain:example.com:443'), ['p3']);
+        assert.deepEqual(ids('domain:example.com:80'), ['p4']);
+      });
+
+      it('combines a wildcard with a port', () => {
+        assert.deepEqual(ids('domain:*.example.com:8443'), ['p5']);
+        assert.deepEqual(ids('domain:*.example.com:443'), []);
+      });
+
+      it('negates with a port', () => {
+        assert.deepEqual(ids('!domain:127.0.0.1:8080'), ['p2', 'p3', 'p4', 'p5', 'p6']);
+      });
+
+      it('supports a bracketed IPv6 host with and without a port', () => {
+        assert.deepEqual(ids('domain:[::1]:8080'), ['p6']);
+        assert.deepEqual(ids('domain:[::1]'), ['p6']);
+      });
+
+      it('rejects a port that is not a number or out of range, with a hint', () => {
+        for (const bad of [
+          'domain:example.com:abc',
+          'domain:example.com:0',
+          'domain:example.com:65536',
+          'domain:example.com:',
+        ]) {
+          const result = validateFilterString(bad);
+          assert.equal(result.valid, false, bad);
+          assert.ok(result.suggestion, `${bad} has a hint`);
+        }
+      });
+
+      it('rejects an unbracketed IPv6 host with a hint', () => {
+        const result = validateFilterString('domain:::1');
+        assert.equal(result.valid, false);
+        assert.match(result.suggestion ?? '', /\[::1\]/);
+      });
+    });
+
     it('filters by status code equality', () => {
       const filters = parseFilterString('status-code:200');
       const result = applyFilters(mockRequests, filters);
