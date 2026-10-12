@@ -41,13 +41,13 @@ Files:
 - [ ] Tester (tier 2–3): ship brief tester … → findings routed
 - [ ] Fix rounds ≤ 2; the reviewer re-checks each fix commit (SendMessage to the same reviewer)
 - [ ] Tier 3: second review of the fix commit; ship repeat for timing; optional ship codex-review
-- [ ] ship merge-check when gates says main changed the PR's files; ship merge <pr> [--tier=3 --repeat=<id> --macos]
+- [ ] ship gates <pr> --tier=N [--macos] [--repeat=<id>]; ship merge-check when it says the base changed the PR's files; ship merge <pr> (same flags)
 - [ ] ship ci-wait <merge sha> --push; ship log <pr> …; issue closed or commented
 ```
 
 ### Implement
 
-Render the implementer brief, fill in scope, decisions and the other agents' files, and spawn it in the **background** (models and caps: the table in `briefs.md`). Name 5–8 files to read first yourself, from the issue and memory; no Explore agent for a file map. Keep the user informed with one line per step change (started, red commit, draft PR, report in).
+Render the implementer brief, fill in scope, decisions and the other agents' files, and spawn it in the **background** (models and caps: the table in `briefs.md`). Every subagent starts from a fresh context (`general-purpose` with its brief), never a fork of this conversation. Name 5–8 files to read first yourself, from the issue and memory; no Explore agent for a file map. Keep the user informed with one line per step change (started, red commit, draft PR, report in).
 
 An implementer's report ends with `PR <url> HEAD <sha>`. Without that line the work isn't done: read the PR (`gh pr view`) and resume the agent with what's missing. Then `ship ci-wait <pr>` in the background (one per PR; it exits `superseded` when the head moves, so an old waiter never answers for a new push). A push with no `pull_request` run after 3 minutes gets a close/reopen of the PR, not a dispatch: the required `CI OK` must come from a `pull_request` run.
 
@@ -77,22 +77,22 @@ After a round, **one verifier** reproduces all older-code findings on current `m
 
 ## Gates
 
-Merge only when all hold on the head SHA you merge. `ship gates <pr>` checks the mechanical ones (M); you judge the rest (J). `ship merge <pr>` runs the gates, merges with `--match-head-commit`, and removes the worktree and branch if nothing is uncommitted.
+Merge only when all hold on the head SHA you merge. `ship gates <pr> --tier=N` checks the mechanical ones (M); you judge the rest (J). `ship merge <pr>` with the same flags runs the gates, merges with `--match-head-commit`, and removes the worktree if nothing is uncommitted and the branch once `main` contains it. For a PR built on another PR's branch, everything is checked against that base branch.
 
 1. **J Review resolved:** every blocking and should-fix finding fixed or rejected with a reason you accept, re-checked on its fix commit; Not-checked risks resumed.
 2. **J Fresh-agent test done** (tier 2–3), its findings about the change fixed.
 3. **M+J Red commit:** the first commit is `test: …` (M); the reviewer ran it and it failed on an assertion about the issue (J). Exempt: tier 1.
-4. **M Repeat run** passed on the final head (tier 3 timing, Linux and macOS, repeat ≥ 10; CI or environment changes: the full smoke suite with repeat ≥ 3 on Node 22 only, the full Node matrix only for the Node runtime or `engines`).
-5. **M CI on the head:** `CI OK` (it aggregates build, quality, contract tests and Linux smoke); macOS smoke when the PR touches timing-sensitive paths (`--macos`); Security for PRs into `main`. A failing job counts as an accepted exception only with the known flake's issue number and a passing re-run; name both in the merge summary.
+4. **M Repeat run** passed on the final head (`--repeat=<id>`; `--timing` makes a missing one fail). Tier 3 timing: Linux and macOS, repeat ≥ 10; CI or environment changes: the full smoke suite with repeat ≥ 3 on Node 22 only, the full Node matrix only for the Node runtime or `engines`).
+5. **M CI on the head, and `main` green:** the latest decided CI run on `main` succeeded (an in-progress run is named: wait for it only when its merge touched this PR's files, then re-run gate 6); on the head, `CI OK` (it aggregates build, quality, contract tests and Linux smoke); macOS smoke when the PR touches timing-sensitive paths (`--macos`); Security for PRs into `main`. A failing job counts as an accepted exception only with the known flake's issue number and a passing re-run; name both in the merge summary.
 6. **M Mergeable and tested against current `main`:** when `main` changed the PR's files since its base, `ship merge-check <pr> <affected tests>` passed on that `main` and head, or the implementer rebased and re-ran.
 7. **J Docs match** (`docs/CLI_REFERENCE.md`, help, `.claude/skills/bdg/SKILL.md`, option behaviors), **M** `CHANGELOG.md` untouched; the PR description marks changed defaults, contracts and breaking changes.
-8. **M No leftovers:** nothing new in `~/.bdg` or `~/Downloads`, no live process from a PID file, no temporary worktree (`ship leftovers`).
+8. **M No leftovers:** nothing new in `~/.bdg` or `~/Downloads` since `ship snapshot`, no live process from this PR's PID files, no temporary worktree of it; `ship leftovers` checks the whole session at the end.
 
 A red `main` is fixed before any new work. After a merge, `ship ci-wait <merge sha> --push`; a `cancelled` run there means a later push superseded it: its result is the later commit's.
 
 ## Keep the books
 
-- **`ship log <pr>`** after each merge: tier, review findings as `blocking/should-fix/nit`, tester bugs, fix rounds, implementer model, subagent tokens, a note. When a bug is later found in a merged change, add it under **Escaped** in `log.md`.
+- **`ship log <pr>`** after each merge (rows accumulate in the main checkout's `log.md`; the session's retro PR commits them): tier, review findings as `blocking/should-fix/nit`, tester bugs, fix rounds, implementer model, subagent tokens, a note. When a bug is later found in a merged change, add it under **Escaped** in `log.md`.
 - **Roadmap #466:** one update at the session end (done / new / moved); re-read the body right before editing.
 - **Fix or file:** every finding from any step is fixed now or filed as a verified issue; never only "out of scope".
 - **Reporting:** one line per step change, a summary at merges, real problems and decisions; don't relay interim notifications.

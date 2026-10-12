@@ -89,9 +89,10 @@ export function parseArgs(argv) {
   const flags = new Set();
   for (const arg of argv) {
     if (arg.startsWith('--')) {
-      const [k, v] = arg.slice(2).split('=', 2);
-      if (v === undefined) flags.add(k);
-      else keys[k] = v;
+      const body = arg.slice(2);
+      const i = body.indexOf('=');
+      if (i === -1) flags.add(body);
+      else keys[body.slice(0, i)] = body.slice(i + 1);
     } else if (/^[A-Za-z_][\w-]*=/.test(arg)) {
       const i = arg.indexOf('=');
       keys[arg.slice(0, i)] = arg.slice(i + 1);
@@ -143,16 +144,21 @@ function latestRun(sha, workflow, event) {
 }
 
 /**
- * Decides what a finished wait reports, from the conclusions per workflow.
+ * Decides what a finished wait reports, from the conclusions per workflow. A
+ * failure always fails; a cancelled run on main means a later push replaced it
+ * (CI cancels superseded runs), while on a PR whose head didn't move it is a
+ * failure like any other.
  *
  * @param {Record<string, string>} conclusions workflow → conclusion
+ * @param {{ push?: boolean }} [mode]
  * @returns {{ code: number, summary: string }}
  */
-export function judgeConclusions(conclusions) {
+export function judgeConclusions(conclusions, mode = {}) {
   const entries = Object.entries(conclusions);
   const summary = entries.map(([wf, c]) => `${wf} ${c}`).join(', ');
   if (entries.every(([, c]) => c === 'success')) return { code: EXIT.ok, summary };
-  if (entries.some(([, c]) => c === 'cancelled')) {
+  const failed = entries.some(([, c]) => c !== 'success' && c !== 'cancelled');
+  if (!failed && mode.push) {
     return {
       code: EXIT.superseded,
       summary: `${summary} (cancelled: superseded by a newer run; wait for that one)`,
@@ -183,6 +189,7 @@ async function ciWait(argv) {
     if (pr.baseRefName !== 'main') workflows = ['CI'];
   }
   const event = push ? 'push' : 'pull_request';
+  const noRunDeadline = Date.now() + 3 * 60_000;
   console.log(
     `waiting for ${workflows.join(' + ')} (${event}) on ${sha.slice(0, 10)}${pr ? ` (PR #${pr.number})` : ''}`
   );
@@ -199,10 +206,17 @@ async function ciWait(argv) {
     const runs = Object.fromEntries(workflows.map((wf) => [wf, latestRun(sha, wf, event)]));
     if (workflows.every((wf) => runs[wf]?.status === 'completed')) {
       const { code, summary } = judgeConclusions(
-        Object.fromEntries(workflows.map((wf) => [wf, runs[wf].conclusion]))
+        Object.fromEntries(workflows.map((wf) => [wf, runs[wf].conclusion])),
+        { push }
       );
       console.log(summary);
       return code;
+    }
+    if (pr && !runs.CI && Date.now() > noRunDeadline) {
+      console.log(
+        `no pull_request CI run 3 minutes after the push: close and reopen PR #${pr.number} (not a dispatch: CI OK must come from a pull_request run)`
+      );
+      return EXIT.timeout;
     }
     if (Date.now() > deadline) {
       console.log(
@@ -244,6 +258,20 @@ async function repeat(argv) {
   if (!prNumber || files.length === 0)
     return usage('repeat <pr> <smoke files...> [repeat=10] [node=22]');
   const pr = prInfo(prNumber);
+  const dispatchRuns = () =>
+    ghJson([
+      'run',
+      'list',
+      '--branch',
+      pr.headRefName,
+      '--event',
+      'workflow_dispatch',
+      '--json',
+      'databaseId,headSha',
+      '--limit',
+      '20',
+    ]) ?? [];
+  const before = new Set(dispatchRuns().map((r) => r.databaseId));
   run('gh', [
     'workflow',
     'run',
@@ -261,19 +289,9 @@ async function repeat(argv) {
   ]);
   for (let i = 0; i < 10; i++) {
     await sleep(5000);
-    const runs = ghJson([
-      'run',
-      'list',
-      '--branch',
-      pr.headRefName,
-      '--event',
-      'workflow_dispatch',
-      '--json',
-      'databaseId,headSha',
-      '--limit',
-      '5',
-    ]);
-    const hit = runs.find((r) => r.headSha === pr.headRefOid);
+    const hit = dispatchRuns().find(
+      (r) => r.headSha === pr.headRefOid && !before.has(r.databaseId)
+    );
     if (hit) {
       console.log(
         `repeat run ${hit.databaseId} on ${pr.headRefOid.slice(0, 10)}; wait with: ship run-wait ${hit.databaseId}`
@@ -340,10 +358,12 @@ function step(label, command, cwd, env = {}) {
     encoding: 'utf8',
     maxBuffer: 256 * 1024 * 1024,
   });
-  const lines = `${r.stdout}\n${r.stderr}`
+  const all = `${r.stdout}\n${r.stderr}`
     .replace(/\x1b\[[0-9;]*m/g, '')
     .split('\n')
-    .filter((l) => /^# (pass|fail)|^not ok|problems|error TS|Error:/.test(l));
+    .filter((l) => l.trim());
+  const matched = all.filter((l) => /^# (pass|fail)|^not ok|problems|error TS|Error:/.test(l));
+  const lines = matched.length || r.status === 0 ? matched : all.slice(-5);
   console.log(
     `${r.status === 0 ? 'ok  ' : 'FAIL'} ${label}${lines.length ? `\n     ${lines.slice(-6).join('\n     ')}` : ''}`
   );
@@ -351,7 +371,7 @@ function step(label, command, cwd, env = {}) {
 }
 
 /**
- * Gate 6: merges the PR into current origin/main without touching any branch,
+ * Gate 6: merges the PR into its current base branch without touching any branch,
  * then typechecks, builds and runs the given test files on the result. A pass
  * is recorded so `gates` can see it was done against this main and this head.
  *
@@ -362,7 +382,7 @@ function mergeCheck(argv) {
   if (!prNumber) return usage('merge-check <pr> [unit or smoke test files...]');
   const pr = prInfo(prNumber);
   run('git', ['fetch', '-q', 'origin']);
-  const main = run('git', ['rev-parse', 'origin/main']);
+  const main = run('git', ['rev-parse', `origin/${pr.baseRefName}`]);
   const merged = spawnSync('git', ['merge-tree', '--write-tree', main, pr.headRefOid], {
     encoding: 'utf8',
   });
@@ -434,100 +454,189 @@ async function mergeableState(prNumber) {
 }
 
 /**
- * Checks the mechanical gates on the PR's current head and prints one line
- * per gate; the judgment gates are printed as reminders.
+ * Prints one gate line and records its result.
  *
- * @param {string[]} argv `<pr>`, optional `--tier=1|2|3 --macos --repeat=<run id>`
+ * @param {boolean[]} results
+ * @param {boolean} ok
+ * @param {string} label
  */
-async function gates(argv) {
-  const { positional, keys, flags } = parseArgs(argv);
-  if (!positional[0]) return usage('gates <pr> [--tier=2] [--macos] [--repeat=<run id>]');
-  const pr = prInfo(positional[0]);
-  const head = pr.headRefOid;
-  const tier = Number(keys.tier ?? 2);
-  const results = [];
-  const check = (ok, label) => {
-    results.push(ok);
-    console.log(`${ok ? 'ok  ' : 'FAIL'} ${label}`);
-  };
-  console.log(`gates for PR #${pr.number} at ${head.slice(0, 10)} (tier ${tier})`);
-  run('git', ['fetch', '-q', 'origin']);
+function gateLine(results, ok, label) {
+  results.push(ok);
+  console.log(`${ok ? 'ok  ' : 'FAIL'} ${label}`);
+}
 
+/**
+ * Gate 5: CI, CI OK, optional macOS and Security on the PR head.
+ *
+ * @param {boolean[]} results
+ * @param {object} pr
+ * @param {boolean} macos
+ */
+function ciGates(results, pr, macos) {
+  const head = pr.headRefOid;
   const ci = latestRun(head, 'CI', 'pull_request');
-  check(
+  gateLine(
+    results,
     ci?.status === 'completed' && ci.conclusion === 'success',
     `5 CI (pull_request) on head: ${ci ? `${ci.status} ${ci.conclusion ?? ''}` : 'no run'}`
   );
   if (ci?.status === 'completed') {
     const jobs = ghJson(['run', 'view', String(ci.databaseId), '--json', 'jobs']).jobs;
     const job = (re) => jobs.find((j) => re.test(j.name));
-    check(
+    gateLine(
+      results,
       job(/^CI OK$/)?.conclusion === 'success',
       `5 required check CI OK: ${job(/^CI OK$/)?.conclusion ?? 'missing'}`
     );
-    if (flags.has('macos'))
-      check(
+    if (macos)
+      gateLine(
+        results,
         job(/macOS/)?.conclusion === 'success',
         `5 macOS smoke: ${job(/macOS/)?.conclusion ?? 'missing'}`
       );
   }
   if (pr.baseRefName === 'main') {
     const sec = latestRun(head, 'Security', 'pull_request');
-    check(
+    gateLine(
+      results,
       sec?.conclusion === 'success',
       `5 Security on head: ${sec ? `${sec.status} ${sec.conclusion ?? ''}` : 'no run'}`
     );
   }
-  if (keys.repeat || tier === 3) {
-    if (!keys.repeat)
-      check(
-        false,
-        '4 repeat run: none given (tier 3: ship repeat <pr> <smoke files>, then --repeat=<id>)'
-      );
-    else {
-      const r = ghJson(['run', 'view', keys.repeat, '--json', 'headSha,conclusion,status']);
-      check(
-        r.headSha === head && r.conclusion === 'success',
-        `4 repeat run ${keys.repeat}: ${r.status} ${r.conclusion ?? ''} on ${r.headSha.slice(0, 10)}${r.headSha === head ? '' : ' (not the head)'}`
-      );
-    }
-  }
+}
 
+/**
+ * The latest decided CI run on main (cancelled runs skipped): main must be
+ * green before anything merges.
+ *
+ * @param {boolean[]} results
+ */
+function mainGate(results) {
+  const runs =
+    ghJson([
+      'run',
+      'list',
+      '--branch',
+      'main',
+      '--workflow',
+      'CI',
+      '--event',
+      'push',
+      '--json',
+      'status,conclusion,headSha',
+      '--limit',
+      '10',
+    ]) ?? [];
+  const decided = runs.find((r) => r.status === 'completed' && r.conclusion !== 'cancelled');
+  const pending = runs.find((r) => r.status !== 'completed');
+  const note = pending
+    ? ` (a run on ${pending.headSha.slice(0, 10)} is in progress: wait for it if that merge touched this PR's files)`
+    : '';
+  gateLine(
+    results,
+    decided?.conclusion === 'success',
+    `5 main is green: ${decided ? `${decided.conclusion} on ${decided.headSha.slice(0, 10)}` : 'no completed run'}${note}`
+  );
+}
+
+/**
+ * Gate 6: mergeable, and tested against the base branch when the base
+ * changed the PR's files since the PR branched off.
+ *
+ * @param {boolean[]} results
+ * @param {object} pr
+ * @param {string} baseRef
+ * @param {string} forkPoint
+ * @param {string[]} prFiles
+ */
+async function freshBaseGate(results, pr, baseRef, forkPoint, prFiles) {
   const mergeable = await mergeableState(pr.number);
-  check(mergeable === 'MERGEABLE', `6 mergeable: ${mergeable}`);
-  const base = run('git', ['merge-base', 'origin/main', head]);
-  const mainFiles = run('git', ['diff', '--name-only', base, 'origin/main'])
+  gateLine(results, mergeable === 'MERGEABLE', `6 mergeable: ${mergeable}`);
+  const baseFiles = run('git', ['diff', '--name-only', forkPoint, baseRef])
     .split('\n')
     .filter(Boolean);
-  const overlap = overlappingFiles(
-    mainFiles,
-    pr.files.map((f) => f.path)
-  );
-  if (overlap.length) {
-    const marker = `/tmp/ship-mc-${pr.number}.ok`;
-    const want = `${run('git', ['rev-parse', 'origin/main'])} ${head}`;
-    const done = existsSync(marker) && readFileSync(marker, 'utf8').trim() === want;
-    check(
-      done,
-      `6 main changed ${overlap.length} of the PR's files since its base (${overlap.slice(0, 4).join(', ')}${overlap.length > 4 ? ', …' : ''}): ${done ? 'merge-check passed on this main and head' : 'run ship merge-check, or have the implementer rebase'}`
-    );
-  } else {
-    check(true, "6 main has not changed the PR's files since its base");
+  const overlap = overlappingFiles(baseFiles, prFiles);
+  if (overlap.length === 0) {
+    gateLine(results, true, `6 ${baseRef} has not changed the PR's files since it branched off`);
+    return;
   }
+  const marker = `/tmp/ship-mc-${pr.number}.ok`;
+  const want = `${run('git', ['rev-parse', baseRef])} ${pr.headRefOid}`;
+  const done = existsSync(marker) && readFileSync(marker, 'utf8').trim() === want;
+  const files = `${overlap.slice(0, 4).join(', ')}${overlap.length > 4 ? ', …' : ''}`;
+  gateLine(
+    results,
+    done,
+    `6 ${baseRef} changed ${overlap.length} of the PR's files (${files}): ${done ? 'merge-check passed on this base and head' : 'run ship merge-check, or have the implementer rebase'}`
+  );
+}
 
-  check(!pr.files.some((f) => f.path === 'CHANGELOG.md'), '7 CHANGELOG.md untouched');
+/**
+ * Checks the mechanical gates on the PR's current head and prints one line
+ * per gate; the judgment gates are printed as reminders. `--tier` is
+ * required, so a tier-1 PR isn't held to the red-commit rule by default.
+ *
+ * @param {string[]} argv `<pr> --tier=1|2|3`, optional `--macos`, `--repeat=<run id>` (or `--timing` to demand one)
+ */
+async function gates(argv) {
+  const { positional, keys, flags } = parseArgs(argv);
+  const tier = Number(keys.tier);
+  if (!positional[0] || ![1, 2, 3].includes(tier))
+    return usage('gates <pr> --tier=1|2|3 [--macos] [--timing] [--repeat=<run id>]');
+  const pr = prInfo(positional[0]);
+  const head = pr.headRefOid;
+  const results = [];
+  console.log(`gates for PR #${pr.number} at ${head.slice(0, 10)} (tier ${tier})`);
+  run('git', ['fetch', '-q', 'origin']);
+  const baseRef = `origin/${pr.baseRefName}`;
+  const forkPoint = run('git', ['merge-base', baseRef, head]);
+  const prFiles = run('git', ['diff', '--name-only', forkPoint, head]).split('\n').filter(Boolean);
+
   if (tier > 1) {
     const first =
-      run('git', ['log', '--reverse', '--format=%s', `${base}..${head}`]).split('\n')[0] ?? '';
-    check(/^test: /.test(first), `3 first commit is the red commit: "${first}"`);
+      run('git', ['log', '--reverse', '--format=%s', `${forkPoint}..${head}`]).split('\n')[0] ?? '';
+    gateLine(results, /^test: /.test(first), `3 first commit is the red commit: "${first}"`);
   }
-  const left = leftoverLines();
-  check(left.length === 0, `8 leftovers: ${left.length ? left.join('; ') : 'none'}`);
+  if (keys.repeat) {
+    const r = ghJson(['run', 'view', keys.repeat, '--json', 'headSha,conclusion,status']);
+    gateLine(
+      results,
+      r.headSha === head && r.conclusion === 'success',
+      `4 repeat run ${keys.repeat}: ${r.status} ${r.conclusion ?? ''} on ${r.headSha.slice(0, 10)}${r.headSha === head ? '' : ' (not the head)'}`
+    );
+  } else if (flags.has('timing')) {
+    gateLine(
+      results,
+      false,
+      '4 repeat run: none given (ship repeat <pr> <smoke files>, then --repeat=<id>)'
+    );
+  }
+  ciGates(results, pr, flags.has('macos'));
+  mainGate(results);
+  await freshBaseGate(results, pr, baseRef, forkPoint, prFiles);
+  gateLine(results, !prFiles.includes('CHANGELOG.md'), '7 CHANGELOG.md untouched');
+  const scope = [String(pr.number), ...(prIssues(pr.number) ?? [])];
+  const left = leftoverLines(scope);
+  gateLine(
+    results,
+    left.length === 0,
+    `8 leftovers of #${scope.join(', #')}: ${left.length ? left.join('; ') : 'none'}`
+  );
 
   console.log(
-    'manual: 1 review findings resolved · 2 fresh-agent test done (tier 2-3) · 3 reviewer ran the red commit · 7 docs match the behaviour'
+    'judge yourself: 1 review findings resolved and re-checked · 2 fresh-agent test done (tier 2-3) · 3 reviewer ran the red commit · 7 docs match the behaviour'
   );
   return results.every(Boolean) ? EXIT.ok : EXIT.failed;
+}
+
+/**
+ * Numbers of the issues a PR closes, as strings.
+ *
+ * @param {number} prNumber
+ */
+function prIssues(prNumber) {
+  const pr = ghJson(['pr', 'view', String(prNumber), '--json', 'closingIssuesReferences']);
+  return pr?.closingIssuesReferences.map((i) => String(i.number));
 }
 
 /**
@@ -554,34 +663,64 @@ function alive(pid) {
   try {
     process.kill(pid, 0);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    return error.code === 'EPERM';
   }
 }
 
 /**
- * What the session left behind: new entries in ~/.bdg and ~/Downloads since
- * the snapshot, live processes from PID files, and temporary worktrees.
+ * True when a PID file or temporary worktree name belongs to one of the
+ * given issue or PR numbers (`/tmp/bdg-impl-611-fixtures.pid`, `/tmp/review-611`).
+ *
+ * @param {string} name
+ * @param {string[]} scope
  */
-function leftoverLines() {
+export function inScope(name, scope) {
+  return scope.some((n) => new RegExp(`(^|[-/])${n}(-|\\.pid$|$)`).test(name));
+}
+
+/**
+ * Temporary worktrees the ship steps create, from `git worktree list --porcelain`.
+ *
+ * @param {string} porcelain
+ */
+export function tempWorktrees(porcelain) {
+  return porcelain
+    .split('\n')
+    .filter((l) => /^worktree \/(private\/)?tmp\/(review|review2|red|mc|codex)-/.test(l))
+    .map((l) => l.slice('worktree '.length));
+}
+
+/**
+ * What was left behind: new entries in ~/.bdg and ~/Downloads since the
+ * snapshot (a missing snapshot counts as a leftover, so it can't pass
+ * silently), live processes from PID files, and temporary worktrees. With a
+ * scope, only PID files and worktrees of those issue or PR numbers count.
+ *
+ * @param {string[]} [scope]
+ */
+function leftoverLines(scope) {
   const lines = [];
   for (const [key, dir] of [
     ['bdg', '.bdg'],
     ['downloads', 'Downloads'],
   ]) {
-    if (!existsSync(SNAPSHOT[key])) continue;
+    if (!existsSync(SNAPSHOT[key])) {
+      lines.push(`no snapshot of ~/${dir} (run ship snapshot at session start)`);
+      continue;
+    }
     const before = new Set(readFileSync(SNAPSHOT[key], 'utf8').split('\n'));
     const added = listDir(join(homedir(), dir)).filter((e) => !before.has(e));
     if (added.length) lines.push(`new in ~/${dir}: ${added.join(', ')}`);
   }
   for (const file of readdirSync('/tmp').filter((f) => /^bdg-.*\.pid$/.test(f))) {
+    if (scope && !inScope(file, scope)) continue;
     const pid = Number(readFileSync(join('/tmp', file), 'utf8').trim());
     if (pid && alive(pid)) lines.push(`live PID ${pid} from /tmp/${file}`);
   }
-  const temp = run('git', ['worktree', 'list', '--porcelain'])
-    .split('\n')
-    .filter((l) => /^worktree \/(private\/)?tmp\/(review|review2|red|mc|codex)-/.test(l))
-    .map((l) => l.slice('worktree '.length));
+  const temp = tempWorktrees(run('git', ['worktree', 'list', '--porcelain'])).filter(
+    (p) => !scope || inScope(p, scope)
+  );
   if (temp.length) lines.push(`temporary worktrees: ${temp.join(', ')}`);
   return lines;
 }
@@ -612,7 +751,7 @@ function leftovers(argv) {
  */
 async function merge(argv) {
   const prNumber = argv[0];
-  if (!prNumber) return usage('merge <pr> [gates options]');
+  if (!prNumber) return usage('merge <pr> --tier=1|2|3 [--macos] [--timing] [--repeat=<run id>]');
   const pr = prInfo(prNumber);
   if ((await gates(argv)) !== EXIT.ok) {
     console.log('not merged: a gate failed');
@@ -635,7 +774,11 @@ async function merge(argv) {
     '--subject',
     `${pr.title} (#${pr.number})`,
   ]);
-  const mergeSha = prInfo(prNumber).mergeCommit?.oid;
+  let mergeSha = null;
+  for (let i = 0; i < 5 && !mergeSha; i++) {
+    mergeSha = prInfo(prNumber).mergeCommit?.oid ?? null;
+    if (!mergeSha) await sleep(3000);
+  }
   console.log(`merged PR #${pr.number} as ${mergeSha}`);
   removeBranchWorktree(pr.headRefName);
   rmSync(`/tmp/ship-mc-${pr.number}.ok`, { force: true });
@@ -644,16 +787,31 @@ async function merge(argv) {
 }
 
 /**
- * Removes the worktree and local branch of a merged PR, unless the worktree
- * holds uncommitted changes (then it prints them and keeps everything).
+ * The path of the worktree that has exactly this branch checked out, from
+ * `git worktree list --porcelain`, or null.
+ *
+ * @param {string} porcelain
+ * @param {string} branch
+ */
+export function worktreeOfBranch(porcelain, branch) {
+  const block = porcelain
+    .split('\n\n')
+    .find((b) => b.split('\n').includes(`branch refs/heads/${branch}`));
+  return block ? block.split('\n')[0].slice('worktree '.length) : null;
+}
+
+/**
+ * Removes the worktree and local branch of a merged PR. Keeps the worktree
+ * when it holds uncommitted changes, and the branch unless main contains it.
  *
  * @param {string} branch
  */
 function removeBranchWorktree(branch) {
-  const blocks = run('git', ['worktree', 'list', '--porcelain']).split('\n\n');
-  const block = blocks.find((b) => b.includes(`branch refs/heads/${branch}`));
-  if (block) {
-    const path = block.split('\n')[0].slice('worktree '.length);
+  if (branch === 'main') return;
+  const path = worktreeOfBranch(run('git', ['worktree', 'list', '--porcelain']), branch);
+  if (path && !existsSync(path)) {
+    run('git', ['worktree', 'prune']);
+  } else if (path) {
     const status = run('git', ['-C', path, 'status', '--short']);
     if (status) {
       console.log(`kept ${path}: uncommitted changes\n${status}`);
@@ -662,8 +820,14 @@ function removeBranchWorktree(branch) {
     run('git', ['worktree', 'remove', path]);
     console.log(`removed worktree ${path}`);
   }
-  const local = spawnSync('git', ['branch', '-D', branch], { encoding: 'utf8' });
-  if (local.status === 0) console.log(`deleted branch ${branch}`);
+  run('git', ['fetch', '-q', 'origin']);
+  const merged = spawnSync('git', ['merge-base', '--is-ancestor', branch, 'origin/main']);
+  if (merged.status !== 0) {
+    console.log(`kept branch ${branch}: origin/main doesn't contain it`);
+    return;
+  }
+  run('git', ['branch', '-D', branch]);
+  console.log(`deleted branch ${branch}`);
 }
 
 /**
@@ -778,7 +942,7 @@ function codexReview(argv) {
   if (!prNumber) return usage('codex-review <pr> [file with review instructions]');
   const pr = prInfo(prNumber);
   run('git', ['fetch', '-q', 'origin']);
-  const base = run('git', ['merge-base', 'origin/main', pr.headRefOid]);
+  const base = run('git', ['merge-base', `origin/${pr.baseRefName}`, pr.headRefOid]);
   const out = `/tmp/codex-review-${pr.number}.md`;
   const prompt = instructions ? readFileSync(instructions, 'utf8') : '';
   const ok = inTempWorktree(pr.headRefOid, `/tmp/codex-${pr.number}`, (cwd) => {
@@ -822,8 +986,8 @@ const COMMANDS = {
   repeat: [repeat, '<pr> <smoke files…>: dispatch the repeat=10 run on the PR head'],
   'run-wait': [runWait, '<run id>: wait for a dispatched run, print its jobs'],
   'merge-check': [mergeCheck, '<pr> [test files…]: gate 6 on current main, in a temp worktree'],
-  gates: [gates, '<pr> [--tier=N] [--macos] [--repeat=<id>]: mechanical gates on the head'],
-  merge: [merge, '<pr> [gates options]: gates, merge on that head, remove worktree and branch'],
+  gates: [gates, '<pr> --tier=N [--macos] [--timing] [--repeat=<id>]: mechanical gates'],
+  merge: [merge, '<pr> --tier=N [gate flags]: gates, merge on that head, clean up'],
   leftovers: [leftovers, '[--clean]: gate 8; --clean drops PID files of dead processes'],
   'codex-review': [codexReview, '<pr> [instructions file]: extra read-only review by Codex'],
   log: [log, '<pr> tier= review= tester= rounds= model= tokens= note=: append to log.md'],
@@ -850,7 +1014,9 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const [name, ...rest] = process.argv.slice(2);
   const entry = COMMANDS[name];
   try {
-    process.exitCode = entry ? await entry[0](rest) : help();
+    if (entry) process.exitCode = await entry[0](rest);
+    else if (!name || name === 'help') process.exitCode = help();
+    else process.exitCode = usage(`<command>: unknown "${name}"; see ship help`);
   } catch (error) {
     console.error(error.stderr?.toString().trim() || error.message);
     process.exitCode = EXIT.failed;

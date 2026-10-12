@@ -18,14 +18,14 @@ export PATH="$HOME/.nvm/versions/node/v22.15.0/bin:$PATH"
 <!-- /block -->
 
 <!-- block:foreground -->
-**Commands.** Run everything in the foreground. If a command may take more than 30 s (test suites, builds), give your shell tool a longer timeout (up to 10 minutes) instead of backgrounding it: a background result is lost when your turn ends. The only background process allowed is a fixture or HTTP server with a PID file. No monitors, no polling loops, never wait for CI (the orchestrator does). Cut output before it reaches your context: `npm test 2>&1 | tail -20`, `npm run check 2>&1 | tail -15`, smoke `… 2>&1 | grep -E '^# (pass|fail)|^not ok'`, anything else `| head -40`. Read a file once; don't re-run a suite that already passed.
+**Commands.** Run everything in the foreground. If a command may take more than 30 s (test suites, builds), give your shell tool a longer timeout (up to 10 minutes) instead of backgrounding it: a background result is lost when your turn ends. The only background processes allowed are a fixture or HTTP server and a command you are about to interrupt, each with a PID file. No monitors, no polling loops, never wait for CI (the orchestrator does). Cut output before it reaches your context: `npm test 2>&1 | tail -20`, `npm run check 2>&1 | tail -15`, smoke `… 2>&1 | grep -E '^# (pass|fail)|^not ok'`, anything else `| head -40`. Read a file once; don't re-run a suite that already passed.
 <!-- /block -->
 
 <!-- block:forbidden -->
 **Rules.**
 - No `git stash` (the stash is shared across worktrees); no `--no-verify` or any other hook bypass.
 - No `pkill`, `killall` or `pkill -P`. A background process you start writes its PID at start (`cmd & echo $! > /tmp/bdg-<ROLE>-<N>-NAME.pid`); kill only PIDs read back from those files. A stray bdg session is ended with `bdg stop` (or `bdg cleanup --force`) in its own `BDG_SESSION_DIR`.
-- Never touch `~/.bdg`, other agents' worktrees, or the main checkout `<MAIN>` (its `.tmp/` included). Nothing may land in `~/Downloads`.
+- Never touch `~/.bdg`, other agents' worktrees, or the main checkout `<MAIN>` (its `.tmp/` included); the one exception is adding and removing your own worktrees with `git -C <MAIN> worktree …`. Nothing may land in `~/Downloads`.
 - Don't open GitHub issues. Report findings with the command and its output; the orchestrator verifies and files them.
 <!-- /block -->
 
@@ -72,7 +72,7 @@ Implement issue #<N> in bdg (github.com/szymdzum/browser-debugger-cli). Read the
 {{node}}
 export BDG_TEST_SESSION_PARENT=/tmp/bt-<N> BDG_TEST_HOME_DIR=/tmp/bt-<N>-h   # manual runs: BDG_SESSION_DIR=/tmp/bdg-<N>-manual
 ```
-Run `npm run check`, `npm test`, `npm run build` and the affected smoke files (`npx tsx --test --test-concurrency=1 src/__tests__/smoke/<file>.smoke.test.ts`); CI runs the full smoke suite. Collect before/after evidence on a fixture page (`npx tsx src/__testutils__/serveFixtures.ts`) or a real site.
+Run `npm run check`, `npm test`, `npm run build` and the affected smoke files (`npx tsx --test --test-concurrency=1 src/__tests__/smoke/<file>.smoke.test.ts`); CI runs the full smoke suite. Collect before/after evidence on a fixture page (`npx tsx src/__testutils__/serveFixtures.ts`) or a real site: two lines, not a capture of every command; case matrices up to ~30 cells unless the scope asks for more.
 
 {{foreground}}
 
