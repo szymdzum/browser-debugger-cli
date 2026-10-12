@@ -20,12 +20,12 @@ import { after, before, beforeEach, describe, it } from 'node:test';
 
 import { runCommand, type CommandResult } from '@/__testutils__/commandRunner.js';
 import { cleanupAllSessions } from '@/__testutils__/daemonHelpers.js';
+import { BUSY_MS } from '@/__testutils__/fixturePages/interruptFixtures.js';
 import {
   getFreePort,
   startFixtureServer,
   type FixtureServer,
 } from '@/__testutils__/fixtureServer.js';
-import { BUSY_MS } from '@/__testutils__/fixturePages/interruptFixtures.js';
 import { makeTempDir, removeTempDirs } from '@/__testutils__/tempDirs.js';
 import { ensureTestSessionDir } from '@/__testutils__/testHome.js';
 

@@ -10,6 +10,8 @@ import { afterEach, describe, it, mock } from 'node:test';
 import {
   abortOnInterrupt,
   interruptExitCode,
+  onOwnInterrupt,
+  reportInterrupts,
   interruptSignal,
   unlessInterrupted,
 } from '@/commands/shared/interrupt.js';
@@ -114,5 +116,78 @@ void describe('interrupt', () => {
     assert.equal(interruptSignal(abortedBy('SIGTERM')), 'SIGTERM');
     assert.equal(interruptSignal(abortedBy('SIGINT')), 'SIGINT');
     assert.equal(interruptSignal(abortedBy(undefined)), 'SIGINT');
+  });
+});
+
+void describe('reportInterrupts', () => {
+  afterEach(() => {
+    for (const [signal, listener] of added.splice(0)) process.removeListener(signal, listener);
+    mock.restoreAll();
+  });
+
+  /**
+   * Install {@link reportInterrupts} with `process.exit` mocked.
+   *
+   * @returns The signals reported, the exit codes asked for, and the remover
+   */
+  function installReporter(): {
+    reported: string[];
+    exits: Array<number | undefined>;
+    stop: () => void;
+  } {
+    const reported: string[] = [];
+    const exits: Array<number | undefined> = [];
+    mock.method(process, 'exit', (code?: number) => {
+      exits.push(code);
+      throw new Exit(code);
+    });
+    const stop = reportInterrupts((signal) => reported.push(signal));
+    return { reported, exits, stop };
+  }
+
+  void it('reports Ctrl-C once and exits 130; a second Ctrl-C exits without a second report', () => {
+    const { reported, exits, stop } = installReporter();
+    assert.throws(() => process.emit('SIGINT'), Exit);
+    assert.throws(() => process.emit('SIGINT'), Exit);
+    stop();
+    assert.deepEqual(reported, ['SIGINT']);
+    assert.deepEqual(exits, [130, 130]);
+  });
+
+  void it('reports SIGTERM with exit 143', () => {
+    const { reported, exits, stop } = installReporter();
+    assert.throws(() => process.emit('SIGTERM'), Exit);
+    stop();
+    assert.deepEqual(reported, ['SIGTERM']);
+    assert.deepEqual(exits, [143]);
+  });
+
+  void it('removes its listeners once the command has its result', () => {
+    const before = ['SIGINT', 'SIGTERM'].map((signal) => process.listenerCount(signal));
+    const { stop } = installReporter();
+    assert.deepEqual(
+      ['SIGINT', 'SIGTERM'].map((signal) => process.listenerCount(signal)),
+      before.map((count) => count + 1)
+    );
+    stop();
+    assert.deepEqual(
+      ['SIGINT', 'SIGTERM'].map((signal) => process.listenerCount(signal)),
+      before
+    );
+  });
+
+  void it('leaves the signal to a command that reports its own interrupt', () => {
+    const { reported, exits, stop } = installReporter();
+    let own = 0;
+    const listener = (): void => {
+      own += 1;
+    };
+    onOwnInterrupt('SIGINT', listener);
+    added.push(['SIGINT', listener]);
+    process.emit('SIGINT');
+    stop();
+    assert.equal(own, 1);
+    assert.deepEqual(reported, []);
+    assert.deepEqual(exits, []);
   });
 });

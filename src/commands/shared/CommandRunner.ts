@@ -1,4 +1,9 @@
 import { type BaseOptions } from '@/commands/shared/optionTypes.js';
+import {
+  interruptExitCode,
+  reportInterrupts,
+  type InterruptSignal,
+} from '@/commands/shared/interrupt.js';
 import { getQuickIPCRequestTimeout } from '@/constants.js';
 import { CommandError, isDaemonConnectionError } from '@/errors/index.js';
 import {
@@ -8,6 +13,9 @@ import {
   commandTimedOutError,
   sessionNotRespondingError,
   sessionEndedDuringCommandError,
+  commandInterruptedError,
+  commandInterruptedLine,
+  type InterruptedWork,
 } from '@/errors/messages.js';
 import { IPCEarlyCloseError, IPCTimeoutError } from '@/ipc/transport/IPCError.js';
 import { takeTabMove } from '@/ipc/utils/tabMove.js';
@@ -52,11 +60,14 @@ export function noActiveSessionError(): CommandError {
  * ```
  */
 export async function runJsonCommand<T>(fn: () => Promise<T>): Promise<never> {
+  const stopReporting = reportInterrupts(interruptReporter(true));
   try {
     const data = await fn();
+    stopReporting();
     console.log(stringifyEnvelope(withTabMove(buildSuccessResponse(data))));
     process.exit(EXIT_CODES.SUCCESS);
   } catch (caught) {
+    stopReporting();
     const error = isDaemonConnectionError(caught)
       ? noActiveSessionError()
       : caught instanceof IPCTimeoutError
@@ -194,6 +205,37 @@ export function printWarning(warning: string | undefined): void {
 }
 
 /**
+ * Print an interrupted command's error: the `--json` envelope on stdout, or
+ * one line on stderr.
+ *
+ * @param json - Whether `--json` was given
+ * @param work - What the command may already have done
+ * @returns Prints the error for a signal
+ */
+function interruptReporter(
+  json: boolean,
+  work?: InterruptedWork
+): (signal: InterruptSignal) => void {
+  return (signal) => {
+    const err = commandInterruptedError(work);
+    if (!json) {
+      console.error(escapeControlChars(commandInterruptedLine(err)));
+      return;
+    }
+    console.log(
+      stringifyEnvelope(
+        withTabMove(
+          OutputBuilder.buildJsonError(err.message, {
+            suggestion: err.suggestion,
+            exitCode: interruptExitCode(signal),
+          })
+        )
+      )
+    );
+  };
+}
+
+/**
  * Run a command with consistent error handling, output formatting, and exit codes.
  * Eliminates boilerplate try-catch and JSON output logic from command handlers.
  *
@@ -201,11 +243,18 @@ export function printWarning(warning: string | undefined): void {
  * - Wraps command logic in try-catch
  * - Handles IPC connection errors (ENOENT, ECONNREFUSED)
  * - Formats output as JSON or human-readable based on --json flag
+ * - Reports Ctrl-C and SIGTERM until the command has its result: one error
+ *   envelope (`--json`) or one line on stderr, exit 130 (143)
  * - Calls process.exit() with appropriate exit code
  *
  * @param handler - Command logic that returns CommandResult or throws
  * @param options - Command options (must include json flag)
  * @param formatter - Optional human-readable formatter (if not provided, outputs raw JSON)
+ * @param work - What the command may already have done when Ctrl-C or
+ *   SIGTERM interrupts it (an action sent to the page, a file written), for
+ *   the interrupted error's suggestion, read when the signal comes (a file
+ *   command sets `writing` as its write starts); absent for commands that
+ *   only read
  *
  * @example
  * ```typescript
@@ -222,10 +271,13 @@ export function printWarning(warning: string | undefined): void {
 export async function runCommand<TOptions extends BaseOptions, TResult = unknown>(
   handler: CommandHandler<TOptions, TResult>,
   options: TOptions,
-  formatter?: CommandFormatter<TResult>
+  formatter?: CommandFormatter<TResult>,
+  work?: InterruptedWork
 ): Promise<void> {
+  const stopReporting = reportInterrupts(interruptReporter(options.json === true, work));
   try {
     const result = await handler(options);
+    stopReporting();
 
     if (!result.success) {
       const exitCode = result.exitCode ?? EXIT_CODES.UNHANDLED_EXCEPTION;
@@ -285,6 +337,7 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
 
     process.exit(EXIT_CODES.SUCCESS);
   } catch (caught) {
+    stopReporting();
     const error =
       caught instanceof IPCTimeoutError
         ? timeoutError(caught)
