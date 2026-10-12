@@ -80,11 +80,16 @@ after(removeTempDirs);
 void describe('Interrupted commands', () => {
   let fixture: FixtureServer;
 
+  /** Start the session on the busy page */
+  async function startSession(): Promise<void> {
+    const port = await getFreePort();
+    await bdg([`${fixture.url}busy`, '--port', String(port), '--headless']);
+  }
+
   before(async () => {
     await cleanupAllSessions();
     fixture = await startFixtureServer();
-    const port = await getFreePort();
-    await bdg([`${fixture.url}busy`, '--port', String(port), '--headless']);
+    await startSession();
   });
 
   after(async () => {
@@ -129,9 +134,7 @@ void describe('Interrupted commands', () => {
    * @returns The command's result
    */
   async function interruptRead(args: string[], signal: NodeJS.Signals): Promise<CommandResult> {
-    const pidFile = path.join(ensureTestSessionDir(), 'daemon.pid');
-    const daemonPid = Number.parseInt(fs.readFileSync(pidFile, 'utf8').trim(), 10);
-    assert.ok(Number.isInteger(daemonPid), `daemon.pid: ${fs.readFileSync(pidFile, 'utf8')}`);
+    const daemonPid = readDaemonPid();
     const stop = new AbortController();
     const [command = '', ...rest] = args;
     process.kill(daemonPid, 'SIGSTOP');
@@ -183,13 +186,33 @@ void describe('Interrupted commands', () => {
     assert.equal(fs.readFileSync(file, 'utf8'), 'previous', 'the previous content stays');
   });
 
+  /**
+   * Whether the resumed daemon still runs the stop is not up to the CLI, so
+   * the session is cleaned up and started again for the tests after this one.
+   */
+  void it('says an interrupted stop may have been sent, to check with bdg status', async () => {
+    const result = await interruptRead(['stop'], 'SIGINT');
+    const envelope = oneEnvelope(result, 130);
+    assert.ok(!result.stdout.includes('"success":true'), 'no stop result was printed');
+    assert.match(String(envelope.suggestion), /stop request may already have been sent/);
+    assert.match(String(envelope.suggestion), /bdg status/);
+    await cleanupAllSessions();
+    await startSession();
+  });
+
   void it('answers normally afterwards', async () => {
     await bdg(['network', 'list', '--json']);
   });
-
-  void it('says an interrupted stop may have been sent, to check with bdg status', async () => {
-    const envelope = oneEnvelope(await interruptRead(['stop'], 'SIGINT'), 130);
-    assert.match(String(envelope.suggestion), /stop request may already have been sent/);
-    assert.match(String(envelope.suggestion), /bdg status/);
-  });
 });
+
+/**
+ * The test session's daemon PID.
+ *
+ * @returns PID from `daemon.pid`
+ */
+function readDaemonPid(): number {
+  const pidFile = path.join(ensureTestSessionDir(), 'daemon.pid');
+  const daemonPid = Number.parseInt(fs.readFileSync(pidFile, 'utf8').trim(), 10);
+  assert.ok(Number.isInteger(daemonPid), `daemon.pid: ${fs.readFileSync(pidFile, 'utf8')}`);
+  return daemonPid;
+}
