@@ -23,7 +23,11 @@ import {
 import { COMPOSED_JS, FLAT_TEXT_JS } from '@/runtime/dom/elementInfo.js';
 import { ActionScriptError, throwIfInvalidSelector } from '@/runtime/dom/formFillHelpers/shared.js';
 import { frameScopedConnection } from '@/runtime/dom/frameScopedConnection.js';
-import { callFunctionInBdgWorld, callFunctionInMainWorld } from '@/runtime/page/bdgWorld.js';
+import {
+  callFunctionInBdgWorld,
+  callFunctionInMainWorld,
+  resolveNodeInBdgWorld,
+} from '@/runtime/page/bdgWorld.js';
 import { findReplacedBuiltins } from '@/runtime/page/replacedBuiltins.js';
 import { indexSourceOf } from '@/session/QueryCacheManager.js';
 import type { CDPSender } from '@/telemetry/objectExpander.js';
@@ -469,16 +473,16 @@ function namesCacheKey(params: { selector?: string; listIndex?: number }): boole
  */
 const NODE_SELECTOR_FUNCTION = `function () {
   const deepQuery = ${DEEP_QUERY_JS};
-  const finds = (selector) => {
+  const finds = (selector, expected) => {
     try {
       const matches = deepQuery(selector, null);
-      return matches.length === 1 && matches[0] === this;
+      return matches.length === 1 && matches[0] === expected;
     } catch (e) {
       return false;
     }
   };
   const segment = (el) => {
-    if (el.id && finds('#' + CSS.escape(el.id))) return '#' + CSS.escape(el.id);
+    if (el.id && finds('#' + CSS.escape(el.id), el)) return '#' + CSS.escape(el.id);
     const tag = el.tagName.toLowerCase();
     const parent = el.parentElement;
     const same = parent ? Array.from(parent.children).filter((c) => c.tagName === el.tagName) : [];
@@ -492,11 +496,13 @@ const NODE_SELECTOR_FUNCTION = `function () {
     if (part.startsWith('#')) break;
   }
   const selector = parts.join(' > ');
-  return finds(selector) ? selector : null;
+  return finds(selector, this) ? selector : null;
 }`;
 
 /**
- * A selector that finds a cached element again (see {@link NODE_SELECTOR_FUNCTION}).
+ * A selector that finds a cached element again (see {@link NODE_SELECTOR_FUNCTION}),
+ * built in bdg's world so a page that replaced `CSS.escape` or
+ * `querySelectorAll` cannot spoil it.
  *
  * @param cdp - CDP connection
  * @param backendNodeId - Backend node id from the query cache
@@ -504,10 +510,8 @@ const NODE_SELECTOR_FUNCTION = `function () {
  */
 async function selectorOfNode(cdp: CDPConnection, backendNodeId: number): Promise<string | null> {
   try {
-    const resolved = (await cdp.send('DOM.resolveNode', { backendNodeId })) as {
-      object?: { objectId?: string };
-    };
-    const { objectId } = resolved.object ?? {};
+    const resolved = await resolveNodeInBdgWorld(cdp, { backendNodeId });
+    const { objectId } = resolved.object;
     if (!objectId) return null;
     const answer = (await cdp.send('Runtime.callFunctionOn', {
       objectId,

@@ -12,7 +12,7 @@
  */
 
 import * as assert from 'node:assert/strict';
-import { after, before, describe, it } from 'node:test';
+import { after, before, beforeEach, describe, it } from 'node:test';
 
 import { runCommand } from '@/__testutils__/commandRunner.js';
 import { cleanupAllSessions } from '@/__testutils__/daemonHelpers.js';
@@ -62,6 +62,15 @@ async function selectorAfterClick(name: string): Promise<string | undefined> {
   return data['selector'] as string | undefined;
 }
 
+/**
+ * The clicks the page noted since the last reset.
+ *
+ * @returns Comma-separated notes
+ */
+async function clicksOnPage(): Promise<string> {
+  return String((await dataOf(['dom', 'eval', 'window.clicks.join()']))['result']);
+}
+
 void describe('Selector in the result of an action on an index', () => {
   let fixture: FixtureServer;
 
@@ -77,6 +86,10 @@ void describe('Selector in the result of an action on an index', () => {
     await fixture.close();
   });
 
+  beforeEach(async () => {
+    await bdg(['dom', 'eval', 'window.clicks = []; 1']);
+  });
+
   void it('is #id for an element with an id, and finds it again', async () => {
     const selector = await selectorAfterClick('WithId');
     assert.equal(selector, '#with-id');
@@ -89,9 +102,18 @@ void describe('Selector in the result of an action on an index', () => {
     const selector = await selectorAfterClick('Plain');
     assert.ok(selector && !selector.startsWith('a11y'), `real selector, got ${selector}`);
     assert.match(await bdg(['dom', 'query', selector]), /Found 1 node/);
-    const clicks = await dataOf(['dom', 'eval', 'window.clicks.join()']);
-    assert.match(String(clicks['result']), /Plain$/, 'the click reached a Plain button');
-    assert.match(await bdg(['dom', 'query', selector]), /Plain/);
+    assert.equal(await clicksOnPage(), 'row1:Plain', 'the index reached the first row');
+    await bdg(['dom', 'click', selector]);
+    assert.equal(await clicksOnPage(), 'row1:Plain,row1:Plain', 'the selector reaches it again');
+  });
+
+  void it('starts at the nearest ancestor with an id, and finds the button again', async () => {
+    const selector = await selectorAfterClick('InWrap');
+    assert.match(selector ?? '', /^#wrap > button/);
+    assert.equal(await clicksOnPage(), 'InWrap');
+    const found = await bdg(['dom', 'query', selector ?? '']);
+    assert.match(found, /Found 1 node/);
+    assert.match(found, /InWrap/);
   });
 
   void it('finds an element in an open shadow root again', async () => {
