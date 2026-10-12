@@ -159,7 +159,8 @@ export function registerStopCommand(program: Command): void {
           }
         },
         options,
-        formatStop
+        formatStop,
+        { session: 'stop' }
       );
     });
 }

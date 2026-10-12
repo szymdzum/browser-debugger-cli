@@ -257,7 +257,8 @@ export function registerCleanupCommand(program: Command): void {
       await runCommand<CleanupCommandOptions, CleanupResult>(
         cleanupSession,
         options,
-        formatCleanup
+        formatCleanup,
+        { session: 'cleanup' }
       );
     });
 }

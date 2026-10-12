@@ -186,4 +186,10 @@ void describe('Interrupted commands', () => {
   void it('answers normally afterwards', async () => {
     await bdg(['network', 'list', '--json']);
   });
+
+  void it('says an interrupted stop may have been sent, to check with bdg status', async () => {
+    const envelope = oneEnvelope(await interruptRead(['stop'], 'SIGINT'), 130);
+    assert.match(String(envelope.suggestion), /stop request may already have been sent/);
+    assert.match(String(envelope.suggestion), /bdg status/);
+  });
 });

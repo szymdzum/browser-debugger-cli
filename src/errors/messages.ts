@@ -208,10 +208,12 @@ export function screenshotInterruptedError(signal: 'SIGINT' | 'SIGTERM'): ErrorW
 
 /**
  * What an interrupted command may already have done: sent an action to the
- * page (`sent`: what, e.g. `click`), or a file it writes (`file`: what kind;
+ * page (`sent`: what, e.g. `click`), changed the session itself
+ * (`session`: `stop` or `cleanup`), or a file it writes (`file`: what kind;
  * `writing`: its path once the write has started, absent before).
  */
-export type InterruptedWork = { sent: string } | InterruptedFileWrite;
+export type InterruptedWork =
+  { sent: string } | { session: 'stop' | 'cleanup' } | InterruptedFileWrite;
 
 /** A file an interruptible command writes; `writing` is set as the write starts */
 export interface InterruptedFileWrite {
@@ -241,9 +243,25 @@ function interruptedWorkText(work: InterruptedWork | undefined): string {
   if ('sent' in work) {
     return `The ${work.sent} may already have reached the page; check with ${sessionCommand('bdg peek')} before repeating it`;
   }
+  if ('session' in work) {
+    const begun =
+      work.session === 'stop'
+        ? 'The stop request may already have been sent'
+        : 'The cleanup may already have ended processes or removed files';
+    return `${begun}; check with ${sessionCommand('bdg status')} before running it again`;
+  }
   return work.writing
     ? `The ${work.file} may or may not have been written to ${work.writing}; check it, or run the command again`
     : `The ${work.file} was not written (an existing file is unchanged); run the command again`;
+}
+
+/**
+ * The suggestion of a start cancelled by Ctrl-C or SIGTERM.
+ *
+ * @returns Suggestion
+ */
+export function startCancelledSuggestion(): string {
+  return `Start again with: ${sessionCommand('bdg <url>')}`;
 }
 
 /**

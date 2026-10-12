@@ -209,7 +209,8 @@ export function registerInstallSkillCommand(program: Command): void {
       await runCommand<InstallSkillOptions, { skills: InstalledSkill[] }>(
         (opts) => Promise.resolve(installSkillResult(opts)),
         options,
-        formatInstalledSkills
+        formatInstalledSkills,
+        { file: 'skill copy' }
       );
     });
 }
