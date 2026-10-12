@@ -381,6 +381,54 @@ void describe('IPC Server Contract Tests', () => {
     });
   });
 
+  void describe('Frames the daemon cannot route (#657)', () => {
+    /** Reply fields every error frame carries */
+    interface ErrorFrame {
+      type: string;
+      sessionId: string;
+      status: string;
+      error: string;
+      suggestion?: string;
+      exitCode?: number;
+    }
+
+    const requestError = async (frame: string): Promise<ErrorFrame> => {
+      await client.connect(getSessionFilePath('DAEMON_SOCKET'));
+      client.writeRaw(frame);
+      return JSON.parse(await client.waitForResponse(1000)) as ErrorFrame;
+    };
+
+    void it('answers bad JSON with an error frame', async () => {
+      const reply = await requestError('not json{\n');
+      assert.equal(reply.type, 'error_response');
+      assert.equal(reply.status, 'error');
+      assert.match(reply.error, /JSON/i);
+    });
+
+    void it('answers a frame without type and sessionId with an error frame', async () => {
+      const reply = await requestError('{"foo":1}\n');
+      assert.equal(reply.type, 'error_response');
+      assert.equal(reply.status, 'error');
+      assert.match(reply.error, /type|sessionId/);
+    });
+
+    void it('echoes the session id of a frame that has one but no type', async () => {
+      const reply = await requestError('{"sessionId":"s-9"}\n');
+      assert.equal(reply.type, 'error_response');
+      assert.equal(reply.sessionId, 's-9');
+    });
+
+    void it('answers an unknown type with an error that names the command and the restart', async () => {
+      const reply = await requestError('{"type":"bogus_request","sessionId":"s-1"}\n');
+      assert.equal(reply.type, 'error_response');
+      assert.equal(reply.sessionId, 's-1');
+      assert.equal(reply.status, 'error');
+      assert.match(reply.error, /bogus_request/);
+      assert.match(reply.suggestion ?? '', /bdg stop/);
+      assert.equal(reply.exitCode, 90);
+    });
+  });
+
   void describe('Error handling', () => {
     void it('should handle malformed JSON gracefully', async () => {
       const socketPath = getSessionFilePath('DAEMON_SOCKET');
