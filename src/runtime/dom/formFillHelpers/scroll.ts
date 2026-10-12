@@ -53,7 +53,7 @@ const SCROLL_TO_ELEMENT_SCRIPT = `
       return {
         success: false,
         reason: 'range',
-        error: 'Index ' + index + ' out of range (found ' + allMatches.length + ' nodes, use 0-' + (allMatches.length - 1) + ')'
+        error: 'Index ' + index + ' out of range (found ' + allMatches.length + (allMatches.length === 1 ? ' node, the only --index is 0)' : ' nodes, use --index between 0 and ' + (allMatches.length - 1) + ')')
       };
     }
     el = allMatches[index];

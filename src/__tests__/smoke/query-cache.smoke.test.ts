@@ -81,6 +81,26 @@ void describe('Query cache', () => {
     assert.doesNotMatch(output, /no longer in the page/);
   });
 
+  void it('says the only index is 0 for a one-result list', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}raw-legacy`]);
+    await bdg(['dom', 'query', '#legacy-pass']);
+
+    const output = await bdg(['dom', 'get', '5'], 87);
+
+    assert.match(output, /the only index is 0/);
+    assert.doesNotMatch(output, /between 0 and 0/);
+    await bdg(['page', 'navigate', `${fixture.url}components`]);
+  });
+
+  void it('hints at 0-based indices for a negative or fractional number', async () => {
+    for (const target of ['-1', '1.5']) {
+      const output = await bdg(['dom', 'get', '--', target], 81);
+      assert.match(output, /0-based non-negative integers/, target);
+    }
+    const click = await bdg(['dom', 'click', '1.5'], 81);
+    assert.match(click, /0-based non-negative integers/);
+  });
+
   void it('names the list an index came from in every index-based success', async () => {
     await bdg(['dom', 'query', '#user']);
 

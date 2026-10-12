@@ -425,12 +425,33 @@ export interface ErrorWithSuggestion {
 }
 
 /**
+ * Which indices a list of `count` entries accepts, as the start of a suggestion.
+ *
+ * @param count - Entries in the list (at least 1)
+ * @returns `Here the only index is 0` or `Use an index between 0 and N`
+ */
+function usableIndexRange(count: number): string {
+  return count === 1 ? 'Here the only index is 0' : `Use an index between 0 and ${count - 1}`;
+}
+
+/**
  * Index out of range error.
+ *
+ * @param index - The index asked for
+ * @param max - Highest valid index (-1 when nothing matched)
+ * @returns Message and suggestion
  */
 export function indexOutOfRangeError(index: number, max: number): ErrorWithSuggestion {
+  const count = max + 1;
+  if (count < 1) {
+    return {
+      message: `Index ${index} out of range (found 0 nodes)`,
+      suggestion: 'Nothing matched, so there is no index to use. Check the selector',
+    };
+  }
   return {
-    message: `Index ${index} out of range (found ${max + 1} nodes)`,
-    suggestion: `Use an index between 0 and ${max}`,
+    message: `Index ${index} out of range (found ${count} ${count === 1 ? 'node' : 'nodes'})`,
+    suggestion: usableIndexRange(count),
   };
 }
 
@@ -458,6 +479,9 @@ export function emptySelectorError(): ErrorWithSuggestion {
   };
 }
 
+/** A number that is no index: signed or fractional (`-1`, `+1`, `1.5`, `.5`), and no valid CSS selector either. */
+const NON_INDEX_NUMBER = /^[+-]?(?:\d+\.?\d*|\.\d+)$/;
+
 /**
  * CSS selector rejected by the browser. Playwright-only syntax (`:text()`,
  * `>>`, `text=`) gets the filters bdg supports instead.
@@ -471,7 +495,9 @@ export function invalidSelectorError(selector: string, detail?: string): ErrorWi
     message: `Invalid CSS selector: ${selector}${detail ? ` (${detail})` : ''}`,
     suggestion: PLAYWRIGHT_ONLY_SYNTAX.test(selector)
       ? `Playwright-only syntax is not CSS. bdg supports :has-text("…"), :text-is("…") and :visible, e.g. button:has-text("Save"), or scoped to a row or label: li:has-text("Buy milk") .toggle; or find elements by accessible name: ${A11Y_NAME_QUERY_EXAMPLE}`
-      : 'Check the selector syntax, e.g. bdg dom query "button.primary"',
+      : NON_INDEX_NUMBER.test(selector)
+        ? 'Indices are 0-based non-negative integers from a list command: run bdg dom query "<selector>" and use an index like 0; to match by selector, check its syntax, e.g. bdg dom query "button.primary"'
+        : 'Check the selector syntax, e.g. bdg dom query "button.primary"',
   };
 }
 
@@ -1462,11 +1488,12 @@ export function cachedIndexOutOfRangeError(
   const results = all === 1 ? '1 result' : `${all} results`;
   const range =
     all > count
-      ? `between 0 and ${count - 1}, or up to ${all - 1} after re-running it with --limit 0`
-      : `between 0 and ${count - 1}, or re-run "${refreshCommand(source)}"`;
+      ? `or up to ${all - 1} after re-running it with --limit 0`
+      : `or re-run "${refreshCommand(source)}"`;
   return {
     message: `Index ${source.index} is out of range for ${cachedListText(source)} (${results})`,
-    suggestion: count > 0 ? `Use an index ${range}` : `Re-run "${refreshCommand(source)}"`,
+    suggestion:
+      count > 0 ? `${usableIndexRange(count)}, ${range}` : `Re-run "${refreshCommand(source)}"`,
   };
 }
 
@@ -2933,7 +2960,7 @@ export function tabIndexOutOfRangeError(
   tabs: readonly ListedTab[]
 ): ErrorWithSuggestion {
   return {
-    message: `Tab index ${index} out of range (${tabs.length} tab${tabs.length === 1 ? '' : 's'}: 0-${tabs.length - 1})`,
+    message: `Tab index ${index} out of range (${tabs.length === 1 ? '1 tab: the only index is 0' : `${tabs.length} tabs: 0-${tabs.length - 1}`})`,
     suggestion: joinLines(
       'Open tabs:',
       ...tabLines(tabs),

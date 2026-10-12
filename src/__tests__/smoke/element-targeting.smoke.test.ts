@@ -610,6 +610,23 @@ void describe('Element layout', () => {
     await bdg(['dom', 'eval', "document.getElementById('save').remove(); 1"]);
     await bdg(['dom', 'layout', '0'], 87);
   });
+
+  void it('reports the match count and valid --index in click, scroll and pressKey', async () => {
+    const only = /Index 3 out of range \(found 1 node/;
+    for (const args of [
+      ['dom', 'click', '#top', '--index', '3'],
+      ['dom', 'scroll', '#top', '--index', '3'],
+      ['dom', 'pressKey', '#top', 'Enter', '--index', '3'],
+    ]) {
+      const output = await bdg(args, 81);
+      assert.match(output, only, args.join(' '));
+      assert.match(output, /the only --index is 0/i, args.join(' '));
+      assert.doesNotMatch(output, /0-0|found 1 nodes/, args.join(' '));
+    }
+    const many = await bdg(['dom', 'click', 'button', '--index', '99'], 81);
+    assert.match(many, /Index 99 out of range \(found \d+ nodes/);
+    assert.match(many, /between 0 and \d+/);
+  });
 });
 
 void describe('Reading text in dom get and dom query', () => {

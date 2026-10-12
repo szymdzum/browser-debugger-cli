@@ -431,11 +431,11 @@ export const REACT_FILL_SCRIPT = `
     if (index >= allMatches.length) {
       return {
         success: false,
-        error: 'Index out of range',
+        error: 'Index ' + index + ' out of range (found ' + allMatches.length + (allMatches.length === 1 ? ' node)' : ' nodes)'),
         selector: selector,
         matchCount: allMatches.length,
         requestedIndex: index,
-        suggestion: 'Use --index between 0 and ' + (allMatches.length - 1)
+        suggestion: allMatches.length === 1 ? 'The only --index is 0' : 'Use --index between 0 and ' + (allMatches.length - 1)
       };
     }
     el = allMatches[index];
@@ -850,11 +850,11 @@ export const CLICK_ELEMENT_SCRIPT = `
     if (index >= allMatches.length) {
       return {
         success: false,
-        error: 'Index out of range',
+        error: 'Index ' + index + ' out of range (found ' + allMatches.length + (allMatches.length === 1 ? ' node)' : ' nodes)'),
         selector: selector,
         matchCount: allMatches.length,
         requestedIndex: index,
-        suggestion: 'Use --index between 0 and ' + (allMatches.length - 1)
+        suggestion: allMatches.length === 1 ? 'The only --index is 0' : 'Use --index between 0 and ' + (allMatches.length - 1)
       };
     }
     el = allMatches[index];
