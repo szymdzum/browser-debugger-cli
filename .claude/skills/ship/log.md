@@ -21,3 +21,12 @@ Bugs found after the merge in behaviour a logged PR changed: the PR, the issue t
 
 | found | PR | issue | should have been caught by |
 |---|---|---|---|
+| 2026-10-12 | #680 | #678 | 3 | 0/2/3 | 0 | 1 | opus | 400k | sync-created tracked temp file closed the pending-open gap (reviewer); tester couldn't hit the 0.25 s window by hand, child-process test did |
+| 2026-10-12 | #681 | #487 | 3 | 0/2/5 | 1 | 2 | opus | 430k | attach-mode socket-error kept as crash (review); tester asked whether Chrome was left running → status line says it was closed; main red from a port-substring flake (#682) |
+| 2026-10-12 | #682 | - | 1 | 0/1/1 | - | 1 | orchestrator | 31k | main red: /4111/ matched random fixture port :44111; reviewer caught partial-card gap in the first fix |
+| 2026-10-12 | #683 | #669 | 2 | 0/1/2 | 1 | 2 | sonnet | 200k | argv check before parse; tester found argParser options still gave commander's message (round 2); reviewer matrix 54 cells caught short-flag suggestion |
+| 2026-10-12 | #684 | #677 | 2 | 0/2/2 | 0 | 0 | sonnet | 180k | one builder; exit 83 still from error text (filed as older code); misclassification matrix 0/5 |
+| 2026-10-12 | #685 | #630 | 2 | 0/3/3 | 1 | 2 | sonnet | 420k | user chose real selector for data.selector (contract); review: ancestor-id branch dead, builder moved to bdg world, remote object leak; tester: human echo shows a class-only descriptor matching 8 nodes |
+| 2026-10-12 | #689 | #686 | 3 | 0/2/5 | 0 | 2 | opus | 560k | entry split into dist/index.js + dist/cli.js so the interrupt report exists before the CLI loads; reviewer risk resume found nothing; CLAUDE.md line by orchestrator after implementer refused (needs user's word) |
+| 2026-10-12 | #690 | #687 | 2 | 0/1/2 | 0 | 1 | sonnet | 330k | eval awaitPromise:false + liveness probe; reviewer 82-run eval matrix vs base: only intended changes; V8 parse message leaked response fragments (fixed); tester: --full on 200 MB OOMs the CLI (older code) |
+| 2026-10-12 | #691 | #688 | 2 | 0/0/2 | 0 | 1 | sonnet | 280k | implicit type omitted from human output; CI caught an assertion the implementer missed (element-classes smoke); agent died once on API ECONNRESET and resumed |
