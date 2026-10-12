@@ -102,7 +102,8 @@ function hasNoArguments(): boolean {
     if (arg === '--session') {
       if (args[i + 1]?.startsWith('-') ?? true) return false;
       i++;
-    } else if (!arg.startsWith('--session=') && !BARE_JSON_FLAGS.has(arg)) return false;
+    } else if (arg === '--session=') return false;
+    else if (!arg.startsWith('--session=') && !BARE_JSON_FLAGS.has(arg)) return false;
   }
   return true;
 }

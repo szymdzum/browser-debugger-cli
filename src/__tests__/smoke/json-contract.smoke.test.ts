@@ -145,6 +145,7 @@ void describe('JSON contract', () => {
       [['--session', '--json'], /Option --session needs a value, but --json follows it/],
       [['--json', '--session', '--debug'], /Invalid session name "--debug"/],
       [['--json', '--session'], /argument missing/],
+      [['--json', '--session='], /Invalid session name ""/],
     ];
     const sessionDir = path.join(os.tmpdir(), `bdg-695-nosession-${process.pid}`);
     rmSync(sessionDir, { recursive: true, force: true });
