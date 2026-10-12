@@ -13,7 +13,7 @@ import { currentNavigationOf, isPreviousPage } from '@/telemetry/pageScope.js';
 import type { NetworkRequest } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { findSimilar } from '@/utils/suggestions.js';
-import { extractHostname } from '@/utils/url.js';
+import { extractHostname, safeParseUrl } from '@/utils/url.js';
 
 const log = createLogger('network');
 
@@ -121,6 +121,67 @@ function extractOperator(value: string): [ComparisonOperator, string] {
 /** Filter types whose value may start with a comparison operator */
 const COMPARABLE_TYPES = new Set(['status-code', 'larger-than', 'duration']);
 
+/** A `domain:` value split into host pattern and optional port */
+interface DomainPattern {
+  host: string;
+  port?: number;
+}
+
+/** Default ports of the URL schemes a request can use */
+const DEFAULT_PORTS: Record<string, number> = { http: 80, https: 443, ws: 80, wss: 443 };
+
+const PORT_PATTERN = /^\d+$/;
+const IPV6_HINT = 'Write an IPv6 host in brackets, e.g. "domain:[::1]:8080"';
+
+/**
+ * Split a `domain:` value into host pattern and port.
+ *
+ * @param value - `host`, `host:port`, `[ipv6]` or `[ipv6]:port` (host may hold wildcards)
+ * @returns The parts, or an error with a hint
+ */
+function splitDomainValue(value: string): DomainPattern | { error: string; suggestion: string } {
+  const bracketEnd = value.startsWith('[') ? value.indexOf(']') : -1;
+  const colonIndex = bracketEnd === -1 ? value.indexOf(':') : value.indexOf(':', bracketEnd);
+  if (bracketEnd === -1 && value.indexOf(':') !== value.lastIndexOf(':')) {
+    return { error: `Invalid domain filter: "${value}"`, suggestion: IPV6_HINT };
+  }
+  if (colonIndex === -1) return { host: value };
+  const host = value.slice(0, colonIndex);
+  const portText = value.slice(colonIndex + 1);
+  const port = PORT_PATTERN.test(portText) ? Number(portText) : 0;
+  if (!host || port < 1 || port > 65535) {
+    return {
+      error: `Invalid port in domain filter: "${value}"`,
+      suggestion:
+        'Use "domain:host:port" with a port from 1 to 65535, e.g. "domain:localhost:3000"',
+    };
+  }
+  return { host, port };
+}
+
+function validateDomainValue(value: string): FilterTokenResult | null {
+  const split = splitDomainValue(value);
+  return 'error' in split ? createError(split.error, split.suggestion) : null;
+}
+
+/**
+ * Check a request URL against a `domain:` value.
+ *
+ * @param url - Request URL
+ * @param value - Validated `domain:` value; without a port every port matches
+ * @returns True if the host (wildcards allowed) and, when given, the effective port match
+ */
+function matchesDomain(url: string, value: string): boolean {
+  const split = splitDomainValue(value);
+  if ('error' in split) return false;
+  if (!matchesWildcard(extractHostname(url), split.host)) return false;
+  if (split.port === undefined) return true;
+  const parsed = safeParseUrl(url);
+  if (!parsed) return false;
+  const effective = parsed.port ? Number(parsed.port) : DEFAULT_PORTS[extractScheme(url)];
+  return effective === split.port;
+}
+
 /**
  * Check a filter value of a type with a fixed vocabulary or format.
  *
@@ -142,6 +203,8 @@ function validateFilterValue(type: string, value: string): FilterTokenResult | n
       return validateResourceTypes(value);
     case 'page':
       return validatePageValue(value);
+    case 'domain':
+      return validateDomainValue(value);
     default:
       return null;
   }
@@ -412,7 +475,7 @@ function matchesFilter(
 ): boolean {
   switch (filter.type) {
     case 'domain':
-      return matchesWildcard(extractHostname(request.url), filter.value);
+      return matchesDomain(request.url, filter.value);
 
     case 'status-code':
       if (!request.status) return false;
@@ -514,7 +577,9 @@ export function getFilterHelpText(): string {
   return `
 Filter syntax:
   status-code:>=400       HTTP status codes (supports =, >=, <=, >, <; status-code:=500 or :500)
-  domain:api.*            Domain with wildcards
+  domain:api.*            Domain with wildcards (any port)
+  domain:localhost:3000   Domain and port (no port in the URL: 80 for http, 443 for https)
+                          IPv6 in brackets: domain:[::1]:8080
   method:POST             HTTP method
   mime-type:application/json
   resource-type:XHR,Fetch CDP resource types (comma-separated)
