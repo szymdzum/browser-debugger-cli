@@ -9,10 +9,19 @@
  */
 
 import * as fs from 'fs';
+import { fileURLToPath } from 'url';
 
 import { reportInterruptsUntilHandedOver } from '@/commands/shared/interrupt.js';
 import { interruptReporter } from '@/commands/shared/interruptReport.js';
-import { isJsonMode } from '@/utils/cliArgs.js';
+import { genericError } from '@/errors/messages.js';
+import { OutputBuilder, stringifyEnvelope } from '@/ui/OutputBuilder.js';
+import { createLogger, enableDebugLogging } from '@/ui/logging/index.js';
+import { cliLoadFailedError } from '@/ui/messages/commands.js';
+import { flagArgs, isJsonMode } from '@/utils/cliArgs.js';
+import { getErrorMessage } from '@/utils/errors.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
+
+const log = createLogger('bdg');
 
 /** Test-only: where startup holds (see {@link holdStartupForTest}) */
 const STARTUP_GATE_ENV = 'BDG_TEST_STARTUP_GATE';
@@ -55,9 +64,47 @@ async function pollOnce(): Promise<void> {
   for (let turn = 0; turn < 2; turn++) await new Promise((resolve) => setImmediate(resolve));
 }
 
+/**
+ * Report a CLI bundle that failed to load (missing, or broken by a partial
+ * install) and exit 110: one envelope with `--json`, else one line on
+ * stderr; the error itself only with `--debug` (or `BDG_DEBUG=1`).
+ *
+ * @param error - The load error
+ */
+function reportCliLoadFailure(error: unknown): never {
+  if (flagArgs().includes('--debug')) enableDebugLogging();
+  log.debug(error instanceof Error && error.stack ? error.stack : getErrorMessage(error));
+  const err = cliLoadFailedError(fileURLToPath(new URL('./cli.js', import.meta.url)));
+  const exitCode = EXIT_CODES.SOFTWARE_ERROR;
+  if (isJsonMode()) {
+    const envelope = OutputBuilder.buildJsonError(err.message, {
+      suggestion: err.suggestion,
+      exitCode,
+    });
+    console.log(stringifyEnvelope(envelope));
+  } else {
+    console.error(genericError(`${err.message}. ${err.suggestion}`));
+  }
+  process.exit(exitCode);
+}
+
+/**
+ * Load the CLI bundle.
+ *
+ * @returns Its runner
+ */
+async function loadCli(): Promise<() => void> {
+  try {
+    const { runCli } = await import('./cli.js');
+    return runCli;
+  } catch (error) {
+    reportCliLoadFailure(error);
+  }
+}
+
 reportInterruptsUntilHandedOver(interruptReporter(isJsonMode()));
 holdStartupForTest('load');
-const { runCli } = await import('./cli.js');
+const runCli = await loadCli();
 holdStartupForTest('run');
 await pollOnce();
 runCli();

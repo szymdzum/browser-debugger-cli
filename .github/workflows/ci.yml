@@ -124,6 +124,18 @@ jobs:
       - name: Build package
         run: npm run build
 
+      # The CLI is two files (dist/index.js loads dist/cli.js): run the packed
+      # package (its dependencies from this checkout's node_modules)
+      - name: Run the packed CLI
+        run: |
+          dir="$(mktemp -d)"
+          tarball="$(npm pack --ignore-scripts --silent --pack-destination "$dir")"
+          tar -xzf "$dir/$tarball" -C "$dir"
+          ln -s "$PWD/node_modules" "$dir/package/node_modules"
+          node "$dir/package/dist/index.js" --version
+          help="$(node "$dir/package/dist/index.js" --help --json)"
+          test "${help:0:1}" = '{'
+
       # Save cache for other jobs (only runs if cache didn't exist)
       - name: Cache node_modules
         if: steps.cache.outputs.cache-hit != 'true'

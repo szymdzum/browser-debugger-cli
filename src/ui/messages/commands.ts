@@ -5,6 +5,7 @@
  * cleaning up stale files, and validating command arguments.
  */
 
+import type { ErrorWithSuggestion } from '@/errors/messages.js';
 import type { DomFrame, PageLoadingState, PendingRequestInfo } from '@/ipc/protocol/commands.js';
 import type {
   ActionError,
@@ -2155,4 +2156,17 @@ export function validityStateText(validity: ValidityReport): string {
     return limit === undefined ? state : `${state}: ${limit}`;
   });
   return named.length > 0 ? named.join(', ') : 'invalid';
+}
+
+/**
+ * The CLI bundle failed to load (missing, or broken by a partial install).
+ *
+ * @param file - Path of the CLI bundle
+ * @returns Message and suggestion
+ */
+export function cliLoadFailedError(file: string): ErrorWithSuggestion {
+  return {
+    message: `The bdg CLI failed to load (${file})`,
+    suggestion: 'Reinstall bdg: npm install -g browser-debugger-cli',
+  };
 }
