@@ -99,8 +99,10 @@ function hasNoArguments(): boolean {
   const args = process.argv.slice(2);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i] ?? '';
-    if (arg === '--session') i++;
-    else if (!arg.startsWith('--session=') && !BARE_JSON_FLAGS.has(arg)) return false;
+    if (arg === '--session') {
+      if (args[i + 1]?.startsWith('-') ?? true) return false;
+      i++;
+    } else if (!arg.startsWith('--session=') && !BARE_JSON_FLAGS.has(arg)) return false;
   }
   return true;
 }
