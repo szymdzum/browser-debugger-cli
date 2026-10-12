@@ -64,28 +64,37 @@ function isJsonMode(): boolean {
 /**
  * Reject `--json` / `-j` typed where an option's value belongs
  * (`bdg network list --last --json`): Commander would take it as the value
- * and the command would answer in human mode. Only the exact pair
- * `<option> --json` counts; `--last=--json` and values after `--` are values.
+ * and the command would answer in human mode. The arguments are read left to
+ * right as Commander does, so a value-taking option swallows the next word
+ * (`--filter --last --json` has the value `--last` and a real `--json`).
+ * `--last=--json` and values after `--` are values.
  *
  * @param command - Command about to run
  * @throws CommandError (81) naming the option that lacks its value
  */
 function assertJsonNotTakenAsValue(command: Command): void {
-  const args = flagArgs();
+  const valueOptions = new Map<string, string>();
   for (let level: Command | null = command; level; level = level.parent) {
     for (const option of level.options.filter((o) => o.required)) {
-      const flags = [option.long, option.short].filter((flag): flag is string => Boolean(flag));
-      const at = args.findIndex(
-        (arg, i) => flags.includes(arg) && JSON_FLAGS.includes(args[i + 1] ?? '')
-      );
-      if (at === -1) continue;
-      const err = jsonTakenAsValueError(args[at] ?? '', args[at + 1] ?? '');
+      const long = option.long ?? option.short ?? '';
+      for (const flag of [option.long, option.short]) if (flag) valueOptions.set(flag, long);
+    }
+  }
+  const args = flagArgs();
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] ?? '';
+    const long = valueOptions.get(arg);
+    if (long === undefined) continue;
+    const next = args[i + 1] ?? '';
+    if (JSON_FLAGS.includes(next)) {
+      const err = jsonTakenAsValueError(arg, next, long);
       throw new CommandError(
         err.message,
         { suggestion: err.suggestion },
         EXIT_CODES.INVALID_ARGUMENTS
       );
     }
+    i++;
   }
 }
 

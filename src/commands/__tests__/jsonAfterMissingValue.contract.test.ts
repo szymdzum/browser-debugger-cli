@@ -72,11 +72,14 @@ function collectRows(command: Command, path: string[] = []): Row[] {
   if (isRoot || isLeaf) {
     const base = isRoot ? [START_URL] : [...path, ...dummyArguments(command)];
     for (const option of command.options) {
-      if (!option.required || option.long === undefined) continue;
-      rows.push({
-        label: `${path.join(' ') || 'start'} ${option.long} --json`,
-        argv: [...base, option.long, '--json'],
-      });
+      if (!option.required) continue;
+      for (const flag of [option.long, option.short]) {
+        if (flag === undefined) continue;
+        rows.push({
+          label: `${path.join(' ') || 'start'} ${flag} --json`,
+          argv: [...base, flag, '--json'],
+        });
+      }
     }
   }
   for (const sub of command.commands) rows.push(...collectRows(sub, [...path, sub.name()]));
@@ -114,6 +117,34 @@ void describe('--json right after an option that takes a value (#669)', () => {
       assert.equal(typeof (envelope as { suggestion?: unknown }).suggestion, 'string');
       assert.equal(run.stderr, '', argv.join(' '));
     }
+  });
+
+  void it('literal rows, written by hand', async () => {
+    for (const [argv, option] of [
+      [['network', 'list', '--last', '--json'], '--last'],
+      [['console', '--last', '--json'], '--last'],
+      [['http://localhost:1', '--port', '--json'], '--port'],
+      [['http://localhost:1', '-p', '--json'], '-p'],
+      [['peek', '-j', '--last', '-j'], '--last'],
+    ] as [string[], string][]) {
+      const run = await runCli(argv);
+      assert.equal(run.status, EXIT_CODES.INVALID_ARGUMENTS, argv.join(' '));
+      assert.match(envelopeOf(run).error ?? '', new RegExp(`Option ${option} needs a value`));
+      assert.equal(run.stderr, '');
+    }
+  });
+
+  void it('a value-taking option swallows the next word: --filter --last --json', async () => {
+    const run = await runCli(['network', 'list', '--filter', '--last', '--json']);
+    assert.equal(run.status, EXIT_CODES.INVALID_ARGUMENTS);
+    assert.match(envelopeOf(run).error ?? '', /Invalid filter format: "--last"/);
+  });
+
+  void it('the short-flag suggestion names the long form', async () => {
+    const run = await runCli(['http://localhost:1', '-p', '--json']);
+    const { suggestion = '' } = envelopeOf(run) as { suggestion?: string };
+    assert.match(suggestion, /--port=--json/);
+    assert.doesNotMatch(suggestion, /-p=/);
   });
 
   void it('sweep: every value-taking option followed by --json gives an envelope', async () => {

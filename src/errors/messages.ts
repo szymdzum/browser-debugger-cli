@@ -196,12 +196,17 @@ export function invalidIpcTimeoutEnvError(value: string, max: number): ErrorWith
  *
  * @param option - The option as typed (`--last`)
  * @param token - The flag that stands where its value should be
+ * @param longForm - The option's long spelling, which accepts `=value` (a short flag does not)
  * @returns Message and suggestion
  */
-export function jsonTakenAsValueError(option: string, token: string): ErrorWithSuggestion {
+export function jsonTakenAsValueError(
+  option: string,
+  token: string,
+  longForm: string
+): ErrorWithSuggestion {
   return {
     message: `Option ${option} needs a value, but ${token} follows it`,
-    suggestion: `Give ${option} a value before ${token}, or write ${option}=${token} to use "${token}" as the value`,
+    suggestion: `Give ${option} a value before ${token}, or write ${longForm}=${token} to use "${token}" as the value`,
   };
 }
 
