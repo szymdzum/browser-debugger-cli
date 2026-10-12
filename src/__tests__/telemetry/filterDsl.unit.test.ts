@@ -322,6 +322,18 @@ describe('Filter application', () => {
         }
       });
 
+      it('rejects text after the closing bracket with the bracket hint', () => {
+        const result = validateFilterString('domain:[::1]x');
+        assert.equal(result.valid, false);
+        assert.match(result.suggestion ?? '', /\[::1\]/);
+      });
+
+      it('says a URL is not a host when the value has ://', () => {
+        const result = validateFilterString('domain:https://x.com');
+        assert.equal(result.valid, false);
+        assert.match(result.suggestion ?? '', /not a URL/);
+      });
+
       it('rejects an unbracketed IPv6 host with a hint', () => {
         const result = validateFilterString('domain:::1');
         assert.equal(result.valid, false);

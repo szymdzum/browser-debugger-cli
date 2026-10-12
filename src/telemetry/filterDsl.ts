@@ -131,6 +131,7 @@ interface DomainPattern {
 const DEFAULT_PORTS: Record<string, number> = { http: 80, https: 443, ws: 80, wss: 443 };
 
 const PORT_PATTERN = /^\d+$/;
+const DOMAIN_URL_HINT = 'domain: takes a host[:port], not a URL, e.g. domain:x.com';
 const IPV6_HINT = 'Write an IPv6 host in brackets, e.g. "domain:[::1]:8080"';
 
 /**
@@ -140,10 +141,18 @@ const IPV6_HINT = 'Write an IPv6 host in brackets, e.g. "domain:[::1]:8080"';
  * @returns The parts, or an error with a hint
  */
 function splitDomainValue(value: string): DomainPattern | { error: string; suggestion: string } {
+  if (value.includes('://')) {
+    return { error: `Invalid domain filter: "${value}"`, suggestion: DOMAIN_URL_HINT };
+  }
   const bracketEnd = value.startsWith('[') ? value.indexOf(']') : -1;
   const colonIndex = bracketEnd === -1 ? value.indexOf(':') : value.indexOf(':', bracketEnd);
-  if (bracketEnd === -1 && value.indexOf(':') !== value.lastIndexOf(':')) {
-    return { error: `Invalid domain filter: "${value}"`, suggestion: IPV6_HINT };
+  const afterBracket = bracketEnd === -1 ? '' : value.slice(bracketEnd + 1);
+  const junkAfterBracket = afterBracket !== '' && !afterBracket.startsWith(':');
+  if (junkAfterBracket || (bracketEnd === -1 && value.indexOf(':') !== value.lastIndexOf(':'))) {
+    return {
+      error: `Invalid domain filter: "${value}"`,
+      suggestion: IPV6_HINT,
+    };
   }
   if (colonIndex === -1) return { host: value };
   const host = value.slice(0, colonIndex);
