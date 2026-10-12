@@ -3,6 +3,7 @@ import * as fs from 'fs';
 
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
+import { trackTempFile } from '@/utils/tempFiles.js';
 
 const log = createLogger('atomic-file');
 
@@ -78,23 +79,13 @@ export class AtomicFileWriter {
     data: string,
     options: { encoding?: BufferEncoding; mode?: number } = {}
   ): Promise<void> {
-    const tmpPath = this.getTempPath(filePath);
-
-    try {
-      await fs.promises.writeFile(tmpPath, data, {
+    await this.writeThroughTemp(filePath, (tmpPath) =>
+      fs.promises.writeFile(tmpPath, data, {
         encoding: options.encoding ?? 'utf-8',
         flag: 'wx',
         ...(options.mode !== undefined && { mode: options.mode }),
-      });
-      await fs.promises.rename(tmpPath, filePath);
-    } catch (error) {
-      try {
-        await fs.promises.unlink(tmpPath);
-      } catch (cleanupError) {
-        log.debug(`Failed to cleanup temp file ${tmpPath}: ${getErrorMessage(cleanupError)}`);
-      }
-      throw error;
-    }
+      })
+    );
   }
 
   /**
@@ -112,10 +103,27 @@ export class AtomicFileWriter {
    * @throws Error if write operation fails
    */
   static async writeBufferAsync(filePath: string, buffer: Buffer): Promise<void> {
+    await this.writeThroughTemp(filePath, (tmpPath) => fs.promises.writeFile(tmpPath, buffer));
+  }
+
+  /**
+   * Write a temp file and rename it over the target. The temp file is removed
+   * when the write fails, and also when the process exits before the write
+   * ends (Ctrl-C, SIGTERM; #678).
+   *
+   * @param filePath - Target file path
+   * @param write - Writes the temp file
+   * @throws Error if write operation fails
+   */
+  private static async writeThroughTemp(
+    filePath: string,
+    write: (tmpPath: string) => Promise<void>
+  ): Promise<void> {
     const tmpPath = this.getTempPath(filePath);
+    const untrack = trackTempFile(tmpPath);
 
     try {
-      await fs.promises.writeFile(tmpPath, buffer);
+      await write(tmpPath);
       await fs.promises.rename(tmpPath, filePath);
     } catch (error) {
       try {
@@ -124,6 +132,8 @@ export class AtomicFileWriter {
         log.debug(`Failed to cleanup temp file ${tmpPath}: ${getErrorMessage(cleanupError)}`);
       }
       throw error;
+    } finally {
+      untrack();
     }
   }
 }
