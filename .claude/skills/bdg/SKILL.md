@@ -249,7 +249,7 @@ Add `--json` (`-j`) to any command for `{ version, success, data }` (or `{ succe
 | 101 | CDP connection failure | `bdg cleanup --force`, then restart |
 | 102 | Timeout (CDP, `dom wait`) or no response | Check page load, raise `--timeout` |
 | 107 | Page crashed | `bdg page reload` |
-| 130 / 143 | Interrupted (Ctrl-C) / SIGTERM | - |
+| 130 / 143 | Interrupted (Ctrl-C) / SIGTERM; `--json` still prints an envelope (`error: "Interrupted"`); its suggestion says whether an action may already have reached the page or a file was written | Check with `bdg peek` before repeating an action |
 
 ## Troubleshooting
 
