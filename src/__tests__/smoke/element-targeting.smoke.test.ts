@@ -717,7 +717,7 @@ void describe('Key attributes in dom query and dom get', () => {
       const output = await bdg(args);
       assert.doesNotMatch(
         output,
-        /secret|tok-hidden|4111111111111111|246810|•{5,}/,
+        /secret|tok-hidden|(?<![\d:])4111|(?<!\d)246810(?!\d)|•{5,}/,
         `bdg ${args.join(' ')}: ${output}`
       );
     }
