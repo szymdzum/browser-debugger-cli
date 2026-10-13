@@ -124,10 +124,13 @@ void describe('Visibility verdict from what an element paints', () => {
 
       const layout = await ok(['dom', 'layout', `#${c.id}`, '--json']);
       const [element] = (
-        JSON.parse(layout) as { data: { elements: { inViewport: string; hiddenReason?: string }[] } }
+        JSON.parse(layout) as {
+          data: { elements: { inViewport: string; hiddenReason?: string }[] };
+        }
       ).data.elements;
       assert.equal(element?.inViewport, c.inViewport, `layout #${c.id}: ${layout}`);
-      if (c.hiddenReason) assert.match(element.hiddenReason ?? '', c.hiddenReason, `layout #${c.id}`);
+      if (c.hiddenReason)
+        assert.match(element.hiddenReason ?? '', c.hiddenReason, `layout #${c.id}`);
 
       const query = await bdg(['dom', 'query', `#${c.id}:visible`, '--json']);
       const matched = query.exitCode === 0 && /"count":\s*[1-9]/.test(query.output);
