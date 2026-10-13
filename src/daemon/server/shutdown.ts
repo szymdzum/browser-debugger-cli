@@ -22,8 +22,32 @@ export interface ShutdownSteps {
 }
 
 /**
- * Shut the daemon down.
+ * Shut the daemon down, in one order for every caller:
  *
- * @param _steps - The steps
+ * 1. Refuse new starts and unpublish the socket: from here on no new client
+ *    finds the daemon (the socket is bdg's liveness signal), while clients
+ *    already connected keep their connections.
+ * 2. Stop the session. A signal must end the session promptly, even during
+ *    a long command (a page load, `dom screenshot --follow`): stopping first
+ *    makes that command fail fast instead of holding the shutdown for up to
+ *    the in-flight wait. When the session already ended (or never started:
+ *    failed start, idle daemon) this does nothing.
+ * 3. Wait for in-flight requests, so each gets its answer before the
+ *    server closes: a command arriving after step 2 began is refused (the
+ *    session is stopping), and one already running ends when the page
+ *    connection closes and is answered with the session-ended error; none
+ *    sees a half-torn session as a success. A `stop` that ended a starting
+ *    session gets its answer here too.
+ * 4. Let the last responses flush, close the server, exit.
+ *
+ * @param steps - The steps
  */
-export async function runShutdown(_steps: ShutdownSteps): Promise<void> {}
+export async function runShutdown(steps: ShutdownSteps): Promise<void> {
+  steps.refuseNewSessions();
+  steps.unpublish();
+  await steps.stopSession();
+  await steps.waitForInFlightRequests();
+  await steps.flush();
+  await steps.stopServer();
+  steps.exit();
+}
