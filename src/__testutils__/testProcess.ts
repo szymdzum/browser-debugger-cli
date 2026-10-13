@@ -23,6 +23,8 @@
  * ```
  */
 
+import { getProcessCommand } from '@/utils/process.js';
+
 let originalKill: typeof process.kill | null = null;
 
 /**
@@ -88,4 +90,23 @@ export function restoreProcessAlive(): void {
  */
 export function isProcessMocked(): boolean {
   return originalKill !== null;
+}
+
+/**
+ * Poll until a spawned process's command line contains a text (up to 2 s).
+ *
+ * A pid is alive from the fork, but on Linux its command line still shows the
+ * parent's until the exec: the product matches sessions by command line, so a
+ * test that lists sessions must wait for the same signal, not for the pid.
+ *
+ * @param pid - Process ID
+ * @param text - Marker the command line must contain (daemon script path, session marker flag)
+ * @throws Error if the command line never shows the text
+ */
+export async function waitForCommand(pid: number, text: string): Promise<void> {
+  for (let i = 0; i < 100; i++) {
+    if (getProcessCommand(pid)?.includes(text)) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error(`process ${pid} never showed ${text}`);
 }

@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import * as os from 'os';
 import * as path from 'path';
 
+import { waitForCommand } from '@/__testutils__/testProcess.js';
 import { chromeSessionMarkerFlag } from '@/connection/launcher/flagsBuilder.js';
 import { DAEMON_ALREADY_RUNNING_CODE, SocketServer } from '@/daemon/server/SocketServer.js';
 import {
@@ -20,7 +21,7 @@ import {
 import { probeDaemonSocket } from '@/session/daemonSocket.js';
 import { getSessionFilePath } from '@/session/paths.js';
 import { readPidFromFile } from '@/session/pid.js';
-import { getProcessCommand, isProcessAlive } from '@/utils/process.js';
+import { isProcessAlive } from '@/utils/process.js';
 
 /**
  * Create a stale Unix socket file (bound, then abandoned without unlink).
@@ -48,20 +49,6 @@ void describe('Session state contract', () => {
     children.push(child);
     assert.ok(child.pid);
     return child as ChildProcess & { pid: number };
-  }
-
-  /**
-   * Wait until ps shows the given text in a process's command line.
-   *
-   * @param pid - Process ID
-   * @param text - Expected substring
-   */
-  async function waitForCommand(pid: number, text: string): Promise<void> {
-    for (let i = 0; i < 50; i++) {
-      if (getProcessCommand(pid)?.includes(text)) return;
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    }
-    throw new Error(`process ${pid} never showed ${text}`);
   }
 
   let testDir: string;
