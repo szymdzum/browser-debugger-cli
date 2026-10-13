@@ -362,6 +362,18 @@ void describe('placeInOwnerFrame', () => {
     assert.deepEqual(element?.geometry.clip, { x: 165, y: 87, width: 200, height: 100 });
   });
 
+  void it('maps the box around the content an element shows like its own box', () => {
+    const content = { x: 90, y: 50, width: 30, height: 10 };
+    const inner = layoutOf(
+      'slot#label',
+      { ...geometry(90, 50), content },
+      { width: 400, height: 200 }
+    );
+    const owner = layoutOf('iframe#consent', geometry(150, 80), { width: 1200, height: 800 });
+    const [element] = placeInOwnerFrame(inner, owner, PLAIN).elements;
+    assert.deepEqual(element?.geometry.content, { x: 244, y: 134, width: 30, height: 10 });
+  });
+
   void it('names the iframe as what clips an element outside the frame viewport', () => {
     const inner = layoutOf('a#more', geometry(90, 190), { width: 400, height: 200 });
     const owner = layoutOf('iframe#consent', geometry(150, 80), { width: 1200, height: 800 });

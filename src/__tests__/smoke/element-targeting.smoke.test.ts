@@ -483,7 +483,8 @@ void describe('Element layout', () => {
     const [inAccordion, inFaded] = (await layout('#in-accordion, #in-faded')).elements;
     assert.equal(inAccordion?.inViewport, 'hidden');
     assert.equal(inAccordion?.hiddenReason, 'clipped by div#accordion: zero height');
-    assert.equal(inFaded?.inViewport, 'visible');
+    assert.equal(inFaded?.inViewport, 'hidden');
+    assert.equal(inFaded?.hiddenReason, 'opacity: 0 on div#faded');
     assert.equal(inFaded?.invisible, 'opacity: 0 on div#faded');
     const human = await bdg(['dom', 'layout', '#in-accordion']);
     assert.match(

@@ -18,6 +18,8 @@ export interface InspectRect {
   h: number;
   /** `viewport`: x and y are in the viewport (a fixed element stays there however the page scrolls) */
   in?: 'viewport';
+  /** Position and size are the box around what it paints: its own box has no area, its content shows */
+  content?: true;
   /** Size of the box it covers on screen when a transform (rotation, skew) makes that differ; x and y are its corner */
   screen?: { w: number; h: number };
 }
@@ -263,6 +265,8 @@ export interface InspectVisibility {
   coverTransparent?: true;
   /** A `mask-image` on it or an ancestor, e.g. `mask-image on div.hero` (how much it hides is not evaluated) */
   masked?: string;
+  /** The descendant showing the content of this `visibility: hidden` element, e.g. `span#label` */
+  shownBy?: string;
 }
 
 /** A property asked for with `--props` */

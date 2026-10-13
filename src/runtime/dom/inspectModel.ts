@@ -115,6 +115,7 @@ export function visibilityOf(
     ...(layout.coveredBy && { coveredBy: layout.coveredBy }),
     ...(layout.coverTransparent && { coverTransparent: true }),
     ...(layout.masked && { masked: layout.masked }),
+    ...(layout.shownBy && { shownBy: layout.shownBy }),
   };
 }
 
@@ -122,7 +123,10 @@ export function visibilityOf(
  * The header rectangle: border box size (and the box it covers on screen
  * when a transform turns it), and the page position, or the
  * viewport position of an element fixed to the viewport (it or a container
- * is `position: fixed`: its page position changes with the scroll).
+ * is `position: fixed`: its page position changes with the scroll). An
+ * element whose own box has no area but whose content shows (an inline host
+ * around block or floated content) gets the box around that content, the
+ * one an agent clicks or reads.
  *
  * @param layout - Layout measurements
  * @param size - Border box size
@@ -134,6 +138,10 @@ function headerRect(
   size: { w: number; h: number },
   style: StyleMap
 ): InspectRect {
+  if ((size.w === 0 || size.h === 0) && layout.content) {
+    const { x, y, width, height } = layout.content;
+    return { x, y, w: width, h: height, content: true };
+  }
   const { width, height } = layout.bounds;
   const transformed = ['transform', 'rotate', 'scale'].some(
     (name) => (style[name] ?? 'none') !== 'none'

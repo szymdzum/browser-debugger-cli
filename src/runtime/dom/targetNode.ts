@@ -20,6 +20,7 @@ import {
   noNodesFoundError,
   staleNodeError,
 } from '@/errors/messages.js';
+import { CLIPPED_AWAY_JS, SHOWING_DESCENDANT_JS } from '@/runtime/dom/elementGeometry.js';
 import { COMPOSED_JS, FLAT_TEXT_JS } from '@/runtime/dom/elementInfo.js';
 import { ActionScriptError, throwIfInvalidSelector } from '@/runtime/dom/formFillHelpers/shared.js';
 import { frameScopedConnection } from '@/runtime/dom/frameScopedConnection.js';
@@ -133,8 +134,13 @@ const log = createLogger('dom');
  * Visible means rendered (`checkVisibility()`: not inside a closed
  * `<details>` or under `content-visibility: hidden`), a non-empty box and
  * `visibility: visible`, as in Playwright (`opacity: 0` still counts as
- * visible). Text is the rendered text (`innerText`) of visible elements and
- * the text nodes of hidden ones (display or visibility; not those of
+ * visible), or, as `dom layout` and `dom inspect` decide, painting through
+ * its content ({@link SHOWING_DESCENDANT_JS}): a `display: contents`
+ * element or slot, an inline element around block or floated content, a
+ * `visibility: hidden` element with a `visibility: visible` descendant that
+ * paints. Unlike Playwright, an element an overflow clip cuts away entirely
+ * ({@link CLIPPED_AWAY_JS}, a collapsed accordion) is not visible. Text is the rendered text (`innerText`) of visible elements and the
+ * text nodes of hidden ones (display or visibility; not those of
  * `<script>`, `<style>` or `<noscript>`), so text filters match hidden
  * elements like Playwright's and `:visible` decides visibility; button inputs
  * use their value. Text is read in the flat tree, as `bdg dom query` shows
@@ -153,6 +159,8 @@ const log = createLogger('dom');
 export const FILTER_MATCHING_JS = `(shadowRoots) => {
   const composed = ${COMPOSED_JS};
   const flatText = ${FLAT_TEXT_JS};
+  const showingDescendant = ${SHOWING_DESCENDANT_JS};
+  const clippedAway = ${CLIPPED_AWAY_JS};
   const skipped = /^(script|style|noscript|template)$/;
   const hiddenText = (el) => {
     const nodes = el.localName === 'slot' ? el.assignedNodes({ flatten: true }) : (el.shadowRoot || el).childNodes;
@@ -172,9 +180,13 @@ export const FILTER_MATCHING_JS = `(shadowRoots) => {
   };
   const passes = (el, filter) => {
     if (filter.kind === 'visible') {
-      if (typeof el.checkVisibility === 'function' && !el.checkVisibility()) return false;
+      const style = el.ownerDocument.defaultView.getComputedStyle(el);
+      if (style.display === 'none') return false;
+      if (style.display !== 'contents' && typeof el.checkVisibility === 'function' && !el.checkVisibility()) return false;
+      if (clippedAway(el)) return false;
       const rect = el.getBoundingClientRect();
-      return rect.width > 0 && rect.height > 0 && el.ownerDocument.defaultView.getComputedStyle(el).visibility === 'visible';
+      if (rect.width > 0 && rect.height > 0 && style.visibility === 'visible') return true;
+      return !!showingDescendant(el);
     }
     if (filter.kind === 'has') return filter.selectors.some((chain) => descend(el, chain).length > 0);
     const text = textOf(el);

@@ -138,6 +138,13 @@ void describe('Elements with no box of their own', () => {
     );
   });
 
+  void it('does not match an empty slot with :visible (#599)', async () => {
+    const result = await runCommand('dom', ['query', '#empty-slot:visible', '--json'], {
+      timeout: 60000,
+    });
+    assert.doesNotMatch(result.stdout, /"count":\s*[1-9]/);
+  });
+
   void it('marks the same elements hidden in dom query as in dom layout', async () => {
     const output = await bdg(['dom', 'query', MEASURED]);
     const hidden = output.split('\n').filter((line) => line.endsWith('(hidden)'));

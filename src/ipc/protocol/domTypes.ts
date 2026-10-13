@@ -567,9 +567,21 @@ export interface ElementLayout {
   /**
    * Why it cannot be seen although it is rendered: `opacity: 0` on it or an
    * ancestor, or a `clip-path`/`clip` that cuts it away entirely, e.g.
-   * `opacity: 0 on div#menu` (`inViewport` still says where it is)
+   * `opacity: 0 on div#menu`; `inViewport` is then `hidden` with it as `hiddenReason`
    */
   invisible?: string;
+  /**
+   * The descendant showing the content of a `visibility: hidden` element (it
+   * sets `visibility: visible`), e.g. `span#label`: the element is not hidden
+   */
+  shownBy?: string;
+  /**
+   * Box around what it paints (page coordinates) when its own box has no
+   * area but its content shows: an inline element around floated or block
+   * content, a zero-size element with overflowing content; `viewport` is its
+   * position in the visible area (`bounds` and `viewport` stay the own box's)
+   */
+  content?: LayoutBox & { viewport: LayoutPoint };
   /**
    * A `mask-image` on it or an ancestor, e.g. `mask-image on div.hero`: part
    * or all of it may not show (how much is not evaluated)
