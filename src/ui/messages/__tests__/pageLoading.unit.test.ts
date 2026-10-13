@@ -5,7 +5,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { pageLoadingWarning, waitMetMessage, waitSnapshotSummary } from '@/ui/messages/commands.js';
+import {
+  pageLoadingWarning,
+  peekPageLines,
+  sessionActiveLine,
+  waitMetMessage,
+  waitSnapshotSummary,
+} from '@/ui/messages/commands.js';
 import { startNotices } from '@/ui/messages/session.js';
 
 const JQUERY_UI = {
@@ -120,5 +126,23 @@ void describe('waitSnapshotSummary', () => {
       waitSnapshotSummary(loading, { selector: '#a' }),
       'no matches, document.readyState: loading'
     );
+  });
+});
+
+void describe('sessionActiveLine and peekPageLines with a page still loading', () => {
+  const loading = { readyState: 'loading', pending: [], pendingCount: 0 };
+
+  void it('status puts the loading warning under the first line', () => {
+    const lines = sessionActiveLine({ url: 'http://a.test/', title: 'A', loading }).split('\n');
+    assert.equal(lines[0], 'Session active: http://a.test/ — A');
+    assert.match(lines[1] ?? '', /^⚠ The page is still loading \(document\.readyState: loading\)/);
+  });
+
+  void it('peek shows URL and title, and the loading warning under them', () => {
+    const lines = peekPageLines({ url: 'http://a.test/', title: 'A', loading });
+    assert.equal(lines[0], 'Page: http://a.test/ — A');
+    assert.equal(lines.length, 2);
+    assert.deepEqual(peekPageLines({ url: 'http://a.test/', title: '' }), ['Page: http://a.test/']);
+    assert.deepEqual(peekPageLines({ url: '', title: '' }), []);
   });
 });

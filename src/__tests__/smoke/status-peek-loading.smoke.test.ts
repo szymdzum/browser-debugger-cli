@@ -1,6 +1,6 @@
 /**
  * Smoke test for the loading state in `status` and `peek` (#640): while the
- * document is still `loading` (a head script blocks the parser) both say so,
+ * document is still `loading` (a slow head script blocks the parser) both say so,
  * human and `--json`, in the words `page navigate` and the start use; the
  * line is gone once the page has loaded. Human `peek` starts with the page's
  * URL and title.
@@ -16,7 +16,7 @@ import {
   startFixtureServer,
   type FixtureServer,
 } from '@/__testutils__/fixtureServer.js';
-import { LOADING_BUSY_TITLE } from '@/__testutils__/fixturePages/loadingStateFixtures.js';
+import { LOADING_SLOW_TITLE } from '@/__testutils__/fixturePages/loadingStateFixtures.js';
 
 /** The words `page navigate` and the start print for a page still loading */
 const LOADING_LINE = /The page is still loading \(document\.readyState: loading\)/;
@@ -24,7 +24,7 @@ const LOADING_LINE = /The page is still loading \(document\.readyState: loading\
 /** The loading field of the `--json` surfaces */
 interface LoadingField {
   readyState: string;
-  pending: unknown[];
+  pending: Array<{ url: string }>;
   pendingCount: number;
 }
 
@@ -94,8 +94,8 @@ void describe('loading state in status and peek (#640)', () => {
     assert.doesNotMatch(stdout, LOADING_LINE);
   });
 
-  void it('a page whose parser is blocked shows as loading until it has loaded', async () => {
-    const navigation = runCommand('page', ['navigate', `${origin}/loading-busy`], {
+  void it('a page whose parser is blocked by a slow script shows as loading until it has loaded', async () => {
+    const navigation = runCommand('page', ['navigate', `${origin}/loading-slow-script`], {
       timeout: 90000,
     });
     await waitUntil(
@@ -105,15 +105,19 @@ void describe('loading state in status and peek (#640)', () => {
     const loading = await jsonLoading();
     assert.equal(loading.status?.readyState, 'loading');
     assert.equal(loading.peek?.readyState, 'loading');
+    assert.ok(loading.status.pending.some((request) => request.url.endsWith('/slow')));
+    assert.ok(loading.status.pending.some((request) => request.url.endsWith('/slow')));
     const status = (await bdg(['status'])).stdout;
+    assert.match(status, /waiting on: GET [^\n]*\/slow/);
+    assert.match(status, /waiting on: GET [^\n]*\/slow/);
     const peek = (await bdg(['peek'])).stdout;
     assert.match(status, LOADING_LINE);
     assert.match(peek, LOADING_LINE);
     assert.match(
       status,
-      new RegExp(`Session active: [^\\n]*${LOADING_BUSY_TITLE}\\n[^\\n]*loading`)
+      new RegExp(`Session active: [^\\n]*${LOADING_SLOW_TITLE}\\n[^\\n]*loading`)
     );
-    assert.ok(peek.includes(`${origin}/loading-busy`), peek);
+    assert.ok(peek.includes(`${origin}/loading-slow-script`), peek);
 
     await navigation;
     await waitUntil(

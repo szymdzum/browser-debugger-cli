@@ -28,7 +28,7 @@ On macOS bdg opens a Chrome window by default; pass `--headless` when running un
 
 ```bash
 bdg status                    # Current session (bdg status --verbose for diagnostics)
-bdg peek                      # Preview collected requests and console messages
+bdg peek                      # Preview collected requests and console messages (starts with Page: <url> — <title>; status and peek add ⚠ The page is still loading … waiting on: … while document.readyState is loading, JSON loading)
 bdg sessions                  # All sessions, default and named
 bdg <url> --session mobile --mobile --headless   # A second, named session (own Chrome)
 bdg --session mobile eval "innerWidth"           # Every command takes --session <name> (or BDG_SESSION)
