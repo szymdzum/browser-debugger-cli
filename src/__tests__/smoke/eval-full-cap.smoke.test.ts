@@ -55,7 +55,7 @@ void describe('dom eval --full cap', () => {
     const envelope = JSON.parse(result.stdout) as ErrorEnvelope;
     assert.equal(envelope.success, false);
     assert.equal(envelope.exitCode, 81);
-    assert.match(envelope.error, /50 MB/);
+    assert.match(envelope.error, /50 MiB/);
     assert.match(envelope.suggestion ?? '', /slice|length|--full/);
   });
 
@@ -66,7 +66,7 @@ void describe('dom eval --full cap', () => {
       { timeout: 120000 }
     );
     assert.equal(result.exitCode, 81, result.stdout.slice(0, 200));
-    assert.match(result.stderr, /50 MB/);
+    assert.match(result.stderr, /50 MiB/);
     assert.match(result.stderr, /slice|\.length|without --full/);
     assert.ok(result.stdout.length < 1000, `stdout holds ${result.stdout.length} chars`);
   });
@@ -99,7 +99,7 @@ void describe('dom eval --full cap', () => {
     for (const [name, expression] of Object.entries(cases)) {
       const result = await runCommand('dom', ['eval', expression, '--full'], { timeout: 120000 });
       assert.equal(result.exitCode, 81, `${name}: ${result.stdout.length} chars out`);
-      assert.match(result.stderr, /50 MB/, name);
+      assert.match(result.stderr, /50 MiB/, name);
     }
   });
 
