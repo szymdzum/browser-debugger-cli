@@ -366,6 +366,17 @@ const COPY_BUILTINS = [
   'Date.prototype.toISOString',
 ];
 
+/**
+ * Page-side size probe for a result the browser would copy by value (the page
+ * replaced built-ins): adds up string lengths and keys the way
+ * {@link jsonSafeCopyFunction} does, without any built-in of the page.
+ *
+ * @returns Function declaration for Runtime.callFunctionOn (argument: the cap)
+ */
+export function sizeProbeFunction(): string {
+  throw new Error('not implemented');
+}
+
 /** Returns the object it is called on (for the browser to copy it by value) */
 const SELF_FUNCTION = 'function () { return this; }';
 
