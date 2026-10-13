@@ -174,7 +174,7 @@ launch()
   └─ If --timeout: schedule session.stop('timeout')
 ```
 
-If any step fails, `teardownSession()` releases whatever was started and the error is returned to the CLI; the daemon then exits.
+Each start step (`src/daemon/session/startSequence.ts`) registers its release on the session's `ResourceStack` (`src/utils/resourceStack.ts`) as soon as it acquires. If a step fails, or the session is stopped mid-start (one stop `AbortSignal` reaches every step), the stack releases exactly what was acquired, last first, and the error is returned to the CLI; the daemon then exits. The same stack is the teardown when a running session stops: the tab's collectors, the session's collectors, `Browser.close` and the page connection, then Chrome's termination (SIGTERM, chrome-launcher's kill, SIGKILL).
 
 ### Phase 5: Response & CLI Exit
 
@@ -207,6 +207,8 @@ Daemon Process (background)
       ├─ --timeout elapsed
       └─ SIGINT / SIGTERM
 ```
+
+Every daemon exit takes one shutdown path (`runShutdown`, `src/daemon/server/shutdown.ts`): refuse new starts and unpublish the socket, stop the session, wait for in-flight requests to be answered, flush, close the server, exit.
 
 ## Process Architecture Diagram
 
