@@ -5,7 +5,9 @@
  */
 
 import { CommandError } from '@/errors/index.js';
+import { replyTooLargeError } from '@/errors/messages.js';
 import { getErrorMessage } from '@/utils/errors.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 import type { JSONLBufferOverflowError } from './jsonl.js';
 import {
@@ -60,6 +62,10 @@ export function formatReplyOverflowError(
   error: JSONLBufferOverflowError,
   request: string
 ): CommandError {
-  void request;
-  return new CommandError(error.message, {}, 0);
+  const err = replyTooLargeError(error.bufferSize, error.maxSize, request, false);
+  return new CommandError(
+    err.message,
+    { suggestion: err.suggestion },
+    EXIT_CODES.INVALID_ARGUMENTS
+  );
 }

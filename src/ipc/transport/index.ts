@@ -20,9 +20,10 @@ import {
   formatConnectionError,
   formatEarlyCloseError,
   formatParseError,
+  formatReplyOverflowError,
   formatTimeoutError,
 } from './errors.js';
-import { JSONLBuffer, parseJSONLFrame, toJSONLFrame } from './jsonl.js';
+import { JSONLBuffer, JSONLBufferOverflowError, parseJSONLFrame, toJSONLFrame } from './jsonl.js';
 import { createSocket } from './socket.js';
 import { validateResponseType, validateSessionId } from './validation.js';
 
@@ -133,7 +134,18 @@ export async function sendRequest<
         },
 
         onData: (chunk: string) => {
-          const lines = buffer.process(chunk);
+          let lines: string[];
+          try {
+            lines = buffer.process(chunk);
+          } catch (error) {
+            resolveOnce(
+              cleanup,
+              error instanceof JSONLBufferOverflowError
+                ? formatReplyOverflowError(error, request.type)
+                : formatParseError(requestName, error)
+            );
+            return;
+          }
 
           for (const line of lines) {
             if (resolved) return;
