@@ -116,6 +116,17 @@ void describe('interrupt', () => {
     assert.deepEqual(exits, []);
   });
 
+  void it('leaves the signals it was not asked to handle alone', () => {
+    const [intBefore, termBefore] = [
+      process.listenerCount('SIGINT'),
+      process.listenerCount('SIGTERM'),
+    ];
+    const { dispose } = installInterrupt({ signals: ['SIGINT'] });
+    assert.equal(process.listenerCount('SIGINT'), intBefore + 1);
+    assert.equal(process.listenerCount('SIGTERM'), termBefore);
+    dispose();
+  });
+
   void it('ends work still pending at the first signal with the interrupted error', async () => {
     const interrupt = new AbortController();
     const hanging = new Promise<number>(() => undefined);

@@ -23,9 +23,9 @@ import { DAEMON_SCRIPT_PATH } from '@/utils/packageRoot.js';
 import {
   getProcessCommand,
   isProcessAlive,
-  waitForProcessExit,
   killChromeProcess,
   listProcesses,
+  waitForProcessExit,
 } from '@/utils/process.js';
 
 const log = createLogger('cleanup');

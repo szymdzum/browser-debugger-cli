@@ -267,7 +267,7 @@ async function handleSequenceCapture(
 
   const format = options.format ?? 'png';
   let frameCount = 0;
-  const { signal: interrupt } = abortOnInterrupt();
+  const { signal: interrupt } = abortOnInterrupt({ signals: ['SIGINT'] });
 
   console.error(`Capturing to ${absoluteDir} every ${interval}ms...`);
   while (!interrupt.aborted) {

@@ -48,20 +48,22 @@ export interface InterruptHandle {
 export interface AbortOnInterruptOptions {
   /** What a second signal does (default: exit 130 or 143 at once) */
   onSecondSignal?: (signal: InterruptSignal) => void;
+  /** Signals to handle (default: both); the others keep their default effect */
+  signals?: readonly InterruptSignal[];
 }
 
 /**
  * Abort on Ctrl-C or SIGTERM (reason: the signal name). A second signal
  * exits at once.
  *
- * @param options - What a second signal does
+ * @param options - What a second signal does, and which signals are handled
  * @returns The abort signal, and the disposer of the listeners
  */
 export function abortOnInterrupt(options: AbortOnInterruptOptions = {}): InterruptHandle {
   const onSecondSignal =
     options.onSecondSignal ?? ((signal) => process.exit(interruptExitCode(signal)));
   const interrupt = new AbortController();
-  const removers = INTERRUPT_SIGNALS.map((signal) =>
+  const removers = (options.signals ?? INTERRUPT_SIGNALS).map((signal) =>
     onOwnInterrupt(signal, () => {
       if (interrupt.signal.aborted) onSecondSignal(signal);
       else interrupt.abort(signal);
