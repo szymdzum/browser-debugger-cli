@@ -9,6 +9,7 @@ import { afterEach, describe, it, mock } from 'node:test';
 
 import {
   abortOnInterrupt,
+  type AbortOnInterruptOptions,
   interruptExitCode,
   onOwnInterrupt,
   reportInterrupts,
@@ -30,7 +31,11 @@ class Exit extends Error {
  *
  * @returns The interrupt and the exit codes asked for
  */
-function installInterrupt(): { interrupt: AbortSignal; exits: Array<number | undefined> } {
+function installInterrupt(options: AbortOnInterruptOptions = {}): {
+  interrupt: AbortSignal;
+  dispose: () => void;
+  exits: Array<number | undefined>;
+} {
   const exits: Array<number | undefined> = [];
   mock.method(process, 'exit', (code?: number) => {
     exits.push(code);
@@ -39,13 +44,13 @@ function installInterrupt(): { interrupt: AbortSignal; exits: Array<number | und
   const before = new Map(
     (['SIGINT', 'SIGTERM'] as const).map((signal) => [signal, process.listeners(signal)])
   );
-  const interrupt = abortOnInterrupt();
+  const { signal: interrupt, dispose } = abortOnInterrupt(options);
   for (const [signal, listeners] of before) {
     for (const listener of process.listeners(signal)) {
       if (!listeners.includes(listener)) added.push([signal, listener]);
     }
   }
-  return { interrupt, exits };
+  return { interrupt, dispose, exits };
 }
 
 /** Listeners a test added, removed after it */
@@ -85,6 +90,30 @@ void describe('interrupt', () => {
     assert.equal(interrupt.reason, 'SIGTERM');
     assert.throws(() => process.emit('SIGTERM'), Exit);
     assert.deepEqual(exits, [143]);
+  });
+
+  void it('removes its listeners when disposed, so a later signal is left alone', () => {
+    const before = [process.listenerCount('SIGINT'), process.listenerCount('SIGTERM')];
+    const { dispose, exits } = installInterrupt();
+    assert.deepEqual(
+      [process.listenerCount('SIGINT'), process.listenerCount('SIGTERM')],
+      before.map((count) => count + 1)
+    );
+    dispose();
+    assert.deepEqual([process.listenerCount('SIGINT'), process.listenerCount('SIGTERM')], before);
+    assert.deepEqual(exits, []);
+  });
+
+  void it('hands a second signal to onSecondSignal instead of exiting', () => {
+    const seen: string[] = [];
+    const { interrupt, exits } = installInterrupt({
+      onSecondSignal: (signal) => seen.push(signal),
+    });
+    process.emit('SIGTERM');
+    assert.equal(interrupt.reason, 'SIGTERM');
+    process.emit('SIGINT');
+    assert.deepEqual(seen, ['SIGINT']);
+    assert.deepEqual(exits, []);
   });
 
   void it('ends work still pending at the first signal with the interrupted error', async () => {

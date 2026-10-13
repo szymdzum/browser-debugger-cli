@@ -153,3 +153,20 @@ export function listProcesses(): ProcessEntry[] {
     .filter((match): match is RegExpExecArray => match !== null)
     .map(([, pid, command]) => ({ pid: Number(pid), command: command ?? '' }));
 }
+
+/**
+ * Wait until a process has exited.
+ *
+ * @param pid - Process ID
+ * @param timeoutMs - Longest wait
+ * @param options - `pollMs`: milliseconds between checks (default 50)
+ * @returns True if it exited
+ */
+export function waitForProcessExit(
+  pid: number,
+  timeoutMs: number,
+  options: { pollMs?: number } = {}
+): Promise<boolean> {
+  void options;
+  throw new Error(`not implemented: ${String(pid)} ${String(timeoutMs)}`);
+}

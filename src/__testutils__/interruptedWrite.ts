@@ -26,7 +26,7 @@ if (writer === undefined || handler === undefined || target === undefined) {
 }
 
 if (handler === 'abort') {
-  abortOnInterrupt().addEventListener('abort', () => process.stdout.write('aborted\n'));
+  abortOnInterrupt().signal.addEventListener('abort', () => process.stdout.write('aborted\n'));
 } else {
   reportInterrupts(() => undefined);
 }

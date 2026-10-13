@@ -189,7 +189,7 @@ async function handlePageScreenshot(
   outputPath: string,
   options: DomScreenshotCommandOptions
 ): Promise<void> {
-  const interrupt = abortOnInterrupt();
+  const interrupt = abortOnInterrupt().signal;
   await runCommand(
     async () => {
       const request = buildScreenshotRequest(options);
@@ -213,7 +213,7 @@ async function handleElementScreenshot(
   outputPath: string,
   options: DomScreenshotCommandOptions
 ): Promise<void> {
-  const interrupt = abortOnInterrupt();
+  const interrupt = abortOnInterrupt().signal;
   await runCommand(
     async () => {
       const lookup = resolveElementTarget(options);

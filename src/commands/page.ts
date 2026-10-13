@@ -468,7 +468,7 @@ function registerTabCommands(page: Command): void {
     )
     .addOption(jsonOption())
     .action(async (target: string, options: BaseOptions) => {
-      const interrupt = abortOnInterrupt();
+      const interrupt = abortOnInterrupt().signal;
       await runTabCommand(
         () => switchTab(target, interrupt),
         options,

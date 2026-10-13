@@ -35,13 +35,29 @@ export function interruptSignal(interrupt: AbortSignal): InterruptSignal {
   return interrupt.reason === 'SIGTERM' ? 'SIGTERM' : 'SIGINT';
 }
 
+/** What {@link abortOnInterrupt} installed */
+export interface InterruptHandle {
+  /** Aborted on the first signal (reason: the signal name) */
+  signal: AbortSignal;
+  /** Removes the signal listeners, once the work has ended */
+  dispose: () => void;
+}
+
+/** Options of {@link abortOnInterrupt} */
+export interface AbortOnInterruptOptions {
+  /** What a second signal does (default: exit 130 or 143 at once) */
+  onSecondSignal?: (signal: InterruptSignal) => void;
+}
+
 /**
  * Abort on Ctrl-C or SIGTERM (reason: the signal name). A second signal
  * exits at once.
  *
- * @returns Aborted on the first signal
+ * @param options - What a second signal does
+ * @returns The abort signal, and the disposer of the listeners
  */
-export function abortOnInterrupt(): AbortSignal {
+export function abortOnInterrupt(options: AbortOnInterruptOptions = {}): InterruptHandle {
+  void options;
   const interrupt = new AbortController();
   for (const signal of INTERRUPT_SIGNALS) {
     onOwnInterrupt(signal, () => {
@@ -49,7 +65,12 @@ export function abortOnInterrupt(): AbortSignal {
       interrupt.abort(signal);
     });
   }
-  return interrupt.signal;
+  return {
+    signal: interrupt.signal,
+    dispose: () => {
+      throw new Error('not implemented');
+    },
+  };
 }
 
 /** Listeners of commands that report their own interrupt */
