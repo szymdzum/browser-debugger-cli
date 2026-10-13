@@ -806,16 +806,20 @@ export function createCommandRegistry(
       return eventListener.read(params, abandoned);
     },
 
-    dom_eval: async (cdp, params) =>
+    dom_eval: async (cdp, params, abandoned) =>
       params.frame === undefined
-        ? evaluateScript(cdp, params.script, { full: params.full ?? false })
+        ? evaluateScript(cdp, params.script, {
+            full: params.full ?? false,
+            ...(abandoned && { abandoned }),
+          })
         : evaluateInFrame(
             cdp,
             pageWebSocketUrl(store),
             params.script,
             params.frame,
             listedFrameIds,
-            params.full ?? false
+            params.full ?? false,
+            abandoned
           ),
 
     dom_frames: async (cdp) => {
