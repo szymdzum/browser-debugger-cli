@@ -25,10 +25,9 @@ Files:
 - **Only verified issues go in.** Verified means **one command you have already run** that shows the symptom on `main`: a bdg invocation on a fixture page or a real site, a test, or a script; deterministic, or for timing bugs reproducing at a rate you can debug against. Record the command and output on the issue; it becomes the red commit's first test. Behaviour that can't be run (dead code, a wrong doc) may be confirmed with file:line. Neither: verify first or ask.
 - **Themed sweep first.** A session has a theme (one root cause or one area). One verifier (verifier brief, **Sweep** block filled in) re-runs every open issue of the theme on `main` and sweeps the theme's surfaces for symptoms the issues don't name. Issues it can't reproduce get a `needs repro` comment and drop out; new symptoms join an existing issue or an umbrella issue.
 - **A pick by the user** (named issues, or a mix such as "one hard, two medium, two easy") replaces the theme: the verifier re-runs the picked issues' commands instead of a sweep, and the polish sweep PR is optional.
-- **Propose 4–6 issues**, one line each on why; recommend one set, no menu. Show the **balance**: issues opened vs closed since the last session (from `log.md` and the tracker), and the target of at least two closed for each one filed. At least half of a wave's PRs close issues that predate the session; a feature-only session is the user's explicit choice.
+- **Propose 4–6 issues**, one line each on why; recommend one set, no menu. The proposal carries the plan per issue: tier, the acceptance criteria as the tests the red commit will hold, the 5–8 files to read first, open questions. The user's pick of the set is the go for the implementers; it is neither merge authority (its own yes/no below) nor an answer to a product decision. Show the **balance**: issues opened vs closed since the last session (from `log.md` and the tracker), and the target of at least two closed for each one filed. At least half of a wave's PRs close issues that predate the session; a feature-only session is the user's explicit choice.
 - **Polish sweep PR** (themed sessions): one tier-1 PR, last in the session, one commit per wording nit of the queue: human-output text that no test asserts and no agent parses. A `--json` field, an asserted hint or `--help --json` text is tier 2, not a sweep item.
 - **Waves of at most 2 parallel implementers.** Issues touching the same files or output run in sequence. Light, conflict-free changes first; docs last.
-- **The plan, shown once:** after the verifier and before any implementer, one message for all the session's issues: per issue its tier, the acceptance criteria as the tests the red commit will hold, the 5–8 files to read first, and open questions. The user's go on it covers the session's implementers; a question in it is a decision to wait for.
 - **Ask for merge authority** as a yes/no question: "May I merge on my own once the gates hold, or do you want to OK each PR?" A bare "OK" is not an answer. It doesn't carry over to the next session.
 - **Product decisions belong to the user:** changed defaults, contracts, exit codes, removed `--json` fields. Options with a recommendation, then wait. A standing "pick the recommended option" never covers a contract change or a third fix round.
 
@@ -42,7 +41,7 @@ Files:
 - [ ] Reviewer: ship brief reviewer … → findings to the same implementer
 - [ ] Tester (tier 2–3): ship brief tester … → findings routed
 - [ ] Fix rounds ≤ 2; the reviewer re-checks each fix commit (SendMessage to the same reviewer)
-- [ ] Tier 3: fresh second review only of a fix that changes the approach or adds >~15 product lines; ship repeat for timing
+- [ ] Tier 3: fresh second review only of a fix that changes the approach or adds more than ~15 product lines; ship repeat for timing
 - [ ] ship gates <pr> --tier=N [--macos] [--timing --repeat=<id>] (timing PRs: always --timing); ship merge-check when it says the base changed the PR's files; ship merge <pr> (same flags)
 - [ ] ship ci-wait <merge sha> --push; ship log <pr> …; issue closed or commented
 ```
@@ -73,7 +72,7 @@ The highest-yield step: bdg's users are agents, so the tester doesn't play the u
 |---|---|---|---|---|
 | 1 | docs, CI, tooling, refactors under existing tests, a message typo, the polish sweep (nothing parsed, no flag, exit code, default or timing changes) | reviewer | no | no (the PR says why) |
 | 2 | behaviour change: new or changed output, flag, hint, default | reviewer | yes | yes |
-| 3 | session lifecycle, Chrome launch, files on disk, concurrency, security, contracts, redaction or parsing | reviewer, plus a fresh second reviewer on a large fix commit (>~15 product lines or a new approach) | yes, plus the interrupt scenario (S08) when relevant | yes; timing: `ship repeat` on the final head; redaction or parsing: the brief's case matrix is the red commit's table test |
+| 3 | session lifecycle, Chrome launch, files on disk, concurrency, security, contracts, redaction or parsing | reviewer, plus a fresh second reviewer on a fix commit that changes the approach or adds more than ~15 product lines | yes, plus the interrupt scenario (S08) when relevant | yes; timing: `ship repeat` on the final head; redaction or parsing: the brief's case matrix is the red commit's table test |
 
 After a round, **one verifier** reproduces all older-code findings on current `main` in one pass. **Only you file issues**, one umbrella per root cause (cause in the title, symptoms as a checklist with the verifier's command and output, milestone set); a symptom of an open issue becomes a comment on it.
 
@@ -100,7 +99,7 @@ A red `main` is fixed before any new work. **Rerun first:** when a push run on `
 - **Reporting:** one line per step change, a summary at merges, real problems and decisions; don't relay interim notifications.
 - **Releases** only when the user decides (`docs/RELEASE_PROCESS.md`).
 - **One conversation per session:** start the next in a fresh conversation with the roadmap, `log.md` and the memory notes.
-- **Retro at the end**, from `log.md`: what merged and was filed, what slowed the session, and for each rule or step that cost time, whether removing it would have changed an outcome (the log shows which steps found what). Each retro deletes at least one rule the log shows catches nothing; add a rule only for a failure that happened, and a mechanical rule becomes a check (`ship.mjs`, a test, a lint), not prose. Agreed changes go into this skill as a PR.
+- **Retro at the end**, from `log.md`: what merged and was filed, what slowed the session, and for each rule or step that cost time, whether removing it would have changed an outcome (the log shows which steps found what). Each retro deletes every rule the log shows catches nothing, and at least one when the log shows any; add a rule only for a failure that happened, and a mechanical rule becomes a check (`ship.mjs`, a test, a lint), not prose. Agreed changes go into this skill as a PR.
 
 ## Recurring traps
 
