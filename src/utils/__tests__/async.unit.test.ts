@@ -7,8 +7,8 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
-import { MAX_TIMER_DELAY_MS } from '@/constants.js';
 import { type ClockHelper, useFakeClock } from '@/__testutils__/testClock.js';
+import { MAX_TIMER_DELAY_MS } from '@/constants.js';
 import { capTimerDelay, delay, raceTimeout, TimeoutError, withTimeout } from '@/utils/async.js';
 
 /** A promise that never settles */
