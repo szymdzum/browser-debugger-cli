@@ -50,6 +50,7 @@ import { DEFAULT_TREE_DEPTH, DEFAULT_TREE_LIMIT } from '@/runtime/dom/inspectTre
 import { inspectLayout } from '@/runtime/dom/layout.js';
 import { DEEP_QUERY_JS, missingElementError, selectorArgs } from '@/runtime/dom/targetNode.js';
 import { callFunctionInBdgWorld, resolveNodeInBdgWorld } from '@/runtime/page/bdgWorld.js';
+import { releaseObjectGroup } from '@/runtime/page/objectGroups.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -149,9 +150,7 @@ export async function inspectElement(
     log.debug(`Inspected ${result.element} in ${Date.now() - started} ms`);
     return result;
   } finally {
-    void cdp
-      .send('Runtime.releaseObjectGroup', { objectGroup })
-      .catch((error: unknown) => log.debug(`Object group not released: ${getErrorMessage(error)}`));
+    void releaseObjectGroup(cdp, objectGroup);
   }
 }
 

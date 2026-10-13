@@ -16,6 +16,7 @@ import type { Protocol } from '@/connection/typed-cdp.js';
 import { FORM_DISCOVERY_SCRIPT, isRawFormData } from '@/runtime/dom/formDiscovery.js';
 import type { RawFormData } from '@/runtime/dom/formTypes.js';
 import { evaluateInBdgWorld } from '@/runtime/page/bdgWorld.js';
+import { releaseObjectGroup } from '@/runtime/page/objectGroups.js';
 import type { CDPSender } from '@/telemetry/objectExpander.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { displayUrl } from '@/utils/displayUrl.js';
@@ -44,7 +45,7 @@ export function formDiscoveryGroup(): string {
 /**
  * Run the discovery script in bdg's world, keeping its result in the
  * discovery's object group for {@link readFormDiscovery} (released here when
- * the script threw).
+ * the script threw or could not run).
  *
  * @param cdp - Connection to the page
  * @param objectGroup - The discovery's object group ({@link formDiscoveryGroup})
@@ -57,8 +58,11 @@ export async function evaluateFormDiscovery(
   const response = await evaluateInBdgWorld(cdp, {
     expression: FORM_DISCOVERY_SCRIPT,
     objectGroup,
+  }).catch(async (error: unknown) => {
+    await releaseObjectGroup(cdp, objectGroup);
+    throw error;
   });
-  if (response.exceptionDetails) await releaseDiscovery(cdp, objectGroup);
+  if (response.exceptionDetails) await releaseObjectGroup(cdp, objectGroup);
   return response;
 }
 
@@ -105,7 +109,7 @@ export async function readFormDiscovery(
       ...(closedHosts.length > 0 && { closedShadowHosts: closedHosts }),
     };
   } finally {
-    await releaseDiscovery(cdp, objectGroup);
+    await releaseObjectGroup(cdp, objectGroup);
   }
 }
 
@@ -120,16 +124,6 @@ function logged<T>(empty: T): (error: unknown) => T {
     log.debug(`Form discovery nodes not read: ${getErrorMessage(error)}`);
     return empty;
   };
-}
-
-/**
- * Release the discovery result and the objects read from it.
- *
- * @param cdp - Connection to the page
- * @param objectGroup - The discovery's object group
- */
-async function releaseDiscovery(cdp: CDPSender, objectGroup: string): Promise<void> {
-  await cdp.send('Runtime.releaseObjectGroup', { objectGroup }).catch(logged(undefined));
 }
 
 /**

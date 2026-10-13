@@ -16,7 +16,10 @@ const log = createLogger('chrome');
  * Check if a process with the given PID is alive.
  *
  * Uses signal 0 to check process existence without sending an actual signal.
- * On Windows, falls back to tasklist when the signal check fails.
+ * On Windows, falls back to tasklist when the signal check fails. EPERM (the
+ * pid belongs to another user's process) counts as not running: bdg only
+ * checks processes it started or that run as the same user (Chrome, the
+ * daemon, the CLIs that own object groups), so such a pid was reused.
  *
  * @param pid - Process ID to check
  * @returns True if process is running, false otherwise

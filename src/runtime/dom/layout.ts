@@ -38,6 +38,7 @@ import { findFrameOwner, placeInOwnerFrame } from '@/runtime/dom/frameLayout.js'
 import { measureFrameMapping } from '@/runtime/dom/frameScopedConnection.js';
 import { DEEP_QUERY_JS, missingElementError, selectorArgs } from '@/runtime/dom/targetNode.js';
 import { callFunctionInBdgWorld, resolveNodeInBdgWorld } from '@/runtime/page/bdgWorld.js';
+import { releaseObjectGroup } from '@/runtime/page/objectGroups.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -300,9 +301,7 @@ export async function inspectLayout(
     if (!raw.page || raw.elements.length === 0) throw missingElementError(params, raw.count);
     return buildLayoutResult({ ...raw, page: raw.page }, params);
   } finally {
-    void cdp
-      .send('Runtime.releaseObjectGroup', { objectGroup })
-      .catch((error: unknown) => log.debug(`Object group not released: ${getErrorMessage(error)}`));
+    void releaseObjectGroup(cdp, objectGroup);
   }
 }
 

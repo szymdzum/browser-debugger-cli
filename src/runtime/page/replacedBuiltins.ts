@@ -15,6 +15,7 @@
  */
 
 import type { Protocol } from '@/connection/typed-cdp.js';
+import { releaseObjectGroup } from '@/runtime/page/objectGroups.js';
 import type { CDPSender } from '@/telemetry/objectExpander.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -123,9 +124,7 @@ export async function findReplacedBuiltins(
     log.debug(`Built-ins not checked: ${getErrorMessage(error)}`);
     return [];
   } finally {
-    await cdp
-      .send('Runtime.releaseObjectGroup', { objectGroup })
-      .catch((error: unknown) => log.debug(`Built-ins not released: ${getErrorMessage(error)}`));
+    await releaseObjectGroup(cdp, objectGroup);
   }
 }
 

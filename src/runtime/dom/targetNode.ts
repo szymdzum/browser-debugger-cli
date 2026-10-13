@@ -28,6 +28,7 @@ import {
   callFunctionInMainWorld,
   resolveNodeInBdgWorld,
 } from '@/runtime/page/bdgWorld.js';
+import { releaseObjectGroup } from '@/runtime/page/objectGroups.js';
 import { findReplacedBuiltins } from '@/runtime/page/replacedBuiltins.js';
 import { indexSourceOf } from '@/session/QueryCacheManager.js';
 import type { CDPSender } from '@/telemetry/objectExpander.js';
@@ -499,6 +500,9 @@ const NODE_SELECTOR_FUNCTION = `function () {
   return finds(selector, this) ? selector : null;
 }`;
 
+/** Numbers the object groups of selector lookups and match bindings: one per call */
+let objectGroups = 0;
+
 /**
  * A selector that finds a cached element again (see {@link NODE_SELECTOR_FUNCTION}),
  * built in bdg's world so a page that replaced `CSS.escape` or
@@ -513,7 +517,7 @@ export async function selectorOfNode(
   cdp: CDPConnection,
   backendNodeId: number
 ): Promise<string | null> {
-  const objectGroup = `bdg-selector-${Date.now()}`;
+  const objectGroup = `bdg-selector-${++objectGroups}`;
   try {
     const resolved = await resolveNodeInBdgWorld(cdp, { backendNodeId, objectGroup });
     const { objectId } = resolved.object;
@@ -529,11 +533,7 @@ export async function selectorOfNode(
     log.debug(`No selector for the element: ${getErrorMessage(error)}`);
     return null;
   } finally {
-    await cdp
-      .send('Runtime.releaseObjectGroup', { objectGroup })
-      .catch((error: unknown) =>
-        log.debug(`Selector handle not released: ${getErrorMessage(error)}`)
-      );
+    await releaseObjectGroup(cdp, objectGroup);
   }
 }
 
@@ -575,7 +575,7 @@ const BIND_MATCHES_FUNCTION = `function (selector) {
  * @throws CommandError (81) for an invalid selector
  */
 async function bindMatches(cdp: CDPConnection, selector: string, index: number): Promise<boolean> {
-  const objectGroup = `bdg-bind-${Date.now()}`;
+  const objectGroup = `bdg-bind-${++objectGroups}`;
   const limit = Math.max(MATCH_BIND_LIMIT, index + 1);
   try {
     const found = await callFunctionInBdgWorld(cdp, {
@@ -610,9 +610,7 @@ async function bindMatches(cdp: CDPConnection, selector: string, index: number):
     log.debug(`Matches not bound: ${getErrorMessage(error)}`);
     return false;
   } finally {
-    await cdp
-      .send('Runtime.releaseObjectGroup', { objectGroup })
-      .catch((error: unknown) => log.debug(`Matches not released: ${getErrorMessage(error)}`));
+    await releaseObjectGroup(cdp, objectGroup);
   }
 }
 

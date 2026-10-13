@@ -5,6 +5,7 @@ import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPConnectionError, CDPProtocolError } from '@/connection/errors.js';
 import { PatternDetector } from '@/daemon/patternDetector.js';
 import { CdpEventListener, collectEvents } from '@/daemon/session/cdpEvents.js';
+import { ClientObjectGroups } from '@/daemon/session/clientObjectGroups.js';
 import { refreshCurrentTarget } from '@/daemon/session/currentTarget.js';
 import { createInteractionRunner, type TabReports } from '@/daemon/session/interactions.js';
 import { withTriggeredRequestCount } from '@/daemon/session/triggeredRequests.js';
@@ -599,9 +600,17 @@ export function createCommandRegistry(
   let listedFrameIds: string[] | undefined;
   /** Events `bdg cdp --listen` buffers between commands (gone with the session) */
   const eventListener = new CdpEventListener();
+  /**
+   * Object groups of bdg CLIs, released when a CLI exits without releasing
+   * them (#606). Forgotten when the page navigates (its groups are gone) and
+   * on a tab switch (the old tab keeps them until it navigates or closes; the
+   * daemon no longer talks to it).
+   */
+  const clientGroups = new ClientObjectGroups();
   tabs?.onPageSwitch((cdp) => {
     listedFrameIds = undefined;
     eventListener.follow(cdp);
+    clientGroups.clear();
   });
   const tabControl = (): TabControl => {
     if (!tabs) throw new Error('This session does not track tabs');
@@ -751,10 +760,22 @@ export function createCommandRegistry(
     },
 
     cdp_call: async (cdp, params, abandoned) => {
-      const call = (): Promise<unknown> => sendCdpCall(cdp, params, store);
-      const { result, collected } = params.collect
-        ? await collectEvents(cdp, call, { ...params.collect, signal: abandoned })
-        : { result: await call(), collected: undefined };
+      const call = (): Promise<unknown> =>
+        sendCdpCall(cdp, params, store).then(
+          (value) => {
+            clientGroups.settled(cdp, params, true);
+            return value;
+          },
+          (error: unknown) => {
+            clientGroups.settled(cdp, params, false);
+            throw error;
+          }
+        );
+      const { result, collected } = await (
+        params.collect
+          ? collectEvents(cdp, call, { ...params.collect, signal: abandoned })
+          : call().then((value) => ({ result: value, collected: undefined }))
+      ).finally(() => void clientGroups.releaseOrphans());
 
       const detectionResult = params.isolated
         ? { shouldShow: false, pattern: undefined }
@@ -982,11 +1003,13 @@ export function createCommandRegistry(
     page_navigate: async (cdp, params) =>
       interact(
         cdp,
-        () =>
-          navigatePage(cdp, params.action, {
+        () => {
+          clientGroups.clear();
+          return navigatePage(cdp, params.action, {
             ...filterDefined({ url: params.url, wait: params.wait }),
             pendingRequests: () => store.pendingNetworkRequests.values(),
-          }),
+          });
+        },
         { reportRequests: false, reportEffects: false }
       ),
 

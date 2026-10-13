@@ -49,6 +49,7 @@ import {
 } from '@/runtime/dom/reactEventHelpers.js';
 import { FIND_ELEMENTS_JS, LABEL_CONTROL_JS, selectorArgs } from '@/runtime/dom/targetNode.js';
 import { callFunctionInMainWorld } from '@/runtime/page/bdgWorld.js';
+import { releaseObjectGroup } from '@/runtime/page/objectGroups.js';
 import { createLogger } from '@/ui/logging/index.js';
 import {
   clickLandedElsewhereWarning,
@@ -333,8 +334,8 @@ const CLEAR_FILE_INPUT_FUNCTION = `function () {
   (${FIRE_EVENT_JS})(this, 'change');
 }`;
 
-/** Object group for remote objects created while selecting files. */
-const UPLOAD_OBJECT_GROUP = 'bdg-upload';
+/** Numbers the object groups of file uploads: one per upload, so concurrent ones keep theirs */
+let uploads = 0;
 
 /**
  * Page function: the file input a fill by selector (or bound node) and index
@@ -414,11 +415,12 @@ async function setFileInput(
   const files = uploadPaths(value, options.cwd ?? process.cwd());
   const problem = uploadProblem(files);
   if (problem) return problem;
+  const objectGroup = `bdg-upload-${++uploads}`;
   try {
     const located = await callFunctionInMainWorld(cdp, {
       functionDeclaration: FIND_FILE_INPUT_FUNCTION,
       arguments: [...selectorArgs(selector), options.index ?? 0].map((value) => ({ value })),
-      objectGroup: UPLOAD_OBJECT_GROUP,
+      objectGroup,
     });
     if (located.exceptionDetails) throwIfInvalidSelector(located.exceptionDetails, selector);
     const objectId = located.result?.objectId;
@@ -448,11 +450,7 @@ async function setFileInput(
       });
     }
   } finally {
-    await cdp
-      .send('Runtime.releaseObjectGroup', { objectGroup: UPLOAD_OBJECT_GROUP })
-      .catch((error: unknown) =>
-        log.debug(`Could not release upload objects: ${getErrorMessage(error)}`)
-      );
+    await releaseObjectGroup(cdp, objectGroup);
   }
   return {
     success: true,

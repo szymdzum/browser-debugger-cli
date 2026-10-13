@@ -34,6 +34,7 @@ import {
 } from '@/runtime/dom/listenerSummary.js';
 import { DEEP_QUERY_JS, missingElementError, selectorArgs } from '@/runtime/dom/targetNode.js';
 import { callFunctionInMainWorld } from '@/runtime/page/bdgWorld.js';
+import { releaseObjectGroup } from '@/runtime/page/objectGroups.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -129,9 +130,7 @@ export async function inspectEventListeners(
     };
     return withMultipleMatchesWarning(result, params.index, 'listing the first');
   } finally {
-    void cdp
-      .send('Runtime.releaseObjectGroup', { objectGroup })
-      .catch((error: unknown) => log.debug(`Object group not released: ${getErrorMessage(error)}`));
+    void releaseObjectGroup(cdp, objectGroup);
   }
 }
 

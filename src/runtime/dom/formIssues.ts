@@ -10,6 +10,7 @@
  */
 
 import type { FormIssue, RawField, RawFormData } from '@/ipc/protocol/domTypes.js';
+import { releaseObjectGroup } from '@/runtime/page/objectGroups.js';
 import type { CDPSender } from '@/telemetry/objectExpander.js';
 import type { IssueNode, PageIssue } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
@@ -80,9 +81,7 @@ export async function connectedNodes(
   if (backendNodeIds.length === 0) return new Set();
   const objectGroup = `bdg-issue-nodes-${++nodeLookups}`;
   const results = await Promise.all(backendNodeIds.map((id) => isConnected(cdp, id, objectGroup)));
-  await cdp
-    .send('Runtime.releaseObjectGroup', { objectGroup })
-    .catch((error: unknown) => log.debug(`Issue nodes not released: ${getErrorMessage(error)}`));
+  await releaseObjectGroup(cdp, objectGroup);
   return new Set(backendNodeIds.filter((_id, i) => results[i]));
 }
 

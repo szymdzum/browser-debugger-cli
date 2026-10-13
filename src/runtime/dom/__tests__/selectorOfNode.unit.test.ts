@@ -76,4 +76,11 @@ void describe('selectorOfNode', () => {
     const { cdp } = fakePage({ value: '#go', releaseFails: true });
     assert.equal(await selectorOfNode(cdp, 7), '#go');
   });
+
+  void it('gives concurrent calls object groups of their own (#606)', async () => {
+    const { cdp, calls } = fakePage({ value: '#go' });
+    await Promise.all([selectorOfNode(cdp, 7), selectorOfNode(cdp, 8)]);
+    const { released } = groups(calls);
+    assert.equal(new Set(released).size, 2, `shared group: ${released.join(', ')}`);
+  });
 });

@@ -9,6 +9,7 @@ import { TypedCDPConnection } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import { elementNotVisibleError, elementZeroDimensionsError } from '@/errors/messages.js';
 import { resolveNodeInBdgWorld } from '@/runtime/page/bdgWorld.js';
+import { releaseObjectGroup } from '@/runtime/page/objectGroups.js';
 import type { ElementBounds } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -223,8 +224,6 @@ async function measureOverflow(
     });
     return response.result.value as Record<string, number> | undefined;
   } finally {
-    await cdp
-      .send('Runtime.releaseObjectGroup', { objectGroup })
-      .catch((error: unknown) => log.debug(`Object group not released: ${getErrorMessage(error)}`));
+    await releaseObjectGroup(cdp, objectGroup);
   }
 }

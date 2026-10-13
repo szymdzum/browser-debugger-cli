@@ -27,6 +27,7 @@ import type { NoType } from './utils/index.js';
 import { getIPCRequestTimeout, getQuickIPCRequestTimeout } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
 import type { CdpCollectParams, CdpEventsCommand } from '@/ipc/protocol/cdpEventTypes.js';
+import { releaseObjectGroup } from '@/runtime/page/objectGroups.js';
 import { capTimerDelay } from '@/utils/async.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -362,7 +363,8 @@ export async function getNetworkHeaders(options?: {
  * @param method - CDP method name (e.g., 'Network.getCookies')
  * @param params - Optional method parameters
  * @param options - `isolated`: a bdg page script, run in bdg's isolated world
- *   (`Runtime.evaluate`, `DOM.resolveNode`); `collect`: events to collect
+ *   (`Runtime.evaluate`, `DOM.resolveNode`), whose object group this process
+ *   owns (the daemon releases it if the process exits first); `collect`: events to collect
  *   while the method runs (the request waits for its timeout)
  * @returns Response with CDP method result
  * @throws Error if connection fails; CommandError (102) when the page was busy and its scripts were terminated, (107) when the page crashed
@@ -386,6 +388,8 @@ export async function callCDP(
       method,
       ...(params && { params }),
       ...(options.isolated && { isolated: true }),
+      ...(options.isolated &&
+        typeof params?.['objectGroup'] === 'string' && { owner: process.pid }),
       ...(options.collect && { collect: options.collect }),
     },
     options.collect && waitingTimeoutMs(options.collect.timeoutMs)
@@ -417,6 +421,26 @@ export function callBdgScript(
   params?: Record<string, unknown>
 ): Promise<ClientResponse<'cdp_call'>> {
   return callCDP(method, params, { isolated: true });
+}
+
+/**
+ * Release an object group this process created with {@link callBdgScript},
+ * best-effort ({@link releaseObjectGroup}): a release that fails or times
+ * out never replaces the command's own result or error.
+ *
+ * @param objectGroup - The group
+ */
+export async function releaseBdgObjectGroup(objectGroup: string): Promise<void> {
+  await releaseObjectGroup(
+    {
+      send: async (method, params) => {
+        const response = await callCDP(method, params);
+        if (response.status === 'error') throw new Error(response.error ?? `${method} failed`);
+        return response.data;
+      },
+    },
+    objectGroup
+  );
 }
 
 /**
