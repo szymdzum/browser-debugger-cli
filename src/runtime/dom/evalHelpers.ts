@@ -1,7 +1,7 @@
-import { EVAL_FULL_MAX_BYTES } from '@/constants.js';
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPProtocolError } from '@/connection/errors.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
+import { EVAL_FULL_MAX_BYTES } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
 import {
   evalResultTooLargeError,
