@@ -56,6 +56,6 @@ export const SCREENSHOT_BEHAVIORS: BehaviorTable = {
     whenEnabled:
       'The path is a directory; frames 001.png, 002.png, … are written every --interval ms (100-60000, default 1000) until --limit frames, an error, or Ctrl-C / SIGTERM. With --json one envelope per frame (NDJSON)',
     automaticBehavior:
-      'Ctrl-C stops after the current frame, prints "Captured N frames" on stderr and exits 130; SIGTERM does the same and exits 143; no Interrupted envelope (each line is already a whole envelope); a second signal exits at once. A --limit that is reached exits 0',
+      'Ctrl-C stops after the current frame, prints "Captured N frames" ("Captured 1 frame" for one) on stderr and exits 130; SIGTERM does the same and exits 143; no Interrupted envelope (each line is already a whole envelope); a second signal exits at once. A --limit that is reached exits 0',
   },
 };

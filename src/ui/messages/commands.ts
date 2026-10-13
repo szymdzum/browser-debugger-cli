@@ -2170,3 +2170,13 @@ export function cliLoadFailedError(file: string): ErrorWithSuggestion {
     suggestion: 'Reinstall bdg: npm install -g browser-debugger-cli',
   };
 }
+
+/**
+ * Stop line of `dom screenshot --follow`, with the frame count pluralised.
+ *
+ * @param count - Frames captured
+ * @returns The line printed on stderr when the sequence ends
+ */
+export function capturedFramesMessage(count: number): string {
+  return `Captured ${count} ${count === 1 ? 'frame' : 'frames'}`;
+}

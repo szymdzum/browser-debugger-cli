@@ -8,9 +8,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { Command } from 'commander';
+import type { Command, Option } from 'commander';
 
 import { generateMachineReadableHelp } from '@/commands/helpJson.js';
+import { FOLLOW_BEHAVIOR } from '@/commands/optionBehaviors/shared.js';
 import { BEHAVIOR_TABLES, behaviorKey, listBehaviorKeys } from '@/commands/optionBehaviors.js';
 import { buildProgram } from '@/program.js';
 
@@ -48,5 +49,36 @@ void describe('OPTION_BEHAVIORS', () => {
     for (const flags of ['--headless', '--no-headless', '-a, --all']) {
       assert.ok(withBehavior.includes(flags), `${flags} has no behavior`);
     }
+  });
+});
+
+void describe('FOLLOW_BEHAVIOR', () => {
+  void it('describes --json as one whole envelope per refresh, the first with the backlog (#714)', () => {
+    assert.match(FOLLOW_BEHAVIOR, /envelope per update/);
+    assert.match(FOLLOW_BEHAVIOR, /first line carries the backlog/);
+    assert.doesNotMatch(FOLLOW_BEHAVIOR, /default \d+/, '--last defaults differ per command');
+    assert.doesNotMatch(FOLLOW_BEHAVIOR, /compact object/);
+  });
+});
+
+void describe('--follow behavior against the real --last defaults', () => {
+  void it('every attached follow entry carries the shared text', () => {
+    const keys = ['peek:--follow', 'console:--follow', 'network:--follow', 'list:--follow'];
+    const entries = BEHAVIOR_TABLES.flatMap((table) =>
+      keys.flatMap((key) => (table[key] ? [table[key]] : []))
+    );
+    assert.ok(entries.length >= 3);
+    for (const entry of entries) assert.equal(entry.automaticBehavior, FOLLOW_BEHAVIOR);
+  });
+
+  void it('--last defaults named in the docs match the option definitions', () => {
+    const program = buildProgram();
+    const find = (path: string[]): Option | undefined => {
+      let cmd: Command | undefined = program;
+      for (const name of path) cmd = cmd?.commands.find((c) => c.name() === name);
+      return cmd?.options.find((o) => o.long === '--last');
+    };
+    assert.equal(find(['peek'])?.defaultValue, '10');
+    assert.equal(find(['network', 'list'])?.defaultValue, '100');
   });
 });
