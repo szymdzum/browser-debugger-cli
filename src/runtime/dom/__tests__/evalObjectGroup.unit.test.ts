@@ -15,7 +15,7 @@ void describe('evaluateScript', () => {
     const page = new FakeObjectPage({
       lookupsFirst: 2,
       hold: (method, params) => method === 'Runtime.evaluate' && params['expression'] === 'second',
-      callResult: () => ({ result: { type: 'object', value: { copied: true } } }),
+      callResult: () => ({ result: { type: 'object', value: { copy: { copied: true } } } }),
       releaseFreesHeld: (objectGroup) => objectGroup.startsWith('bdg-eval'),
     });
     const cdp = page as unknown as CDPConnection;
