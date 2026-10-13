@@ -2,8 +2,8 @@
  * The lines the daemon writes for a response: capped in size, and error replies.
  */
 
-import { replyTooLargeError } from '@/errors/messages.js';
 import { MAX_JSONL_BUFFER_SIZE } from '@/constants.js';
+import { replyTooLargeError } from '@/errors/messages.js';
 import type { IPCErrorFrame } from '@/ipc/session/index.js';
 import { toJSONLFrame } from '@/ipc/transport/jsonl.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';

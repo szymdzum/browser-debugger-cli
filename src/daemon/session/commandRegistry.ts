@@ -1,9 +1,9 @@
 import type { TelemetryStore } from './TelemetryStore.js';
 
 import { missingMethodCause } from '@/cdp/methodTarget.js';
-import { MAX_JSONL_BUFFER_SIZE } from '@/constants.js';
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPConnectionError, CDPProtocolError } from '@/connection/errors.js';
+import { MAX_JSONL_BUFFER_SIZE } from '@/constants.js';
 import { PatternDetector } from '@/daemon/patternDetector.js';
 import { CdpEventListener, collectEvents } from '@/daemon/session/cdpEvents.js';
 import { ClientObjectGroups } from '@/daemon/session/clientObjectGroups.js';

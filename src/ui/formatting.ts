@@ -129,7 +129,7 @@ export function escapeControlChars(text: string): string {
  * one left a rope node per character, 32 bytes each (a 250 MB `bdg cdp`
  * reply took over 4 GB).
  */
-const CONTROL_CHARS = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g;
+const CONTROL_CHARS = /(?![\t\n])\p{Cc}|[\u202a-\u202e\u2066-\u2069]/gu;
 
 export function joinLines(...lines: Array<string | null | undefined | false>): string {
   return lines

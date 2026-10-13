@@ -4,12 +4,13 @@
  * Formats transport-layer errors with context using structured error classes.
  */
 
+import type { JSONLBufferOverflowError } from './jsonl.js';
+
 import { CommandError } from '@/errors/index.js';
 import { replyTooLargeError } from '@/errors/messages.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
-import type { JSONLBufferOverflowError } from './jsonl.js';
 import {
   IPCCancelledError,
   IPCConnectionError,
