@@ -11,13 +11,14 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
+import { waitForCommand } from '@/__testutils__/testProcess.js';
 import { chromeSessionMarkerFlag } from '@/connection/launcher/flagsBuilder.js';
+import { clearChromePid, writeChromePid } from '@/session/chrome.js';
 import {
   killSessionChromes,
   reapOrphanedChrome,
   removeSessionFiles,
 } from '@/session/cleanup/staleSession.js';
-import { clearChromePid, writeChromePid } from '@/session/chrome.js';
 import { writeSessionMetadata } from '@/session/metadata.js';
 import { getSessionFilePath } from '@/session/paths.js';
 import { isProcessAlive } from '@/utils/process.js';
@@ -66,7 +67,8 @@ void describe('session files of two daemons', () => {
         { detached: true, stdio: 'ignore' }
       );
       try {
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        await waitForCommand(stray.pid ?? 0, chromeSessionMarkerFlag(dir));
+        await waitForCommand(other.pid ?? 0, chromeSessionMarkerFlag(`${dir} b`));
         const killed = killSessionChromes(dir);
         assert.deepEqual(killed, [stray.pid]);
         await new Promise((resolve) => setTimeout(resolve, 300));
@@ -93,7 +95,7 @@ void describe('session files of two daemons', () => {
         { detached: true, stdio: 'ignore' }
       );
       try {
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        await waitForCommand(stray.pid ?? 0, chromeSessionMarkerFlag(dir));
         assert.equal(await reapOrphanedChrome(), true);
         assert.equal(isProcessAlive(stray.pid ?? 0), false, 'it waits until the Chrome exited');
       } finally {

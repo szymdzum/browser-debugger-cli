@@ -11,6 +11,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
+import { waitForCommand } from '@/__testutils__/testProcess.js';
 import { chromeSessionMarkerFlag } from '@/connection/launcher/flagsBuilder.js';
 import { CommandError } from '@/errors/index.js';
 import { findConflictingOwner } from '@/session/chromeOwners.js';
@@ -35,7 +36,6 @@ import { formatNoSessionMessage } from '@/ui/formatters/status.js';
 import { untrustedDirReason } from '@/utils/directories.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { DAEMON_SCRIPT_PATH } from '@/utils/packageRoot.js';
-import { isProcessAlive } from '@/utils/process.js';
 
 const savedEnv = {
   dir: process.env['BDG_SESSION_DIR'],
@@ -476,7 +476,7 @@ void describe('session list', () => {
       const pid = fakeDaemon.pid ?? 0;
       fs.writeFileSync(path.join(dir, 'daemon.pid'), String(pid));
       fs.writeFileSync(path.join(dir, 'port.txt'), '9228');
-      await waitUntil(() => isProcessAlive(pid));
+      await waitForCommand(pid, DAEMON_SCRIPT_PATH);
       assert.deepEqual(await listRunningSessions(), [
         { name: 'p5', state: 'ending', daemonPid: pid },
       ]);
@@ -521,7 +521,7 @@ void describe('session list', () => {
     try {
       const pid = fakeChrome.pid ?? 0;
       fs.writeFileSync(path.join(dir, 'chrome.pid'), String(pid));
-      await waitUntil(() => isProcessAlive(pid));
+      await waitForCommand(pid, chromeSessionMarkerFlag(dir));
       assert.deepEqual(await listRunningSessions(), [
         {
           name: 'p4',
@@ -550,17 +550,6 @@ void describe('session list', () => {
 function isCaseInsensitive(dir: string): boolean {
   const lower = path.join(path.dirname(dir), path.basename(dir).toLowerCase());
   return fs.existsSync(lower) && fs.statSync(lower).ino === fs.statSync(dir).ino;
-}
-
-/**
- * Poll until a condition holds (up to 2 s).
- *
- * @param condition - Condition to wait for
- */
-async function waitUntil(condition: () => boolean): Promise<void> {
-  for (let i = 0; i < 40 && !condition(); i++) {
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
 }
 
 /**
