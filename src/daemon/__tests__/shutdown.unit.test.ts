@@ -42,6 +42,28 @@ function recordingSteps(): { steps: ShutdownSteps; calls: string[] } {
 }
 
 void describe('runShutdown', () => {
+  void it('runs the remaining steps and exits when a step fails', async () => {
+    const { steps, calls } = recordingSteps();
+    steps.stopSession = () => {
+      calls.push('stopSession');
+      return Promise.reject(new Error('teardown broke'));
+    };
+    steps.unpublish = () => {
+      calls.push('unpublish');
+      throw new Error('socket file gone');
+    };
+    await runShutdown(steps);
+    assert.deepEqual(calls, [
+      'refuseNewSessions',
+      'unpublish',
+      'stopSession',
+      'waitForInFlightRequests',
+      'flush',
+      'stopServer',
+      'exit',
+    ]);
+  });
+
   void it('unpublishes, stops the session, lets in-flight requests answer, then exits', async () => {
     const { steps, calls } = recordingSteps();
     await runShutdown(steps);

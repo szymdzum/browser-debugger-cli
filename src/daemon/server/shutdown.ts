@@ -3,6 +3,11 @@
  * failed start, idle daemon).
  */
 
+import { createLogger } from '@/ui/logging/index.js';
+import { getErrorMessage } from '@/utils/errors.js';
+
+const log = createLogger('daemon');
+
 /** What a daemon shutdown does; the IPC server supplies the real steps, tests fakes. */
 export interface ShutdownSteps {
   /** Refuse further start requests */
@@ -40,14 +45,36 @@ export interface ShutdownSteps {
  *    session gets its answer here too.
  * 4. Let the last responses flush, close the server, exit.
  *
+ * A failing step is logged and the rest still run: the daemon always exits.
+ *
  * @param steps - The steps
  */
 export async function runShutdown(steps: ShutdownSteps): Promise<void> {
-  steps.refuseNewSessions();
-  steps.unpublish();
-  await steps.stopSession();
-  await steps.waitForInFlightRequests();
-  await steps.flush();
-  await steps.stopServer();
+  void attempt('refuse new sessions', () => steps.refuseNewSessions());
+  void attempt('unpublish', () => steps.unpublish());
+  await attempt('stop session', () => steps.stopSession());
+  await attempt('wait for in-flight requests', () => steps.waitForInFlightRequests());
+  await attempt('flush', () => steps.flush());
+  await attempt('stop server', () => steps.stopServer());
   steps.exit();
+}
+
+/**
+ * Run one shutdown step; a failure is logged and the shutdown goes on, so
+ * the daemon always exits. A synchronous step runs and settles at once (the
+ * socket is unpublished before any new client can connect).
+ *
+ * @param label - Step name, for the debug log
+ * @param step - The step
+ * @returns A promise when the step is asynchronous
+ */
+function attempt(label: string, step: () => void | Promise<unknown>): void | Promise<void> {
+  const failed = (error: unknown): void =>
+    log.debug(`Shutdown step "${label}" failed: ${getErrorMessage(error)}`);
+  try {
+    const result = step();
+    if (result) return result.then(() => undefined, failed);
+  } catch (error) {
+    failed(error);
+  }
 }
