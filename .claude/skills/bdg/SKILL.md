@@ -48,7 +48,7 @@ bdg stop && bdg <url>/dashboard --state /tmp/login.json   # Restored before the 
 bdg --session other state load /tmp/login.json  # Into a running session (reloads; --no-reload to skip)
 ```
 
-The file holds secrets (written 0600, also over an existing file; keep it out of the repo). Output shows counts only. Mid-session `state load` restores storage only for origins the page has frames of; `--state` at start restores all. A missing file exits 83, a bad one 81.
+A state file over 50 MiB is refused (exit 81). The file holds secrets (written 0600, also over an existing file; keep it out of the repo). Output shows counts only. Mid-session `state load` restores storage only for origins the page has frames of; `--state` at start restores all. A missing file exits 83, a bad one 81.
 
 ### Navigate the Session Page
 
@@ -161,7 +161,7 @@ bdg dom frames                                 # The page's iframes, cross-origi
 bdg eval --frame pay "document.title"          # In an iframe: index, name/id, or part of its URL
 ```
 
-Exit 91 means the script threw. `--full` (whole value, not the first 20000 characters) refuses a result over 50 MiB of output (bytes; objects measured as the indented JSON human output prints, also with --json) with exit 81: return a slice or `.length`. A result over 256 MiB is refused without `--full` too (exit 102 for a string or Map, 81 for an object), within about 15 s (an object over the cap exits 81 in under a second). To read data that big, keep it in the page (`bdg dom eval '(window.data = <expr>, window.data.length)'`) and read parts under 50 MiB with `--full`: a string as `window.data.slice(0, 10000000)` (characters; fewer for multibyte text), a Map as `[...window.data].slice(0, 10)`. Prefer `dom query` / `dom get` / `dom inspect` when they answer the question.
+Exit 91 means the script threw. `--full` (whole value, not the first 20000 characters) refuses a result over 50 MiB of output (bytes; objects measured as the indented JSON human output prints, also with --json) with exit 81: return a slice or `.length`. A result over 256 MiB is refused without `--full` too (exit 102 for a string or Map, 81 for an object), within about 15 s (an object over the cap exits 81 in under a second). To read data that big, keep it in the page (`bdg dom eval '(window.data = <expr>, window.data.length)'`) and read parts under 50 MiB with `--full`: a string as `window.data.slice(0, 10000000)` (characters; fewer for multibyte text), a Map by its keys (`[...window.data.keys()]`), then one value as `window.data.get(KEY).slice(0, 10000000)`. Prefer `dom query` / `dom get` / `dom inspect` when they answer the question.
 
 ## Network and Console
 

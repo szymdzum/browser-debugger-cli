@@ -65,7 +65,7 @@ void describe('dom eval result Chrome cannot send', () => {
     assert.match(err.suggestion ?? '', /--full/);
     assert.match(err.suggestion ?? '', /50 MiB/);
     assert.match(err.suggestion ?? '', /slice\(0, 10000000\)/);
-    assert.match(err.suggestion ?? '', /\[\.\.\.window\.data\]\.slice/);
+    assert.match(err.suggestion ?? '', /window\.data\.keys\(\).*window\.data\.get\(KEY\)\.slice/);
     assert.match(err.suggestion ?? '', /multibyte/);
   });
 

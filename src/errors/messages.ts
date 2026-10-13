@@ -2482,7 +2482,7 @@ export function resultNotSentError(): ErrorWithSuggestion {
   return {
     message:
       'The script ran, but Chrome could not send its result: it is probably too large to send',
-    suggestion: `Return a slice or the .length instead. To read all of it, keep it in the page (bdg dom eval '(window.data = <expression>, window.data.length)') and read parts of under ${formatMiB(EVAL_FULL_MAX_BYTES, 0)} with --full: a string as bdg dom eval 'window.data.slice(0, 10000000)' (10 million characters; fewer for multibyte text), a Map as bdg dom eval '[...window.data].slice(0, 10)' (until the page navigates)`,
+    suggestion: `Return a slice or the .length instead. To read all of it, keep it in the page (bdg dom eval '(window.data = <expression>, window.data.length)') and read parts of under ${formatMiB(EVAL_FULL_MAX_BYTES, 0)} with --full: a string as bdg dom eval 'window.data.slice(0, 10000000)' (10 million characters; fewer for multibyte text), a Map by its keys first (bdg dom eval '[...window.data.keys()]'), then one value as bdg dom eval 'window.data.get(KEY).slice(0, 10000000)' (until the page navigates)`,
   };
 }
 
