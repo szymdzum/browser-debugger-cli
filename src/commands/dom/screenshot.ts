@@ -14,7 +14,12 @@ import {
   selectMatch,
 } from '@/commands/dom/helpers/index.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
-import { abortOnInterrupt, unlessInterrupted } from '@/commands/shared/interrupt.js';
+import {
+  abortOnInterrupt,
+  interruptExitCode,
+  interruptSignal,
+  unlessInterrupted,
+} from '@/commands/shared/interrupt.js';
 import type { DomScreenshotCommandOptions } from '@/commands/shared/optionTypes.js';
 import { assertFilePath, outputPathError } from '@/commands/shared/outputFile.js';
 import { positiveIntRule } from '@/commands/shared/validation.js';
@@ -267,7 +272,7 @@ async function handleSequenceCapture(
 
   const format = options.format ?? 'png';
   let frameCount = 0;
-  const { signal: interrupt } = abortOnInterrupt({ signals: ['SIGINT'] });
+  const { signal: interrupt } = abortOnInterrupt();
 
   console.error(`Capturing to ${absoluteDir} every ${interval}ms...`);
   while (!interrupt.aborted) {
@@ -277,7 +282,10 @@ async function handleSequenceCapture(
     try {
       await captureSequenceFrame(outputPath, options);
     } catch (error) {
-      reportSequenceError(error, frameCount - 1, options.json ?? false);
+      if (!interrupt.aborted) reportSequenceError(error, frameCount - 1, options.json ?? false);
+      log.debug(`Capture failed after the interrupt: ${getErrorMessage(error)}`);
+      frameCount--;
+      break;
     }
     if (options.json) {
       console.log(JSON.stringify(buildSuccessResponse({ frame: frameCount, path: outputPath })));
@@ -285,10 +293,12 @@ async function handleSequenceCapture(
       log.info(`Frame ${frameCount}: ${filename}`);
     }
     if (limit > 0 && frameCount >= limit) break;
-    await delay(interval);
+    await delay(interval, interrupt);
   }
   console.error(`Captured ${frameCount} frames`);
-  process.exit(EXIT_CODES.SUCCESS);
+  process.exit(
+    interrupt.aborted ? interruptExitCode(interruptSignal(interrupt)) : EXIT_CODES.SUCCESS
+  );
 }
 
 /**
