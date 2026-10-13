@@ -454,7 +454,8 @@ function elementLayout(raw: RawElementLayout, page: PageLayout): ElementLayout {
     classifyViewportPosition(raw.geometry, page.viewport),
     raw.geometry.invisible
   );
-  const painted = rect !== content && content && pageBox(content, page.scroll);
+  const painted =
+    raw.computed.display !== 'contents' && content ? pageBox(content, page.scroll) : null;
   const inView = placement.inViewport === 'visible' || placement.inViewport === 'partly';
   const text = textPreview(raw.text);
   return {

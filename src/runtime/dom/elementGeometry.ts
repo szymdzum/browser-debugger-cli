@@ -423,20 +423,21 @@ export const SHOWING_DESCENDANT_JS = `(el) => {
   const clips = (n, s) => !hasArea(n.getBoundingClientRect()) && (s.overflowX !== 'visible' || s.overflowY !== 'visible');
   const childrenOf = (n) => n.localName === 'slot' && n.getRootNode().host ? n.assignedNodes({ flatten: true }) : Array.from((n.shadowRoot || n).childNodes);
   const rendered = (n) => typeof n.checkVisibility !== 'function' || n.checkVisibility();
-  const textShows = (t) => {
-    const holder = t.assignedSlot || t.parentElement || t.parentNode.host;
+  const flatParent = ${FLAT_PARENT_JS};
+  const textHolder = (t) => {
+    if (!t.data.trim()) return null;
+    const holder = flatParent(t);
+    if (!holder || styleOf(holder).visibility !== 'visible') return null;
     const range = t.ownerDocument.createRange();
     range.selectNodeContents(t);
-    return styleOf(holder).visibility === 'visible' && hasArea(range.getBoundingClientRect()) && holder;
+    return hasArea(range.getBoundingClientRect()) ? holder : null;
   };
   if (clips(el, styleOf(el))) return null;
   const queue = childrenOf(el);
-  for (let seen = 0; queue.length > 0 && seen < 500; seen++) {
-    const n = queue.shift();
-    if (n.nodeType === 3 && n.data.trim()) {
-      const holder = textShows(n);
-      if (holder) return holder;
-    }
+  for (let next = 0; next < queue.length && next < 500; next++) {
+    const n = queue[next];
+    const holder = n.nodeType === 3 ? textHolder(n) : null;
+    if (holder) return holder;
     if (n.nodeType !== 1) continue;
     const s = styleOf(n);
     if (s.display === 'none') continue;
@@ -577,12 +578,12 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
     return false;
   };
   const box = el.getBoundingClientRect();
-  let rect = { left: box.left, top: box.top, right: box.right, bottom: box.bottom };
+  const edgesOf = (r) => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+  let rect = edgesOf(box);
   const empty = box.width === 0 || box.height === 0;
   const shown = empty ? shownContent(el) : null;
   const shower = styleOf(el).visibility !== 'visible' ? showingDescendant(el) : null;
-  const showerBox = shower && empty ? shower.getBoundingClientRect() : null;
-  let content = (shown && shown.box) || (showerBox && { left: showerBox.left, top: showerBox.top, right: showerBox.right, bottom: showerBox.bottom });
+  let content = (shown && shown.box) || (shower && empty ? edgesOf(shower.getBoundingClientRect()) : null);
   const own = ancestorClip(el, content || rect, describe);
   let clip = own.clip;
   let overlay = own.overlay;
