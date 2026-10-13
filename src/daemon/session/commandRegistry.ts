@@ -33,6 +33,7 @@ import { auditPage } from '@/runtime/dom/audit.js';
 import { readBlockedSubmit } from '@/runtime/dom/blockedSubmit.js';
 import {
   evaluateScript,
+  type LostCheckTiming,
   mentionsAwait,
   untilAnswerLost,
   withBusyPageRecovery,
@@ -526,7 +527,7 @@ const FETCH_INTERCEPTION_SWITCH: Record<string, boolean> = {
  * @param params - The call
  * @returns True for a synchronous `Runtime.evaluate`
  */
-function mayLoseReply(params: CommandSchemas['cdp_call']['requestSchema']): boolean {
+export function mayLoseReply(params: CommandSchemas['cdp_call']['requestSchema']): boolean {
   if (params.method !== 'Runtime.evaluate' || params.isolated) return false;
   const { expression, awaitPromise, contextId, uniqueContextId } = params.params ?? {};
   if (contextId !== undefined || uniqueContextId !== undefined) return false;
@@ -556,12 +557,14 @@ function replyLostError(paused: boolean): CommandError | undefined {
  * @param cdp - CDP connection
  * @param params - The call
  * @param answer - The call's answer
+ * @param timing - Delays of the check (default: 1 s, then 12 s)
  * @returns The answer
  */
-async function withReplyLossCheck<T>(
-  cdp: CDPConnection,
+export async function withReplyLossCheck<T>(
+  cdp: Pick<CDPConnection, 'send' | 'on'>,
   params: CommandSchemas['cdp_call']['requestSchema'],
-  answer: Promise<T>
+  answer: Promise<T>,
+  timing?: LostCheckTiming
 ): Promise<T> {
   if (!mayLoseReply(params)) return answer;
   let paused = false;
@@ -569,7 +572,7 @@ async function withReplyLossCheck<T>(
     paused = true;
   });
   try {
-    return await untilAnswerLost(cdp, answer, () => replyLostError(paused));
+    return await untilAnswerLost(cdp, answer, () => replyLostError(paused), undefined, timing);
   } finally {
     stopWatching();
   }

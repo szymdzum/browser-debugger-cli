@@ -1002,6 +1002,7 @@ async function untilResultLost<T>(
  * @param pending - The script's evaluation
  * @param lost - The error for a lost answer, or undefined when it cannot be told to be lost
  * @param onScriptFinished - Called once the page answered a check: the script has finished
+ * @param timing - Delays of the check (default: 1 s, then 12 s)
  * @returns The answer
  * @throws The error `lost` returns, when the answer was lost
  */
@@ -1009,11 +1010,12 @@ export async function untilAnswerLost<T>(
   cdp: CDPSender,
   pending: Promise<T>,
   lost: () => Error | undefined,
-  onScriptFinished?: () => void
+  onScriptFinished?: () => void,
+  timing: LostCheckTiming = DEFAULT_LOST_CHECK_TIMING
 ): Promise<T> {
   const stop = new AbortController();
   const answered = pending.finally(() => stop.abort());
-  const unsent = checkForLostResult(cdp, stop.signal, onScriptFinished).then((isLost) => {
+  const unsent = checkForLostResult(cdp, stop.signal, onScriptFinished, timing).then((isLost) => {
     const error = isLost ? lost() : undefined;
     if (error) throw error;
     return new Promise<never>(() => undefined);
@@ -1031,6 +1033,18 @@ export async function untilAnswerLost<T>(
  */
 const UNSENT_GRACE_MS = 12_000;
 
+/** How long the lost-answer check waits before it asks the page, and after it answered */
+export interface LostCheckTiming {
+  checkMs: number;
+  graceMs: number;
+}
+
+/** The check's usual timing */
+const DEFAULT_LOST_CHECK_TIMING: LostCheckTiming = {
+  checkMs: UNSENT_CHECK_MS,
+  graceMs: UNSENT_GRACE_MS,
+};
+
 /**
  * Ask the page, once a second until stopped, whether it answers (it does
  * only once the script has finished), then give the script's answer
@@ -1039,19 +1053,21 @@ const UNSENT_GRACE_MS = 12_000;
  * @param cdp - CDP connection of the page
  * @param signal - Aborted once the script's answer arrived
  * @param onScriptFinished - Called once the page answered the check
+ * @param timing - Delays of the check
  * @returns True when the answer is still missing after the grace period
  */
 async function checkForLostResult(
   cdp: CDPSender,
   signal: AbortSignal,
-  onScriptFinished?: () => void
+  onScriptFinished?: () => void,
+  timing: LostCheckTiming = DEFAULT_LOST_CHECK_TIMING
 ): Promise<boolean> {
   try {
-    await delay(UNSENT_CHECK_MS, signal);
+    await delay(timing.checkMs, signal);
     if (signal.aborted) return false;
     await cdp.send('Runtime.evaluate', { expression: '1', returnByValue: true });
     onScriptFinished?.();
-    await delay(UNSENT_GRACE_MS, signal);
+    await delay(timing.graceMs, signal);
     return !signal.aborted;
   } catch (error) {
     log.debug(`Result check ended: ${getErrorMessage(error)}`);
