@@ -168,6 +168,11 @@ export interface CdpCallCommand {
    * `bdg cdp`, whose calls stay in the page's world)
    */
   isolated?: boolean;
+  /**
+   * Process id of the bdg CLI that owns the call's object group and releases
+   * it; the daemon releases it when that process exits first (#606)
+   */
+  owner?: number;
   /** Collect these events while the method runs (`bdg cdp --collect`) */
   collect?: CdpCollectParams;
 }

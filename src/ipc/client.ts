@@ -363,7 +363,8 @@ export async function getNetworkHeaders(options?: {
  * @param method - CDP method name (e.g., 'Network.getCookies')
  * @param params - Optional method parameters
  * @param options - `isolated`: a bdg page script, run in bdg's isolated world
- *   (`Runtime.evaluate`, `DOM.resolveNode`); `collect`: events to collect
+ *   (`Runtime.evaluate`, `DOM.resolveNode`), whose object group this process
+ *   owns (the daemon releases it if the process exits first); `collect`: events to collect
  *   while the method runs (the request waits for its timeout)
  * @returns Response with CDP method result
  * @throws Error if connection fails; CommandError (102) when the page was busy and its scripts were terminated, (107) when the page crashed
@@ -388,6 +389,7 @@ export async function callCDP(
       ...(params && { params }),
       ...(options.isolated && { isolated: true }),
       ...(options.isolated &&
+        typeof params?.['objectGroup'] === 'string' && { owner: process.pid }),
       ...(options.collect && { collect: options.collect }),
     },
     options.collect && waitingTimeoutMs(options.collect.timeoutMs)

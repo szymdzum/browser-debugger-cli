@@ -5,6 +5,7 @@ import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPConnectionError, CDPProtocolError } from '@/connection/errors.js';
 import { PatternDetector } from '@/daemon/patternDetector.js';
 import { CdpEventListener, collectEvents } from '@/daemon/session/cdpEvents.js';
+import { ClientObjectGroups } from '@/daemon/session/clientObjectGroups.js';
 import { refreshCurrentTarget } from '@/daemon/session/currentTarget.js';
 import { createInteractionRunner, type TabReports } from '@/daemon/session/interactions.js';
 import { withTriggeredRequestCount } from '@/daemon/session/triggeredRequests.js';
@@ -599,6 +600,8 @@ export function createCommandRegistry(
   let listedFrameIds: string[] | undefined;
   /** Events `bdg cdp --listen` buffers between commands (gone with the session) */
   const eventListener = new CdpEventListener();
+  /** Object groups of bdg CLIs, released when a CLI exits without releasing them (#606) */
+  const clientGroups = new ClientObjectGroups();
   tabs?.onPageSwitch((cdp) => {
     listedFrameIds = undefined;
     eventListener.follow(cdp);
@@ -751,10 +754,13 @@ export function createCommandRegistry(
     },
 
     cdp_call: async (cdp, params, abandoned) => {
-      const call = (): Promise<unknown> => sendCdpCall(cdp, params, store);
-      const { result, collected } = params.collect
-        ? await collectEvents(cdp, call, { ...params.collect, signal: abandoned })
-        : { result: await call(), collected: undefined };
+      const call = (): Promise<unknown> =>
+        sendCdpCall(cdp, params, store).finally(() => clientGroups.settled(cdp, params));
+      const { result, collected } = await (
+        params.collect
+          ? collectEvents(cdp, call, { ...params.collect, signal: abandoned })
+          : call().then((value) => ({ result: value, collected: undefined }))
+      ).finally(() => clientGroups.releaseOrphans());
 
       const detectionResult = params.isolated
         ? { shouldShow: false, pattern: undefined }
