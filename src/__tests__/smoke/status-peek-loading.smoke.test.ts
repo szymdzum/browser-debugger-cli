@@ -106,9 +106,7 @@ void describe('loading state in status and peek (#640)', () => {
     assert.equal(loading.status?.readyState, 'loading');
     assert.equal(loading.peek?.readyState, 'loading');
     assert.ok(loading.status.pending.some((request) => request.url.endsWith('/slow')));
-    assert.ok(loading.status.pending.some((request) => request.url.endsWith('/slow')));
     const status = (await bdg(['status'])).stdout;
-    assert.match(status, /waiting on: GET [^\n]*\/slow/);
     assert.match(status, /waiting on: GET [^\n]*\/slow/);
     const peek = (await bdg(['peek'])).stdout;
     assert.match(status, LOADING_LINE);
