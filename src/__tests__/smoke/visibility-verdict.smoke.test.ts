@@ -73,6 +73,13 @@ const CASES: Case[] = [
     hiddenReason: /^visibility: hidden$/,
     visible: false,
   },
+  ...['op0', 'deep', 'deep-box'].map((id) => ({
+    id,
+    inspect: /\[hidden: visibility: hidden\]/,
+    inViewport: 'hidden',
+    hiddenReason: /^visibility: hidden$/,
+    visible: false,
+  })),
   { id: 'far', inspect: /\[offscreen: below\]/, inViewport: 'below', visible: true },
 ];
 

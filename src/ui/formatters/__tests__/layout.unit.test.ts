@@ -55,7 +55,7 @@ void describe('layoutLine', () => {
     const host = layout({
       inViewport: 'visible',
       bounds: { x: 103, y: 148, width: 0, height: 0 },
-      content: { x: 8, y: 148, width: 95, height: 18 },
+      content: { x: 8, y: 148, width: 95, height: 18, viewport: { x: 8, y: 148 } },
       shownBy: 'span#label',
     });
     assert.equal(

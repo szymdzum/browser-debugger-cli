@@ -409,13 +409,18 @@ const MASKED_BY_JS = `(el, describe) => {
 /**
  * Page-side search for what an element paints through its descendants in the
  * flat tree (shadow root, a slot's assigned nodes or fallback content): the
- * first rendered descendant element with `visibility: visible` and a box with
- * area, or the element holding such text. Content of a descendant (or of the
- * element itself) with no area that clips its overflow is not searched: it
- * paints nothing. A `visibility: hidden` element whose descendant overrides
- * it to `visible` shows that descendant; `opacity` and `clip-path` are judged
- * separately ({@link INVISIBLE_REASON_JS}). Searches at most 500 nodes. Null
- * when nothing shows.
+ * first rendered descendant element with `visibility: visible`, a box with
+ * area and paint of its own (a background, border or shadow, or a replaced
+ * element such as an image), or the element holding such text. An empty box
+ * paints nothing (hidden text keeps its layout space). Content of a
+ * descendant (or of the element itself, or of an ancestor in the flat tree,
+ * containing blocks not considered) with no area that clips its overflow,
+ * or that is fully transparent or cut away ({@link CLIP_PATH_CUTS_ALL_JS},
+ * {@link CLIP_RECT_CUTS_ALL_JS}), is not searched: it paints nothing. A
+ * `visibility: hidden` element whose descendant overrides it to `visible`
+ * shows that descendant; the element's own `opacity` and `clip-path` are
+ * judged separately ({@link INVISIBLE_REASON_JS}). Searches at most 500
+ * nodes. Null when nothing shows.
  */
 export const SHOWING_DESCENDANT_JS = `(el) => {
   const styleOf = (n) => n.ownerDocument.defaultView.getComputedStyle(n);
@@ -423,6 +428,13 @@ export const SHOWING_DESCENDANT_JS = `(el) => {
   const clips = (n, s) => !hasArea(n.getBoundingClientRect()) && (s.overflowX !== 'visible' || s.overflowY !== 'visible');
   const childrenOf = (n) => n.localName === 'slot' && n.getRootNode().host ? n.assignedNodes({ flatten: true }) : Array.from((n.shadowRoot || n).childNodes);
   const rendered = (n) => typeof n.checkVisibility !== 'function' || n.checkVisibility();
+  const clipPathCutsAll = ${CLIP_PATH_CUTS_ALL_JS};
+  const clipRectCutsAll = ${CLIP_RECT_CUTS_ALL_JS};
+  const unseen = (s) => parseFloat(s.opacity) === 0 || clipPathCutsAll(s.clipPath) || clipRectCutsAll(s.position, s.clip);
+  const replaced = /^(img|svg|video|canvas|iframe|embed|object|input|textarea|select|progress|meter)$/;
+  const paintsOwn = (n, s) =>
+    replaced.test(n.localName) || s.backgroundImage !== 'none' || (s.backgroundColor !== 'transparent' && !s.backgroundColor.endsWith(', 0)')) ||
+    s.boxShadow !== 'none' || ['Top', 'Right', 'Bottom', 'Left'].some((side) => parseFloat(s['border' + side + 'Width']) > 0 && !/^(none|hidden)$/.test(s['border' + side + 'Style']));
   const flatParent = ${FLAT_PARENT_JS};
   const textHolder = (t) => {
     if (!t.data.trim()) return null;
@@ -432,7 +444,9 @@ export const SHOWING_DESCENDANT_JS = `(el) => {
     range.selectNodeContents(t);
     return hasArea(range.getBoundingClientRect()) ? holder : null;
   };
-  if (clips(el, styleOf(el))) return null;
+  for (let n = el; n; n = flatParent(n)) {
+    if (n.nodeType === 1 && clips(n, styleOf(n))) return null;
+  }
   const queue = childrenOf(el);
   for (let next = 0; next < queue.length && next < 500; next++) {
     const n = queue[next];
@@ -440,10 +454,10 @@ export const SHOWING_DESCENDANT_JS = `(el) => {
     if (holder) return holder;
     if (n.nodeType !== 1) continue;
     const s = styleOf(n);
-    if (s.display === 'none') continue;
+    if (s.display === 'none' || unseen(s)) continue;
     const boxed = s.display !== 'contents';
     if (boxed && !rendered(n)) continue;
-    if (boxed && s.visibility === 'visible' && hasArea(n.getBoundingClientRect())) return n;
+    if (boxed && s.visibility === 'visible' && hasArea(n.getBoundingClientRect()) && paintsOwn(n, s)) return n;
     if (!boxed || !clips(n, s)) queue.push(...childrenOf(n));
   }
   return null;

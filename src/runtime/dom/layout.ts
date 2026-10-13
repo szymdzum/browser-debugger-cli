@@ -455,7 +455,12 @@ function elementLayout(raw: RawElementLayout, page: PageLayout): ElementLayout {
     raw.geometry.invisible
   );
   const painted =
-    raw.computed.display !== 'contents' && content ? pageBox(content, page.scroll) : null;
+    raw.computed.display !== 'contents' && content
+      ? {
+          ...pageBox(content, page.scroll),
+          viewport: { x: Math.round(content.x), y: Math.round(content.y) },
+        }
+      : null;
   const inView = placement.inViewport === 'visible' || placement.inViewport === 'partly';
   const text = textPreview(raw.text);
   return {

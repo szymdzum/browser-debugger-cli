@@ -137,8 +137,9 @@ const log = createLogger('dom');
  * visible), or, as `dom layout` and `dom inspect` decide, painting through
  * its content ({@link SHOWING_DESCENDANT_JS}): a `display: contents`
  * element or slot, an inline element around block or floated content, a
- * `visibility: hidden` element with a `visibility: visible` descendant. Text is the rendered text (`innerText`) of visible elements and
- * the text nodes of hidden ones (display or visibility; not those of
+ * `visibility: hidden` element with a `visibility: visible` descendant that
+ * paints. Text is the rendered text (`innerText`) of visible elements and the
+ * text nodes of hidden ones (display or visibility; not those of
  * `<script>`, `<style>` or `<noscript>`), so text filters match hidden
  * elements like Playwright's and `:visible` decides visibility; button inputs
  * use their value. Text is read in the flat tree, as `bdg dom query` shows

@@ -7,8 +7,10 @@
  * `visibility: visible` (`#h`), an inline span around a block child, a
  * `display: contents` wrapper, a `height: 0; overflow: hidden` box, an
  * `opacity: 0` element, a `clip-path: inset(100%)` element, a
- * `visibility: hidden` element with no visible descendant and an element far
- * below the viewport.
+ * `visibility: hidden` element with no visible descendant, `visibility:
+ * hidden` elements whose `visibility: visible` descendant paints nothing
+ * (`opacity: 0`; only hidden text inside it, with and without a sized box)
+ * and an element far below the viewport.
  */
 
 import type { FixtureRoutes } from '@/__testutils__/fixtureRoutes.js';
@@ -23,6 +25,9 @@ const VERDICT_HTML = `<!doctype html><meta charset="utf-8"><title>visibility ver
 <div id="transparent" style="opacity:0">Transparent</div>
 <div id="clip-path" style="clip-path:inset(100%)">Clipped away</div>
 <div id="vis-hidden" style="visibility:hidden"><span>Not shown</span></div>
+<div id="op0" style="visibility:hidden"><span style="visibility:visible;opacity:0">op0</span></div>
+<div id="deep" style="visibility:hidden"><span style="visibility:visible"><span style="visibility:hidden">deep</span></span></div>
+<div id="deep-box" style="visibility:hidden"><span style="visibility:visible;display:inline-block;width:80px;padding:4px"><span style="visibility:hidden">deep box</span></span></div>
 <div style="height:3000px"></div>
 <div id="far">Far below</div>
 <script>
