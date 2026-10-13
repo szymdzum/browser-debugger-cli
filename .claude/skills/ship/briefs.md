@@ -63,6 +63,7 @@ Implement issue #<N> in bdg (github.com/szymdzum/browser-debugger-cli). Read the
 - Then fix vertically: one test, then the code that passes it. Never weaken a red assertion in a fix commit; if one was wrong, fix it in a commit of its own and say why in the report.
 - A test that passed on its first run is a regression test: say what it protects against.
 - Deterministic only: wait for an observable event (a log line, a request, a DOM change, a file), never a fixed sleep. List timing-sensitive smoke files in the report (the orchestrator dispatches the repeat run).
+- **Simplify.** Once the tests are green and the product diff is over ~30 lines, run `/simplify` on your own diff as a separate `refactor:` commit and re-run the affected tests; the report names what it changed or says "nothing to simplify".
 - No red commit for docs-only changes, refactors covered by existing tests, or CI/tooling; say which applies.
 - <detection heuristics only, delete otherwise: before the PR, build a false-positive matrix on scratch pages and report the counts: an element that unmounts on press, a label that changes on press, a sibling that slides under the mouse, a page-wide ticker or aria-live region updating on its own, an unrelated toast during the action window; each must stay silent unless the issue says otherwise>
 - <redaction or parsing changes only, delete otherwise: the case matrix, inputs × output surfaces (human, --json, file, log); every cell is a row of the red commit's table test; report the counts>

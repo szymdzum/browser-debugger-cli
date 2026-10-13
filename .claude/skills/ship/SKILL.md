@@ -37,6 +37,7 @@ Files:
 ```
 #<N> <slug>  tier <1|2|3>
 - [ ] Implementer: ship brief implementer N=<N> BRANCH=<type>/<slug> → fill scope → spawn (background)
+- [ ] Product diff over ~30 lines: the report names the `/simplify` commit or says "nothing to simplify"
 - [ ] Report ends with `PR <url> HEAD <sha>`; ship ci-wait <pr> (background, 60-minute timeout)
 - [ ] Reviewer: ship brief reviewer … → findings to the same implementer
 - [ ] Tester (tier 2–3): ship brief tester … → findings routed
