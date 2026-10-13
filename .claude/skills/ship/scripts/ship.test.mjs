@@ -355,3 +355,21 @@ test('writeWithRecheck: a timed-out write that took effect succeeds, otherwise s
     /denied/
   );
 });
+
+test('a waiter timeout that is not a positive number is a usage error, not an instant timeout', async () => {
+  const err = console.error;
+  console.error = () => {};
+  try {
+    for (const bad of ['abc', '0', '-5', '']) {
+      let ran = false;
+      const code = await withWaiterDeadline(bad, async () => {
+        ran = true;
+        return EXIT.ok;
+      });
+      assert.equal(code, EXIT.usage, bad);
+      assert.equal(ran, false);
+    }
+  } finally {
+    console.error = err;
+  }
+});

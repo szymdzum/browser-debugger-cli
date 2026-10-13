@@ -66,7 +66,8 @@ const RETRY_BACKOFF_MS = [2000, 5000, 10_000, 20_000];
 /**
  * Whether a failed gh call looks like a network or GitHub hiccup worth retrying.
  * A call killed by its timeout counts too. Only gh's stderr counts: the error
- * message starts with the command line, whose numbers (a PR 502, `--limit 500`) must not look like an HTTP status.
+ * message starts with the command line, whose numbers (a PR 502, `--limit 500`)
+ * must not look like an HTTP status.
  *
  * @param {{ stderr?: unknown }} err
  */
@@ -238,12 +239,15 @@ async function ciWait(argv) {
 /**
  * Runs a waiter with an overall deadline that caps every gh call and its
  * retries. Any error caught at or past the deadline (a killed call, a 502
- * rethrown after the last retry) ends the wait as `timeout`, exit 4.
+ * rethrown after the last retry) ends the wait as `timeout`, exit 4. A
+ * timeout that is not a positive number is a usage error, exit 2.
  *
  * @param {number | string} minutes
  * @param {() => Promise<number>} wait
  */
 export async function withWaiterDeadline(minutes, wait) {
+  if (!Number.isFinite(Number(minutes)) || Number(minutes) <= 0)
+    return usage('--timeout=<minutes> must be a positive number');
   const deadline = Date.now() + Number(minutes) * 60_000;
   waiterDeadline = deadline;
   try {
