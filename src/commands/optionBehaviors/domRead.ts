@@ -75,7 +75,7 @@ export const DOM_READ_BEHAVIORS: BehaviorTable = {
     whenEnabled:
       'Prints the whole value, byte for byte; objects and arrays are copied with every entry (without --full at most 1000 per list or object)',
     automaticBehavior:
-      'A result over 50 MB of output (UTF-8 bytes of a string, or of the formatted JSON of an object or array; the daemon measures every result, a Map, Set, typed array or page with replaced built-ins included) exits 81 with the size, the cap and a suggestion (return a slice or .length, or drop --full); --json has the error envelope. For objects and arrays the page also stops copying early at a lower-bound count, so a huge value is not built',
+      'A result over 50 MB of output (UTF-8 bytes of a string, or of an object or array measured as the indented JSON the human output prints, also with --json, so compact JSON of 25-50 MB can be refused; the daemon measures every result, a Map, Set, typed array or page with replaced built-ins included) exits 81 with the size, the cap and a suggestion (return a slice or .length, or drop --full); --json has the error envelope. For objects and arrays the page also stops copying early at a lower-bound count, so a huge value is not built',
     tokenImpact:
       'dom eval document.documentElement.outerHTML on Wikipedia is about 3.6 MB with --full; on a page with 20000 elements, [...document.querySelectorAll("*")].map(e => e.outerHTML) --json is 3 MB with --full and 23 KB without; select what you need in the expression instead',
   },

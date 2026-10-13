@@ -2486,10 +2486,14 @@ export function resultNotSentError(timeoutMs: number): ErrorWithSuggestion {
   };
 }
 
+/** How to get a smaller `dom eval --full` result */
+const TOO_LARGE_SUGGESTION =
+  'Return a slice or a summary of the value (.slice(0, 1000), .length), or drop --full to get the first 20000 characters';
+
 /**
  * `dom eval --full` given a result over its size cap.
  *
- * @param size - Size of the result (characters), or counted so far
+ * @param size - Size of the result in bytes, or counted so far; Infinity when it was too large to measure (JSON text past V8's string limit)
  * @param cap - The cap, in the same unit
  * @param exact - Whether `size` is the whole size (a string), not the count when the copy stopped
  * @returns Error naming the size and the cap, and how to get a smaller result
@@ -2501,12 +2505,18 @@ export function evalResultTooLargeError(
 ): ErrorWithSuggestion {
   const mb = (bytes: number): string => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   const limit = mb(cap).replace('.0', '');
+  const shown = mb(size) === mb(cap) ? `${size} bytes` : mb(size);
+  if (!Number.isFinite(size)) {
+    return {
+      message: `The result is too large to measure (over 512 MB), over the ${limit} limit of dom eval --full`,
+      suggestion: TOO_LARGE_SUGGESTION,
+    };
+  }
   return {
     message: exact
-      ? `The result is ${mb(size)}, over the ${limit} limit of dom eval --full`
-      : `The result is over the ${limit} limit of dom eval --full (copying stopped at ${mb(size)})`,
-    suggestion:
-      'Return a slice or a summary of the value (.slice(0, 1000), .length), or drop --full to get the first 20000 characters',
+      ? `The result is ${shown}, over the ${limit} limit of dom eval --full`
+      : `The result is over the ${limit} limit of dom eval --full (copying stopped at ${shown})`,
+    suggestion: TOO_LARGE_SUGGESTION,
   };
 }
 

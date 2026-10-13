@@ -449,10 +449,26 @@ function unwrapGuardedCopy(answer: unknown): { value: unknown } {
  * replaced built-ins, typed arrays).
  *
  * @param value - The result's value
- * @throws CommandError (81) for a result over {@link EVAL_FULL_MAX_BYTES}
+ * @param stringify - Serializer (JSON.stringify; replaceable in tests)
+ * @throws CommandError (81) for a result over {@link EVAL_FULL_MAX_BYTES}, or too large to serialize (RangeError)
  */
-function assertWithinFullCap(value: unknown): void {
-  const text = typeof value === 'string' ? value : (JSON.stringify(value, null, 2) ?? '');
+export function assertWithinFullCap(
+  value: unknown,
+  stringify: typeof JSON.stringify = JSON.stringify
+): void {
+  if (typeof value === 'string') {
+    const bytes = Buffer.byteLength(value);
+    if (bytes > EVAL_FULL_MAX_BYTES) throw evalResultTooLarge(bytes, true);
+    return;
+  }
+  let text: string;
+  try {
+    text = stringify(value, null, 2) ?? '';
+  } catch (error) {
+    if (!(error instanceof RangeError)) throw error;
+    log.debug(`Result too large to serialize: ${getErrorMessage(error)}`);
+    throw evalResultTooLarge(Infinity, true);
+  }
   const bytes = Buffer.byteLength(text);
   if (bytes > EVAL_FULL_MAX_BYTES) throw evalResultTooLarge(bytes, true);
 }
