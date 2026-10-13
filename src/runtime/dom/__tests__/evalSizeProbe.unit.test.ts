@@ -71,7 +71,9 @@ void describe('evaluateScript with a result Chrome cannot send', () => {
     const outcome = evaluateScript(pageThatCannotSend(script), script).catch(
       (error: unknown) => error
     );
-    await clock.tickAndFlush(5_000);
+    await clock.tickAndFlush(1_000);
+    await clock.tickAndFlush(4_000);
+    await new Promise((resolve) => setImmediate(resolve));
     const error = await Promise.race([outcome, Promise.resolve('still waiting')]);
     assert.ok(error instanceof CommandError, `got ${String(error)}`);
     assert.equal(error.exitCode, 102);
@@ -83,7 +85,9 @@ void describe('evaluateScript with a result Chrome cannot send', () => {
     const outcome = evaluateScript(pageThatCannotSend(script), script, { full: true }).catch(
       (error: unknown) => error
     );
-    await clock.tickAndFlush(5_000);
+    await clock.tickAndFlush(1_000);
+    await clock.tickAndFlush(4_000);
+    await new Promise((resolve) => setImmediate(resolve));
     const error = await Promise.race([outcome, Promise.resolve('still waiting')]);
     assert.ok(error instanceof CommandError, `got ${String(error)}`);
     assert.equal(error.exitCode, 81);

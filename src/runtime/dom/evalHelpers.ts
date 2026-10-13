@@ -1,10 +1,12 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPProtocolError } from '@/connection/errors.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
-import { EVAL_FULL_MAX_BYTES } from '@/constants.js';
+import { EVAL_FULL_MAX_BYTES, EVAL_TRANSFER_MAX_BYTES } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
 import {
+  evalResultNotSendableError,
   evalResultTooLargeError,
+  evalResultUnsentFullError,
   navigationPendingError,
   pageBusyError,
   pageClosedDuringEvalError,
@@ -21,7 +23,7 @@ import { senderFor, type CDPSender } from '@/telemetry/objectExpander.js';
 import { formatRemoteObject } from '@/telemetry/remoteObject.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { evalCopiedByBrowserWarning, evalPreviewWarning } from '@/ui/messages/commands.js';
-import { raceTimeout } from '@/utils/async.js';
+import { delay, raceTimeout } from '@/utils/async.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -368,13 +370,53 @@ const COPY_BUILTINS = [
 
 /**
  * Page-side size probe for a result the browser would copy by value (the page
- * replaced built-ins): adds up string lengths and keys the way
- * {@link jsonSafeCopyFunction} does, without any built-in of the page.
+ * replaced built-ins). Adds up string lengths and keys the way
+ * {@link jsonSafeCopyFunction} does and stops once the sum passes the cap
+ * (argument), returning `{ tooLarge: sum so far }`, else `{}`. It uses no
+ * built-in of the page, only the language (`for...in`, property reads), so a
+ * replaced `Object.keys` or `Set` cannot mislead it; cycles are skipped by
+ * looking through the objects being walked, and a value it cannot walk
+ * (DOM nodes, windows, too many objects) counts as small, as the copy
+ * describes those rather than walking them.
  *
  * @returns Function declaration for Runtime.callFunctionOn (argument: the cap)
  */
 export function sizeProbeFunction(): string {
-  throw new Error('not implemented');
+  return `function (cap) {
+  const STOP = {};
+  const MAX_OBJECTS = 5000000;
+  const MAX_DEPTH = ${FULL_COPY_LIMITS.maxDepth};
+  const walking = [];
+  let size = 0;
+  let objects = 0;
+  const walk = (value, depth) => {
+    if (typeof value === 'string') size += value.length + 2;
+    else if (value === null || typeof value !== 'object') size += 8;
+    else if (depth <= MAX_DEPTH && !(typeof value.nodeType === 'number' && typeof value.nodeName === 'string') && value.window !== value) {
+      for (let i = 0; i < walking.length; i++) if (walking[i] === value) return;
+      if (++objects > MAX_OBJECTS) throw STOP;
+      size += 2;
+      walking[walking.length] = value;
+      try {
+        for (const key in value) {
+          size += key.length + 4;
+          let child;
+          try { child = value[key]; } catch (e) { continue; }
+          walk(child, depth + 1);
+        }
+      } finally {
+        walking.length = walking.length - 1;
+      }
+    }
+    if (size > cap) throw STOP;
+  };
+  try {
+    walk(this, 0);
+  } catch (e) {
+    if (e === STOP && size > cap) return { tooLarge: size };
+  }
+  return {};
+}`;
 }
 
 /** Returns the object it is called on (for the browser to copy it by value) */
@@ -425,14 +467,16 @@ async function toEvalResult(
     return { value: formatRemoteObject(remote), ...kind };
   }
   const replaced = await findReplacedBuiltins(cdp, COPY_BUILTINS, remote.objectId);
-  const guarded = full && replaced.length === 0;
+  const cap = full ? EVAL_FULL_MAX_BYTES : EVAL_TRANSFER_MAX_BYTES;
+  const pageCopy = replaced.length === 0;
+  if (!pageCopy) await assertProbedWithinCap(cdp, remote.objectId, cap, full);
   const copy = await copyByValue(
     cdp,
     remote.objectId,
-    replaced.length === 0 ? jsonSafeCopyFunction(full) : SELF_FUNCTION,
-    guarded ? [{ value: EVAL_FULL_MAX_BYTES }] : undefined
+    pageCopy ? jsonSafeCopyFunction(full) : SELF_FUNCTION,
+    pageCopy ? [{ value: cap }] : undefined
   );
-  const settledCopy = guarded && copy ? unwrapGuardedCopy(copy.value) : copy;
+  const settledCopy = pageCopy && copy ? unwrapGuardedCopy(copy.value, full) : copy;
   const value = settledCopy ? settledCopy.value : formatRemoteObject(remote);
   const copied = { value, ...kind, ...arrayLength(remote) };
   if (replaced.length === 0) return copied;
@@ -445,13 +489,52 @@ async function toEvalResult(
  * `{ tooLarge }` when the page stopped at the cap.
  *
  * @param answer - What {@link jsonSafeCopyFunction} returned
+ * @param full - Whether the cap is the `--full` one
  * @returns The copied value
  * @throws CommandError (81) when the page stopped copying at the cap
  */
-function unwrapGuardedCopy(answer: unknown): { value: unknown } {
+function unwrapGuardedCopy(answer: unknown, full: boolean): { value: unknown } {
   const { copy, tooLarge } = answer as { copy?: unknown; tooLarge?: number };
-  if (tooLarge !== undefined) throw evalResultTooLarge(tooLarge, false);
+  if (tooLarge !== undefined) throw resultOverCap(tooLarge, full);
   return { value: copy };
+}
+
+/**
+ * Measure a result on the page before the browser copies it by value (the
+ * page replaced built-ins, so {@link jsonSafeCopyFunction} cannot run).
+ *
+ * @param cdp - CDP connection
+ * @param objectId - The result
+ * @param cap - Size cap in bytes
+ * @param full - Whether the cap is the `--full` one
+ * @throws CommandError (81) when the result is over the cap
+ */
+async function assertProbedWithinCap(
+  cdp: CDPSender,
+  objectId: string,
+  cap: number,
+  full: boolean
+): Promise<void> {
+  const probed = await copyByValue(cdp, objectId, sizeProbeFunction(), [{ value: cap }]);
+  const { tooLarge } = (probed?.value ?? {}) as { tooLarge?: number };
+  if (tooLarge !== undefined) throw resultOverCap(tooLarge, full);
+}
+
+/**
+ * The refusal for a result the page counted past its cap.
+ *
+ * @param counted - Size counted so far
+ * @param full - Whether the cap is the `--full` one
+ * @returns Command error (81)
+ */
+function resultOverCap(counted: number, full: boolean): CommandError {
+  if (full) return evalResultTooLarge(counted, false);
+  const err = evalResultNotSendableError(counted, EVAL_TRANSFER_MAX_BYTES);
+  return new CommandError(
+    err.message,
+    { suggestion: err.suggestion },
+    EXIT_CODES.INVALID_ARGUMENTS
+  );
 }
 
 /**
@@ -744,25 +827,91 @@ function mentionsAwait(script: string): boolean {
  * @param cdp - CDP connection of the target
  * @param scope - Whether the script ran in the page or an iframe
  * @param script - The script
- * @returns The error to report (102)
+ * @param full - `--full`: a result Chrome could not send is over its cap
+ * @returns The error to report (102, or 81 for an unsent `--full` result)
  */
 async function evaluationTimeoutError(
   cdp: CDPSender,
   scope: BusyScope,
-  script: string
+  script: string,
+  full: boolean
 ): Promise<CommandError> {
   if (!(await isAnswering(cdp, LIVENESS_CHECK_MS))) return terminatePageScripts(cdp, scope);
-  return mentionsAwait(script) ? promiseTimeout(true) : resultUnsent();
+  return mentionsAwait(script) ? promiseTimeout(true) : resultUnsent(full);
 }
 
 /**
  * The page ran the script but Chrome never sent its result.
  *
- * @returns Command error (102)
+ * @param full - `--full`: the result is known to be over its cap
+ * @returns Command error: 81 with `--full`, else 102
  */
-function resultUnsent(): CommandError {
-  const err = resultNotSentError(EVAL_TIMEOUT_MS);
+function resultUnsent(full = false): CommandError {
+  if (full) {
+    const err = evalResultUnsentFullError(EVAL_FULL_MAX_BYTES);
+    return new CommandError(
+      err.message,
+      { suggestion: err.suggestion },
+      EXIT_CODES.INVALID_ARGUMENTS
+    );
+  }
+  const err = resultNotSentError();
   return new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.CDP_TIMEOUT);
+}
+
+/** How long a script without `await` may have no answer before the page is asked whether its result got lost */
+const UNSENT_CHECK_MS = 1_000;
+
+/**
+ * Wait for a script's answer, or fail early when it was lost. A script
+ * without `await` runs to the end before the page handles another command,
+ * and answers go out in order: a trivial evaluation answered while the
+ * script's answer has not arrived means Chrome could not send it (about
+ * 256 MiB and more), so there is no point in waiting out the time limit.
+ *
+ * @param cdp - CDP connection of the page
+ * @param pending - The script's evaluation
+ * @param script - The script (one with `await` may still be waiting)
+ * @param full - `--full`: a lost result is over its cap
+ * @returns The answer
+ * @throws CommandError (102, or 81 with `--full`) when the answer was lost
+ */
+async function untilResultLost<T>(
+  cdp: CDPSender,
+  pending: Promise<T>,
+  script: string,
+  full: boolean
+): Promise<T> {
+  if (mentionsAwait(script)) return pending;
+  const stop = new AbortController();
+  const answered = pending.finally(() => stop.abort());
+  const lost = checkForLostResult(cdp, stop.signal).then((isLost) => {
+    if (isLost) throw resultUnsent(full);
+    return new Promise<never>(() => undefined);
+  });
+  answered.catch(() => undefined);
+  lost.catch(() => undefined);
+  return Promise.race([answered, lost]);
+}
+
+/**
+ * Ask the page, once a second until stopped, whether it answers while the
+ * script's answer is still missing.
+ *
+ * @param cdp - CDP connection of the page
+ * @param signal - Aborted once the script's answer arrived
+ * @returns True when the page answered although the script's answer is missing
+ */
+async function checkForLostResult(cdp: CDPSender, signal: AbortSignal): Promise<boolean> {
+  try {
+    await delay(UNSENT_CHECK_MS, signal);
+    if (signal.aborted) return false;
+    await cdp.send('Runtime.evaluate', { expression: '1', returnByValue: true });
+    return !signal.aborted;
+  } catch (error) {
+    log.debug(`Result check ended: ${getErrorMessage(error)}`);
+    return false;
+  }
 }
 
 /**
@@ -870,9 +1019,14 @@ export async function evaluateScript(
   const objectGroup = `bdg-eval-${++evaluations}`;
   try {
     const response = await withDeadline(
-      executeScript(session, script, evaluateOptions(target, objectGroup)),
+      untilResultLost(
+        session,
+        executeScript(session, script, evaluateOptions(target, objectGroup)),
+        script,
+        target.full ?? false
+      ),
       EVAL_TIMEOUT_MS + TERMINATION_GRACE_MS,
-      () => evaluationTimeoutError(target.recovery ?? session, scope, script)
+      () => evaluationTimeoutError(target.recovery ?? session, scope, script, target.full ?? false)
     );
     const settled = await withDeadline(
       settlePromise(session, response.result, script),

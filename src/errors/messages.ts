@@ -2473,20 +2473,20 @@ export function promiseTimeoutError(
 }
 
 /**
- * A `dom eval` result Chrome never sent (about 256 MiB and more).
+ * A `dom eval` result Chrome could not send (about 256 MiB and more).
  *
- * @param timeoutMs - Time waited
  * @returns Error naming the likely cause and how to get a smaller result
  */
-export function resultNotSentError(timeoutMs: number): ErrorWithSuggestion {
+export function resultNotSentError(): ErrorWithSuggestion {
   return {
-    message: `The script ran, but its result did not arrive within ${Math.round(timeoutMs / 1000)}s: it is probably too large to send`,
+    message:
+      'The script ran, but Chrome could not send its result: it is probably too large to send',
     suggestion:
       'Return a slice or the .length instead, or write the data to a file from the page and read that',
   };
 }
 
-/** How to get a smaller `dom eval --full` result */
+/** How to get a smaller `dom eval` result */
 const TOO_LARGE_SUGGESTION =
   'Return a slice or a summary of the value (.slice(0, 1000), .length), or drop --full to get the first 20000 characters';
 
@@ -2517,6 +2517,35 @@ export function evalResultTooLargeError(
       ? `The result is ${shown}, over the ${limit} limit of dom eval --full`
       : `The result is over the ${limit} limit of dom eval --full (copying stopped at ${shown})`,
     suggestion: TOO_LARGE_SUGGESTION,
+  };
+}
+
+/**
+ * `dom eval --full` whose result Chrome could not send, so it is over the cap.
+ *
+ * @param cap - The cap, in bytes
+ * @returns Error naming the cap and how to get a smaller result
+ */
+export function evalResultUnsentFullError(cap: number): ErrorWithSuggestion {
+  const limit = `${Math.round(cap / (1024 * 1024))} MB`;
+  return {
+    message: `The result is over the ${limit} limit of dom eval --full (Chrome could not send it)`,
+    suggestion: TOO_LARGE_SUGGESTION,
+  };
+}
+
+/**
+ * `dom eval` (without `--full`) given a result Chrome cannot send.
+ *
+ * @param counted - Size counted on the page when it stopped, in bytes
+ * @param cap - The most Chrome sends, in bytes
+ * @returns Error naming the limit and how to get a smaller result
+ */
+export function evalResultNotSendableError(counted: number, cap: number): ErrorWithSuggestion {
+  const mb = (bytes: number): string => `${Math.round(bytes / (1024 * 1024))} MB`;
+  return {
+    message: `The result is too large to send: over ${mb(cap)} (counted ${mb(counted)} when it stopped)`,
+    suggestion: 'Return a slice or a summary of the value (.slice(0, 1000), .length)',
   };
 }
 

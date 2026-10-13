@@ -291,6 +291,13 @@ export const MAX_JSONL_BUFFER_SIZE = 256 * 1024 * 1024;
 export const EVAL_FULL_MAX_BYTES = 50 * 1024 * 1024;
 
 /**
+ * Largest `bdg dom eval` result Chrome is asked to send: 256 MiB. Chrome never
+ * answers a command whose answer is larger, so an object counted past it (by
+ * string lengths) is refused (exit 81) instead of waiting for a timeout.
+ */
+export const EVAL_TRANSFER_MAX_BYTES = 256 * 1024 * 1024;
+
+/**
  * Longest delay Node's `setTimeout` takes (about 24.8 days): a longer one,
  * or one that is not a number, fires after 1 ms. Every timer whose delay
  * comes from user input is capped with it.
