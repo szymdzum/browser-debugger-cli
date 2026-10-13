@@ -605,6 +605,7 @@ export function createCommandRegistry(
   tabs?.onPageSwitch((cdp) => {
     listedFrameIds = undefined;
     eventListener.follow(cdp);
+    clientGroups.clear();
   });
   const tabControl = (): TabControl => {
     if (!tabs) throw new Error('This session does not track tabs');
@@ -760,7 +761,7 @@ export function createCommandRegistry(
         params.collect
           ? collectEvents(cdp, call, { ...params.collect, signal: abandoned })
           : call().then((value) => ({ result: value, collected: undefined }))
-      ).finally(() => clientGroups.releaseOrphans());
+      ).finally(() => void clientGroups.releaseOrphans());
 
       const detectionResult = params.isolated
         ? { shouldShow: false, pattern: undefined }
@@ -992,7 +993,7 @@ export function createCommandRegistry(
           navigatePage(cdp, params.action, {
             ...filterDefined({ url: params.url, wait: params.wait }),
             pendingRequests: () => store.pendingNetworkRequests.values(),
-          }),
+          }).finally(() => clientGroups.clear()),
         { reportRequests: false, reportEffects: false }
       ),
 

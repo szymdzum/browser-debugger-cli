@@ -88,4 +88,40 @@ void describe('ClientObjectGroups', () => {
     assert.deepEqual(first.released, ['bdg-a11y-secret-10-1']);
     assert.deepEqual(second.released, ['bdg-node-10-2']);
   });
+
+  void it('ignores an owner that is not a process id, and tracks nothing for it', async () => {
+    const checked: unknown[] = [];
+    const groups = new ClientObjectGroups((pid) => {
+      checked.push(pid);
+      return false;
+    });
+    const { page, released } = fakePage();
+    for (const owner of [0, -1, 1.5, Number.NaN, '10', null]) {
+      groups.settled(page, {
+        method: 'DOM.resolveNode',
+        params: { objectGroup: `g-${String(owner)}` },
+        owner,
+      });
+    }
+    assert.deepEqual(await groups.releaseOrphans(), []);
+    assert.deepEqual(checked, []);
+    assert.deepEqual(released, []);
+  });
+
+  void it('forgets every group when the page is gone', async () => {
+    const groups = new ClientObjectGroups(() => false);
+    const { page, released } = fakePage();
+    groups.settled(page, creating('bdg-query-10-1', 10));
+    groups.clear();
+    assert.deepEqual(await groups.releaseOrphans(), []);
+    assert.deepEqual(released, []);
+  });
+
+  void it('never releases a group twice when sweeps overlap', async () => {
+    const groups = new ClientObjectGroups(() => false);
+    const { page, released } = fakePage();
+    groups.settled(page, creating('bdg-query-10-1', 10));
+    await Promise.all([groups.releaseOrphans(), groups.releaseOrphans()]);
+    assert.deepEqual(released, ['bdg-query-10-1']);
+  });
 });

@@ -1,15 +1,18 @@
 /**
  * A CLI killed mid-call leaves no object group in the page (#606).
  *
- * `bdg dom query "*"` on a page with many elements is killed (SIGKILL, no
- * clean disconnect) while it holds its selection: once its `--debug` output
- * shows the fourth CDP call sent, the first one reading the selection, which
- * the query created with the third (a few hundred milliseconds on `/many`,
- * the CLI cannot release the selection before that call returns). The daemon cannot tell a killed CLI from a slow one while
- * nothing happens, so the test then runs another command, after which the
- * daemon's log must name the killed CLI's group as released. The log line is
- * the check, not the page's heap size: the release is deterministic, a heap
- * measurement after GC is not.
+ * `bdg dom query "*"` runs on `/many`, a page with many elements, and is
+ * killed with SIGKILL (no clean disconnect) while it holds its selection.
+ * The kill is sent when its `--debug` output shows the fourth CDP call sent:
+ * the third created the selection and the fourth reads it, which takes a few
+ * hundred milliseconds there, and the CLI only releases the selection after
+ * that call returns.
+ *
+ * The daemon notices an exited CLI at the next CDP call of any command, so
+ * the test runs another command and then waits for the daemon's log to name
+ * the killed CLI's group as released. The log line is the check rather than
+ * the page's heap size: the release is deterministic, a heap measurement
+ * after garbage collection is not.
  */
 
 import * as assert from 'node:assert/strict';
@@ -28,6 +31,9 @@ import { getSessionDir } from '@/session/paths.js';
 
 /** Long enough for a query of every element of `/many` */
 const COMMAND_TIMEOUT_MS = 60000;
+
+/** Longest wait for the daemon's release, which runs beside the next command */
+const RELEASE_WAIT_MS = 10000;
 
 /** The CLI's `--debug` line for each CDP call it sends */
 const CDP_CALL_SENT = /cdp_call request sent/g;
@@ -88,10 +94,11 @@ void describe('Object groups of a killed CLI (#606)', () => {
     assert.equal(query.exitCode, 137, query.stderr);
 
     await bdg(['dom', 'query', 'title']);
-    assert.match(
-      daemonLog(),
-      /Released object group bdg-query-\d+-\d+ of exited bdg process \d+/,
-      'the killed query left its object group in the page'
-    );
+    const released = /Released object group bdg-query-\d+-\d+ of exited bdg process \d+/;
+    const deadline = Date.now() + RELEASE_WAIT_MS;
+    while (!released.test(daemonLog()) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.match(daemonLog(), released, 'the killed query left its object group in the page');
   });
 });
