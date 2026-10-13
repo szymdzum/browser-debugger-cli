@@ -822,7 +822,9 @@ const ABANDONED_CHECK_MS = 500;
  * evaluation is still pending, once every evaluation sent before it has
  * settled (a script queued behind another client's must not stop that
  * one), and only when the target does not answer (a script awaiting a
- * promise, or whose result is on its way, leaves it idle).
+ * promise, or whose result is on its way, leaves it idle). A client gone
+ * before the evaluation was sent (e.g. while a `--frame` connection was
+ * set up) gets its script stopped the same way.
  *
  * @param cdp - Where to check and stop the target
  * @param scope - Whether the script runs in the page or an iframe
@@ -846,8 +848,10 @@ function stopWhenAbandoned(
     pendingEvaluations.delete(evaluation);
     abandoned?.removeEventListener('abort', stop);
   };
-  abandoned?.addEventListener('abort', stop, { once: true });
+  log.debug(`dom eval sent (${pendingEvaluations.size} pending)`);
   evaluation.then(done, done);
+  if (abandoned?.aborted) stop();
+  else abandoned?.addEventListener('abort', stop, { once: true });
 }
 
 /**

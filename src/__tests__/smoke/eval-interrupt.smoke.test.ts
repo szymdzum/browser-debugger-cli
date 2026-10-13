@@ -1,17 +1,24 @@
 /**
  * An interrupted `bdg dom eval` stops its script on the page (#713).
  *
- * When the CLI that sent an eval exits (Ctrl-C) while the script still
- * runs, the daemon terminates the script instead of letting it run to its
- * 20 s limit: the next eval answers at once, and an eval another CLI sent
- * meanwhile (queued behind the busy script) answers too, never 102 or 130.
+ * When the CLI that sent an eval exits (Ctrl-C, SIGTERM) while the script
+ * still runs, the daemon terminates the script instead of letting it run to
+ * its 20 s limit: the next eval answers at once. An eval another CLI sent
+ * meanwhile (queued behind the busy script) answers too, never 102 or 130,
+ * and interrupting an eval queued behind another client's running script
+ * leaves that script alone.
  *
- * The signal is sent once the script has told the fixture server it is
- * looping (a synchronous `/beacon?…` request before the loop); the times
- * are measured, and the commands are awaited, not slept for.
+ * Signals are sent once the command is known to be where the test needs
+ * it: a looping script has told the fixture server it started (a
+ * synchronous `/beacon?…` request before the loop), and a queued eval has
+ * been sent to Chrome (the daemon's `dom eval sent` debug line in
+ * `daemon.log`, the session runs with `BDG_DEBUG=1`). Times are measured,
+ * and commands are awaited, not slept for.
  */
 
 import * as assert from 'node:assert/strict';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
 import { runCommand, type CommandResult } from '@/__testutils__/commandRunner.js';
@@ -21,9 +28,13 @@ import {
   startFixtureServer,
   type FixtureServer,
 } from '@/__testutils__/fixtureServer.js';
+import { ensureTestSessionDir } from '@/__testutils__/testHome.js';
 
-/** How long the interrupted script would keep the page busy */
+/** How long an interrupted script would keep the page busy */
 const LOOP_MS = 20_000;
+
+/** How long a script that is left to finish keeps the page busy */
+const SHORT_LOOP_MS = 3_000;
 
 /** Upper bound for every command: well past the loop and the eval's own limit */
 const COMMAND_TIMEOUT_MS = 60_000;
@@ -31,14 +42,18 @@ const COMMAND_TIMEOUT_MS = 60_000;
 /** How fast the page must answer again once the eval was interrupted */
 const ANSWER_WITHIN_MS = 3_000;
 
+/** The daemon's debug line for an eval sent to Chrome */
+const EVAL_SENT_LINE = 'dom eval sent';
+
 /**
  * A script that tells the fixture server it started, then busy-waits.
  *
  * @param tag - Beacon query string
+ * @param ms - How long it loops
  * @returns Script source
  */
-function loopScript(tag: string): string {
-  return `(() => { const r = new XMLHttpRequest(); r.open('GET', '/beacon?${tag}', false); r.send(); const end = Date.now() + ${LOOP_MS}; while (Date.now() < end); return 'finished'; })()`;
+function loopScript(tag: string, ms = LOOP_MS): string {
+  return `(() => { const r = new XMLHttpRequest(); r.open('GET', '/beacon?${tag}', false); r.send(); const end = Date.now() + ${ms}; while (Date.now() < end); return 'finished'; })()`;
 }
 
 /**
@@ -61,6 +76,29 @@ function shown(result: CommandResult): string {
   return `exit ${result.exitCode}\nstdout: ${result.stdout}\nstderr: ${result.stderr}`;
 }
 
+/**
+ * How many evals the daemon has sent to Chrome so far.
+ *
+ * @returns Count of its debug lines in `daemon.log`
+ */
+function evalsSent(): number {
+  const log = path.join(ensureTestSessionDir(), 'daemon.log');
+  return fs.existsSync(log) ? fs.readFileSync(log, 'utf8').split(EVAL_SENT_LINE).length - 1 : 0;
+}
+
+/**
+ * Wait until the daemon has sent `count` evals to Chrome.
+ *
+ * @param count - Expected total
+ */
+async function untilEvalsSent(count: number): Promise<void> {
+  const deadline = Date.now() + COMMAND_TIMEOUT_MS;
+  while (evalsSent() < count && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  assert.ok(evalsSent() >= count, `the daemon sent ${evalsSent()} evals, expected ${count}`);
+}
+
 void describe('Interrupted dom eval', () => {
   let fixture: FixtureServer;
 
@@ -71,7 +109,7 @@ void describe('Interrupted dom eval', () => {
     const started = await runCommand(
       `${fixture.url}eval-frames`,
       ['--port', String(port), '--headless'],
-      { timeout: COMMAND_TIMEOUT_MS }
+      { timeout: COMMAND_TIMEOUT_MS, env: { BDG_DEBUG: '1' } }
     );
     assert.equal(started.exitCode, 0, started.stderr);
   });
@@ -99,18 +137,37 @@ void describe('Interrupted dom eval', () => {
   }
 
   /**
-   * Start a looping eval; it is interrupted when `stop` aborts.
+   * Run `dom eval --json`; it is interrupted when `stop` aborts.
    *
-   * @param tag - Beacon query string
-   * @param stop - Aborted to send SIGINT
-   * @param frame - `--frame` value, if any
+   * @param script - Script
+   * @param stop - Aborted to send `signal`
+   * @param options - `--frame` value and the signal (default SIGINT)
    * @returns The eval's result
    */
-  function startLoop(tag: string, stop: AbortSignal, frame?: string): Promise<CommandResult> {
-    return runCommand('dom', ['eval', loopScript(tag), ...frameArgs(frame), '--json'], {
+  function startEval(
+    script: string,
+    stop?: AbortSignal,
+    options: { frame?: string; signal?: NodeJS.Signals } = {}
+  ): Promise<CommandResult> {
+    return runCommand('dom', ['eval', script, ...frameArgs(options.frame), '--json'], {
       timeout: COMMAND_TIMEOUT_MS,
-      interrupt: stop,
+      ...(stop && { interrupt: stop }),
+      ...(options.signal && { interruptWith: options.signal }),
     });
+  }
+
+  /**
+   * Start `dom eval 1+1` and wait until the daemon has sent it to Chrome,
+   * where it waits behind the running script.
+   *
+   * @param stop - Aborted to send SIGINT
+   * @returns The eval's pending result (wrapped: an async function would wait for it)
+   */
+  async function queueEval(stop?: AbortSignal): Promise<{ done: Promise<CommandResult> }> {
+    const sentBefore = evalsSent();
+    const done = startEval('1+1', stop);
+    await untilEvalsSent(sentBefore + 1);
+    return { done };
   }
 
   /**
@@ -128,30 +185,11 @@ void describe('Interrupted dom eval', () => {
   }
 
   /**
-   * Start a looping eval and interrupt it once its script runs.
+   * Check that `dom eval 1+1` answers at once.
    *
-   * @param tag - Beacon query string
-   * @param frame - `--frame` value, if any
-   * @returns The interrupted eval's result (exit 130 asserted)
-   */
-  async function interruptLoop(tag: string, frame?: string): Promise<CommandResult> {
-    const stop = new AbortController();
-    const loop = startLoop(tag, stop.signal, frame);
-    await untilBeacon(tag);
-    stop.abort();
-    const interrupted = await loop;
-    assert.equal(interrupted.exitCode, 130, shown(interrupted));
-    return interrupted;
-  }
-
-  /**
-   * Interrupt a looping eval, then check the next eval answers at once.
-   *
-   * @param tag - Beacon query string
    * @param frame - `--frame` value, if any
    */
-  async function interruptThenEval(tag: string, frame?: string): Promise<void> {
-    await interruptLoop(tag, frame);
+  async function assertAnswersAtOnce(frame?: string): Promise<void> {
     const next = await timedEval(frame);
     assert.equal(next.result.exitCode, 0, shown(next.result));
     assert.equal(next.result.stdout.trim(), '2', shown(next.result));
@@ -161,49 +199,99 @@ void describe('Interrupted dom eval', () => {
     );
   }
 
+  /**
+   * Start a looping eval and interrupt it once its script runs.
+   *
+   * @param tag - Beacon query string
+   * @param options - `--frame` value and the signal (default SIGINT)
+   * @returns The interrupted eval's result (exit 130, 143 for SIGTERM, asserted)
+   */
+  async function interruptLoop(
+    tag: string,
+    options: { frame?: string; signal?: NodeJS.Signals } = {}
+  ): Promise<CommandResult> {
+    const stop = new AbortController();
+    const loop = startEval(loopScript(tag), stop.signal, options);
+    await untilBeacon(tag);
+    stop.abort();
+    const interrupted = await loop;
+    assert.equal(
+      interrupted.exitCode,
+      options.signal === 'SIGTERM' ? 143 : 130,
+      shown(interrupted)
+    );
+    return interrupted;
+  }
+
   void it('stops the script so the next eval answers at once', async () => {
-    await interruptThenEval('page-loop');
+    await interruptLoop('page-loop');
+    await assertAnswersAtOnce();
   });
 
-  void it('says the script was stopped on the page', async () => {
+  void it('says the script was stopped on the page if it was still running', async () => {
     const result = await interruptLoop('message-loop');
     const envelope = JSON.parse(result.stdout.trim()) as { suggestion?: string };
-    assert.match(envelope.suggestion ?? '', /stopped on the page/, shown(result));
+    assert.match(envelope.suggestion ?? '', /stopped on the page if it was still running/);
     assert.match(envelope.suggestion ?? '', /bdg peek/, shown(result));
+  });
+
+  void it('stops the script on SIGTERM (143)', async () => {
+    await interruptLoop('term-loop', { signal: 'SIGTERM' });
+    await assertAnswersAtOnce();
   });
 
   void it('lets an eval sent meanwhile by another client answer', async () => {
     const stop = new AbortController();
-    const loop = startLoop('parallel-loop', stop.signal);
+    const loop = startEval(loopScript('parallel-loop'), stop.signal);
     await untilBeacon('parallel-loop');
-    let connected: () => void = () => undefined;
-    const sent = new Promise<void>((resolve) => (connected = resolve));
-    const other = runCommand('dom', ['eval', '1+1', '--debug'], {
-      timeout: COMMAND_TIMEOUT_MS,
-      onStderr: (stderr) => {
-        if (stderr.includes('Connected to daemon')) connected();
-      },
-    });
-    await sent;
+    const other = (await queueEval()).done;
     const interruptedAt = Date.now();
     stop.abort();
     const [interrupted, answered] = await Promise.all([loop, other]);
     const answeredAfter = Date.now() - interruptedAt;
     assert.equal(interrupted.exitCode, 130, shown(interrupted));
     assert.equal(answered.exitCode, 0, shown(answered));
-    assert.equal(answered.stdout.trim(), '2', shown(answered));
+    assert.match(answered.stdout, /"result":2/, shown(answered));
     assert.ok(
       answeredAfter < ANSWER_WITHIN_MS,
       `the other eval answered ${answeredAfter} ms after the interrupt (limit ${ANSWER_WITHIN_MS} ms)`
     );
   });
 
+  void it("leaves another client's running script alone when an eval queued behind it is interrupted", async () => {
+    const running = startEval(loopScript('survivor-loop', SHORT_LOOP_MS));
+    await untilBeacon('survivor-loop');
+    const stop = new AbortController();
+    const queued = (await queueEval(stop.signal)).done;
+    stop.abort();
+    const interrupted = await queued;
+    assert.equal(interrupted.exitCode, 130, shown(interrupted));
+    const survivor = await running;
+    assert.equal(survivor.exitCode, 0, shown(survivor));
+    assert.match(survivor.stdout, /"result":"finished"/, shown(survivor));
+  });
+
+  void it('answers at once after two interrupts in a row', async () => {
+    const stopLoop = new AbortController();
+    const loop = startEval(loopScript('double-loop'), stopLoop.signal);
+    await untilBeacon('double-loop');
+    const stopQueued = new AbortController();
+    const queued = (await queueEval(stopQueued.signal)).done;
+    stopQueued.abort();
+    stopLoop.abort();
+    const results = await Promise.all([loop, queued]);
+    for (const result of results) assert.equal(result.exitCode, 130, shown(result));
+    await assertAnswersAtOnce();
+  });
+
   void it('stops a script in a same-origin iframe (--frame)', async () => {
-    await interruptThenEval('same-frame-loop', 'same');
+    await interruptLoop('same-frame-loop', { frame: 'same' });
+    await assertAnswersAtOnce('same');
   });
 
   void it('stops a script in an out-of-process iframe (--frame)', async () => {
-    await interruptThenEval('cross-frame-loop', 'cross');
+    await interruptLoop('cross-frame-loop', { frame: 'cross' });
+    await assertAnswersAtOnce('cross');
   });
 
   void it('answers status normally afterwards', async () => {

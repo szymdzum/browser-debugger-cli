@@ -317,7 +317,7 @@ function interruptedWorkText(work: InterruptedWork | undefined): string {
     return `The ${work.sent} may already have reached the page; check with ${sessionCommand('bdg peek')} before repeating it`;
   }
   if ('stopped' in work) {
-    return `The ${work.stopped} was stopped on the page; changes it made before the stop may remain; check with ${sessionCommand('bdg peek')} before repeating it`;
+    return `The ${work.stopped} was stopped on the page if it was still running; changes it made before the stop may remain; check with ${sessionCommand('bdg peek')} before repeating it`;
   }
   if ('session' in work) {
     const begun =
