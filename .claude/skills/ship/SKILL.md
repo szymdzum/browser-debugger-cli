@@ -100,7 +100,7 @@ A red `main` is fixed before any new work. **Rerun first:** when a push run on `
 - **Reporting:** one line per step change, a summary at merges, real problems and decisions; don't relay interim notifications.
 - **Releases** only when the user decides (`docs/RELEASE_PROCESS.md`).
 - **One conversation per session:** start the next in a fresh conversation with the roadmap, `log.md` and the memory notes.
-- **Retro at the end**, from `log.md`: what merged and was filed, what slowed the session, and for each rule or step that cost time, whether removing it would have changed an outcome (the log shows which steps found what). Remove what never catches anything; add a rule only for a failure that happened. Agreed changes go into this skill as a PR.
+- **Retro at the end**, from `log.md`: what merged and was filed, what slowed the session, and for each rule or step that cost time, whether removing it would have changed an outcome (the log shows which steps found what). Each retro deletes at least one rule the log shows catches nothing; add a rule only for a failure that happened, and a mechanical rule becomes a check (`ship.mjs`, a test, a lint), not prose. Agreed changes go into this skill as a PR.
 
 ## Recurring traps
 
