@@ -27,6 +27,7 @@ import type { NoType } from './utils/index.js';
 import { getIPCRequestTimeout, getQuickIPCRequestTimeout } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
 import type { CdpCollectParams, CdpEventsCommand } from '@/ipc/protocol/cdpEventTypes.js';
+import { releaseObjectGroup } from '@/runtime/page/objectGroups.js';
 import { capTimerDelay } from '@/utils/async.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -386,6 +387,7 @@ export async function callCDP(
       method,
       ...(params && { params }),
       ...(options.isolated && { isolated: true }),
+      ...(options.isolated &&
       ...(options.collect && { collect: options.collect }),
     },
     options.collect && waitingTimeoutMs(options.collect.timeoutMs)
@@ -417,6 +419,26 @@ export function callBdgScript(
   params?: Record<string, unknown>
 ): Promise<ClientResponse<'cdp_call'>> {
   return callCDP(method, params, { isolated: true });
+}
+
+/**
+ * Release an object group this process created with {@link callBdgScript},
+ * best-effort ({@link releaseObjectGroup}): a release that fails or times
+ * out never replaces the command's own result or error.
+ *
+ * @param objectGroup - The group
+ */
+export async function releaseBdgObjectGroup(objectGroup: string): Promise<void> {
+  await releaseObjectGroup(
+    {
+      send: async (method, params) => {
+        const response = await callCDP(method, params);
+        if (response.status === 'error') throw new Error(response.error ?? `${method} failed`);
+        return response.data;
+      },
+    },
+    objectGroup
+  );
 }
 
 /**

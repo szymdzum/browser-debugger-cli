@@ -7,6 +7,12 @@
  * answer.
  */
 
+import { createLogger } from '@/ui/logging/index.js';
+import { withTimeout } from '@/utils/async.js';
+import { getErrorMessage } from '@/utils/errors.js';
+
+const log = createLogger('dom');
+
 /** How long a release may take before the caller goes on without it */
 export const OBJECT_GROUP_RELEASE_TIMEOUT_MS = 2000;
 
@@ -22,11 +28,21 @@ export interface ObjectGroupSender {
  * @param page - Connection to the page holding the group
  * @param objectGroup - The group
  * @param timeoutMs - Longest wait for the page's answer
+ * @returns Whether the page confirmed the release
  */
-export function releaseObjectGroup(
-  _page: ObjectGroupSender,
-  _objectGroup: string,
-  _timeoutMs: number = OBJECT_GROUP_RELEASE_TIMEOUT_MS
-): Promise<void> {
-  throw new Error('not implemented');
+export async function releaseObjectGroup(
+  page: ObjectGroupSender,
+  objectGroup: string,
+  timeoutMs: number = OBJECT_GROUP_RELEASE_TIMEOUT_MS
+): Promise<boolean> {
+  try {
+    const release = Promise.resolve().then(() =>
+      page.send('Runtime.releaseObjectGroup', { objectGroup })
+    );
+    await withTimeout(release, timeoutMs, 'Runtime.releaseObjectGroup');
+    return true;
+  } catch (error) {
+    log.debug(`Object group ${objectGroup} not released: ${getErrorMessage(error)}`);
+    return false;
+  }
 }

@@ -1,7 +1,7 @@
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import { unknownQueryFieldError } from '@/errors/messages.js';
-import { callBdgScript, callCDP } from '@/ipc/client.js';
+import { callBdgScript, callCDP, releaseBdgObjectGroup } from '@/ipc/client.js';
 import { MASKED_VALUE, SENSITIVE_FIELD_JS } from '@/runtime/dom/elementInfo.js';
 import { childFrameIds } from '@/runtime/dom/frameLayout.js';
 import type {
@@ -282,11 +282,11 @@ async function isSensitiveField(
  */
 async function readOnElement(backendNodeId: number, functionDeclaration: string): Promise<unknown> {
   const objectGroup = `bdg-a11y-secret-${process.pid}-${++secretChecks}`;
-  const resolved = await callBdgScript('DOM.resolveNode', { backendNodeId, objectGroup });
-  const objectId = (resolved.data?.result as Protocol.DOM.ResolveNodeResponse | undefined)?.object
-    ?.objectId;
-  if (!objectId) return undefined;
   try {
+    const resolved = await callBdgScript('DOM.resolveNode', { backendNodeId, objectGroup });
+    const objectId = (resolved.data?.result as Protocol.DOM.ResolveNodeResponse | undefined)?.object
+      ?.objectId;
+    if (!objectId) return undefined;
     const response = await callCDP('Runtime.callFunctionOn', {
       objectId,
       functionDeclaration,
@@ -294,7 +294,7 @@ async function readOnElement(backendNodeId: number, functionDeclaration: string)
     });
     return (response.data?.result as { result?: { value?: unknown } } | undefined)?.result?.value;
   } finally {
-    await callCDP('Runtime.releaseObjectGroup', { objectGroup });
+    await releaseBdgObjectGroup(objectGroup);
   }
 }
 

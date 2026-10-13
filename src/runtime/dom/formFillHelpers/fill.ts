@@ -49,6 +49,7 @@ import {
 } from '@/runtime/dom/reactEventHelpers.js';
 import { FIND_ELEMENTS_JS, LABEL_CONTROL_JS, selectorArgs } from '@/runtime/dom/targetNode.js';
 import { callFunctionInMainWorld } from '@/runtime/page/bdgWorld.js';
+import { releaseObjectGroup } from '@/runtime/page/objectGroups.js';
 import { createLogger } from '@/ui/logging/index.js';
 import {
   clickLandedElsewhereWarning,
@@ -448,11 +449,7 @@ async function setFileInput(
       });
     }
   } finally {
-    await cdp
-      .send('Runtime.releaseObjectGroup', { objectGroup: UPLOAD_OBJECT_GROUP })
-      .catch((error: unknown) =>
-        log.debug(`Could not release upload objects: ${getErrorMessage(error)}`)
-      );
+    await releaseObjectGroup(cdp, UPLOAD_OBJECT_GROUP);
   }
   return {
     success: true,

@@ -28,6 +28,7 @@ import {
   callFunctionInMainWorld,
   resolveNodeInBdgWorld,
 } from '@/runtime/page/bdgWorld.js';
+import { releaseObjectGroup } from '@/runtime/page/objectGroups.js';
 import { findReplacedBuiltins } from '@/runtime/page/replacedBuiltins.js';
 import { indexSourceOf } from '@/session/QueryCacheManager.js';
 import type { CDPSender } from '@/telemetry/objectExpander.js';
@@ -529,11 +530,7 @@ export async function selectorOfNode(
     log.debug(`No selector for the element: ${getErrorMessage(error)}`);
     return null;
   } finally {
-    await cdp
-      .send('Runtime.releaseObjectGroup', { objectGroup })
-      .catch((error: unknown) =>
-        log.debug(`Selector handle not released: ${getErrorMessage(error)}`)
-      );
+    await releaseObjectGroup(cdp, objectGroup);
   }
 }
 
@@ -610,9 +607,7 @@ async function bindMatches(cdp: CDPConnection, selector: string, index: number):
     log.debug(`Matches not bound: ${getErrorMessage(error)}`);
     return false;
   } finally {
-    await cdp
-      .send('Runtime.releaseObjectGroup', { objectGroup })
-      .catch((error: unknown) => log.debug(`Matches not released: ${getErrorMessage(error)}`));
+    await releaseObjectGroup(cdp, objectGroup);
   }
 }
 

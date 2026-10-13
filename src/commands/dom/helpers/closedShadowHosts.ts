@@ -6,7 +6,7 @@
  */
 
 import type { Protocol } from '@/connection/typed-cdp.js';
-import { callBdgScript, callCDP } from '@/ipc/client.js';
+import { callBdgScript, callCDP, releaseBdgObjectGroup } from '@/ipc/client.js';
 import { DEEP_QUERY_JS } from '@/runtime/dom/targetNode.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -62,9 +62,7 @@ export async function closedShadowHostNames(): Promise<ClosedShadowHosts> {
     log.debug(`Closed shadow hosts not read: ${getErrorMessage(error)}`);
     return { hosts: [], capped: false };
   } finally {
-    await callCDP('Runtime.releaseObjectGroup', { objectGroup }).catch((error: unknown) =>
-      log.debug(`Object group not released: ${getErrorMessage(error)}`)
-    );
+    await releaseBdgObjectGroup(objectGroup);
   }
 }
 

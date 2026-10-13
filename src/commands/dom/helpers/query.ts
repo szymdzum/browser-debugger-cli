@@ -32,7 +32,7 @@ import {
   type ErrorWithSuggestion,
   type NoMatchContext,
 } from '@/errors/messages.js';
-import { callBdgScript, callCDP } from '@/ipc/client.js';
+import { callBdgScript, callCDP, releaseBdgObjectGroup } from '@/ipc/client.js';
 import type { LayoutSize } from '@/ipc/protocol/domTypes.js';
 import {
   ELEMENT_GEOMETRY_JS,
@@ -189,15 +189,15 @@ async function withSelection<T>(
 ): Promise<T> {
   await callCDP('DOM.enable', {});
   const objectGroup = `bdg-query-${process.pid}-${++queryCount}`;
-  const evaluated = await callBdgScript('Runtime.callFunctionOn', {
-    functionDeclaration: DEEP_QUERY_JS,
-    arguments: selectorArgs(selector).map((value) => ({ value })),
-    objectGroup,
-  });
   try {
+    const evaluated = await callBdgScript('Runtime.callFunctionOn', {
+      functionDeclaration: DEEP_QUERY_JS,
+      arguments: selectorArgs(selector).map((value) => ({ value })),
+      objectGroup,
+    });
     return await use(selectionObjectId(selector, evaluated));
   } finally {
-    await callCDP('Runtime.releaseObjectGroup', { objectGroup });
+    await releaseBdgObjectGroup(objectGroup);
   }
 }
 
@@ -740,11 +740,11 @@ async function callOnNode(
   args: unknown[] = []
 ): Promise<unknown> {
   const objectGroup = `bdg-node-${process.pid}-${++queryCount}`;
-  const resolved = await callBdgScript('DOM.resolveNode', { ...ref, objectGroup });
-  const objectId = (resolved.data?.result as Protocol.DOM.ResolveNodeResponse | undefined)?.object
-    .objectId;
-  if (!objectId) return undefined;
   try {
+    const resolved = await callBdgScript('DOM.resolveNode', { ...ref, objectGroup });
+    const objectId = (resolved.data?.result as Protocol.DOM.ResolveNodeResponse | undefined)?.object
+      .objectId;
+    if (!objectId) return undefined;
     const response = await callCDP('Runtime.callFunctionOn', {
       objectId,
       functionDeclaration,
@@ -753,7 +753,7 @@ async function callOnNode(
     });
     return (response.data?.result as { result?: { value?: unknown } } | undefined)?.result?.value;
   } finally {
-    await callCDP('Runtime.releaseObjectGroup', { objectGroup });
+    await releaseBdgObjectGroup(objectGroup);
   }
 }
 
@@ -1046,7 +1046,7 @@ async function nodeAttached(backendNodeId: number): Promise<boolean> {
       (check.data?.result as { result?: { value?: unknown } } | undefined)?.result?.value === true
     );
   } finally {
-    await callCDP('Runtime.releaseObjectGroup', { objectGroup });
+    await releaseBdgObjectGroup(objectGroup);
   }
 }
 

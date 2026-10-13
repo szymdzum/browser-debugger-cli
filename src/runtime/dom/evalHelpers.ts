@@ -15,6 +15,7 @@ import {
   scriptTimeoutError,
 } from '@/errors/messages.js';
 import { pendingNavigationUrl } from '@/runtime/page/navigation.js';
+import { releaseObjectGroup } from '@/runtime/page/objectGroups.js';
 import { findReplacedBuiltins } from '@/runtime/page/replacedBuiltins.js';
 import { senderFor, type CDPSender } from '@/telemetry/objectExpander.js';
 import { formatRemoteObject } from '@/telemetry/remoteObject.js';
@@ -875,10 +876,6 @@ export async function evaluateScript(
       ? await pageContextLostError(error, session)
       : error;
   } finally {
-    void session
-      .send('Runtime.releaseObjectGroup', { objectGroup })
-      .catch((error: unknown) =>
-        log.debug(`Could not release eval objects: ${getErrorMessage(error)}`)
-      );
+    void releaseObjectGroup(session, objectGroup);
   }
 }
