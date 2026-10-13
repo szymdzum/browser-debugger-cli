@@ -106,23 +106,6 @@ export class OutputFormatter {
 }
 
 /**
- * Whether a character code is a control character other than tab/newline
- * (C0, DEL, C1), or a bidirectional override/isolate that can make output
- * read differently than it is (e.g. U+202E right-to-left override).
- *
- * @param code - UTF-16 code unit
- * @returns True for characters that must not reach the terminal raw
- */
-function isControlChar(code: number): boolean {
-  return (
-    (code < 0x20 && code !== 0x09 && code !== 0x0a) ||
-    (code >= 0x7f && code <= 0x9f) ||
-    (code >= 0x202a && code <= 0x202e) ||
-    (code >= 0x2066 && code <= 0x2069)
-  );
-}
-
-/**
  * Make page-provided text safe to print to a terminal.
  *
  * Console messages, titles and URLs come from the page; escape sequences in
@@ -133,13 +116,20 @@ function isControlChar(code: number): boolean {
  * @returns Text with control characters escaped
  */
 export function escapeControlChars(text: string): string {
-  let result = '';
-  for (const char of text.replace(/\r\n/g, '\n')) {
-    const code = char.charCodeAt(0);
-    result += isControlChar(code) ? `\\u${code.toString(16).padStart(4, '0')}` : char;
-  }
-  return result;
+  return text
+    .replace(/\r\n/g, '\n')
+    .replace(CONTROL_CHARS, (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`);
 }
+
+/**
+ * Control characters other than tab and newline (C0, DEL, C1), and the
+ * bidirectional overrides and isolates that can make output read differently
+ * than it is (e.g. U+202E right-to-left override). Replacing
+ * matches builds the result in one pass: appending the characters one by
+ * one left a rope node per character, 32 bytes each (a 250 MB `bdg cdp`
+ * reply took over 4 GB).
+ */
+const CONTROL_CHARS = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g;
 
 export function joinLines(...lines: Array<string | null | undefined | false>): string {
   return lines
