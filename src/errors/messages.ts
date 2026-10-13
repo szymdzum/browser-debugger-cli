@@ -280,15 +280,13 @@ export function screenshotInterruptedError(signal: 'SIGINT' | 'SIGTERM'): ErrorW
 
 /**
  * What an interrupted command may already have done: sent an action to the
- * page (`sent`: what, e.g. `click`), changed the session itself
+ * page (`sent`: what, e.g. `click`), run a script the daemon then stopped
+ * on the page (`stopped`: `dom eval`), changed the session itself
  * (`session`: `stop` or `cleanup`), or a file it writes (`file`: what kind;
  * `writing`: its path once the write has started, absent before).
  */
 export type InterruptedWork =
-  | { sent: string }
-  | { stopped: 'script' }
-  | { session: 'stop' | 'cleanup' }
-  | InterruptedFileWrite;
+  { sent: string } | { stopped: 'script' } | { session: 'stop' | 'cleanup' } | InterruptedFileWrite;
 
 /** A file an interruptible command writes; `writing` is set as the write starts */
 export interface InterruptedFileWrite {
@@ -318,7 +316,9 @@ function interruptedWorkText(work: InterruptedWork | undefined): string {
   if ('sent' in work) {
     return `The ${work.sent} may already have reached the page; check with ${sessionCommand('bdg peek')} before repeating it`;
   }
-  if ('stopped' in work) throw new Error('not implemented');
+  if ('stopped' in work) {
+    return `The ${work.stopped} was stopped on the page; changes it made before the stop may remain; check with ${sessionCommand('bdg peek')} before repeating it`;
+  }
   if ('session' in work) {
     const begun =
       work.session === 'stop'

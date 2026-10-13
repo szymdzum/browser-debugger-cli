@@ -801,6 +801,72 @@ export interface EvalTarget {
   uniqueContextId?: string;
   /** `--full`: copy the result with every entry */
   full?: boolean;
+  /** Aborts when the client that sent the eval disconnects: its script is stopped */
+  abandoned?: AbortSignal;
+}
+
+/** `bdg dom eval` evaluations Chrome has not answered yet, in the order they were sent */
+const pendingEvaluations = new Set<Promise<unknown>>();
+
+/** How long the target gets to answer before an abandoned eval's script counts as running */
+const ABANDONED_CHECK_MS = 500;
+
+/**
+ * Stop an eval's script when its client disconnects, as its time limit
+ * would ({@link terminatePageScripts}). `Runtime.terminateExecution` stops
+ * the running script or else the next one, so it is sent only while the
+ * evaluation is still pending, once every evaluation sent before it has
+ * settled (a script queued behind another client's must not stop that
+ * one), and only when the target does not answer (a script awaiting a
+ * promise, or whose result is on its way, leaves it idle).
+ *
+ * @param cdp - Where to check and stop the target
+ * @param scope - Whether the script runs in the page or an iframe
+ * @param evaluation - The script's pending `Runtime.evaluate`
+ * @param abandoned - Aborts when the client disconnects
+ */
+function stopWhenAbandoned(
+  cdp: CDPSender,
+  scope: BusyScope,
+  evaluation: Promise<unknown>,
+  abandoned: AbortSignal | undefined
+): void {
+  const earlier = [...pendingEvaluations];
+  pendingEvaluations.add(evaluation);
+  let settled = false;
+  const stop = (): void => {
+    void stopAbandonedScript(cdp, scope, earlier, () => settled).catch((error: unknown) => {
+      log.debug(`Could not stop an abandoned eval: ${getErrorMessage(error)}`);
+    });
+  };
+  abandoned?.addEventListener('abort', stop, { once: true });
+  void evaluation
+    .catch(() => undefined)
+    .finally(() => {
+      settled = true;
+      pendingEvaluations.delete(evaluation);
+      abandoned?.removeEventListener('abort', stop);
+    });
+}
+
+/**
+ * Terminate an abandoned eval's script if it still keeps the target busy.
+ *
+ * @param cdp - Where to check and stop the target
+ * @param scope - Whether the script runs in the page or an iframe
+ * @param earlier - Evaluations sent before it
+ * @param settled - Whether its evaluation has settled
+ */
+async function stopAbandonedScript(
+  cdp: CDPSender,
+  scope: BusyScope,
+  earlier: Promise<unknown>[],
+  settled: () => boolean
+): Promise<void> {
+  await Promise.allSettled(earlier);
+  if (settled() || (await isAnswering(cdp, ABANDONED_CHECK_MS)) || settled()) return;
+  log.debug('The client of a running eval disconnected; stopping its script');
+  await terminatePageScripts(cdp, scope);
 }
 
 /**
@@ -1010,6 +1076,7 @@ function evaluateOptions(
  * frozen by e.g. an endless loop), and returns a JSON-safe value. The eval's
  * objects are released without waiting: a script that started a busy loop
  * from a timer has already returned, and the next command recovers the page.
+ * A script whose client disconnects (Ctrl-C) is stopped at once.
  *
  * @param cdp - CDP connection
  * @param script - JavaScript expression
@@ -1028,13 +1095,10 @@ export async function evaluateScript(
   const scope: BusyScope = target.uniqueContextId ? 'frame' : 'page';
   const objectGroup = `bdg-eval-${++evaluations}`;
   try {
+    const evaluation = executeScript(session, script, evaluateOptions(target, objectGroup));
+    stopWhenAbandoned(target.recovery ?? session, scope, evaluation, target.abandoned);
     const response = await withDeadline(
-      untilResultLost(
-        session,
-        executeScript(session, script, evaluateOptions(target, objectGroup)),
-        script,
-        target.full ?? false
-      ),
+      untilResultLost(session, evaluation, script, target.full ?? false),
       EVAL_TIMEOUT_MS + TERMINATION_GRACE_MS,
       () => evaluationTimeoutError(target.recovery ?? session, scope, script, target.full ?? false)
     );
