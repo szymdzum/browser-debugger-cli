@@ -27,4 +27,4 @@ export const MASKED_URL_AUTOMATIC =
 
 /** How every follow mode (peek, console, network list) runs and ends */
 export const FOLLOW_BEHAVIOR =
-  'Stops with exit 83 when the session it follows ends, 130 on Ctrl-C, 143 on SIGTERM; with --json prints one whole BdgResponse envelope per refresh, one per line (NDJSON); the first carries the backlog (--last, default 100). Other failures (a busy page, a timeout) are retried: reported once in text, as one error line per refresh in JSON';
+  'Stops with exit 83 when the session it follows ends, 130 on Ctrl-C, 143 on SIGTERM; with --json prints one whole BdgResponse envelope per update, one per line (NDJSON): peek every refresh, console and network only when something new arrived; the first line carries the backlog (--last, whose default differs per command). Other failures (a busy page, a timeout) are retried: reported once in text, as one error line per refresh in JSON';

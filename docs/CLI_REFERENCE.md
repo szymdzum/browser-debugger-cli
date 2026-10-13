@@ -191,7 +191,8 @@ bdg peek --follow --verbose           # Verbose output (full URLs, resource and 
 
 Follow modes (`peek --follow`, `console --follow`, `network list --follow`, `dom screenshot --follow`):
 - Ctrl-C exits 130 and SIGTERM 143, as shells expect, after the mode's stop line on stderr (`Stopped following preview`, `Captured 4 frames`). No `Interrupted` envelope is printed, with `--json` either: each NDJSON line is already a whole envelope.
-- With `--json` they print one whole `BdgResponse` envelope per refresh, one per line (NDJSON; the first carries the backlog, `--last`, default 100), so a script can parse each line as it comes.
+- With `--json` they print one whole `BdgResponse` envelope per update, one per line (NDJSON), so a script can parse each line as it comes.
+- `peek --json --follow` prints a line every refresh; `console` and `network list` only when something new arrived. Their first line carries the backlog (`--last`; default 10 for `peek`, 100 for `console` and `network list`). `dom screenshot --follow` prints one envelope per frame and has no backlog.
 - They stop with exit 83 when the session they follow ends (`The session ended; stopped following`), so a follower running in the background finds out.
 - Other failures (a busy page, a timeout) are retried: reported once in text, and as one error line per refresh with `--json`.
 
