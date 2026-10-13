@@ -2,7 +2,8 @@
  * Ctrl-C and SIGTERM: every command run by `CommandRunner` reports them
  * ({@link reportInterrupts}: the `--json` envelope or one line, exit 130 or
  * 143); a command that cancels its daemon request instead of dying
- * mid-request reports them itself ({@link abortOnInterrupt}). Before any
+ * mid-request reports them itself ({@link abortOnInterrupt}, also for a
+ * start and a follow mode, which differ in what a second signal does). Before any
  * command runs, the entry point reports them the same way
  * ({@link reportInterruptsUntilHandedOver}).
  */
@@ -35,21 +36,45 @@ export function interruptSignal(interrupt: AbortSignal): InterruptSignal {
   return interrupt.reason === 'SIGTERM' ? 'SIGTERM' : 'SIGINT';
 }
 
+/** What {@link abortOnInterrupt} installed */
+export interface InterruptHandle {
+  /** Aborted on the first signal (reason: the signal name) */
+  signal: AbortSignal;
+  /** Removes the signal listeners, once the work has ended */
+  dispose: () => void;
+}
+
+/** Options of {@link abortOnInterrupt} */
+export interface AbortOnInterruptOptions {
+  /** What a second signal does (default: exit 130 or 143 at once) */
+  onSecondSignal?: (signal: InterruptSignal) => void;
+  /** Signals to handle (default: both); the others keep their default effect */
+  signals?: readonly InterruptSignal[];
+}
+
 /**
  * Abort on Ctrl-C or SIGTERM (reason: the signal name). A second signal
  * exits at once.
  *
- * @returns Aborted on the first signal
+ * @param options - What a second signal does, and which signals are handled
+ * @returns The abort signal, and the disposer of the listeners
  */
-export function abortOnInterrupt(): AbortSignal {
+export function abortOnInterrupt(options: AbortOnInterruptOptions = {}): InterruptHandle {
+  const onSecondSignal =
+    options.onSecondSignal ?? ((signal) => process.exit(interruptExitCode(signal)));
   const interrupt = new AbortController();
-  for (const signal of INTERRUPT_SIGNALS) {
+  const removers = (options.signals ?? INTERRUPT_SIGNALS).map((signal) =>
     onOwnInterrupt(signal, () => {
-      if (interrupt.signal.aborted) process.exit(interruptExitCode(signal));
-      interrupt.abort(signal);
-    });
-  }
-  return interrupt.signal;
+      if (interrupt.signal.aborted) onSecondSignal(signal);
+      else interrupt.abort(signal);
+    })
+  );
+  return {
+    signal: interrupt.signal,
+    dispose: () => {
+      for (const remove of removers) remove();
+    },
+  };
 }
 
 /** Listeners of commands that report their own interrupt */
@@ -62,10 +87,12 @@ const ownListeners = new WeakSet<() => void>();
  *
  * @param signal - The signal
  * @param listener - Its handler
+ * @returns Removes the listener
  */
-export function onOwnInterrupt(signal: InterruptSignal, listener: () => void): void {
+export function onOwnInterrupt(signal: InterruptSignal, listener: () => void): () => void {
   ownListeners.add(listener);
   process.on(signal, listener);
+  return () => process.removeListener(signal, listener);
 }
 
 /**

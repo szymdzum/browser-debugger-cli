@@ -2,6 +2,7 @@ import type { TelemetryStore } from './TelemetryStore.js';
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { raceTimeout } from '@/utils/async.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
 const log = createLogger('session');
@@ -27,22 +28,17 @@ export async function refreshCurrentTarget(
 ): Promise<void> {
   const stored = store.targetInfo;
   if (!stored) return;
-  let timer: NodeJS.Timeout | undefined;
   try {
-    const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error(`no answer within ${timeoutMs} ms`)), timeoutMs);
-    });
-    const { targetInfo } = (await Promise.race([
-      cdp.send('Target.getTargetInfo', {}),
-      timeout,
-    ])) as {
+    const { targetInfo } = (await raceTimeout(cdp.send('Target.getTargetInfo', {}), timeoutMs, {
+      onTimeout: (): never => {
+        throw new Error(`no answer within ${timeoutMs} ms`);
+      },
+    })) as {
       targetInfo: { targetId: string; url: string; title: string };
     };
     if (targetInfo.targetId !== stored.id || store.targetInfo !== stored) return;
     store.setTargetInfo({ ...stored, url: targetInfo.url, title: targetInfo.title });
   } catch (error) {
     log.debug(`Could not read the page's target info: ${getErrorMessage(error)}`);
-  } finally {
-    clearTimeout(timer);
   }
 }

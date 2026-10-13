@@ -12,6 +12,7 @@ import { VIEWPORT_SIZE_JS } from '@/runtime/dom/elementGeometry.js';
 import { hideHeadlessUserAgent, type BrowserVersion } from '@/runtime/page/userAgent.js';
 import type { ColorScheme, ViewportSize } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { raceTimeout } from '@/utils/async.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
 const log = createLogger('session');
@@ -196,15 +197,12 @@ export async function pageAppearance(cdp: CDPConnection): Promise<PageAppearance
     const size = (${VIEWPORT_SIZE_JS})(window);
     return { width: Math.round(size.width), height: Math.round(size.height), dark: matchMedia('(prefers-color-scheme: dark)').matches };
   })()`;
-  let timer: NodeJS.Timeout | undefined;
-  const timeout = new Promise<null>((resolve) => {
-    timer = setTimeout(() => resolve(null), APPEARANCE_TIMEOUT_MS);
-  });
   try {
-    const response = (await Promise.race([
+    const response = (await raceTimeout(
       cdp.send('Runtime.evaluate', { expression, returnByValue: true }),
-      timeout,
-    ])) as { result?: { value?: { width: number; height: number; dark: boolean } } } | null;
+      APPEARANCE_TIMEOUT_MS,
+      { onTimeout: () => null }
+    )) as { result?: { value?: { width: number; height: number; dark: boolean } } } | null;
     const value = response?.result?.value;
     if (!value) return {};
     return {
@@ -214,7 +212,5 @@ export async function pageAppearance(cdp: CDPConnection): Promise<PageAppearance
   } catch (error) {
     log.debug(`Could not read the page's viewport and color scheme: ${getErrorMessage(error)}`);
     return {};
-  } finally {
-    clearTimeout(timer);
   }
 }

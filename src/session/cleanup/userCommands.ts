@@ -14,6 +14,7 @@ import { isDaemonAlive } from '@/session/daemonSocket.js';
 import { clearLastSessionEnd } from '@/session/lastSession.js';
 import { SESSION_STATE_FILES, getSessionFilePath } from '@/session/paths.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { delay } from '@/utils/async.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
 const log = createLogger('cleanup');
@@ -107,9 +108,7 @@ async function killLiveDaemon(warnings: string[]): Promise<boolean> {
     return false;
   }
   const deadline = Date.now() + DAEMON_EXIT_WAIT_MS;
-  while (Date.now() < deadline && (await isDaemonAlive())) {
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
+  while (Date.now() < deadline && (await isDaemonAlive())) await delay(100);
   return true;
 }
 

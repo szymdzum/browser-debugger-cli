@@ -8,6 +8,7 @@ import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 
 import { createLogger } from '@/ui/logging/index.js';
+import { waitUntil } from '@/utils/async.js';
 
 const log = createLogger('chrome');
 
@@ -152,4 +153,20 @@ export function listProcesses(): ProcessEntry[] {
     .map((line) => /^\s*(\d+)\s+(.*)$/.exec(line))
     .filter((match): match is RegExpExecArray => match !== null)
     .map(([, pid, command]) => ({ pid: Number(pid), command: command ?? '' }));
+}
+
+/**
+ * Wait until a process has exited.
+ *
+ * @param pid - Process ID
+ * @param timeoutMs - Longest wait
+ * @param options - `pollMs`: milliseconds between checks (default 50)
+ * @returns True if it exited
+ */
+export function waitForProcessExit(
+  pid: number,
+  timeoutMs: number,
+  options: { pollMs?: number } = {}
+): Promise<boolean> {
+  return waitUntil(() => !isProcessAlive(pid), timeoutMs, options.pollMs ?? 50);
 }

@@ -12,9 +12,10 @@
  */
 
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import { describe, it } from 'node:test';
 
-import { isProcessAlive } from '@/utils/process.js';
+import { isProcessAlive, waitForProcessExit } from '@/utils/process.js';
 
 void describe('Process Utilities', () => {
   void describe('isProcessAlive()', () => {
@@ -161,5 +162,36 @@ void describe('Process Utilities', () => {
         assert.equal(typeof result, 'boolean');
       });
     });
+  });
+});
+
+void describe('waitForProcessExit()', () => {
+  void it('returns true once the process has exited', async () => {
+    const child = spawn(process.execPath, ['-e', 'setInterval(() => undefined, 1000)'], {
+      stdio: 'ignore',
+    });
+    const pid = child.pid as number;
+    const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
+    child.kill('SIGKILL');
+    await exited;
+    assert.equal(await waitForProcessExit(pid, 2000, { pollMs: 10 }), true);
+  });
+
+  void it('returns false when the process still runs after the wait', async () => {
+    assert.equal(await waitForProcessExit(process.pid, 60, { pollMs: 10 }), false);
+  });
+
+  void it('sees an exit that comes during the wait', async () => {
+    const child = spawn(process.execPath, ['-e', 'setInterval(() => undefined, 1000)'], {
+      stdio: 'ignore',
+    });
+    const pid = child.pid as number;
+    try {
+      const waiting = waitForProcessExit(pid, 5000, { pollMs: 10 });
+      child.kill('SIGKILL');
+      assert.equal(await waiting, true);
+    } finally {
+      child.kill('SIGKILL');
+    }
   });
 });

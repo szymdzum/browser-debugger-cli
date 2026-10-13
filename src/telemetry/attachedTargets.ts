@@ -14,6 +14,7 @@ import { CDPHandlerRegistry } from '@/connection/handlers.js';
 import { TypedCDPConnection } from '@/connection/typed-cdp.js';
 import type { CleanupFunction } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { raceTimeout } from '@/utils/async.js';
 import { displayUrl } from '@/utils/displayUrl.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
@@ -92,14 +93,13 @@ async function prepareChild(
   const { url } = child;
   manager.sessions.set(sessionId, child);
   try {
-    let timer: NodeJS.Timeout | undefined;
-    await Promise.race([
+    await raceTimeout(
       Promise.all([
         runSetups(sessionId, url, manager.setups),
         manager.typed.send('Target.setAutoAttach', AUTO_ATTACH, sessionId),
       ]),
-      new Promise((resolve) => (timer = setTimeout(resolve, SETUP_WAIT_MS))),
-    ]).finally(() => clearTimeout(timer));
+      SETUP_WAIT_MS
+    );
     log.debug(`Attached to ${displayUrl(url) || 'a new target'}`);
   } catch (error) {
     log.debug(`Could not prepare attached target ${displayUrl(url)}: ${getErrorMessage(error)}`);

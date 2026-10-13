@@ -8,6 +8,7 @@
 import { timeoutError } from '@/commands/shared/CommandRunner.js';
 import {
   type InterruptSignal,
+  abortOnInterrupt,
   interruptExitCode,
   interruptSignal,
 } from '@/commands/shared/interrupt.js';
@@ -138,15 +139,11 @@ export async function startSessionViaDaemon(
   options: SessionStartOptions,
   telemetry: TelemetryType[]
 ): Promise<never> {
-  const interrupt = new AbortController();
-  for (const signal of ['SIGINT', 'SIGTERM'] as const) {
-    process.on(signal, () => {
-      if (interrupt.signal.aborted) reportStartOutcome(interruptedOutcome(signal), options);
-      interrupt.abort(signal);
-    });
-  }
+  const { signal: interrupt } = abortOnInterrupt({
+    onSecondSignal: (signal) => reportStartOutcome(interruptedOutcome(signal), options),
+  });
   reportStartOutcome(
-    await attemptStart(url, options, telemetry, DEFAULT_START_DEPS, interrupt.signal),
+    await attemptStart(url, options, telemetry, DEFAULT_START_DEPS, interrupt),
     options
   );
 }

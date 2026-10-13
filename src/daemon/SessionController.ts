@@ -13,7 +13,6 @@ import {
   ConnectionError,
 } from '@/connection/errors.js';
 import type { ConnectionLossCause } from '@/connection/types.js';
-import { MAX_TIMER_DELAY_MS } from '@/constants.js';
 import { Session, StartCancelledError, type SessionEndReason } from '@/daemon/session/Session.js';
 import { shownTabSwitch } from '@/daemon/session/interactions.js';
 import { detectTargetMismatch } from '@/daemon/session/targetMismatch.js';
@@ -50,6 +49,7 @@ import { createLogger } from '@/ui/logging/index.js';
 import { fetchInterceptionTimeoutCause } from '@/ui/messages/cdpEvents.js';
 import { formatChromeIssue } from '@/ui/messages/chrome.js';
 import { noActiveSessionMessage } from '@/ui/messages/sessionCommand.js';
+import { TimeoutError, withTimeout } from '@/utils/async.js';
 import { displayUrl } from '@/utils/displayUrl.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -90,38 +90,6 @@ function ownWaitMs(name: CommandName, params: unknown): number {
  */
 function commandTimeoutMs(name: CommandName, params: unknown): number {
   return Math.max(COMMAND_TIMEOUT_MS, ownWaitMs(name, params) + WAIT_COMMAND_MARGIN_MS);
-}
-
-/** A session command that ran out of time */
-class CommandTimeoutError extends Error {
-  override readonly name = 'CommandTimeoutError';
-}
-
-/**
- * Run a promise with a timeout, clearing the timer either way. A timeout
- * longer than {@link MAX_TIMER_DELAY_MS} (it can come from a client's
- * request) waits that long rather than firing at once.
- *
- * @param promise - Work to wait for
- * @param timeoutMs - Timeout in milliseconds
- * @param label - Operation name for the timeout message
- * @returns The promise's result
- * @throws Error when the timeout elapses first
- */
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
-  const delay = timeoutMs <= MAX_TIMER_DELAY_MS ? timeoutMs : MAX_TIMER_DELAY_MS;
-  let timer: NodeJS.Timeout | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(
-      () => reject(new CommandTimeoutError(`${label} timeout (${delay / 1000}s)`)),
-      delay
-    );
-  });
-  try {
-    return await Promise.race([promise, timeout]);
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 /**
@@ -434,7 +402,7 @@ export class SessionController {
    */
   private describeFailure(error: unknown): ReturnType<typeof describeCommandError> {
     const described = describeCommandError(error);
-    if (!(error instanceof CommandTimeoutError) || !this.session?.fetchInterceptionEnabled()) {
+    if (!(error instanceof TimeoutError) || !this.session?.fetchInterceptionEnabled()) {
       return described;
     }
     const cause = fetchInterceptionTimeoutCause();

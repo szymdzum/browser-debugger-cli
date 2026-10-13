@@ -6,7 +6,11 @@
  */
 
 import { handleDaemonConnectionError } from '@/commands/shared/daemonErrorHandler.js';
-import { onOwnInterrupt } from '@/commands/shared/interrupt.js';
+import {
+  abortOnInterrupt,
+  interruptExitCode,
+  interruptSignal,
+} from '@/commands/shared/interrupt.js';
 import { genericError } from '@/errors/messages.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -119,6 +123,6 @@ export async function setupFollowMode(
     console.error(stopMessage());
     process.exit(exitCode);
   };
-  onOwnInterrupt('SIGINT', () => stop(EXIT_CODES.INTERRUPTED));
-  onOwnInterrupt('SIGTERM', () => stop(EXIT_CODES.TERMINATED));
+  const { signal: interrupt } = abortOnInterrupt();
+  interrupt.addEventListener('abort', () => stop(interruptExitCode(interruptSignal(interrupt))));
 }

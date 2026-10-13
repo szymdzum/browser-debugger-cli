@@ -17,7 +17,7 @@ import {
   notAPageWarning,
   stillLoadingWarning,
 } from '@/ui/messages/commands.js';
-import { delay } from '@/utils/async.js';
+import { raceTimeout } from '@/utils/async.js';
 import { displayUrl } from '@/utils/displayUrl.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -80,13 +80,13 @@ async function runNavigation(
   try {
     const sent = startAction(cdp, action, url);
     sent.catch(() => undefined);
-    const started = await Promise.race([sent, delay(PAGE_READY_TIMEOUT_MS)]);
+    const started = await raceTimeout(sent, PAGE_READY_TIMEOUT_MS);
     if (started === undefined) return await stillLoading(cdp, action);
     if (started.notAPage) {
       return { action, ...(await currentLocation(cdp)), warning: notAPageWarning() };
     }
     loaderId = started.loaderId;
-    const how = await Promise.race([navigated.done, delay(Math.max(0, deadline - Date.now()))]);
+    const how = await raceTimeout(navigated.done, Math.max(0, deadline - Date.now()));
     if (how === 'loaded') {
       await waitForPageReady(cdp, { maxWaitMs: Math.max(0, deadline - Date.now()) });
     }
@@ -122,7 +122,7 @@ async function startWithoutWaiting(
 ): Promise<PageNavigationResult> {
   const sent = startAction(cdp, action, url);
   sent.catch((error: unknown) => log.debug(`Navigation not started: ${getErrorMessage(error)}`));
-  const started = await Promise.race([sent, delay(NO_WAIT_GRACE_MS)]);
+  const started = await raceTimeout(sent, NO_WAIT_GRACE_MS);
   const result = { action, url: url ?? (await pageTarget(cdp)).url, title: '' };
   return started?.notAPage ? { ...result, warning: notAPageWarning() } : result;
 }

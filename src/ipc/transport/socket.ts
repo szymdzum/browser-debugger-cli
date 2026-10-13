@@ -8,8 +8,8 @@ import { connect } from 'net';
 
 import type { Socket } from 'net';
 
-import { MAX_TIMER_DELAY_MS } from '@/constants.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { capTimerDelay } from '@/utils/async.js';
 
 const log = createLogger('client');
 
@@ -42,12 +42,9 @@ export function createSocket(
   socket.setNoDelay(true);
 
   if (handlers.onTimeout) {
-    timeoutHandle = setTimeout(
-      () => {
-        handlers.onTimeout?.();
-      },
-      Math.min(config.timeoutMs, MAX_TIMER_DELAY_MS)
-    );
+    timeoutHandle = setTimeout(() => {
+      handlers.onTimeout?.();
+    }, capTimerDelay(config.timeoutMs));
   }
 
   if (handlers.onConnect) {
