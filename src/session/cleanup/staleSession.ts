@@ -18,12 +18,12 @@ import { readSessionMetadata } from '@/session/metadata.js';
 import { getSessionDir, getSessionFilePath, sessionFilePathIn } from '@/session/paths.js';
 import { readPidFromFile } from '@/session/pid.js';
 import { createLogger, logDebugError } from '@/ui/logging/index.js';
-import { delay } from '@/utils/async.js';
 import { safeRemoveFile } from '@/utils/file.js';
 import { DAEMON_SCRIPT_PATH } from '@/utils/packageRoot.js';
 import {
   getProcessCommand,
   isProcessAlive,
+  waitForProcessExit,
   killChromeProcess,
   listProcesses,
 } from '@/utils/process.js';
@@ -229,8 +229,7 @@ export async function reapOrphanedChrome(): Promise<boolean> {
   const chromePid = findOrphanedChrome();
   const killed =
     chromePid !== null ? (killOrphanedChrome() ? [chromePid] : []) : killUnrecordedChromes();
-  const deadline = Date.now() + ORPHAN_EXIT_WAIT_MS;
-  while (killed.some(isProcessAlive) && Date.now() < deadline) await delay(50);
+  await Promise.all(killed.map((pid) => waitForProcessExit(pid, ORPHAN_EXIT_WAIT_MS)));
   return killed.length > 0;
 }
 

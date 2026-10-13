@@ -34,7 +34,7 @@ import { directoryProblem } from '@/utils/directories.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { DAEMON_SCRIPT_PATH } from '@/utils/packageRoot.js';
-import { isProcessAlive } from '@/utils/process.js';
+import { waitForProcessExit } from '@/utils/process.js';
 
 const log = createLogger('launcher');
 
@@ -124,9 +124,7 @@ async function stopUnreachableDaemon(): Promise<void> {
     log.debug(`Daemon ${pid} not signalled: ${getErrorMessage(error)}`);
     return;
   }
-  const deadline = Date.now() + UNREACHABLE_DAEMON_EXIT_MS;
-  while (isProcessAlive(pid) && Date.now() < deadline) await delay(100);
-  if (!isProcessAlive(pid)) return;
+  if (await waitForProcessExit(pid, UNREACHABLE_DAEMON_EXIT_MS, { pollMs: 100 })) return;
   try {
     process.kill(pid, 'SIGKILL');
   } catch (error) {

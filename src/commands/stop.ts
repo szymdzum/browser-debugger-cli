@@ -27,11 +27,10 @@ import {
   sessionCommand,
   startSessionSuggestion,
 } from '@/ui/messages/sessionCommand.js';
-import { waitUntil } from '@/utils/async.js';
 import { getExitCodeForIPCError, isDaemonNotRunningError } from '@/utils/errorMapping.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import { isProcessAlive } from '@/utils/process.js';
+import { waitForProcessExit } from '@/utils/process.js';
 
 /** How long `bdg stop` waits for the session's daemon to exit */
 const DAEMON_EXIT_WAIT_MS = 3000;
@@ -50,7 +49,7 @@ export async function waitForDaemonExit(
   pid: number | null,
   waitMs = DAEMON_EXIT_WAIT_MS
 ): Promise<string | undefined> {
-  if (pid === null || (await waitUntil(() => !isProcessAlive(pid), waitMs))) return undefined;
+  if (pid === null || (await waitForProcessExit(pid, waitMs, { pollMs: 25 }))) return undefined;
   return `${daemonStillExitingHint(pid, waitMs)}; ${daemonStillExitingSuggestion()}`;
 }
 

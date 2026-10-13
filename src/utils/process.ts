@@ -8,6 +8,7 @@ import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 
 import { createLogger } from '@/ui/logging/index.js';
+import { waitUntil } from '@/utils/async.js';
 
 const log = createLogger('chrome');
 
@@ -167,6 +168,5 @@ export function waitForProcessExit(
   timeoutMs: number,
   options: { pollMs?: number } = {}
 ): Promise<boolean> {
-  void options;
-  throw new Error(`not implemented: ${String(pid)} ${String(timeoutMs)}`);
+  return waitUntil(() => !isProcessAlive(pid), timeoutMs, options.pollMs ?? 50);
 }

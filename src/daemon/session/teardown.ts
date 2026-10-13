@@ -7,15 +7,14 @@ import type { ChromeNoticeCode, NoticeSink } from '@/errors/notices.js';
 import { clearChromePid } from '@/session/chrome.js';
 import type { CleanupFunction, LaunchedChrome } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
-import { delay, raceTimeout } from '@/utils/async.js';
+import { raceTimeout } from '@/utils/async.js';
 import { getErrorMessage } from '@/utils/errors.js';
-import { isProcessAlive, killChromeProcess } from '@/utils/process.js';
+import { isProcessAlive, killChromeProcess, waitForProcessExit } from '@/utils/process.js';
 
 /** How often to check whether Chrome has exited (it usually takes 100–300 ms) */
 const CHROME_EXIT_POLL_MS = 50;
-const CHROME_EXIT_POLL_ATTEMPTS = 100;
-/** Up to 5 s for Chrome to shut down cleanly after SIGTERM. */
-const GRACEFUL_EXIT_POLL_ATTEMPTS = 100;
+/** Up to 5 s for Chrome to shut down cleanly after Browser.close or SIGTERM */
+const GRACEFUL_EXIT_WAIT_MS = 5000;
 /** How long to wait for Browser.close to answer (Chrome may exit without answering) */
 const BROWSER_CLOSE_REPLY_MS = 500;
 
@@ -85,19 +84,7 @@ async function requestBrowserClose(cdp: CDPConnection, pid: number, log: Logger)
   } catch (error) {
     log.debug(`Browser.close failed: ${getErrorMessage(error)}`);
   }
-  await waitForExit(pid, GRACEFUL_EXIT_POLL_ATTEMPTS);
-}
-
-/**
- * Wait until a process exits.
- *
- * @param pid - Process id
- * @param attempts - Polls of {@link CHROME_EXIT_POLL_MS}
- */
-async function waitForExit(pid: number, attempts: number): Promise<void> {
-  for (let attempt = 0; attempt < attempts && isProcessAlive(pid); attempt++) {
-    await delay(CHROME_EXIT_POLL_MS);
-  }
+  await waitForProcessExit(pid, GRACEFUL_EXIT_WAIT_MS, { pollMs: CHROME_EXIT_POLL_MS });
 }
 
 /**
@@ -121,7 +108,7 @@ async function terminateChrome(chrome: LaunchedChrome, log: Logger): Promise<voi
   const pid = chrome.pid;
   try {
     process.kill(pid, 'SIGTERM');
-    await waitForExit(pid, GRACEFUL_EXIT_POLL_ATTEMPTS);
+    await waitForProcessExit(pid, GRACEFUL_EXIT_WAIT_MS, { pollMs: CHROME_EXIT_POLL_MS });
   } catch (error) {
     log.debug(`SIGTERM to Chrome failed: ${getErrorMessage(error)}`);
   }
@@ -131,13 +118,13 @@ async function terminateChrome(chrome: LaunchedChrome, log: Logger): Promise<voi
     log.info(`Error killing Chrome: ${getErrorMessage(error)}`);
   }
 
-  await waitForExit(pid, CHROME_EXIT_POLL_ATTEMPTS);
+  await waitForProcessExit(pid, GRACEFUL_EXIT_WAIT_MS, { pollMs: CHROME_EXIT_POLL_MS });
 
   if (isProcessAlive(pid)) {
     log.info(`Chrome (PID ${pid}) did not exit gracefully, force killing`);
     try {
       killChromeProcess(pid, 'SIGKILL');
-      await waitForExit(pid, CHROME_EXIT_POLL_ATTEMPTS);
+      await waitForProcessExit(pid, GRACEFUL_EXIT_WAIT_MS, { pollMs: CHROME_EXIT_POLL_MS });
     } catch (error) {
       log.info(`Failed to force kill Chrome: ${getErrorMessage(error)}`);
     }

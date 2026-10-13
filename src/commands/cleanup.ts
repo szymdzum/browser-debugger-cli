@@ -34,9 +34,8 @@ import {
   sessionStillActiveSuggestion,
   warningMessage,
 } from '@/ui/messages/commands.js';
-import { delay } from '@/utils/async.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import { isProcessAlive } from '@/utils/process.js';
+import { isProcessAlive, waitForProcessExit } from '@/utils/process.js';
 
 /**
  * Format cleanup result for human-readable output.
@@ -84,19 +83,6 @@ function liveSessionChromePid(): number | null {
 }
 
 /**
- * Wait until a process has exited.
- *
- * @param pid - Process ID
- * @param timeoutMs - Longest wait
- * @returns True if it exited
- */
-async function waitForExit(pid: number, timeoutMs: number): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs;
-  while (isProcessAlive(pid) && Date.now() < deadline) await delay(50);
-  return !isProcessAlive(pid);
-}
-
-/**
  * Why the session directory must not be deleted after cleanup: its daemon
  * still runs, cleanup reported problems, or its Chrome has not exited.
  *
@@ -113,7 +99,7 @@ export async function purgeBlocker(
   const dir = getSessionDir();
   if (await isDaemonAlive()) return purgeRefusedError(dir, 'its daemon is still running');
   if (warnings.length > 0) return purgeRefusedError(dir, warnings.join('; '));
-  if (chromePid !== null && !(await waitForExit(chromePid, exitWaitMs))) {
+  if (chromePid !== null && !(await waitForProcessExit(chromePid, exitWaitMs))) {
     return purgeRefusedError(dir, `its Chrome (PID ${chromePid}) is still running`);
   }
   return null;
