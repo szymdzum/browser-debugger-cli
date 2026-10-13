@@ -119,6 +119,7 @@ export interface LaunchOptions extends Pick<
  * Uses chrome-launcher for cross-platform Chrome detection and launching.
  */
 export async function launchChrome(options: LaunchOptions = {}): Promise<LaunchedChrome> {
+  throwIfLaunchAborted(options.signal);
   const logger = options.logger ?? defaultLogger;
   const port = options.port ?? DEFAULT_CDP_PORT;
 

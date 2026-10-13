@@ -1,11 +1,13 @@
 /**
- * Session teardown: stop collectors, close CDP, terminate launched Chrome.
+ * Session teardown releases: close the page connection (asking a launched
+ * Chrome to close first) and terminate a launched Chrome. The order they run
+ * in is defined by `startSequence.ts`.
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { ChromeNoticeCode, NoticeSink } from '@/errors/notices.js';
 import { clearChromePid } from '@/session/chrome.js';
-import type { CleanupFunction, LaunchedChrome } from '@/types.js';
+import type { LaunchedChrome } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
 import { raceTimeout } from '@/utils/async.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -19,13 +21,13 @@ const GRACEFUL_EXIT_WAIT_MS = 5000;
 const BROWSER_CLOSE_REPLY_MS = 500;
 
 /**
- * Resources to release during teardown. Any of them may be missing if the
- * session failed part-way through startup.
+ * The page connection to release, and the Chrome behind it.
  */
-export interface TeardownContext {
+export interface ConnectionRelease {
+  /** Launched Chrome, or null when attached to the user's Chrome */
   chrome: LaunchedChrome | null;
+  /** The session's current page connection, if it still has one */
   cdp: CDPConnection | null;
-  cleanupFunctions: CleanupFunction[];
   /** Attached to a user's Chrome (--chrome-ws-url) rather than one bdg launched */
   external: boolean;
   log: Logger;
@@ -33,38 +35,22 @@ export interface TeardownContext {
 }
 
 /**
- * Release all session resources. Never throws.
+ * Release the page connection: a launched Chrome is asked to close itself
+ * through it first ({@link requestBrowserClose}); an attached Chrome is left
+ * running, and the user is told so. Never throws.
  *
- * @param context - Resources to release
+ * @param release - Connection, Chrome and how to report
  */
-export async function teardownSession(context: TeardownContext): Promise<void> {
-  const { chrome, cdp, cleanupFunctions, external, log, notify } = context;
-
-  for (const cleanup of cleanupFunctions) {
-    try {
-      await cleanup();
-    } catch (error) {
-      log.debug(`Collector cleanup error: ${getErrorMessage(error)}`);
-    }
+export async function releaseConnection(release: ConnectionRelease): Promise<void> {
+  const { chrome, cdp, external, log, notify } = release;
+  if (!cdp) return;
+  if (chrome) await requestBrowserClose(cdp, chrome.pid, log);
+  try {
+    cdp.close();
+  } catch (error) {
+    log.info(`Error closing CDP: ${getErrorMessage(error)}`);
   }
-
-  if (chrome && cdp) {
-    await requestBrowserClose(cdp, chrome.pid, log);
-  }
-
-  if (cdp) {
-    try {
-      cdp.close();
-    } catch (error) {
-      log.info(`Error closing CDP: ${getErrorMessage(error)}`);
-    }
-  }
-
-  if (chrome) {
-    await terminateChrome(chrome, log);
-  } else if (cdp && external) {
-    notify({ code: 'EXTERNAL_CHROME_SKIP_TERMINATION' });
-  }
+  if (!chrome && external) notify({ code: 'EXTERNAL_CHROME_SKIP_TERMINATION' });
 }
 
 /**
@@ -104,7 +90,7 @@ async function requestBrowserClose(cdp: CDPConnection, pid: number, log: Logger)
  * @param chrome - Launched Chrome instance
  * @param log - Logger
  */
-async function terminateChrome(chrome: LaunchedChrome, log: Logger): Promise<void> {
+export async function terminateChrome(chrome: LaunchedChrome, log: Logger): Promise<void> {
   const pid = chrome.pid;
   try {
     process.kill(pid, 'SIGTERM');

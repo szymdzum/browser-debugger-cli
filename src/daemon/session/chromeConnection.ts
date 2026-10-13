@@ -53,7 +53,7 @@ export async function setupChromeConnection(
   signal?: AbortSignal
 ): Promise<LaunchedChrome | null> {
   if (config.chromeWsUrl) {
-    return setupExternalChrome(config, telemetryStore, log, notify);
+    return setupExternalChrome(config, telemetryStore, log, notify, signal);
   } else {
     return setupLaunchedChrome(config, log, signal);
   }
@@ -111,12 +111,20 @@ export function externalChromePort(wsUrl: string): number {
 
 /**
  * Connect to existing external Chrome instance.
+ *
+ * @param config - Session configuration
+ * @param telemetryStore - Store receiving the target info
+ * @param log - Logger
+ * @param notify - Receives the connection notices
+ * @param signal - The session's stop signal
+ * @returns null: bdg did not launch this Chrome
  */
 async function setupExternalChrome(
   config: SessionConfig,
   telemetryStore: TelemetryStore,
   log: Logger,
-  notify: NoticeSink<ChromeNoticeCode>
+  notify: NoticeSink<ChromeNoticeCode>,
+  signal: AbortSignal | undefined
 ): Promise<null> {
   const wsUrl = config.chromeWsUrl;
   if (!wsUrl) {
@@ -128,7 +136,7 @@ async function setupExternalChrome(
 
   notify({ code: 'EXTERNAL_CHROME_CONNECTING' });
   notify({ code: 'EXTERNAL_CHROME_WS_URL', context: { wsUrl } });
-  telemetryStore.setTargetInfo(await resolveExternalTarget(wsUrl, config, log));
+  telemetryStore.setTargetInfo(await resolveExternalTarget(wsUrl, config, log, signal));
   notify({ code: 'EXTERNAL_CHROME_NO_PID' });
 
   return null;
@@ -144,18 +152,20 @@ async function setupExternalChrome(
  * @param wsUrl - `--chrome-ws-url` value
  * @param config - Session configuration (port is the URL's port)
  * @param log - Logger
+ * @param signal - The session's stop signal: ends the endpoint probe early
  * @returns Page target
  * @throws CommandError if no page can be found or opened
  */
 async function resolveExternalTarget(
   wsUrl: string,
   config: SessionConfig,
-  log: Logger
+  log: Logger,
+  signal: AbortSignal | undefined
 ): Promise<CDPTarget> {
   const { hostname, pathname, protocol, port } = new URL(wsUrl);
   const http = { host: hostname, secure: protocol === 'wss:' };
   const endpoint = `${http.secure ? 'https' : 'http'}://${hostname}:${config.port}`;
-  const probe = await probeDevToolsEndpoint(config.port, log, http);
+  const probe = await probeDevToolsEndpoint(config.port, log, { ...http, signal });
   if (probe.kind !== 'devtools') {
     const err =
       probe.kind === 'not-devtools'

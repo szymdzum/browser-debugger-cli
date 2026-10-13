@@ -100,6 +100,7 @@ export const UNREACHABLE_ERRORS =
  * @param telemetryStore - Store whose target info is refreshed
  * @param chrome - Launched Chrome, or null when attached to an external browser
  * @param log - Logger
+ * @param signal - The session's stop signal: ends the readiness wait early
  * @returns Loader id of the navigation (the main document's request id)
  * @throws CommandError (80) when the URL cannot be reached at all
  */
@@ -108,7 +109,8 @@ export async function navigateToTarget(
   config: SessionConfig,
   telemetryStore: TelemetryStore,
   chrome: LaunchedChrome | null,
-  log: Logger
+  log: Logger,
+  signal?: AbortSignal
 ): Promise<string | undefined> {
   const normalizedUrl = normalizeUrl(config.url);
   log.info(`Navigating to ${displayUrl(normalizedUrl)}...`);
@@ -124,10 +126,11 @@ export async function navigateToTarget(
 
   await waitForPageReady(cdp, {
     maxWaitMs: DEFAULT_PAGE_READINESS_TIMEOUT_MS,
+    ...(signal && { signal }),
   });
   log.info(`Page ready`);
 
-  if (chrome && telemetryStore.targetInfo) {
+  if (chrome && telemetryStore.targetInfo && !signal?.aborted) {
     const currentTargetId = telemetryStore.targetInfo.id;
     const updatedTargets = await fetchCDPTargets(config.port, log);
     const updatedTarget = updatedTargets.find((t) => t.id === currentTargetId);

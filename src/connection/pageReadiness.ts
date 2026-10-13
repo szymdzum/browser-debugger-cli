@@ -34,6 +34,8 @@ export interface PageReadinessOptions {
    * Default: 5000ms (5 seconds)
    */
   maxWaitMs?: number;
+  /** Ends the wait early (the session was stopped) */
+  signal?: AbortSignal;
 }
 
 /**
@@ -66,12 +68,13 @@ export async function waitForPageReady(
 ): Promise<void> {
   const maxWaitMs = options.maxWaitMs ?? 5000;
   const deadline = Date.now() + maxWaitMs;
+  const { signal } = options;
 
   try {
-    await waitForLoadEvent(cdp, deadline);
+    await waitForLoadEvent(cdp, deadline, signal);
     log.info('Load event fired');
 
-    const { networkIdleMs, domIdleMs } = await waitForQuiet(cdp, deadline);
+    const { networkIdleMs, domIdleMs } = await waitForQuiet(cdp, deadline, signal);
     log.info(`Network stable (${networkIdleMs}ms idle)`);
     log.info(`DOM stable (${domIdleMs}ms idle)`);
 
@@ -95,9 +98,14 @@ export async function waitForPageReady(
  *
  * @param cdp - CDP connection
  * @param deadline - Timestamp when to timeout
- * @throws Error if deadline exceeded
+ * @param signal - Ends the wait early
+ * @throws Error if deadline exceeded or the signal aborted
  */
-async function waitForLoadEvent(cdp: CDPConnection, deadline: number): Promise<void> {
+async function waitForLoadEvent(
+  cdp: CDPConnection,
+  deadline: number,
+  signal: AbortSignal | undefined
+): Promise<void> {
   await cdp.send('Page.enable');
 
   try {
@@ -125,7 +133,10 @@ async function waitForLoadEvent(cdp: CDPConnection, deadline: number): Promise<v
     };
 
     const checkDeadline = (): void => {
-      if (Date.now() >= deadline) {
+      if (signal?.aborted) {
+        cleanup();
+        reject(signal.reason as Error);
+      } else if (Date.now() >= deadline) {
         cleanup();
         reject(new Error('Load event timeout'));
       } else {
@@ -179,12 +190,14 @@ const REMOVE_MUTATION_OBSERVER_JS = `
  *
  * @param cdp - CDP connection
  * @param deadline - Timestamp when to timeout
+ * @param signal - Ends the wait early
  * @returns How long each has been quiet
- * @throws Error if deadline exceeded
+ * @throws Error if deadline exceeded or the signal aborted
  */
 async function waitForQuiet(
   cdp: CDPConnection,
-  deadline: number
+  deadline: number,
+  signal: AbortSignal | undefined
 ): Promise<{ networkIdleMs: number; domIdleMs: number }> {
   await cdp.send('Network.enable');
   const requests = trackInFlightRequests(cdp);
@@ -192,12 +205,13 @@ async function waitForQuiet(
   try {
     await cdp.send('Runtime.evaluate', { expression: INSTALL_MUTATION_OBSERVER_JS });
     while (Date.now() < deadline) {
+      signal?.throwIfAborted();
       const networkIdleMs = requests.count === 0 ? Date.now() - requests.lastActivity : 0;
       if (networkIdleMs >= NETWORK_IDLE_THRESHOLD_MS) {
         const domIdleMs = await msSinceLastMutation(cdp);
         if (domIdleMs >= DOM_STABLE_THRESHOLD_MS) return { networkIdleMs, domIdleMs };
       }
-      await delay(QUIET_CHECK_INTERVAL_MS);
+      await delay(QUIET_CHECK_INTERVAL_MS, signal);
     }
     throw new Error('Page stability timeout');
   } finally {

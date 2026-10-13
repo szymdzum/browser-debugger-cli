@@ -43,14 +43,55 @@ export interface StartOperations {
 }
 
 /**
- * Acquire the session's resources in order.
+ * Acquire the session's resources in order: Chrome, its page target (a
+ * launched Chrome), the page connection, `--state`, the emulation, the
+ * session's collectors, the first tab's collectors, the navigation and the
+ * readiness read. Every step runs through {@link ResourceStack.acquire}, so
+ * a stop (the signal) ends the start at the next step boundary at the
+ * latest, and steps that wait end at once where the operation honours the
+ * signal.
  *
- * @param _stack - Receives each release
- * @param _signal - The session's stop signal
- * @param _ops - The operations
+ * The releases registered here are the teardown order, last first: the
+ * tab's collectors, the session's collectors, `Browser.close` and the page
+ * connection, then Chrome's termination.
+ *
+ * @param stack - Receives each release
+ * @param signal - The session's stop signal
+ * @param ops - The operations
+ * @throws The signal's reason when stopped, or the failing step's error
  */
 export async function acquireSessionResources(
-  _stack: ResourceStack,
-  _signal: AbortSignal,
-  _ops: StartOperations
-): Promise<void> {}
+  stack: ResourceStack,
+  signal: AbortSignal,
+  ops: StartOperations
+): Promise<void> {
+  const chrome = await stack.acquire(
+    'chrome',
+    signal,
+    (s) => ops.launchChrome(s),
+    (launched) => (launched ? ops.terminateChrome(launched) : undefined)
+  );
+  if (chrome) await stack.acquire('page target', signal, (s) => ops.findPageTarget(s));
+  const cdp = await stack.acquire(
+    'page connection',
+    signal,
+    (s) => ops.connect(s),
+    () => ops.closeConnection(chrome)
+  );
+  await stack.acquire('state', signal, (s) => ops.restoreState(cdp, s));
+  await stack.acquire('emulation', signal, (s) => ops.applyEmulation(cdp, s));
+  await stack.acquire(
+    'session collectors',
+    signal,
+    (s) => ops.startCollectors(cdp, s),
+    (cleanups) => ops.stopCollectors(cleanups)
+  );
+  await stack.acquire(
+    'page collectors',
+    signal,
+    (s) => ops.startPage(cdp, s),
+    () => ops.stopPage()
+  );
+  await stack.acquire('navigation', signal, (s) => ops.navigate(cdp, chrome, s));
+  await stack.acquire('readiness', signal, (s) => ops.readReadiness(cdp, s));
+}

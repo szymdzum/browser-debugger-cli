@@ -26,8 +26,9 @@ import {
 import { withMatchedStylesReset } from '@/daemon/session/matchedStylesReset.js';
 import { PageSwitcher, type PageHost, type PageStart } from '@/daemon/session/pageSwitcher.js';
 import { telemetryPluginsOf } from '@/daemon/session/plugins.js';
+import { acquireSessionResources, type StartOperations } from '@/daemon/session/startSequence.js';
 import { TabTracker } from '@/daemon/session/tabs.js';
-import { teardownSession, type TeardownContext } from '@/daemon/session/teardown.js';
+import { releaseConnection, terminateChrome } from '@/daemon/session/teardown.js';
 import type { SessionConfig } from '@/daemon/session/types.js';
 import { CommandError } from '@/errors/index.js';
 import { chromeInUseBySessionError, unknownSessionCommandMessage } from '@/errors/messages.js';
@@ -56,6 +57,7 @@ import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
 import { isProcessAlive } from '@/utils/process.js';
+import { ResourceStack } from '@/utils/resourceStack.js';
 import { validateUrl } from '@/utils/url.js';
 
 const log = createLogger('session');
@@ -98,6 +100,9 @@ const CRASH_SETTLE_MS = 500;
 
 /** `Inspector.detached` reason when the page's tab closed */
 const TARGET_CLOSED = 'target_closed';
+
+/** Why a start ends when the session is stopped while starting */
+const STOPPED_DURING_STARTUP = 'Session was stopped during startup';
 
 /** Ports tried when automatically chosen ports turn out to be taken */
 const PORT_ATTEMPTS = 3;
@@ -202,16 +207,16 @@ export class Session {
   private readonly notify: NoticeSink<ChromeNoticeCode> = (notice) =>
     log.info(formatChromeNotice(notice));
   private chrome: LaunchedChrome | null = null;
-  /** Cleanups of the collectors started once for the session */
-  private sessionCleanups: CleanupFunction[] = [];
+  /** Releases of what the session acquired, run last first on stop or a failed start */
+  private readonly resources = new ResourceStack(log);
   private timeoutTimer: NodeJS.Timeout | null = null;
   /** When `--timeout` stops the session (epoch ms) */
   private autoStopAt: number | undefined;
   private stopping: Promise<void> | null = null;
   /** Why the session was first asked to stop ('normal' = user, signal or abandoned start) */
   private stopReason: SessionEndReason | null = null;
-  /** Aborted by stop(), so launch steps that wait or retry end at once */
-  private readonly launchAbort = new AbortController();
+  /** Aborted by stop(): ends the start at the next step, and at once in steps that wait or retry */
+  private readonly stopAbort = new AbortController();
   private started = false;
   private documentRequestId: string | undefined;
   private loading: PageLoadingState | undefined;
@@ -438,7 +443,7 @@ export class Session {
    */
   stop(reason: SessionEndReason, cause?: ConnectionLossCause): Promise<void> {
     this.stopReason ??= reason;
-    this.launchAbort.abort();
+    this.stopAbort.abort(new Error(STOPPED_DURING_STARTUP));
     this.stopping ??= (async () => {
       if (this.timeoutTimer) clearTimeout(this.timeoutTimer);
       log.info(`Stopping session (reason: ${reason}${cause ? `, cause: ${cause}` : ''})`);
@@ -451,36 +456,85 @@ export class Session {
   }
 
   /**
-   * Acquire Chrome, CDP and collectors, checking for a concurrent stop after each step.
+   * Acquire Chrome, CDP and collectors in the order
+   * {@link acquireSessionResources} defines, each release registered on
+   * {@link resources}; a stop ends the start through {@link stopAbort}.
    */
   private async acquireResources(): Promise<void> {
     this.store.resetSessionStart();
-    const { chromeWsUrl } = this.config;
-    if (chromeWsUrl) {
-      this.config = { ...this.config, port: externalChromePort(chromeWsUrl) };
-      this.throwIfStopping();
-      this.chrome = await setupChromeConnection(this.config, this.store, log, this.notify);
-    } else {
-      await this.launchOwnChrome();
-    }
-    this.throwIfStopping();
-    if (this.chrome) {
-      await findPageTarget(this.config, this.store, log);
-      this.throwIfStopping();
-    }
-    const cdp = await connectCDP(this.store, log, (lost) => this.pages.onPageDisconnected(lost), {
-      external: Boolean(chromeWsUrl),
-      signal: this.launchAbort.signal,
-    });
-    this.pages.adopt(cdp, []);
-    this.throwIfStopping();
-    await this.restoreState(cdp);
-    await this.startCollectors(cdp);
-    this.documentRequestId = await navigateToTarget(cdp, this.config, this.store, this.chrome, log);
-    this.throwIfStopping();
-    this.loading = await readPageLoadingState(cdp, this.store.pendingNetworkRequests.values());
-    this.startDialogs = [...this.store.dialogs];
-    this.throwIfStopping();
+    await acquireSessionResources(this.resources, this.stopAbort.signal, this.startOperations());
+  }
+
+  /**
+   * The session's start steps and their releases.
+   *
+   * @returns Start operations
+   */
+  private startOperations(): StartOperations {
+    const external = Boolean(this.config.chromeWsUrl);
+    return {
+      launchChrome: async (signal) => {
+        this.chrome = await this.connectChrome(signal);
+        return this.chrome;
+      },
+      findPageTarget: () => findPageTarget(this.config, this.store, log),
+      connect: async (signal) => {
+        const onLost = (lost: CDPConnection): void => this.pages.onPageDisconnected(lost);
+        const cdp = await connectCDP(this.store, log, onLost, { external, signal });
+        this.pages.adopt(cdp, []);
+        return cdp;
+      },
+      restoreState: (cdp) => this.restoreState(cdp),
+      applyEmulation: (cdp) => applySessionEmulation(cdp, this.config),
+      startCollectors: (cdp) =>
+        startTelemetryCollectors(cdp, this.config, this.store, log, {
+          plugins: telemetryPluginsOf('session'),
+          onPageSwitch: (listener) => void this.pageSwitchListeners.push(listener),
+        }),
+      startPage: async (cdp) => {
+        this.tabs.setCurrent(this.store.targetInfo?.id ?? '');
+        this.pages.adopt(cdp, await this.startPage(cdp, { kind: 'first' }));
+      },
+      navigate: async (cdp, chrome, signal) => {
+        this.documentRequestId = await navigateToTarget(
+          cdp,
+          this.config,
+          this.store,
+          chrome,
+          log,
+          signal
+        );
+      },
+      readReadiness: async (cdp) => {
+        this.loading = await readPageLoadingState(cdp, this.store.pendingNetworkRequests.values());
+        this.startDialogs = [...this.store.dialogs];
+      },
+      ...this.startReleases(external),
+    };
+  }
+
+  /**
+   * The releases of the start steps.
+   *
+   * @param external - Attached to the user's Chrome
+   * @returns Releases
+   */
+  private startReleases(
+    external: boolean
+  ): Pick<StartOperations, 'terminateChrome' | 'closeConnection' | 'stopCollectors' | 'stopPage'> {
+    return {
+      terminateChrome: (chrome) => terminateChrome(chrome, log),
+      closeConnection: (chrome) =>
+        releaseConnection({
+          chrome,
+          cdp: this.pages.takeConnection(),
+          external,
+          log,
+          notify: this.notify,
+        }),
+      stopCollectors: (cleanups) => runCleanups(cleanups, log),
+      stopPage: () => runCleanups(this.pages.takeCleanups(), log),
+    };
   }
 
   /**
@@ -497,25 +551,19 @@ export class Session {
     log.info(
       `State restored (${this.stateRestored.cookies} cookies, ${this.stateRestored.origins.length} origins)`
     );
-    this.throwIfStopping();
   }
 
   /**
-   * Apply the emulation and start the collectors on the session's first tab.
+   * Attach to the user's Chrome (`--chrome-ws-url`), or launch one.
    *
-   * @param cdp - Its connection
+   * @param signal - The session's stop signal
+   * @returns The launched Chrome, or null when attached
    */
-  private async startCollectors(cdp: CDPConnection): Promise<void> {
-    await applySessionEmulation(cdp, this.config);
-    this.throwIfStopping();
-    this.sessionCleanups = await startTelemetryCollectors(cdp, this.config, this.store, log, {
-      plugins: telemetryPluginsOf('session'),
-      onPageSwitch: (listener) => void this.pageSwitchListeners.push(listener),
-    });
-    this.throwIfStopping();
-    this.tabs.setCurrent(this.store.targetInfo?.id ?? '');
-    this.pages.adopt(cdp, await this.startPage(cdp, { kind: 'first' }));
-    this.throwIfStopping();
+  private connectChrome(signal: AbortSignal): Promise<LaunchedChrome | null> {
+    const { chromeWsUrl } = this.config;
+    if (!chromeWsUrl) return this.launchOwnChrome(signal);
+    this.config = { ...this.config, port: externalChromePort(chromeWsUrl) };
+    return setupChromeConnection(this.config, this.store, log, this.notify, signal);
   }
 
   /**
@@ -525,22 +573,17 @@ export class Session {
    * session gets its remembered port back. If another process took an
    * automatically chosen port before Chrome could listen on it, another port
    * is chosen (the taken one now answers, so it is skipped).
+   *
+   * @param signal - The session's stop signal: no Chrome is launched once it aborted
+   * @returns The launched Chrome
    */
-  private async launchOwnChrome(): Promise<void> {
+  private async launchOwnChrome(signal: AbortSignal): Promise<LaunchedChrome | null> {
     await reapOrphanedChrome();
     const explicitPort = this.config.port || undefined;
     for (let attempt = 1; ; attempt++) {
       this.config = { ...this.config, port: await getSessionPort(explicitPort) };
-      this.throwIfStopping();
       try {
-        this.chrome = await setupChromeConnection(
-          this.config,
-          this.store,
-          log,
-          this.notify,
-          this.launchAbort.signal
-        );
-        return;
+        return await setupChromeConnection(this.config, this.store, log, this.notify, signal);
       } catch (error) {
         const retry = !explicitPort && attempt < PORT_ATTEMPTS && isPortConflict(error);
         if (!retry) throw error;
@@ -708,33 +751,13 @@ export class Session {
   }
 
   /**
-   * Abort a launch that was stopped while in progress.
-   *
-   * @throws Error if the session is stopping
-   */
-  private throwIfStopping(): void {
-    if (this.stopping) {
-      throw new Error('Session was stopped during startup');
-    }
-  }
-
-  /**
-   * Release every resource currently held. Each resource is released once:
-   * later calls only release what was acquired since.
+   * Release every resource currently held, last acquired first. Each
+   * resource is released once: later calls only release what was acquired
+   * since (a start still running when the session was stopped).
    */
   private async releaseResources(): Promise<void> {
-    const page = this.pages.release();
-    const context: TeardownContext = {
-      chrome: this.chrome,
-      cdp: page.cdp,
-      cleanupFunctions: [...page.cleanups, ...this.sessionCleanups],
-      external: Boolean(this.config.chromeWsUrl),
-      log,
-      notify: this.notify,
-    };
     this.chrome = null;
-    this.sessionCleanups = [];
-    await teardownSession(context);
+    await this.resources.dispose();
   }
 }
 
