@@ -29,6 +29,11 @@ One row per merged PR, appended with `ship log <pr> …` right after the merge. 
 | 2026-10-13 | #701 | #660 | 2 | 1/1/2 | 0 | 1 | sonnet | ~470k | #660 shared withTimeout/raceTimeout/waitForProcessExit/abortOnInterrupt; screenshot --follow SIGTERM regression caught by review; tester older findings (follow --json envelopes) → verifier |
 | 2026-10-13 | #702 | #693 | 2 | 0/6/5 | 1 | 2 | sonnet | ~560k | #693 --full 50 MiB cap (page early stop + daemon byte backstop, exit 81); review found 4 bypasses (Map/Set, floats, multibyte, replaced built-ins); tester: '50 MB' vs MiB wording left → file |
 | 2026-10-13 | #703 | #659 | 3 | 0/2/5 | 0 | 1 | opus | ~900k | #659 ResourceStack + startSequence (11 throwIfStopping gone) + one runShutdown; fix round found re-entrant shutdown recursion (stack overflow) via new caller tests; adjacent: shutdown steps isolated; tester daemonStillRunning hint once, not reproduced in 30 runs |
+| 2026-10-13 | #707 | - | 1 | 0/1/3 | - | 1 | sonnet | ~175k | retro S5: SIGINT via Node spawner, snapshot --accept, briefs as files, Not-checked resume tier 3 only; log rows S4/S5 |
+| 2026-10-13 | #708 | #704 | 2 | 0/1/2 | 0 | 1 | sonnet | 330k | screenshot --follow 130/143; reviewer race fix; tester older-code nits (Captured 1 frames, console --follow JSON help) to verifier |
+| 2026-10-13 | #709 | #606 | 3 | 0/4/9 | 0 | 2 | opus | 820k | shared releaseObjectGroup + daemon sweeps groups of exited CLI pids (user accepted pid over connection); 2nd reviewer found 2 should-fix; adjacent Date.now() group names |
+| 2026-10-13 | #710 | #705 | 2 | 1/2/3 | 1 | 2 | sonnet | 560k | eval fails fast: page-side size cap 256 MiB (101→81, user OK), ping+12 s grace for lost strings (reviewer caught false 102 on slow sync scripts); tester's wrong 'drop --full' hint → #706 |
+| 2026-10-13 | #711 | #706 | 2 | 0/3/4 | 2 | 2 | sonnet | 420k | MiB wording + suggestions that work (slice in chars, Map by keys); folded #705's wrong 'drop --full' hint; state file limit documented; filed #715 |
 
 ## Escaped
 
