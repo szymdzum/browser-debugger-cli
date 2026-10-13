@@ -25,19 +25,37 @@ const SNAPSHOT = {
 /** Exit codes of this script, so the orchestrator can branch on them */
 export const EXIT = { ok: 0, failed: 1, usage: 2, superseded: 3, timeout: 4 };
 
+const CALL_TIMEOUT_MS = 60_000;
+let waiterDeadline = null;
+
 /**
  * Runs a command and returns its trimmed stdout; throws with stderr on failure.
+ * A command that outlives `timeoutMs` (default 60 s, so a hung gh cannot block
+ * a waiter) is killed and fails with `timedOut` set and a message naming the
+ * command and the timeout. `deadline` (epoch ms) caps the timeout further;
+ * `timeoutMs: 0` means no timeout, for long builds.
  *
  * @param {string} cmd
  * @param {string[]} args
- * @param {object} [opts]
+ * @param {{ timeoutMs?: number, deadline?: number | null } & object} [opts]
  */
 export function run(cmd, args, opts = {}) {
-  return execFileSync(cmd, args, {
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-    ...opts,
-  }).trim();
+  const { timeoutMs = CALL_TIMEOUT_MS, deadline = waiterDeadline, ...execOpts } = opts;
+  let timeout = timeoutMs;
+  if (deadline && timeout) timeout = Math.min(timeout, Math.max(deadline - Date.now(), 1));
+  else if (deadline) timeout = Math.max(deadline - Date.now(), 1);
+  try {
+    return execFileSync(cmd, args, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      ...execOpts,
+      ...(timeout ? { timeout, killSignal: 'SIGKILL' } : {}),
+    }).trim();
+  } catch (err) {
+    if (err?.code !== 'ETIMEDOUT') throw err;
+    const message = `\`${cmd} ${args.join(' ')}\` timed out after ${timeout / 1000}s`;
+    throw Object.assign(new Error(message), { timedOut: true, stderr: message });
+  }
 }
 
 const TRANSIENT_GH =
@@ -46,13 +64,13 @@ const RETRY_BACKOFF_MS = [2000, 5000, 10_000, 20_000];
 
 /**
  * Whether a failed gh call looks like a network or GitHub hiccup worth retrying.
- * Only gh's stderr counts: the error message starts with the command line, whose
+ * A call killed by its timeout counts too. Only gh's stderr counts: the error message starts with the command line, whose
  * numbers (a PR 502, `--limit 500`) must not look like an HTTP status.
  *
  * @param {{ stderr?: unknown }} err
  */
 export function isTransientGhError(err) {
-  return TRANSIENT_GH.test(String(err?.stderr ?? ''));
+  return err?.timedOut === true || TRANSIENT_GH.test(String(err?.stderr ?? ''));
 }
 
 /**
@@ -60,17 +78,19 @@ export function isTransientGhError(err) {
  * retry); a non-transient failure, or the last transient one, is thrown.
  *
  * @param {() => unknown} fn
- * @param {{ backoff?: number[], wait?: (ms: number) => void }} [opts]
+ * @param {{ backoff?: number[], wait?: (ms: number) => void, deadline?: number | null }} [opts]
  */
 export function retryTransient(fn, opts = {}) {
   const backoff = opts.backoff ?? RETRY_BACKOFF_MS;
   const wait =
     opts.wait ?? ((ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms));
+  const deadline = opts.deadline ?? waiterDeadline;
   for (let attempt = 0; ; attempt++) {
     try {
       return fn();
     } catch (err) {
       if (attempt >= backoff.length || !isTransientGhError(err)) throw err;
+      if (deadline && Date.now() >= deadline) throw err;
       const firstLine = String(err.stderr || err.message)
         .trim()
         .split('\n')[0];
@@ -210,10 +230,29 @@ export function judgeConclusions(conclusions, mode = {}) {
  * @param {string[]} argv `<pr>` or `<sha> --push`, optional `--timeout=<minutes>`
  */
 async function ciWait(argv) {
+  const { keys } = parseArgs(argv);
+  waiterDeadline = Date.now() + Number(keys.timeout ?? 45) * 60_000;
+  try {
+    return await ciWaitLoop(argv);
+  } catch (err) {
+    if (err?.timedOut !== true || Date.now() < waiterDeadline) throw err;
+    console.log(`timeout: ${err.message}`);
+    return EXIT.timeout;
+  } finally {
+    waiterDeadline = null;
+  }
+}
+
+/**
+ * Polls until the workflows finished; `ciWait` wraps it with the deadline.
+ *
+ * @param {string[]} argv as for `ciWait`
+ */
+async function ciWaitLoop(argv) {
   const { positional, keys, flags } = parseArgs(argv);
   const target = positional[0];
   if (!target) return usage('ci-wait <pr> | ci-wait <sha> --push');
-  const deadline = Date.now() + Number(keys.timeout ?? 45) * 60_000;
+  const deadline = waiterDeadline;
   const push = flags.has('push');
   let pr = null;
   let sha = target;
