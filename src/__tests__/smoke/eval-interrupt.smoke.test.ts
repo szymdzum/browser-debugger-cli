@@ -6,7 +6,9 @@
  * its 20 s limit: the next eval answers at once. An eval another CLI sent
  * meanwhile (queued behind the busy script) answers too, never 102 or 130,
  * and interrupting an eval queued behind another client's running script
- * leaves that script alone.
+ * leaves that script alone. An eval the daemon has answered is never
+ * stopped: its client exiting after a lost result (Chrome could not send it,
+ * the call stays pending) must not stop the script another client runs.
  *
  * Signals are sent once the command is known to be where the test needs
  * it: a looping script has told the fixture server it started (a
@@ -35,6 +37,12 @@ const LOOP_MS = 20_000;
 
 /** How long a script that is left to finish keeps the page busy */
 const SHORT_LOOP_MS = 3_000;
+
+/**
+ * How long another client's script runs while an eval's result is lost: it
+ * starts 2 s into that eval and outlasts its answer (about 13 s in)
+ */
+const OTHER_LOOP_MS = 15_000;
 
 /** Upper bound for every command: well past the loop and the eval's own limit */
 const COMMAND_TIMEOUT_MS = 60_000;
@@ -141,15 +149,16 @@ void describe('Interrupted dom eval', () => {
    *
    * @param script - Script
    * @param stop - Aborted to send `signal`
-   * @param options - `--frame` value and the signal (default SIGINT)
+   * @param options - `--frame` value, the signal (default SIGINT), more arguments
    * @returns The eval's result
    */
   function startEval(
     script: string,
     stop?: AbortSignal,
-    options: { frame?: string; signal?: NodeJS.Signals } = {}
+    options: { frame?: string; signal?: NodeJS.Signals; extra?: string[] } = {}
   ): Promise<CommandResult> {
-    return runCommand('dom', ['eval', script, ...frameArgs(options.frame), '--json'], {
+    const extra = [...frameArgs(options.frame), ...(options.extra ?? [])];
+    return runCommand('dom', ['eval', script, ...extra, '--json'], {
       timeout: COMMAND_TIMEOUT_MS,
       ...(stop && { interrupt: stop }),
       ...(options.signal && { interruptWith: options.signal }),
@@ -293,6 +302,25 @@ void describe('Interrupted dom eval', () => {
     await interruptLoop('cross-frame-loop', { frame: 'cross' });
     await assertAnswersAtOnce('cross');
   });
+
+  for (const full of [false, true]) {
+    void it(`never stops another client's script after an eval whose result was lost${full ? ' (--full)' : ''}`, async () => {
+      const armed = full ? 'lost-full-armed' : 'lost-armed';
+      const lost = startEval(
+        `setTimeout(() => { const r = new XMLHttpRequest(); r.open('GET', '/beacon?${armed}', false); r.send(); }, 2000); 'x'.repeat(300e6)`,
+        undefined,
+        { extra: full ? ['--full'] : [] }
+      );
+      await untilBeacon(armed);
+      const other = startEval(loopScript(`${armed}-loop`, OTHER_LOOP_MS));
+      await untilBeacon(`${armed}-loop`);
+      const lostResult = await lost;
+      assert.equal(lostResult.exitCode, full ? 81 : 102, shown(lostResult));
+      const survivor = await other;
+      assert.equal(survivor.exitCode, 0, shown(survivor));
+      assert.match(survivor.stdout, /"result":"finished"/, shown(survivor));
+    });
+  }
 
   void it('answers status normally afterwards', async () => {
     const status = await runCommand('status', ['--json'], { timeout: COMMAND_TIMEOUT_MS });
