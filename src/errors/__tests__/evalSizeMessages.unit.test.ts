@@ -55,7 +55,7 @@ void describe('dom eval --full over the cap', () => {
 void describe('dom eval result Chrome cannot send', () => {
   void it('names the transfer cap in MiB (81, without --full)', () => {
     const err = evalResultNotSendableError(300 * MIB, TRANSFER_CAP);
-    assert.match(err.message, /over 256 MiB \(counted 300 MiB/);
+    assert.match(err.message, /over 256 MiB \(counted 300\.0 MiB/);
   });
 
   void it('names a way to read the data that works with bdg (102)', () => {
@@ -64,5 +64,18 @@ void describe('dom eval result Chrome cannot send', () => {
     assert.match(err.suggestion ?? '', /window\./);
     assert.match(err.suggestion ?? '', /--full/);
     assert.match(err.suggestion ?? '', /50 MiB/);
+    assert.match(err.suggestion ?? '', /slice\(0, 10000000\)/);
+    assert.match(err.suggestion ?? '', /\[\.\.\.window\.data\]\.slice/);
+    assert.match(err.suggestion ?? '', /multibyte/);
+  });
+
+  void it('does not round a count just over the cap down to the cap', () => {
+    const err = evalResultNotSendableError(TRANSFER_CAP + 10, TRANSFER_CAP);
+    assert.match(err.message, /counted 268435466 bytes/);
+  });
+
+  void it('does not suggest .slice for an object', () => {
+    const err = evalResultNotSendableError(300 * MIB, TRANSFER_CAP);
+    assert.doesNotMatch(err.suggestion ?? '', /\.slice\(0, 1000\)/);
   });
 });

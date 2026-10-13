@@ -2482,13 +2482,13 @@ export function resultNotSentError(): ErrorWithSuggestion {
   return {
     message:
       'The script ran, but Chrome could not send its result: it is probably too large to send',
-    suggestion: `Return a slice or the .length instead. To read all of it, keep it in the page (bdg dom eval '(window.data = <expression>, window.data.length)') and read slices of under ${formatMiB(EVAL_FULL_MAX_BYTES, 0)}: bdg dom eval 'window.data.slice(0, 40000000)' --full (until the page navigates)`,
+    suggestion: `Return a slice or the .length instead. To read all of it, keep it in the page (bdg dom eval '(window.data = <expression>, window.data.length)') and read parts of under ${formatMiB(EVAL_FULL_MAX_BYTES, 0)} with --full: a string as bdg dom eval 'window.data.slice(0, 10000000)' (10 million characters; fewer for multibyte text), a Map as bdg dom eval '[...window.data].slice(0, 10)' (until the page navigates)`,
   };
 }
 
 /** How to get a smaller `dom eval` result */
 const SMALLER_RESULT_SUGGESTION =
-  'Return a slice or a summary of the value (.slice(0, 1000), .length)';
+  'Return a smaller part of the value (a slice of a string or array, a few keys of an object) or a count (.length)';
 
 /** The same, for a result that did arrive: without `--full` it is cut to its first characters */
 const TOO_LARGE_SUGGESTION = `${SMALLER_RESULT_SUGGESTION}, or drop --full to get the first 20000 characters`;
@@ -2544,8 +2544,9 @@ export function evalResultUnsentFullError(cap: number): ErrorWithSuggestion {
  * @returns Error naming the limit and how to get a smaller result
  */
 export function evalResultNotSendableError(counted: number, cap: number): ErrorWithSuggestion {
+  const shown = formatMiB(counted) === formatMiB(cap) ? `${counted} bytes` : formatMiB(counted);
   return {
-    message: `The result is too large to send: over ${formatMiB(cap, 0)} (counted ${formatMiB(counted, 0)} when it stopped)`,
+    message: `The result is too large to send: over ${formatMiB(cap, 0)} (counted ${shown} when it stopped)`,
     suggestion: SMALLER_RESULT_SUGGESTION,
   };
 }

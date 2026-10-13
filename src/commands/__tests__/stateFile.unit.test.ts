@@ -117,6 +117,6 @@ void describe('state files', { skip: process.platform === 'win32' }, () => {
     const big = path.join(makeTempDir('bdg-state-'), 'big.json');
     fs.writeFileSync(big, '');
     fs.truncateSync(big, STATE_FILE_MAX_BYTES + 1);
-    assertUnreadable(big, /larger than 50 MB/);
+    assertUnreadable(big, /larger than 50 MiB/);
   });
 });
