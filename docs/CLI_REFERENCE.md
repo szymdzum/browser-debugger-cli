@@ -189,8 +189,8 @@ bdg peek --follow --verbose           # Verbose output (full URLs, resource and 
 
 `bdg tail` still works with the same options but is deprecated: it prints a note and runs `peek --follow`. `--interval` without `--follow` exits 81.
 
-Follow modes (`peek --follow`, `console --follow`, `network list --follow`):
-- Ctrl-C exits 130 and SIGTERM 143, as shells expect.
+Follow modes (`peek --follow`, `console --follow`, `network list --follow`, `dom screenshot --follow`):
+- Ctrl-C exits 130 and SIGTERM 143, as shells expect, after the mode's stop line on stderr (`Stopped following preview`, `Captured 4 frames`). No `Interrupted` envelope is printed, with `--json` either: each NDJSON line is already a whole envelope.
 - With `--json` they print one compact object per line (NDJSON), so a script can parse each line as it comes.
 - They stop with exit 83 when the session they follow ends (`The session ended; stopped following`), so a follower running in the background finds out.
 - Other failures (a busy page, a timeout) are retried: reported once in text, and as one error line per refresh with `--json`.
@@ -1119,7 +1119,12 @@ bdg dom screenshot btn.png "#submit" --padding 16         # 16px of page around 
 
 # Custom quality
 bdg dom screenshot high-res.jpg --quality 100
+
+# A frame every second into a directory (--interval 100-60000 ms, --limit n frames)
+bdg dom screenshot ./frames --follow
 ```
+
+**`--follow`:** Ctrl-C stops after the current frame, prints `Captured N frames` on stderr and exits 130; SIGTERM does the same and exits 143 (before #704 Ctrl-C exited 0 and SIGTERM killed the command with no output). With `--json` each frame is one envelope line and no `Interrupted` envelope follows. A `--limit` that is reached exits 0; a second Ctrl-C exits at once.
 
 **Element screenshots:** the capture covers the element's border box plus what it paints beyond it: content that overflows (uncleared floats, absolutely positioned or transformed children, text such as descenders past a tight line height) and its own box shadows and outline, so a focus ring is not cropped; `--padding <px>` adds page around it. A container whose floated content hangs out of it is not cropped to its heading; content an `overflow: hidden` ancestor cuts off and fixed descendants are left out. Human output then says `(grown from 940×37 to 940×285 to include what it paints outside its box (…))`, and with `--padding` how much page it added (`with 10px of page around it (--padding)`); JSON keeps the border box in `element.bounds` (page coordinates, like `dom layout`) and adds `element.captured` and `element.padding`; its `captureMode` is `"element"` (`"full_page"` or `"viewport"` for page captures). Elements of a scrolled page are captured where they are (the page scroll is taken into account); an element scrolled into view for the capture is scrolled back afterwards. An element larger than the viewport is captured with the page laid out at its current width without scrollbars, so centered content does not shift by half a scrollbar. An element given both as an argument and with `--selector`/`--index` must be the same one (exit 81 otherwise); `--selector` with `--index` picks that match of the selector.
 
