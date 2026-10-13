@@ -918,7 +918,7 @@ async function stopAbandonedScript(
  * @param script - The script
  * @returns True when `await` appears in it
  */
-function mentionsAwait(script: string): boolean {
+export function mentionsAwait(script: string): boolean {
   return /\bawait\b/.test(script);
 }
 
@@ -991,15 +991,35 @@ async function untilResultLost<T>(
   onScriptFinished?: () => void
 ): Promise<T> {
   if (mentionsAwait(script)) return pending;
+  return untilAnswerLost(cdp, pending, () => resultUnsent(full), onScriptFinished);
+}
+
+/**
+ * Wait for a script's answer, failing early with `lost()` when it never comes
+ * though the page has finished the script.
+ *
+ * @param cdp - CDP connection of the page
+ * @param pending - The script's evaluation
+ * @param lost - The error for a lost answer
+ * @param onScriptFinished - Called once the page answered a check: the script has finished
+ * @returns The answer
+ * @throws The error `lost` returns, when the answer was lost
+ */
+export async function untilAnswerLost<T>(
+  cdp: CDPSender,
+  pending: Promise<T>,
+  lost: () => Error,
+  onScriptFinished?: () => void
+): Promise<T> {
   const stop = new AbortController();
   const answered = pending.finally(() => stop.abort());
-  const lost = checkForLostResult(cdp, stop.signal, onScriptFinished).then((isLost) => {
-    if (isLost) throw resultUnsent(full);
+  const unsent = checkForLostResult(cdp, stop.signal, onScriptFinished).then((isLost) => {
+    if (isLost) throw lost();
     return new Promise<never>(() => undefined);
   });
   answered.catch(() => undefined);
-  lost.catch(() => undefined);
-  return Promise.race([answered, lost]);
+  unsent.catch(() => undefined);
+  return Promise.race([answered, unsent]);
 }
 
 /**

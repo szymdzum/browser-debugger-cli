@@ -1,6 +1,7 @@
 import type { TelemetryStore } from './TelemetryStore.js';
 
 import { missingMethodCause } from '@/cdp/methodTarget.js';
+import { MAX_JSONL_BUFFER_SIZE } from '@/constants.js';
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPConnectionError, CDPProtocolError } from '@/connection/errors.js';
 import { PatternDetector } from '@/daemon/patternDetector.js';
@@ -13,6 +14,7 @@ import { CommandError } from '@/errors/index.js';
 import {
   cdpCallError,
   cdpMethodNotImplementedError,
+  chromeReplyLostError,
   formDiscoveryFailedError,
 } from '@/errors/messages.js';
 import type { HintDetails } from '@/errors/notices.js';
@@ -29,7 +31,12 @@ import type { PageCloseData, PageSwitchData, PageTabsData } from '@/ipc/protocol
 import { searchStyleSheets } from '@/runtime/css/search.js';
 import { auditPage } from '@/runtime/dom/audit.js';
 import { readBlockedSubmit } from '@/runtime/dom/blockedSubmit.js';
-import { evaluateScript, withBusyPageRecovery } from '@/runtime/dom/evalHelpers.js';
+import {
+  evaluateScript,
+  mentionsAwait,
+  untilAnswerLost,
+  withBusyPageRecovery,
+} from '@/runtime/dom/evalHelpers.js';
 import { inspectEventListeners } from '@/runtime/dom/eventListeners.js';
 import {
   evaluateFormDiscovery,
@@ -509,6 +516,36 @@ const FETCH_INTERCEPTION_SWITCH: Record<string, boolean> = {
 };
 
 /**
+ * Whether Chrome may fail to send the reply of a call: a script run by
+ * `Runtime.evaluate` that does not wait for a promise has finished once the
+ * page answers a trivial evaluation, so a reply still missing after a grace
+ * period was too large to send (about 256 MiB and more). Other methods are
+ * not told from slow ones.
+ *
+ * @param params - The call
+ * @returns True for a synchronous `Runtime.evaluate`
+ */
+function mayLoseReply(params: CommandSchemas['cdp_call']['requestSchema']): boolean {
+  if (params.method !== 'Runtime.evaluate' || params.isolated) return false;
+  const { expression, awaitPromise } = params.params ?? {};
+  return awaitPromise !== true && typeof expression === 'string' && !mentionsAwait(expression);
+}
+
+/**
+ * The error for a reply Chrome could not send.
+ *
+ * @returns Command error (81) naming the limit and how to return less
+ */
+function replyLostError(): CommandError {
+  const err = chromeReplyLostError(MAX_JSONL_BUFFER_SIZE);
+  return new CommandError(
+    err.message,
+    { suggestion: err.suggestion },
+    EXIT_CODES.INVALID_ARGUMENTS
+  );
+}
+
+/**
  * Send a `bdg cdp` (or bdg page script) call, recovering a busy page and
  * explaining Chrome's errors; notes whether Fetch interception is on, so a
  * command that times out meanwhile can name it.
@@ -526,11 +563,12 @@ async function sendCdpCall(
   const send = params.isolated
     ? sendForBdgScript(cdp, params.method, params.params ?? {})
     : cdp.send(params.method, params.params ?? {});
+  const answer = send.catch((error: unknown) => {
+    throw callerError(params.method, error) ?? error;
+  });
   const result = await withBusyPageRecovery(
     cdp,
-    send.catch((error: unknown) => {
-      throw callerError(params.method, error) ?? error;
-    })
+    mayLoseReply(params) ? untilAnswerLost(cdp, answer, replyLostError) : answer
   );
   const interception = FETCH_INTERCEPTION_SWITCH[params.method];
   if (interception !== undefined) store.fetchInterceptionEnabled = interception;
