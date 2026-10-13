@@ -27,7 +27,7 @@ const READ_PROBLEMS: Record<string, string> = {
   EPERM: 'operation not permitted',
 };
 
-/** Largest state file read (50 MB): a real one is a few KB */
+/** Largest state file read (50 MiB): a real one is a few KB */
 export const STATE_FILE_MAX_BYTES = 50 * 1024 * 1024;
 
 /** Flags to open a state file: never blocks on a FIFO or device */
@@ -74,7 +74,7 @@ function readRegularFile(file: string): string {
     const stat = fs.fstatSync(fd);
     if (stat.isDirectory()) unreadable(file, 'it is a directory');
     if (!stat.isFile()) unreadable(file, 'it is not a regular file');
-    if (stat.size > STATE_FILE_MAX_BYTES) unreadable(file, 'it is larger than 50 MB');
+    if (stat.size > STATE_FILE_MAX_BYTES) unreadable(file, 'it is larger than 50 MiB');
     return fs.readFileSync(fd, 'utf8');
   } catch (error) {
     if (error instanceof CommandError) throw error;
@@ -91,7 +91,7 @@ function readRegularFile(file: string): string {
  * @param file - Path given
  * @returns Cookies and origins
  * @throws CommandError (83) when it does not exist, (81) when it cannot be read, is
- *   not a regular file of at most 50 MB, or is not a valid state file
+ *   not a regular file of at most 50 MiB, or is not a valid state file
  */
 export function readStateFile(file: string): AuthStateContent {
   return parseStateFile(readRegularFile(file), file);

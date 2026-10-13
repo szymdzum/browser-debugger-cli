@@ -33,7 +33,7 @@ void describe('assertWithinFullCap', () => {
     };
     const error = refusal(() => assertWithinFullCap({ a: 1 }, throwing as typeof JSON.stringify));
     assert.equal(error.exitCode, EXIT_CODES.INVALID_ARGUMENTS);
-    assert.match(error.message, /over 512 MB.*50 MB limit/);
+    assert.match(error.message, /over 512 MiB.*50 MiB limit/);
   });
 
   void it('passes other serializer errors on', () => {
@@ -46,7 +46,7 @@ void describe('assertWithinFullCap', () => {
   void it('measures bytes, not characters, and names the bytes at the cap', () => {
     const fits = Math.floor(EVAL_FULL_MAX_BYTES / 3);
     const error = refusal(() => assertWithinFullCap('€'.repeat(fits + 1)));
-    assert.match(error.message, new RegExp(`${3 * (fits + 1)} bytes, over the 50 MB`));
+    assert.match(error.message, new RegExp(`${3 * (fits + 1)} bytes, over the 50 MiB`));
     assert.doesNotThrow(() => assertWithinFullCap('€'.repeat(fits)));
   });
 });

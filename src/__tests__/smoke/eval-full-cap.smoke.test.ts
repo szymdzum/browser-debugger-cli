@@ -1,7 +1,7 @@
 /**
  * `dom eval --full` result cap smoke test (#693).
  *
- * A result over 50 MB is refused with exit 81 and a suggestion, in human and
+ * A result over 50 MiB is refused with exit 81 and a suggestion, in human and
  * `--json` output, before the CLI holds it (a 200 MB string used to end in a
  * V8 out-of-memory crash, exit 134); a result under the cap, and any result
  * without `--full`, behaves as before.
@@ -55,7 +55,7 @@ void describe('dom eval --full cap', () => {
     const envelope = JSON.parse(result.stdout) as ErrorEnvelope;
     assert.equal(envelope.success, false);
     assert.equal(envelope.exitCode, 81);
-    assert.match(envelope.error, /50 MB/);
+    assert.match(envelope.error, /50 MiB/);
     assert.match(envelope.suggestion ?? '', /slice|length|--full/);
   });
 
@@ -66,7 +66,7 @@ void describe('dom eval --full cap', () => {
       { timeout: 120000 }
     );
     assert.equal(result.exitCode, 81, result.stdout.slice(0, 200));
-    assert.match(result.stderr, /50 MB/);
+    assert.match(result.stderr, /50 MiB/);
     assert.match(result.stderr, /slice|\.length|without --full/);
     assert.ok(result.stdout.length < 1000, `stdout holds ${result.stdout.length} chars`);
   });
@@ -99,7 +99,7 @@ void describe('dom eval --full cap', () => {
     for (const [name, expression] of Object.entries(cases)) {
       const result = await runCommand('dom', ['eval', expression, '--full'], { timeout: 120000 });
       assert.equal(result.exitCode, 81, `${name}: ${result.stdout.length} chars out`);
-      assert.match(result.stderr, /50 MB/, name);
+      assert.match(result.stderr, /50 MiB/, name);
     }
   });
 

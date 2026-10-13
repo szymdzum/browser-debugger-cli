@@ -284,7 +284,7 @@ export const MAX_JSONL_BUFFER_SIZE = 256 * 1024 * 1024;
 
 /**
  * Largest result `bdg dom eval --full` returns, in bytes of output (UTF-8 bytes
- * of a string, or of the formatted JSON of an object or array): 50 MB. A larger
+ * of a string, or of the formatted JSON of an object or array): 50 MiB. A larger
  * one is refused (exit 81): bigger results took the CLI 37 times their size in
  * memory, and 200 MB crashed it.
  */

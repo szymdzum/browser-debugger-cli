@@ -270,3 +270,15 @@ export function formatBytes(bytes: number): string {
     ? `${(bytes / 1024).toFixed(1)} KB`
     : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
+
+/**
+ * Format a byte count in mebibytes (1024 x 1024 bytes).
+ *
+ * @param bytes - Byte count
+ * @param fractionDigits - Digits after the point
+ * @returns e.g. "50 MiB", "12.3 MiB"
+ */
+export function formatMiB(bytes: number, fractionDigits = 1): string {
+  const mebibytes = bytes / (1024 * 1024);
+  return `${fractionDigits === 0 ? Math.round(mebibytes) : mebibytes.toFixed(fractionDigits)} MiB`;
+}

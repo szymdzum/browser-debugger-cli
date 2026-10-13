@@ -91,7 +91,7 @@ void describe('evaluateScript with a result Chrome cannot send', () => {
     const error = await Promise.race([outcome, Promise.resolve('still waiting')]);
     assert.ok(error instanceof CommandError, `got ${String(error)}`);
     assert.equal(error.exitCode, 81);
-    assert.match(error.message, /50 MB/);
+    assert.match(error.message, /50 MiB/);
   });
 
   void it('refuses an object over the transfer limit without --full (81)', async () => {

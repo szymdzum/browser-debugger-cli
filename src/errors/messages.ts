@@ -8,6 +8,7 @@ import * as os from 'os';
 import * as path from 'path';
 
 import type { MissingMethodCause } from '@/cdp/methodTarget.js';
+import { EVAL_FULL_MAX_BYTES } from '@/constants.js';
 import type { DomFrame, PendingRequestInfo } from '@/ipc/protocol/commands.js';
 import type { InvalidField, OptionNotFound } from '@/ipc/protocol/domTypes.js';
 import type { TabRef } from '@/ipc/protocol/tabTypes.js';
@@ -18,7 +19,7 @@ import {
 } from '@/runtime/dom/waitCondition.js';
 import { getSessionBaseDir, getSessionName, type UntrustedSessionDir } from '@/session/paths.js';
 import type { DocumentRequestState, IndexSource } from '@/types.js';
-import { escapeControlChars, formatDuration, joinLines } from '@/ui/formatting.js';
+import { escapeControlChars, formatDuration, formatMiB, joinLines } from '@/ui/formatting.js';
 import {
   closedShadowRootMessage,
   documentRequestText,
@@ -2475,27 +2476,29 @@ export function promiseTimeoutError(
 /**
  * A `dom eval` result Chrome could not send (about 256 MiB and more).
  *
- * @returns Error naming the likely cause and how to get a smaller result
+ * @returns Error naming the likely cause and a way to read the data that works
  */
 export function resultNotSentError(): ErrorWithSuggestion {
   return {
     message:
       'The script ran, but Chrome could not send its result: it is probably too large to send',
-    suggestion:
-      'Return a slice or the .length instead, or write the data to a file from the page and read that',
+    suggestion: `Return a slice or the .length instead. To read all of it, keep it in the page (bdg dom eval '(window.data = <expression>, window.data.length)') and read parts of under ${formatMiB(EVAL_FULL_MAX_BYTES, 0)} with --full: a string as bdg dom eval 'window.data.slice(0, 10000000)' (10 million characters; fewer for multibyte text), a Map by its keys first (bdg dom eval '[...window.data.keys()]'), then one value as bdg dom eval 'window.data.get(KEY).slice(0, 10000000)' (until the page navigates)`,
   };
 }
 
 /** How to get a smaller `dom eval` result */
-const TOO_LARGE_SUGGESTION =
-  'Return a slice or a summary of the value (.slice(0, 1000), .length), or drop --full to get the first 20000 characters';
+const SMALLER_RESULT_SUGGESTION =
+  'Return a smaller part of the value (a slice of a string or array, a few keys of an object) or a count (.length)';
+
+/** The same, for a result that did arrive: without `--full` it is cut to its first characters */
+const TOO_LARGE_SUGGESTION = `${SMALLER_RESULT_SUGGESTION}, or drop --full to get the first 20000 characters`;
 
 /**
  * `dom eval --full` given a result over its size cap.
  *
  * @param size - Size of the result in bytes, or counted so far; Infinity when it was too large to measure (JSON text past V8's string limit)
  * @param cap - The cap, in the same unit
- * @param exact - Whether `size` is the whole size (a string), not the count when the copy stopped
+ * @param exact - Whether the result arrived whole (`size` is its size), so dropping `--full` prints its start; false when the count only says the page stopped copying at the cap
  * @returns Error naming the size and the cap, and how to get a smaller result
  */
 export function evalResultTooLargeError(
@@ -2503,20 +2506,20 @@ export function evalResultTooLargeError(
   cap: number,
   exact: boolean
 ): ErrorWithSuggestion {
-  const mb = (bytes: number): string => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  const limit = mb(cap).replace('.0', '');
-  const shown = mb(size) === mb(cap) ? `${size} bytes` : mb(size);
+  const limit = formatMiB(cap, 0);
+  const suggestion = exact ? TOO_LARGE_SUGGESTION : SMALLER_RESULT_SUGGESTION;
   if (!Number.isFinite(size)) {
     return {
-      message: `The result is too large to measure (over 512 MB), over the ${limit} limit of dom eval --full`,
-      suggestion: TOO_LARGE_SUGGESTION,
+      message: `The result is too large to measure (over 512 MiB), over the ${limit} limit of dom eval --full`,
+      suggestion,
     };
   }
+  const shown = formatMiB(size) === formatMiB(cap) ? `${size} bytes` : formatMiB(size);
   return {
     message: exact
       ? `The result is ${shown}, over the ${limit} limit of dom eval --full`
       : `The result is over the ${limit} limit of dom eval --full (copying stopped at ${shown})`,
-    suggestion: TOO_LARGE_SUGGESTION,
+    suggestion,
   };
 }
 
@@ -2527,10 +2530,9 @@ export function evalResultTooLargeError(
  * @returns Error naming the cap and how to get a smaller result
  */
 export function evalResultUnsentFullError(cap: number): ErrorWithSuggestion {
-  const limit = `${Math.round(cap / (1024 * 1024))} MB`;
   return {
-    message: `The result is over the ${limit} limit of dom eval --full (Chrome could not send it)`,
-    suggestion: TOO_LARGE_SUGGESTION,
+    message: `The result is over the ${formatMiB(cap, 0)} limit of dom eval --full (Chrome could not send it)`,
+    suggestion: SMALLER_RESULT_SUGGESTION,
   };
 }
 
@@ -2542,10 +2544,10 @@ export function evalResultUnsentFullError(cap: number): ErrorWithSuggestion {
  * @returns Error naming the limit and how to get a smaller result
  */
 export function evalResultNotSendableError(counted: number, cap: number): ErrorWithSuggestion {
-  const mb = (bytes: number): string => `${Math.round(bytes / (1024 * 1024))} MB`;
+  const shown = formatMiB(counted) === formatMiB(cap) ? `${counted} bytes` : formatMiB(counted);
   return {
-    message: `The result is too large to send: over ${mb(cap)} (counted ${mb(counted)} when it stopped)`,
-    suggestion: 'Return a slice or a summary of the value (.slice(0, 1000), .length)',
+    message: `The result is too large to send: over ${formatMiB(cap, 0)} (counted ${shown} when it stopped)`,
+    suggestion: SMALLER_RESULT_SUGGESTION,
   };
 }
 
