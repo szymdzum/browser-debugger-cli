@@ -42,7 +42,7 @@ Files:
 - [ ] Reviewer: ship brief reviewer … → findings to the same implementer
 - [ ] Tester (tier 2–3): ship brief tester … → findings routed
 - [ ] Fix rounds ≤ 2; the reviewer re-checks each fix commit (SendMessage to the same reviewer)
-- [ ] Tier 3: second review of the fix commit; ship repeat for timing
+- [ ] Tier 3: fresh second review only of a fix that changes the approach or adds >~15 product lines; ship repeat for timing
 - [ ] ship gates <pr> --tier=N [--macos] [--timing --repeat=<id>] (timing PRs: always --timing); ship merge-check when it says the base changed the PR's files; ship merge <pr> (same flags)
 - [ ] ship ci-wait <merge sha> --push; ship log <pr> …; issue closed or commented
 ```
@@ -59,7 +59,7 @@ Render the reviewer brief with the claims of the change and its risks (races, fa
 
 - Findings come back as **blocking / should-fix / nit** with file:line and a scenario. A risk under "Not checked": you judge whether the skipped risk matters (resuming the reviewer for it found nothing in S4–S6).
 - Send every finding to the **same implementer** (SendMessage, so it keeps its context): test and fix in one commit, or an argued rejection; you decide disputes. Nits about the change go into the same commit, never pushed alone (every push is a full CI run).
-- **Each fix commit is re-checked by the same reviewer** (SendMessage with the new SHA and the findings it addressed): cheaper than a new review and still not the author. Tier 3 adds a fresh second reviewer on the fix commit.
+- **Each fix commit is re-checked by the same reviewer** (SendMessage with the new SHA and the findings it addressed): cheaper than a new review and still not the author. Tier 3 adds a fresh second reviewer only on a fix commit that changes the approach or adds more than ~15 product lines (S6 #606: a large fix, 2 should-fixes found; S5: nothing on a small one); a small targeted fix stays with the same reviewer.
 - **At most two fix rounds.** Findings left after the second go to the user: a third round needs an explicit yes; the alternative is to file them.
 - Findings about **older code** follow the findings block in `briefs.md`: adjacent ones are fixed in the PR as their own commit; the rest go to the verifier.
 
@@ -73,7 +73,7 @@ The highest-yield step: bdg's users are agents, so the tester doesn't play the u
 |---|---|---|---|---|
 | 1 | docs, CI, tooling, refactors under existing tests, a message typo, the polish sweep (nothing parsed, no flag, exit code, default or timing changes) | reviewer | no | no (the PR says why) |
 | 2 | behaviour change: new or changed output, flag, hint, default | reviewer | yes | yes |
-| 3 | session lifecycle, Chrome launch, files on disk, concurrency, security, contracts, redaction or parsing | reviewer, plus a fresh second reviewer on the fix commit | yes, plus the interrupt scenario (S08) when relevant | yes; timing: `ship repeat` on the final head; redaction or parsing: the brief's case matrix is the red commit's table test |
+| 3 | session lifecycle, Chrome launch, files on disk, concurrency, security, contracts, redaction or parsing | reviewer, plus a fresh second reviewer on a large fix commit (>~15 product lines or a new approach) | yes, plus the interrupt scenario (S08) when relevant | yes; timing: `ship repeat` on the final head; redaction or parsing: the brief's case matrix is the red commit's table test |
 
 After a round, **one verifier** reproduces all older-code findings on current `main` in one pass. **Only you file issues**, one umbrella per root cause (cause in the title, symptoms as a checklist with the verifier's command and output, milestone set); a symptom of an open issue becomes a comment on it.
 
