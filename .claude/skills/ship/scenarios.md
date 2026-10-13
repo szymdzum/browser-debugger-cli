@@ -32,7 +32,7 @@ Every feature or behaviour-change PR runs the scenarios that touch its area on t
    ls -A ~/Downloads | diff /tmp/downloads-before.txt - && echo "Downloads untouched"
    ```
 5. **Brief the agents** with the scenario's task text only (the **Task** line), the bdg command, the session directory and, for fixtures, the URL. Don't mention the feature, the issue or the expected output. Screenshots are allowed. Run at most 4 agents in parallel, or at most 1 while implementers' smoke suites are running: each agent runs its own Chrome, and smoke tests flake under heavy load.
-6. **Interrupts**: to test Ctrl-C, send SIGINT to the `node` PID of that bdg command directly (`kill -INT <pid>`), not through a shell function or a process group. Kill only PIDs you started; no `pkill`/`killall`.
+6. **Interrupts**: to send Ctrl-C, use a tiny Node spawner that runs `child_process.spawn` on the bdg command, calls `child.kill('SIGINT')` after N ms and prints the exit code or signal, stdout and stderr. A non-interactive shell starts `&` jobs with SIGINT ignored, so `kill -INT <pid>` on one does nothing and silently voids the test. `kill -TERM <pid>` still works for `&` jobs. Kill only PIDs you started; no `pkill`/`killall`.
 7. **Clean up**: `bdg stop` in each session directory (`BDG_SESSION_DIR=… node dist/index.js stop`), stop the fixture server, remove the `/tmp/bdg-round-*` directories once the reports are in.
 
 Re-run by hand the scenarios that came back partly, broken or ambiguous: agents report friction, you check correctness. A clean `works` with a bug-free report needs no repeat.
@@ -116,7 +116,7 @@ Each scenario has an ID, the task given to the agent, how to set it up, what "wo
 ### S08 Ctrl-C during start, screenshot and `page switch`
 
 - **Task:** "Start a session on this slow page, give up after a few seconds, and start again on the home page. Then take a full-page screenshot and interrupt it, and interrupt a tab switch."
-- **Setup:** fixture `/slow` (answers after 8 s); `/tabs` for a second tab. Interrupt with `kill -INT <node pid>` (see Running a Round).
+- **Setup:** fixture `/slow` (answers after 8 s); `/tabs` for a second tab. Interrupt with the Node spawner (Running a Round, step 6).
 - **Works:** each interrupted command exits 130 with a `--json` envelope; nothing half-started is left (`bdg status` is clean or the session is usable); the next start works without `bdg cleanup`; the screenshot leaves the page layout as it was.
 - **Rate:** whether the agent needed `cleanup` or `--force`; clarity of the interrupted messages.
 - **History:** from #557 and the startup interruption fixes.

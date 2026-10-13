@@ -87,7 +87,7 @@ Run `npm run check`, `npm test`, `npm run build` and the affected smoke files (`
 
 ## Reviewer
 
-Give the reviewer the diff's claims, the issue and the risks, never the implementer's reasoning. A finding it lists under **Not checked** that is on your risk list means you resume it for that item before the review counts.
+Give the reviewer the diff's claims, the issue and the risks, never the implementer's reasoning. At tier 3, a finding it lists under **Not checked** that is on your risk list means you resume it for that item before the review counts; at tier 1–2 you judge whether it matters.
 
 <!-- brief:reviewer -->
 Review commits `<BASE>..<HEAD>` of branch `<BRANCH>` (bdg, issue #<N>; the implementer's worktree is `../bdg-<N>`: don't modify it). `<BASE>` is the merge base with `origin/main` or the tip of the unmerged branch this PR builds on. Review exactly `<HEAD>`, even if the branch moves while you work. Your own worktree:
@@ -155,7 +155,7 @@ You are a coding agent who has never used bdg, a CLI for debugging Chrome. Test 
 export BDG_SESSION_DIR=/tmp/bdg-t-<N>-a
 bdg() { node <MAIN>/../bdg-<N>/dist/index.js "$@"; }
 ```
-Learn bdg the way a new user would: `bdg --help`, `bdg --help --json`, `<MAIN>/../bdg-<N>/.claude/skills/bdg/SKILL.md`. Read the source only to confirm a bug. To interrupt a command, run `node <MAIN>/../bdg-<N>/dist/index.js …` in the background with its PID in a file and send the signal to that PID (`kill -INT`), never to a shell function.
+Learn bdg the way a new user would: `bdg --help`, `bdg --help --json`, `<MAIN>/../bdg-<N>/.claude/skills/bdg/SKILL.md`. Read the source only to confirm a bug. To send Ctrl-C, use a tiny Node spawner that runs `child_process.spawn` on the bdg command, calls `child.kill('SIGINT')` after N ms and prints the exit code or signal, stdout and stderr (`kill -INT` on a `&` job does nothing: a non-interactive shell starts it with SIGINT ignored). `kill -TERM <pid>` works for a background `node <MAIN>/../bdg-<N>/dist/index.js …` with its PID in a file. Kill only PIDs you started.
 
 **Pages.** <URLS>. Scratch files in `/tmp/bdg-t-<N>-a-work`.
 

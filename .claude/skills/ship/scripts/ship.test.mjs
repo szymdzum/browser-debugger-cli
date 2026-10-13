@@ -6,11 +6,13 @@
  */
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
 import {
+  appendSnapshotEntries,
   EXIT,
   inScope,
   insertLogRow,
@@ -372,4 +374,20 @@ test('a waiter timeout that is not a positive number is a usage error, not an in
   } finally {
     console.error = err;
   }
+});
+
+test('appendSnapshotEntries separates names when the snapshot has no trailing newline', () => {
+  const file = join(mkdtempSync(join(tmpdir(), 'ship-snap-')), 'snap.txt');
+  writeFileSync(file, 'a.png\nb.png');
+  appendSnapshotEntries(file, ['mine.pdf', 'other.txt']);
+  assert.equal(readFileSync(file, 'utf8'), 'a.png\nb.png\nmine.pdf\nother.txt\n');
+  appendSnapshotEntries(file, ['third']);
+  assert.equal(readFileSync(file, 'utf8'), 'a.png\nb.png\nmine.pdf\nother.txt\nthird\n');
+});
+
+test('appendSnapshotEntries handles an empty snapshot', () => {
+  const file = join(mkdtempSync(join(tmpdir(), 'ship-snap-')), 'snap.txt');
+  writeFileSync(file, '');
+  appendSnapshotEntries(file, ['x']);
+  assert.equal(readFileSync(file, 'utf8'), 'x\n');
 });

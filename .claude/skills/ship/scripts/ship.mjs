@@ -774,9 +774,36 @@ function prIssues(prNumber) {
 }
 
 /**
- * Snapshots ~/.bdg and ~/Downloads at session start, for gate 8.
+ * Appends entries to a snapshot file, adding the newline a snapshot written
+ * without a trailing one lacks, so two names never glue together.
+ *
+ * @param {string} file
+ * @param {string[]} names
  */
-function snapshot() {
+export function appendSnapshotEntries(file, names) {
+  const text = readFileSync(file, 'utf8');
+  const separator = text === '' || text.endsWith('\n') ? '' : '\n';
+  writeFileSync(file, `${text}${separator}${names.join('\n')}\n`);
+}
+
+/**
+ * Snapshots ~/.bdg and ~/Downloads at session start, for gate 8. With
+ * `--accept <name>…` it appends entries to the ~/Downloads snapshot instead
+ * (a file the user put there during the session); it needs an existing snapshot.
+ *
+ * @param {string[]} [argv]
+ */
+function snapshot(argv = []) {
+  if (argv[0] === '--accept') {
+    const names = argv.slice(1);
+    if (!names.length || !existsSync(SNAPSHOT.downloads)) {
+      console.error('usage: ship snapshot --accept <name>… (needs a snapshot from ship snapshot)');
+      return EXIT.usage;
+    }
+    appendSnapshotEntries(SNAPSHOT.downloads, names);
+    console.log(`accepted in ~/Downloads snapshot: ${names.join(', ')}`);
+    return EXIT.ok;
+  }
   writeFileSync(SNAPSHOT.bdg, listDir(join(homedir(), '.bdg')).join('\n'));
   writeFileSync(SNAPSHOT.downloads, listDir(join(homedir(), 'Downloads')).join('\n'));
   console.log(`snapshot of ~/.bdg and ~/Downloads in ${SNAPSHOT.bdg}, ${SNAPSHOT.downloads}`);
@@ -1092,7 +1119,7 @@ function log(argv) {
 }
 
 const COMMANDS = {
-  snapshot: [snapshot, 'session start: snapshot ~/.bdg and ~/Downloads (gate 8)'],
+  snapshot: [snapshot, 'session start: snapshot ~/.bdg and ~/Downloads (gate 8); --accept <name>… adds a user\'s own ~/Downloads file to the snapshot'],
   worktree: [worktree, '<N> <branch>: agent worktree from origin/main, node_modules linked'],
   brief: [brief, '<role> N=<n> KEY=value…: render a brief with the shared blocks'],
   'ci-wait': [ciWait, '<pr> | <sha> --push: wait for CI (+ Security); exit 3 when superseded'],
