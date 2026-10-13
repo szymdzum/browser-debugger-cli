@@ -37,7 +37,7 @@ const log = createLogger('cleanup');
  * @param arg - Argument to look for
  * @returns True if `arg` appears as a whole space-delimited argument
  */
-function hasArgument(command: string | null, arg: string): boolean {
+export function hasArgument(command: string | null, arg: string): boolean {
   if (!command) return false;
   return command.includes(`${arg} `) || command.endsWith(arg);
 }
