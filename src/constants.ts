@@ -283,6 +283,14 @@ export const DEFAULT_PAGE_READINESS_TIMEOUT_MS = 2000;
 export const MAX_JSONL_BUFFER_SIZE = 256 * 1024 * 1024;
 
 /**
+ * Largest result `bdg dom eval --full` returns (50 MB: characters of a
+ * string, or the counted size of a copied object). A larger one is refused
+ * (exit 81): bigger results took the CLI 37 times their size in memory, and
+ * 200 MB crashed it.
+ */
+export const EVAL_FULL_MAX_BYTES = 50 * 1024 * 1024;
+
+/**
  * Longest delay Node's `setTimeout` takes (about 24.8 days): a longer one,
  * or one that is not a number, fires after 1 ms. Every timer whose delay
  * comes from user input is capped with it.

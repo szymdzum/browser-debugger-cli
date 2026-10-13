@@ -1,8 +1,10 @@
+import { EVAL_FULL_MAX_BYTES } from '@/constants.js';
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPProtocolError } from '@/connection/errors.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import {
+  evalResultTooLargeError,
   navigationPendingError,
   pageBusyError,
   pageClosedDuringEvalError,
@@ -234,7 +236,11 @@ const BRIEF_SUBTYPES = new Set(['node', 'arraybuffer', 'dataview']);
  * shared by two properties is copied twice). Works for objects of iframes
  * (other realms); lists and objects are cut after 1000 entries and levels
  * below the 20th become `[…]` (with `full`: no entries are cut, levels
- * below the 100th), and a throwing getter becomes `[Error: …]`. It uses the
+ * below the 100th), and a throwing getter becomes `[Error: …]`. Called with
+ * a size cap as its argument (`--full`), it adds up the length of every
+ * string and key, 8 per number and 1 per element as it copies, stops once the
+ * sum passes the cap, and returns `{ tooLarge: sum so far }` instead of
+ * `{ copy }` (so a huge value is never built nor sent). It uses the
  * page's built-ins ({@link COPY_BUILTINS}), so it only runs when the page
  * left them alone.
  *
@@ -243,9 +249,15 @@ const BRIEF_SUBTYPES = new Set(['node', 'arraybuffer', 'dataview']);
  */
 export function jsonSafeCopyFunction(full = false): string {
   const limits = full ? FULL_COPY_LIMITS : COPY_LIMITS;
-  return `function () {
+  return `function (cap) {
   const MAX_ITEMS = ${limits.maxItems};
   const ancestors = new Set();
+  const TOO_LARGE = {};
+  let size = 0;
+  const spend = (amount) => {
+    size += amount;
+    if (typeof cap === 'number' && size > cap) throw TOO_LARGE;
+  };
   const kind = (value) => Object.prototype.toString.call(value).slice(8, -1);
   const isNode = (value) => typeof value.nodeType === 'number' && typeof value.nodeName === 'string';
   const describeNode = (node) => {
@@ -258,6 +270,7 @@ export function jsonSafeCopyFunction(full = false): string {
     if (typeof list.length === 'number') {
       for (let i = 0; i < list.length; i++) {
         if (i === MAX_ITEMS) { result.push('…'); break; }
+        spend(1);
         result.push(next(list[i]));
       }
       return result;
@@ -265,11 +278,13 @@ export function jsonSafeCopyFunction(full = false): string {
     let count = 0;
     for (const item of list) {
       if (count++ === MAX_ITEMS) { result.push('…'); break; }
+      spend(1);
       result.push(next(item));
     }
     return result;
   };
   const leaf = (value) => {
+    spend(typeof value === 'string' ? value.length + 2 : 8);
     if (value === undefined) return null;
     if (typeof value === 'number') {
       if (Number.isNaN(value) || !Number.isFinite(value)) return String(value);
@@ -300,7 +315,11 @@ export function jsonSafeCopyFunction(full = false): string {
       const result = {};
       const keys = Object.keys(value);
       for (const key of keys.slice(0, MAX_ITEMS)) {
-        try { result[key] = next(value[key]); } catch (e) { result[key] = '[Error: ' + (e && e.message) + ']'; }
+        spend(key.length + 4);
+        try { result[key] = next(value[key]); } catch (e) {
+          if (e === TOO_LARGE) throw e;
+          result[key] = '[Error: ' + (e && e.message) + ']';
+        }
       }
       if (keys.length > MAX_ITEMS) result['…'] = (keys.length - MAX_ITEMS) + ' more keys';
       return result;
@@ -308,7 +327,13 @@ export function jsonSafeCopyFunction(full = false): string {
       ancestors.delete(value);
     }
   };
-  return copy(this, 0);
+  if (typeof cap !== 'number') return copy(this, 0);
+  try {
+    return { copy: copy(this, 0) };
+  } catch (e) {
+    if (e === TOO_LARGE) return { tooLarge: size };
+    throw e;
+  }
 }`;
 }
 
@@ -375,8 +400,10 @@ async function toEvalResult(
   if (remote.unserializableValue !== undefined)
     return { value: remote.unserializableValue, ...kind };
   if (remote.type === 'undefined') return { value: undefined, ...kind };
-  if (!remote.objectId || remote.subtype === 'null')
+  if (!remote.objectId || remote.subtype === 'null') {
+    if (full) assertWithinFullCap(remote.value);
     return { value: remote.value ?? null, ...kind };
+  }
   if (BRIEF_SUBTYPES.has(remote.subtype ?? '')) {
     return { value: remote.description ?? remote.subtype, ...kind };
   }
@@ -384,16 +411,62 @@ async function toEvalResult(
     return { value: formatRemoteObject(remote), ...kind };
   }
   const replaced = await findReplacedBuiltins(cdp, COPY_BUILTINS, remote.objectId);
+  const guarded = full && replaced.length === 0;
   const copy = await copyByValue(
     cdp,
     remote.objectId,
-    replaced.length === 0 ? jsonSafeCopyFunction(full) : SELF_FUNCTION
+    replaced.length === 0 ? jsonSafeCopyFunction(full) : SELF_FUNCTION,
+    guarded ? [{ value: EVAL_FULL_MAX_BYTES }] : undefined
   );
-  const value = copy ? copy.value : formatRemoteObject(remote);
+  const settledCopy = guarded && copy ? unwrapGuardedCopy(copy.value) : copy;
+  const value = settledCopy ? settledCopy.value : formatRemoteObject(remote);
   const copied = { value, ...kind, ...arrayLength(remote) };
   if (replaced.length === 0) return copied;
   const warning = copy ? evalCopiedByBrowserWarning(replaced) : evalPreviewWarning(replaced);
   return { ...copied, warning };
+}
+
+/**
+ * The value of a copy made with the size cap: `{ copy }`, or
+ * `{ tooLarge }` when the page stopped at the cap.
+ *
+ * @param answer - What {@link jsonSafeCopyFunction} returned
+ * @returns The copied value
+ * @throws CommandError (81) when the page stopped copying at the cap
+ */
+function unwrapGuardedCopy(answer: unknown): { value: unknown } {
+  const { copy, tooLarge } = answer as { copy?: unknown; tooLarge?: number };
+  if (tooLarge !== undefined) throw evalResultTooLarge(tooLarge, false);
+  return { value: copy };
+}
+
+/**
+ * Refuse a string result over the `--full` cap (the daemon holds it, but it
+ * goes no further).
+ *
+ * @param value - A primitive result
+ * @throws CommandError (81) for a string over {@link EVAL_FULL_MAX_BYTES}
+ */
+function assertWithinFullCap(value: unknown): void {
+  if (typeof value === 'string' && value.length > EVAL_FULL_MAX_BYTES) {
+    throw evalResultTooLarge(value.length, true);
+  }
+}
+
+/**
+ * The error for a result over the `--full` cap.
+ *
+ * @param size - Characters of the string, or counted so far by the copy
+ * @param exact - Whether `size` is the whole size of the result
+ * @returns Command error (81)
+ */
+function evalResultTooLarge(size: number, exact: boolean): CommandError {
+  const err = evalResultTooLargeError(size, EVAL_FULL_MAX_BYTES, exact);
+  return new CommandError(
+    err.message,
+    { suggestion: err.suggestion },
+    EXIT_CODES.INVALID_ARGUMENTS
+  );
 }
 
 /**
@@ -419,18 +492,21 @@ export function arrayLength(remote: Protocol.Runtime.RemoteObject): { length?: n
  * @param functionDeclaration - {@link jsonSafeCopyFunction}'s, or
  *   {@link SELF_FUNCTION} for the browser's plain copy (it fails on cycles
  *   and BigInts)
+ * @param args - Arguments of the function (the `--full` size cap)
  * @returns The copy, or undefined when it failed
  */
 async function copyByValue(
   cdp: CDPSender,
   objectId: string,
-  functionDeclaration: string
+  functionDeclaration: string,
+  args?: Protocol.Runtime.CallArgument[]
 ): Promise<{ value: unknown } | undefined> {
   try {
     const copy = (await cdp.send('Runtime.callFunctionOn', {
       objectId,
       functionDeclaration,
       returnByValue: true,
+      ...(args && { arguments: args }),
     })) as { result?: { value?: unknown }; exceptionDetails?: unknown };
     if (!copy.exceptionDetails) return { value: copy.result?.value };
   } catch (error) {

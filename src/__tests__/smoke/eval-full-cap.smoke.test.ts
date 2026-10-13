@@ -79,6 +79,17 @@ void describe('dom eval --full cap', () => {
     assert.equal(result.stdout, `${'z'.repeat(1_000_000)}\n`);
   });
 
+  void it('refuses 200 MB within seconds, and the session stays usable', async () => {
+    const startedAt = Date.now();
+    const result = await runCommand('dom', ['eval', `'x'.repeat(200 * 1024 * 1024)`, '--full'], {
+      timeout: 60000,
+    });
+    assert.equal(result.exitCode, 81, result.stderr.slice(0, 300));
+    assert.ok(Date.now() - startedAt < 15000, `took ${Date.now() - startedAt} ms`);
+    const after = await runCommand('dom', ['eval', '1 + 1'], { timeout: 30000 });
+    assert.equal(after.exitCode, 0, after.stderr);
+  });
+
   void it('without --full the same 200 MB eval still prints the preview', async () => {
     const result = await runCommand('dom', ['eval', `'x'.repeat(200 * 1024 * 1024)`], {
       timeout: 120000,

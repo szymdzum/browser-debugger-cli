@@ -2486,6 +2486,30 @@ export function resultNotSentError(timeoutMs: number): ErrorWithSuggestion {
   };
 }
 
+/**
+ * `dom eval --full` given a result over its size cap.
+ *
+ * @param size - Size of the result (characters), or counted so far
+ * @param cap - The cap, in the same unit
+ * @param exact - Whether `size` is the whole size (a string), not the count when the copy stopped
+ * @returns Error naming the size and the cap, and how to get a smaller result
+ */
+export function evalResultTooLargeError(
+  size: number,
+  cap: number,
+  exact: boolean
+): ErrorWithSuggestion {
+  const mb = (bytes: number): string => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  const limit = mb(cap).replace('.0', '');
+  return {
+    message: exact
+      ? `The result is ${mb(size)}, over the ${limit} limit of dom eval --full`
+      : `The result is over the ${limit} limit of dom eval --full (copying stopped at ${mb(size)})`,
+    suggestion:
+      'Return a slice or a summary of the value (.slice(0, 1000), .length), or drop --full to get the first 20000 characters',
+  };
+}
+
 /** How to see the frames `--frame` accepts */
 const LIST_FRAMES_HINT = 'List frames: bdg dom frames';
 
