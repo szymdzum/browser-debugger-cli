@@ -29,6 +29,18 @@ function watch<T>(promise: Promise<T>): { settled: boolean; value?: T; error?: u
   return state;
 }
 
+/**
+ * Advance the fake clock and let the promise chains it settles run (a real
+ * macrotask turn: `tickAndFlush` drains one microtask only).
+ *
+ * @param clock - Fake clock helper
+ * @param ms - Milliseconds to advance
+ */
+async function advance(clock: ClockHelper, ms: number): Promise<void> {
+  await clock.tickAndFlush(ms);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+}
+
 let helper: ClockHelper | undefined;
 
 afterEach(() => {
@@ -49,9 +61,9 @@ void describe('raceTimeout', () => {
   void it('yields undefined when the time runs out first', async () => {
     helper = useFakeClock();
     const state = watch(raceTimeout(never(), 1000));
-    await helper.tickAndFlush(999);
+    await advance(helper, 999);
     assert.equal(state.settled, false);
-    await helper.tickAndFlush(1);
+    await advance(helper, 1);
     assert.deepEqual([state.settled, state.value], [true, undefined]);
   });
 
@@ -65,7 +77,7 @@ void describe('raceTimeout', () => {
         },
       })
     );
-    await helper.tickAndFlush(10);
+    await advance(helper, 10);
     assert.equal(given.value, 'late');
     assert.match(String((thrown.error as Error).message), /too slow/);
   });
@@ -86,9 +98,9 @@ void describe('raceTimeout', () => {
   void it('waits the longest delay for a longer one instead of firing at once', async () => {
     helper = useFakeClock();
     const state = watch(raceTimeout(never(), MAX_TIMER_DELAY_MS * 2));
-    await helper.tickAndFlush(MAX_TIMER_DELAY_MS - 1);
+    await advance(helper, MAX_TIMER_DELAY_MS - 1);
     assert.equal(state.settled, false);
-    await helper.tickAndFlush(1);
+    await advance(helper, 1);
     assert.equal(state.settled, true);
   });
 
@@ -97,7 +109,7 @@ void describe('raceTimeout', () => {
     const controller = new AbortController();
     const state = watch(raceTimeout(never(), 1000, { signal: controller.signal }));
     controller.abort(new Error('interrupted'));
-    await helper.tickAndFlush(0);
+    await advance(helper, 0);
     assert.match(String((state.error as Error | undefined)?.message), /interrupted/);
     assert.equal(helper.clock.getPendingTimers(), 0);
   });
@@ -106,7 +118,7 @@ void describe('raceTimeout', () => {
     helper = useFakeClock();
     const signal = AbortSignal.abort(new Error('already'));
     const state = watch(raceTimeout(never(), 1000, { signal }));
-    await helper.tickAndFlush(0);
+    await advance(helper, 0);
     assert.match(String((state.error as Error | undefined)?.message), /already/);
     assert.equal(helper.clock.getPendingTimers(), 0);
   });
@@ -116,7 +128,7 @@ void describe('withTimeout', () => {
   void it('rejects with a TimeoutError naming the operation and the wait', async () => {
     helper = useFakeClock();
     const state = watch(withTimeout(never(), 2000, 'Fetch'));
-    await helper.tickAndFlush(2000);
+    await advance(helper, 2000);
     assert.ok(state.error instanceof TimeoutError);
     assert.equal((state.error as Error | undefined)?.message, 'Fetch timeout (2s)');
   });
@@ -124,7 +136,7 @@ void describe('withTimeout', () => {
   void it('names the capped wait for a longer one', async () => {
     helper = useFakeClock();
     const state = watch(withTimeout(never(), MAX_TIMER_DELAY_MS + 5000, 'Fetch'));
-    await helper.tickAndFlush(MAX_TIMER_DELAY_MS);
+    await advance(helper, MAX_TIMER_DELAY_MS);
     assert.equal(
       (state.error as Error | undefined)?.message,
       `Fetch timeout (${MAX_TIMER_DELAY_MS / 1000}s)`
@@ -148,7 +160,7 @@ void describe('withTimeout', () => {
     const controller = new AbortController();
     const state = watch(withTimeout(never(), 1000, 'Fetch', { signal: controller.signal }));
     controller.abort(new Error('stop'));
-    await helper.tickAndFlush(0);
+    await advance(helper, 0);
     assert.match(String((state.error as Error | undefined)?.message), /stop/);
     assert.equal(helper.clock.getPendingTimers(), 0);
   });
@@ -160,7 +172,7 @@ void describe('delay', () => {
     const controller = new AbortController();
     const state = watch(delay(1000, controller.signal));
     controller.abort();
-    await helper.tickAndFlush(0);
+    await advance(helper, 0);
     assert.equal(state.settled, true);
     assert.equal(helper.clock.getPendingTimers(), 0);
   });
