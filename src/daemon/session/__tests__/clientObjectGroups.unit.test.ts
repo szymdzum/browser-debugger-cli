@@ -49,8 +49,8 @@ void describe('ClientObjectGroups', () => {
     const alive = new Set([10, 11]);
     const groups = new ClientObjectGroups((pid) => alive.has(pid));
     const { page, released } = fakePage();
-    groups.settled(page, creating('bdg-query-10-1', 10));
-    groups.settled(page, creating('bdg-node-11-1', 11));
+    groups.settled(page, creating('bdg-query-10-1', 10), true);
+    groups.settled(page, creating('bdg-node-11-1', 11), true);
     assert.deepEqual(await groups.releaseOrphans(), []);
     alive.delete(10);
     assert.deepEqual(await groups.releaseOrphans(), ['bdg-query-10-1']);
@@ -61,11 +61,15 @@ void describe('ClientObjectGroups', () => {
   void it('forgets a group its CLI released', async () => {
     const groups = new ClientObjectGroups(() => false);
     const { page, released } = fakePage();
-    groups.settled(page, creating('bdg-check-10-1', 10));
-    groups.settled(page, {
-      method: 'Runtime.releaseObjectGroup',
-      params: { objectGroup: 'bdg-check-10-1' },
-    });
+    groups.settled(page, creating('bdg-check-10-1', 10), true);
+    groups.settled(
+      page,
+      {
+        method: 'Runtime.releaseObjectGroup',
+        params: { objectGroup: 'bdg-check-10-1' },
+      },
+      true
+    );
     assert.deepEqual(await groups.releaseOrphans(), []);
     assert.deepEqual(released, []);
   });
@@ -73,7 +77,7 @@ void describe('ClientObjectGroups', () => {
   void it('leaves groups without an owner alone (bdg cdp)', async () => {
     const groups = new ClientObjectGroups(() => false);
     const { page } = fakePage();
-    groups.settled(page, creating('mine'));
+    groups.settled(page, creating('mine'), true);
     assert.deepEqual(await groups.releaseOrphans(), []);
   });
 
@@ -81,8 +85,8 @@ void describe('ClientObjectGroups', () => {
     const groups = new ClientObjectGroups(() => false);
     const first = fakePage(true);
     const second = fakePage();
-    groups.settled(first.page, creating('bdg-a11y-secret-10-1', 10));
-    groups.settled(second.page, creating('bdg-node-10-2', 10));
+    groups.settled(first.page, creating('bdg-a11y-secret-10-1', 10), true);
+    groups.settled(second.page, creating('bdg-node-10-2', 10), true);
     const orphans = await groups.releaseOrphans();
     assert.deepEqual(orphans.sort(), ['bdg-a11y-secret-10-1', 'bdg-node-10-2']);
     assert.deepEqual(first.released, ['bdg-a11y-secret-10-1']);
@@ -97,11 +101,15 @@ void describe('ClientObjectGroups', () => {
     });
     const { page, released } = fakePage();
     for (const owner of [0, -1, 1.5, Number.NaN, '10', null]) {
-      groups.settled(page, {
-        method: 'DOM.resolveNode',
-        params: { objectGroup: `g-${String(owner)}` },
-        owner,
-      });
+      groups.settled(
+        page,
+        {
+          method: 'DOM.resolveNode',
+          params: { objectGroup: `g-${String(owner)}` },
+          owner,
+        },
+        true
+      );
     }
     assert.deepEqual(await groups.releaseOrphans(), []);
     assert.deepEqual(checked, []);
@@ -111,7 +119,7 @@ void describe('ClientObjectGroups', () => {
   void it('forgets every group when the page is gone', async () => {
     const groups = new ClientObjectGroups(() => false);
     const { page, released } = fakePage();
-    groups.settled(page, creating('bdg-query-10-1', 10));
+    groups.settled(page, creating('bdg-query-10-1', 10), true);
     groups.clear();
     assert.deepEqual(await groups.releaseOrphans(), []);
     assert.deepEqual(released, []);
@@ -120,8 +128,32 @@ void describe('ClientObjectGroups', () => {
   void it('never releases a group twice when sweeps overlap', async () => {
     const groups = new ClientObjectGroups(() => false);
     const { page, released } = fakePage();
-    groups.settled(page, creating('bdg-query-10-1', 10));
+    groups.settled(page, creating('bdg-query-10-1', 10), true);
     await Promise.all([groups.releaseOrphans(), groups.releaseOrphans()]);
     assert.deepEqual(released, ['bdg-query-10-1']);
+  });
+
+  void it('keeps a group whose release failed, for the sweep once its CLI exits', async () => {
+    const alive = new Set([10]);
+    const groups = new ClientObjectGroups((pid) => alive.has(pid));
+    const { page, released } = fakePage();
+    groups.settled(page, creating('bdg-check-10-1', 10), true);
+    const release = {
+      method: 'Runtime.releaseObjectGroup',
+      params: { objectGroup: 'bdg-check-10-1' },
+    };
+    groups.settled(page, release, false);
+    alive.delete(10);
+    assert.deepEqual(await groups.releaseOrphans(), ['bdg-check-10-1']);
+    assert.deepEqual(released, ['bdg-check-10-1']);
+  });
+
+  void it('does not reject when the liveness check throws', async () => {
+    const groups = new ClientObjectGroups(() => {
+      throw new Error('kill failed');
+    });
+    const { page } = fakePage();
+    groups.settled(page, creating('bdg-query-10-1', 10), true);
+    assert.deepEqual(await groups.releaseOrphans(), []);
   });
 });

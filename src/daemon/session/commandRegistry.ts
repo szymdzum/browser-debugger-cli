@@ -600,7 +600,12 @@ export function createCommandRegistry(
   let listedFrameIds: string[] | undefined;
   /** Events `bdg cdp --listen` buffers between commands (gone with the session) */
   const eventListener = new CdpEventListener();
-  /** Object groups of bdg CLIs, released when a CLI exits without releasing them (#606) */
+  /**
+   * Object groups of bdg CLIs, released when a CLI exits without releasing
+   * them (#606). Forgotten when the page navigates (its groups are gone) and
+   * on a tab switch (the old tab keeps them until it navigates or closes; the
+   * daemon no longer talks to it).
+   */
   const clientGroups = new ClientObjectGroups();
   tabs?.onPageSwitch((cdp) => {
     listedFrameIds = undefined;
@@ -756,7 +761,16 @@ export function createCommandRegistry(
 
     cdp_call: async (cdp, params, abandoned) => {
       const call = (): Promise<unknown> =>
-        sendCdpCall(cdp, params, store).finally(() => clientGroups.settled(cdp, params));
+        sendCdpCall(cdp, params, store).then(
+          (value) => {
+            clientGroups.settled(cdp, params, true);
+            return value;
+          },
+          (error: unknown) => {
+            clientGroups.settled(cdp, params, false);
+            throw error;
+          }
+        );
       const { result, collected } = await (
         params.collect
           ? collectEvents(cdp, call, { ...params.collect, signal: abandoned })
@@ -989,11 +1003,13 @@ export function createCommandRegistry(
     page_navigate: async (cdp, params) =>
       interact(
         cdp,
-        () =>
-          navigatePage(cdp, params.action, {
+        () => {
+          clientGroups.clear();
+          return navigatePage(cdp, params.action, {
             ...filterDefined({ url: params.url, wait: params.wait }),
             pendingRequests: () => store.pendingNetworkRequests.values(),
-          }).finally(() => clientGroups.clear()),
+          });
+        },
         { reportRequests: false, reportEffects: false }
       ),
 

@@ -19,6 +19,7 @@
 
 import { releaseObjectGroup, type ObjectGroupSender } from '@/runtime/page/objectGroups.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { isProcessAlive } from '@/utils/process.js';
 
 const log = createLogger('daemon');
@@ -48,20 +49,28 @@ export class ClientObjectGroups {
 
   /**
    * Note a forwarded call once it has settled: remember the group it created
-   * for its owner, forget a group it released. Noted after the call settles,
-   * so a release never overtakes the call that fills the group.
+   * for its owner (whether or not the call succeeded: a failed call may still
+   * have filled it), forget a group it released successfully (a failed
+   * release leaves it for the sweep). Noted after the call settles, so a
+   * release never overtakes the call that fills the group.
    *
    * @param page - Connection the call went to
    * @param call - The call
+   * @param succeeded - Whether the page answered the call without an error
    */
-  settled(page: ObjectGroupSender, call: ForwardedCall): void {
+  settled(page: ObjectGroupSender, call: ForwardedCall, succeeded: boolean): void {
     const objectGroup = call.params?.['objectGroup'];
     if (typeof objectGroup !== 'string') return;
-    if (call.method === 'Runtime.releaseObjectGroup') this.groups.delete(objectGroup);
-    else if (isProcessId(call.owner)) this.groups.set(objectGroup, { owner: call.owner, page });
+    if (call.method === 'Runtime.releaseObjectGroup') {
+      if (succeeded) this.groups.delete(objectGroup);
+    } else if (isProcessId(call.owner)) this.groups.set(objectGroup, { owner: call.owner, page });
   }
 
-  /** Forget every group: the page they were made in is gone (navigation, tab switch) */
+  /**
+   * Forget every group: after a navigation the page's groups are gone; after
+   * a tab switch their page is no longer the one the daemon talks to (the old
+   * tab keeps them until it navigates or closes).
+   */
   clear(): void {
     this.groups.clear();
   }
@@ -69,22 +78,30 @@ export class ClientObjectGroups {
   /**
    * Release the groups whose owners have exited, on the page each was made
    * on. Each group leaves the map before its release is sent, so sweeps that
-   * overlap (callers do not wait for one) never release a group twice. Never throws: a page that is gone or does not answer took its groups
-   * with it, or is given up on after the release's time limit.
+   * overlap (callers do not wait for one) never release a group twice.
+   *
+   * Never rejects, so callers may leave it running: a page that is gone or
+   * does not answer took its groups with it, or is given up on after the
+   * release's time limit; a failing liveness check is logged at debug level.
    *
    * @returns Names of the groups whose release was sent (confirmed or not)
    */
   async releaseOrphans(): Promise<string[]> {
-    const orphans = [...this.groups].filter(([, held]) => !this.isAlive(held.owner));
-    for (const [objectGroup] of orphans) this.groups.delete(objectGroup);
-    await Promise.all(
-      orphans.map(async ([objectGroup, { owner, page }]) => {
-        if (await releaseObjectGroup(page, objectGroup)) {
-          log.info(`Released object group ${objectGroup} of exited bdg process ${owner}`);
-        }
-      })
-    );
-    return orphans.map(([objectGroup]) => objectGroup);
+    try {
+      const orphans = [...this.groups].filter(([, held]) => !this.isAlive(held.owner));
+      for (const [objectGroup] of orphans) this.groups.delete(objectGroup);
+      await Promise.all(
+        orphans.map(async ([objectGroup, { owner, page }]) => {
+          if (await releaseObjectGroup(page, objectGroup)) {
+            log.info(`Released object group ${objectGroup} of exited bdg process ${owner}`);
+          }
+        })
+      );
+      return orphans.map(([objectGroup]) => objectGroup);
+    } catch (error) {
+      log.debug(`Object groups of exited bdg processes not released: ${getErrorMessage(error)}`);
+      return [];
+    }
   }
 }
 
