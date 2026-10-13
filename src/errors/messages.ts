@@ -285,7 +285,10 @@ export function screenshotInterruptedError(signal: 'SIGINT' | 'SIGTERM'): ErrorW
  * `writing`: its path once the write has started, absent before).
  */
 export type InterruptedWork =
-  { sent: string } | { session: 'stop' | 'cleanup' } | InterruptedFileWrite;
+  | { sent: string }
+  | { stopped: 'script' }
+  | { session: 'stop' | 'cleanup' }
+  | InterruptedFileWrite;
 
 /** A file an interruptible command writes; `writing` is set as the write starts */
 export interface InterruptedFileWrite {
@@ -315,6 +318,7 @@ function interruptedWorkText(work: InterruptedWork | undefined): string {
   if ('sent' in work) {
     return `The ${work.sent} may already have reached the page; check with ${sessionCommand('bdg peek')} before repeating it`;
   }
+  if ('stopped' in work) throw new Error('not implemented');
   if ('session' in work) {
     const begun =
       work.session === 'stop'

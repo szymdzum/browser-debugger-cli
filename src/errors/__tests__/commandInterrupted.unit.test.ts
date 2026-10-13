@@ -22,6 +22,13 @@ void describe('commandInterruptedError', () => {
     );
   });
 
+  void it('says an eval script was stopped on the page, its earlier changes may remain', () => {
+    const { suggestion } = commandInterruptedError({ stopped: 'script' });
+    assert.match(suggestion, /^The script was stopped on the page/);
+    assert.match(suggestion, /changes it made before the stop may remain/);
+    assert.match(suggestion, /check with bdg peek/);
+  });
+
   void it('says a stop may have been sent, to check with bdg status', () => {
     const { suggestion } = commandInterruptedError({ session: 'stop' });
     assert.match(suggestion, /^The stop request may already have been sent; check with bdg status/);
