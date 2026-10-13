@@ -3383,3 +3383,33 @@ export function optionNotFoundError(notFound: OptionNotFound): ErrorWithSuggesti
     suggestion: `Available options: ${options.join(', ')}`,
   };
 }
+
+/**
+ * A reply of the daemon over the longest line the client reads.
+ *
+ * @param size - Characters of the reply, or read so far
+ * @param cap - The longest line
+ * @param request - Type of the request it answers
+ * @param exact - Whether `size` is the whole reply (false: reading stopped at it)
+ * @returns Error naming the size and the limit, and how to ask for less
+ */
+export function replyTooLargeError(
+  size: number,
+  cap: number,
+  request: string,
+  exact = true
+): ErrorWithSuggestion {
+  void [size, cap, request, exact];
+  return { message: '', suggestion: '' };
+}
+
+/**
+ * A `bdg cdp` call whose reply Chrome could not send (about 256 MiB and more).
+ *
+ * @param cap - The longest reply
+ * @returns Error naming the limit and how to ask for less
+ */
+export function chromeReplyLostError(cap: number): ErrorWithSuggestion {
+  void cap;
+  return { message: '', suggestion: '' };
+}

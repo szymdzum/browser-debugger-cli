@@ -10,7 +10,10 @@ import { MAX_JSONL_BUFFER_SIZE } from '@/constants.js';
  * Error thrown when JSONL buffer exceeds maximum size.
  */
 export class JSONLBufferOverflowError extends Error {
-  constructor(bufferSize: number, maxSize: number) {
+  constructor(
+    readonly bufferSize: number,
+    readonly maxSize: number
+  ) {
     super(
       `JSONL buffer overflow: ${bufferSize} bytes exceeds maximum ${maxSize} bytes. ` +
         `Possible malicious or buggy process sending data without newlines.`
