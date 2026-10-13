@@ -171,7 +171,7 @@ function prInfo(pr) {
     'view',
     String(pr),
     '--json',
-    'number,title,headRefName,headRefOid,baseRefName,mergeable,state,isDraft,files,mergeCommit',
+    'number,title,body,headRefName,headRefOid,baseRefName,mergeable,state,isDraft,files,mergeCommit',
   ]);
 }
 
@@ -710,13 +710,13 @@ async function freshBaseGate(results, pr, baseRef, forkPoint, prFiles) {
  * per gate; the judgment gates are printed as reminders. `--tier` is
  * required, so a tier-1 PR isn't held to the red-commit rule by default.
  *
- * @param {string[]} argv `<pr> --tier=1|2|3`, optional `--macos`, `--repeat=<run id>` (or `--timing` to demand one)
+ * @param {string[]} argv `<pr> --tier=1|2|3`, optional `--macos`, `--no-issue` (a PR with no issue to close), `--repeat=<run id>` (or `--timing` to demand one)
  */
 async function gates(argv) {
   const { positional, keys, flags } = parseArgs(argv);
   const tier = Number(keys.tier);
   if (!positional[0] || ![1, 2, 3].includes(tier))
-    return usage('gates <pr> --tier=1|2|3 [--macos] [--timing] [--repeat=<run id>]');
+    return usage('gates <pr> --tier=1|2|3 [--macos] [--timing] [--repeat=<run id>] [--no-issue]');
   const pr = prInfo(positional[0]);
   const head = pr.headRefOid;
   const results = [];
@@ -749,6 +749,15 @@ async function gates(argv) {
   mainGate(results);
   await freshBaseGate(results, pr, baseRef, forkPoint, prFiles);
   gateLine(results, !prFiles.includes('CHANGELOG.md'), '7 CHANGELOG.md untouched');
+  if (flags.has('no-issue')) console.log('ok   7 PR body closes an issue: skipped (--no-issue)');
+  else {
+    const closed = closedIssues(pr.body);
+    gateLine(
+      results,
+      closed.length > 0,
+      `7 PR body closes an issue: ${closed.length ? `#${closed.join(', #')}` : 'no "Closes #<N>" (add it, or --no-issue for a PR with no issue)'}`
+    );
+  }
   const scope = [String(pr.number), ...(prIssues(pr.number) ?? [])];
   const left = leftoverLines(scope);
   gateLine(
@@ -761,6 +770,17 @@ async function gates(argv) {
     'judge yourself: 1 review findings resolved and re-checked · 2 fresh-agent test done (tier 2-3) · 3 reviewer ran the red commit · 7 docs match the behaviour'
   );
   return results.every(Boolean) ? EXIT.ok : EXIT.failed;
+}
+
+/**
+ * Issue numbers the PR body closes with `Closes`, `Fixes` or `Resolves`
+ * (any case, optional colon), as strings.
+ *
+ * @param {string} [body]
+ */
+export function closedIssues(body) {
+  const found = [...(body ?? '').matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\s+#(\d+)/gi)];
+  return [...new Set(found.map((m) => m[1]))];
 }
 
 /**
@@ -943,7 +963,7 @@ function leftovers(argv) {
  */
 async function merge(argv) {
   const prNumber = argv[0];
-  if (!prNumber) return usage('merge <pr> --tier=1|2|3 [--macos] [--timing] [--repeat=<run id>]');
+  if (!prNumber) return usage('merge <pr> --tier=1|2|3 [--macos] [--timing] [--repeat=<run id>] [--no-issue]');
   const pr = prInfo(prNumber);
   if ((await gates(argv)) !== EXIT.ok) {
     console.log('not merged: a gate failed');
@@ -1163,7 +1183,7 @@ const COMMANDS = {
     '<run id> [--timeout=<min>]: wait for a dispatched run, print its jobs; exit 4 on timeout',
   ],
   'merge-check': [mergeCheck, '<pr> [test files…]: gate 6 on current main, in a temp worktree'],
-  gates: [gates, '<pr> --tier=N [--macos] [--timing] [--repeat=<id>]: mechanical gates'],
+  gates: [gates, '<pr> --tier=N [--macos] [--timing] [--repeat=<id>] [--no-issue]: mechanical gates'],
   merge: [merge, '<pr> --tier=N [gate flags]: gates, merge on that head, clean up'],
   leftovers: [leftovers, '[--clean]: gate 8; --clean drops PID files of dead processes'],
   log: [log, '<pr> tier= review= tester= rounds= model= tokens= note=: append to log.md'],

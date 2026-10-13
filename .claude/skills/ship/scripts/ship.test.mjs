@@ -13,6 +13,7 @@ import { test } from 'node:test';
 
 import {
   appendSnapshotEntries,
+  closedIssues,
   EXIT,
   inScope,
   insertLogRow,
@@ -432,4 +433,13 @@ test('parseSnapshotArgs names a name found in neither directory and refuses newl
   assert.match(parseSnapshotArgs(['--accept', 'gone.txt'], { bdg, downloads }).error, /gone\.txt does not exist in .*ship-bdg-.* or .*ship-dl-/);
   writeFileSync(join(bdg, 'a\nb'), '');
   assert.match(parseSnapshotArgs(['--accept', 'a\nb'], { bdg, downloads }).error, /newline/);
+});
+
+test('closedIssues reads Closes, Fixes and Resolves in any case, and nothing else', () => {
+  assert.deepEqual(closedIssues('Closes #12'), ['12']);
+  assert.deepEqual(closedIssues('fixes: #3\nRESOLVED #4 and closes #3'), ['3', '4']);
+  assert.deepEqual(closedIssues('Leftovers of #708, see #12'), []);
+  assert.deepEqual(closedIssues('Disclosed #5'), []);
+  assert.deepEqual(closedIssues(''), []);
+  assert.deepEqual(closedIssues(undefined), []);
 });
