@@ -171,7 +171,7 @@ function prInfo(pr) {
     'view',
     String(pr),
     '--json',
-    'number,title,headRefName,headRefOid,baseRefName,mergeable,state,isDraft,files,mergeCommit',
+    'number,title,body,headRefName,headRefOid,baseRefName,mergeable,state,isDraft,files,mergeCommit',
   ]);
 }
 
@@ -710,13 +710,13 @@ async function freshBaseGate(results, pr, baseRef, forkPoint, prFiles) {
  * per gate; the judgment gates are printed as reminders. `--tier` is
  * required, so a tier-1 PR isn't held to the red-commit rule by default.
  *
- * @param {string[]} argv `<pr> --tier=1|2|3`, optional `--macos`, `--repeat=<run id>` (or `--timing` to demand one)
+ * @param {string[]} argv `<pr> --tier=1|2|3`, optional `--macos`, `--no-issue` (a PR with no issue to close), `--repeat=<run id>` (or `--timing` to demand one)
  */
 async function gates(argv) {
   const { positional, keys, flags } = parseArgs(argv);
   const tier = Number(keys.tier);
   if (!positional[0] || ![1, 2, 3].includes(tier))
-    return usage('gates <pr> --tier=1|2|3 [--macos] [--timing] [--repeat=<run id>]');
+    return usage('gates <pr> --tier=1|2|3 [--macos] [--timing] [--repeat=<run id>] [--no-issue]');
   const pr = prInfo(positional[0]);
   const head = pr.headRefOid;
   const results = [];
@@ -749,6 +749,15 @@ async function gates(argv) {
   mainGate(results);
   await freshBaseGate(results, pr, baseRef, forkPoint, prFiles);
   gateLine(results, !prFiles.includes('CHANGELOG.md'), '7 CHANGELOG.md untouched');
+  if (flags.has('no-issue')) console.log('ok   7 PR body closes an issue: skipped (--no-issue)');
+  else {
+    const closed = closedIssues(pr.body);
+    gateLine(
+      results,
+      closed.length > 0,
+      `7 PR body closes an issue: ${closed.length ? `#${closed.join(', #')}` : 'no "Closes #<N>" (add it, or --no-issue for a PR with no issue)'}`
+    );
+  }
   const scope = [String(pr.number), ...(prIssues(pr.number) ?? [])];
   const left = leftoverLines(scope);
   gateLine(
@@ -761,6 +770,21 @@ async function gates(argv) {
     'judge yourself: 1 review findings resolved and re-checked · 2 fresh-agent test done (tier 2-3) · 3 reviewer ran the red commit · 7 docs match the behaviour'
   );
   return results.every(Boolean) ? EXIT.ok : EXIT.failed;
+}
+
+/**
+ * Issue numbers the PR body closes with `Closes`, `Fixes` or `Resolves`
+ * (any case, optional colon; `#N` or this repo's issue URL), as strings.
+ * Fenced code blocks are ignored; "doesn't close #5" still counts.
+ *
+ * @param {string} [body]
+ */
+export function closedIssues(body) {
+  const text = (body ?? '').replace(/^ {0,3}(`{3,}|~{3,})[\s\S]*?(^ {0,3}\1[`~]*[ \t]*$|(?![\s\S]))/gm, '');
+  const ref = `(?:#|https://github\\.com/${REPO}/issues/)(\\d+)(?![\\w/-])`;
+  const keyword = '\\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\\s+';
+  const found = [...text.matchAll(new RegExp(keyword + ref, 'gi'))];
+  return [...new Set(found.map((m) => m[1]))];
 }
 
 /**
@@ -788,44 +812,58 @@ export function appendSnapshotEntries(file, names) {
 
 /**
  * Checks the arguments of `ship snapshot`: none takes a snapshot, and
- * `--accept <name>…` accepts names that exist in `dir` and hold no newline.
+ * `--accept <name>…` accepts names that hold no newline and exist in at
+ * least one of the snapshotted directories (a name in both is accepted in both).
  *
  * @param {string[]} argv
- * @param {string} dir directory the accepted names must exist in
- * @returns {{ accept: string[] | null } | { error: string }}
+ * @param {Record<string, string>} dirs snapshot key → directory
+ * @returns {{ accept: { key: string, name: string }[] | null } | { error: string }}
  */
-export function parseSnapshotArgs(argv, dir) {
+export function parseSnapshotArgs(argv, dirs) {
   if (!argv.length) return { accept: null };
   const names = argv.slice(1);
   if (argv[0] !== '--accept' || !names.length)
     return { error: 'snapshot takes no arguments, or --accept <name>…' };
   const bad = names.find((n) => n.includes('\n') || n.includes('\r'));
   if (bad !== undefined) return { error: `name contains a newline: ${JSON.stringify(bad)}` };
-  const missing = names.find((n) => !existsSync(join(dir, n)));
-  if (missing !== undefined) return { error: `${missing} does not exist in ${dir}` };
-  return { accept: names };
+  const unsafe = names.find((n) => n === '' || n === '.' || n === '..' || /[\\/]/.test(n));
+  if (unsafe !== undefined)
+    return { error: `name must be a plain entry of the directory, not ${JSON.stringify(unsafe)}` };
+  const accept = [];
+  for (const name of names) {
+    const keys = Object.keys(dirs).filter((k) => existsSync(join(dirs[k], name)));
+    if (!keys.length)
+      return { error: `${name} does not exist in ${Object.values(dirs).join(' or ')}` };
+    accept.push(...keys.map((key) => ({ key, name })));
+  }
+  return { accept };
 }
 
 /**
  * Snapshots ~/.bdg and ~/Downloads at session start, for gate 8. With
- * `--accept <name>…` it appends entries to the ~/Downloads snapshot instead
- * (a file the user put there during the session); it needs an existing snapshot.
- * Any other argument is a usage error and leaves the snapshot alone.
+ * `--accept <name>…` it appends entries to the matching snapshot instead
+ * (a file the user put in ~/Downloads, or their own live session's file in
+ * ~/.bdg); it needs an existing snapshot. Any other argument is a usage
+ * error and leaves the snapshot alone.
  *
  * @param {string[]} [argv]
  */
 function snapshot(argv = []) {
-  const parsed = parseSnapshotArgs(argv, join(homedir(), 'Downloads'));
+  const dirs = { bdg: join(homedir(), '.bdg'), downloads: join(homedir(), 'Downloads') };
+  const parsed = parseSnapshotArgs(argv, dirs);
   if ('error' in parsed) return usage(`snapshot [--accept <name>…]: ${parsed.error}`);
   if (parsed.accept) {
-    if (!existsSync(SNAPSHOT.downloads))
+    if (parsed.accept.some(({ key }) => !existsSync(SNAPSHOT[key])))
       return usage('snapshot --accept <name>…: needs a snapshot from ship snapshot');
-    appendSnapshotEntries(SNAPSHOT.downloads, parsed.accept);
-    console.log(`accepted in ~/Downloads snapshot: ${parsed.accept.join(', ')}`);
+    for (const key of Object.keys(dirs)) {
+      const names = parsed.accept.filter((a) => a.key === key).map((a) => a.name);
+      if (names.length) appendSnapshotEntries(SNAPSHOT[key], names);
+    }
+    console.log(`accepted: ${parsed.accept.map(({ key, name }) => `${name} (~/${key === 'bdg' ? '.bdg' : 'Downloads'})`).join(', ')}`);
     return EXIT.ok;
   }
-  writeFileSync(SNAPSHOT.bdg, listDir(join(homedir(), '.bdg')).join('\n'));
-  writeFileSync(SNAPSHOT.downloads, listDir(join(homedir(), 'Downloads')).join('\n'));
+  writeFileSync(SNAPSHOT.bdg, listDir(dirs.bdg).join('\n'));
+  writeFileSync(SNAPSHOT.downloads, listDir(dirs.downloads).join('\n'));
   console.log(`snapshot of ~/.bdg and ~/Downloads in ${SNAPSHOT.bdg}, ${SNAPSHOT.downloads}`);
   return EXIT.ok;
 }
@@ -932,7 +970,7 @@ function leftovers(argv) {
  */
 async function merge(argv) {
   const prNumber = argv[0];
-  if (!prNumber) return usage('merge <pr> --tier=1|2|3 [--macos] [--timing] [--repeat=<run id>]');
+  if (!prNumber) return usage('merge <pr> --tier=1|2|3 [--macos] [--timing] [--repeat=<run id>] [--no-issue]');
   const pr = prInfo(prNumber);
   if ((await gates(argv)) !== EXIT.ok) {
     console.log('not merged: a gate failed');
@@ -1141,7 +1179,7 @@ function log(argv) {
 const COMMANDS = {
   snapshot: [
     snapshot,
-    "session start: snapshot ~/.bdg and ~/Downloads (gate 8); --accept <name>… adds a user's own ~/Downloads file to the snapshot",
+    "session start: snapshot ~/.bdg and ~/Downloads (gate 8); --accept <name>… adds a user's own ~/Downloads or ~/.bdg file to the snapshot",
   ],
   worktree: [worktree, '<N> <branch>: agent worktree from origin/main, node_modules linked'],
   brief: [brief, '<role> N=<n> KEY=value…: render a brief with the shared blocks'],
@@ -1152,7 +1190,7 @@ const COMMANDS = {
     '<run id> [--timeout=<min>]: wait for a dispatched run, print its jobs; exit 4 on timeout',
   ],
   'merge-check': [mergeCheck, '<pr> [test files…]: gate 6 on current main, in a temp worktree'],
-  gates: [gates, '<pr> --tier=N [--macos] [--timing] [--repeat=<id>]: mechanical gates'],
+  gates: [gates, '<pr> --tier=N [--macos] [--timing] [--repeat=<id>] [--no-issue]: mechanical gates'],
   merge: [merge, '<pr> --tier=N [gate flags]: gates, merge on that head, clean up'],
   leftovers: [leftovers, '[--clean]: gate 8; --clean drops PID files of dead processes'],
   log: [log, '<pr> tier= review= tester= rounds= model= tokens= note=: append to log.md'],

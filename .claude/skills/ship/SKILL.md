@@ -37,7 +37,7 @@ Files:
 #<N> <slug>  tier <1|2|3>
 - [ ] Implementer: ship brief implementer N=<N> BRANCH=<type>/<slug> → fill scope → spawn (background)
 - [ ] Report ends with `PR <url> HEAD <sha>`; ship ci-wait <pr> (background, 60-minute timeout)
-- [ ] Reviewer: ship brief reviewer … → findings to the same implementer; Not-checked risks resumed
+- [ ] Reviewer: ship brief reviewer … → findings to the same implementer
 - [ ] Tester (tier 2–3): ship brief tester … → findings routed
 - [ ] Fix rounds ≤ 2; the reviewer re-checks each fix commit (SendMessage to the same reviewer)
 - [ ] Tier 3: second review of the fix commit; ship repeat for timing
@@ -55,7 +55,7 @@ An implementer's report ends with `PR <url> HEAD <sha>`. Without that line the w
 
 Render the reviewer brief with the claims of the change and its risks (races, failure and cleanup paths, leaks, security, contracts, recently merged features it could break); never the implementer's reasoning. Reviewers and testers run in the **foreground**.
 
-- Findings come back as **blocking / should-fix / nit** with file:line and a scenario. **Tier 3: a risk from your list under "Not checked" means you resume the reviewer for it** before sending anything on. Tier 1–2: you judge whether the skipped risk matters (the S4 and S5 resumes found nothing new).
+- Findings come back as **blocking / should-fix / nit** with file:line and a scenario. A risk under "Not checked": you judge whether the skipped risk matters (resuming the reviewer for it found nothing in S4–S6).
 - Send every finding to the **same implementer** (SendMessage, so it keeps its context): test and fix in one commit, or an argued rejection; you decide disputes. Nits about the change go into the same commit, never pushed alone (every push is a full CI run).
 - **Each fix commit is re-checked by the same reviewer** (SendMessage with the new SHA and the findings it addressed): cheaper than a new review and still not the author. Tier 3 adds a fresh second reviewer on the fix commit.
 - **At most two fix rounds.** Findings left after the second go to the user: a third round needs an explicit yes; the alternative is to file them.
@@ -79,16 +79,16 @@ After a round, **one verifier** reproduces all older-code findings on current `m
 
 Merge only when all hold on the head SHA you merge. `ship gates <pr> --tier=N` checks the mechanical ones (M); you judge the rest (J). `ship merge <pr>` with the same flags runs the gates, merges with `--match-head-commit`, and removes the worktree if nothing is uncommitted and the branch once `main` contains it. For a PR built on another PR's branch, everything is checked against that base branch.
 
-1. **J Review resolved:** every blocking and should-fix finding fixed or rejected with a reason you accept, re-checked on its fix commit; Not-checked risks resumed.
+1. **J Review resolved:** every blocking and should-fix finding fixed or rejected with a reason you accept, re-checked on its fix commit.
 2. **J Fresh-agent test done** (tier 2–3), its findings about the change fixed.
 3. **M+J Red commit:** the first commit is `test: …` (M); the reviewer ran it and it failed on an assertion about the issue (J). Exempt: tier 1.
 4. **M Repeat run** passed on the final head (`--repeat=<id>`; `--timing` makes a missing one fail). Tier 3 timing: Linux and macOS, repeat ≥ 10; CI or environment changes: the full smoke suite with repeat ≥ 3 on Node 22 only, the full Node matrix only for the Node runtime or `engines`).
 5. **M CI on the head, and `main` green:** the latest decided CI run on `main` succeeded (an in-progress run is named: wait for it only when its merge touched this PR's files, then re-run gate 6); on the head, `CI OK` (it aggregates build, quality, contract tests and Linux smoke); macOS smoke when the PR touches timing-sensitive paths (`--macos`); Security for PRs into `main`. A failing job counts as an accepted exception only with the known flake's issue number and a passing re-run; name both in the merge summary.
 6. **M Mergeable and tested against current `main`:** when `main` changed the PR's files since its base, `ship merge-check <pr> <affected tests>` passed on that `main` and head, or the implementer rebased and re-ran.
-7. **J Docs match** (`docs/CLI_REFERENCE.md`, help, `.claude/skills/bdg/SKILL.md`, option behaviors), **M** `CHANGELOG.md` untouched; the PR description marks changed defaults, contracts and breaking changes.
-8. **M No leftovers:** nothing new in `~/.bdg` or `~/Downloads` since `ship snapshot` (a user's own file: `ship snapshot --accept <name>` after checking it isn't from bdg), no live process from this PR's PID files, no temporary worktree of it; `ship leftovers` checks the whole session at the end.
+7. **J Docs match** (`docs/CLI_REFERENCE.md`, help, `.claude/skills/bdg/SKILL.md`, option behaviors), **M** `CHANGELOG.md` untouched and the PR body has `Closes #<N>` (`Fixes`/`Resolves` too; `--no-issue` for a PR with no issue, e.g. a retro: #705 once stayed open after its merge); the PR description marks changed defaults, contracts and breaking changes.
+8. **M No leftovers:** nothing new in `~/.bdg` or `~/Downloads` since `ship snapshot` (a user's own file in either directory, e.g. their live session's `daemon.sock`: `ship snapshot --accept <name>` after checking it isn't from bdg), no live process from this PR's PID files, no temporary worktree of it; `ship leftovers` checks the whole session at the end.
 
-A red `main` is fixed before any new work. After a merge, `ship ci-wait <merge sha> --push`; a `cancelled` run there means a later push superseded it: its result is the later commit's.
+A red `main` is fixed before any new work. **Rerun first:** when a push run on `main` fails in a test file the merged PR did not touch, `gh run rerun <id> --failed` before anything else. Start a verifier only if the re-run fails too, the failing test exercises code the PR changed, or that test failed before (check #529). Comment every one-off failure on #529: run id, test, error line (two one-offs in S6 cost ~30 minutes of verification; both re-runs passed). After a merge, `ship ci-wait <merge sha> --push`; a `cancelled` run there means a later push superseded it: its result is the later commit's.
 
 ## Keep the books
 
@@ -104,7 +104,7 @@ A red `main` is fixed before any new work. After a merge, `ship ci-wait <merge s
 
 - **Shared registries** conflict between parallel PRs: fixture pages go in a new module in `src/__testutils__/fixturePages/`, option behaviors in their area table.
 - **Heuristics pass their own fixtures.** For any detection heuristic (action effects, press or cover checks), reviewers build false-positive matrices on scratch pages; fixture-only tests passed every broken version so far.
-- **"Flaky" can be a real bug.** Root-cause a flake before calling it one.
+- **"Flaky" can be a real bug.** Root-cause a flake before calling it one; a one-off failure on `main` in an untouched test is rerun first (Gates).
 - **Secret and marker regexes in tests need boundaries**, e.g. `(?<![\d:])4111`: a bare `/4111/` matched the fixture port `127.0.0.1:44111` and turned `main` red (#682). Ports, ids and timestamps must not match.
 - **CodeQL or linters on test fixtures** (a variable named `SECRET`): rename, don't suppress. An open CodeQL alert on `main` gets an issue the day it appears.
 
