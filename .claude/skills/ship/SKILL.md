@@ -88,7 +88,7 @@ Merge only when all hold on the head SHA you merge. `ship gates <pr> --tier=N` c
 7. **J Docs match** (`docs/CLI_REFERENCE.md`, help, `.claude/skills/bdg/SKILL.md`, option behaviors), **M** `CHANGELOG.md` untouched and the PR body has `Closes #<N>` (`Fixes`/`Resolves` too; `--no-issue` for a PR with no issue, e.g. a retro: #705 once stayed open after its merge); the PR description marks changed defaults, contracts and breaking changes.
 8. **M No leftovers:** nothing new in `~/.bdg` or `~/Downloads` since `ship snapshot` (a user's own file in either directory, e.g. their live session's `daemon.sock`: `ship snapshot --accept <name>` after checking it isn't from bdg), no live process from this PR's PID files, no temporary worktree of it; `ship leftovers` checks the whole session at the end.
 
-A red `main` is fixed before any new work. After a merge, `ship ci-wait <merge sha> --push`; a `cancelled` run there means a later push superseded it: its result is the later commit's.
+A red `main` is fixed before any new work. **Rerun first:** when a push run on `main` fails in a test file the merged PR did not touch, `gh run rerun <id> --failed` before anything else. Start a verifier only if the re-run fails too, the failing test exercises code the PR changed, or that test failed before (check #529). Comment every one-off failure on #529: run id, test, error line (two one-offs in S6 cost ~30 minutes of verification; both re-runs passed). After a merge, `ship ci-wait <merge sha> --push`; a `cancelled` run there means a later push superseded it: its result is the later commit's.
 
 ## Keep the books
 
@@ -104,7 +104,7 @@ A red `main` is fixed before any new work. After a merge, `ship ci-wait <merge s
 
 - **Shared registries** conflict between parallel PRs: fixture pages go in a new module in `src/__testutils__/fixturePages/`, option behaviors in their area table.
 - **Heuristics pass their own fixtures.** For any detection heuristic (action effects, press or cover checks), reviewers build false-positive matrices on scratch pages; fixture-only tests passed every broken version so far.
-- **"Flaky" can be a real bug.** Root-cause a flake before calling it one.
+- **"Flaky" can be a real bug.** Root-cause a flake before calling it one; a one-off failure on `main` in an untouched test is rerun first (Gates).
 - **Secret and marker regexes in tests need boundaries**, e.g. `(?<![\d:])4111`: a bare `/4111/` matched the fixture port `127.0.0.1:44111` and turned `main` red (#682). Ports, ids and timestamps must not match.
 - **CodeQL or linters on test fixtures** (a variable named `SECRET`): rename, don't suppress. An open CodeQL alert on `main` gets an issue the day it appears.
 
