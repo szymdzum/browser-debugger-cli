@@ -32,7 +32,7 @@ export const EXIT = { ok: 0, failed: 1, usage: 2, superseded: 3, timeout: 4 };
  * @param {string[]} args
  * @param {object} [opts]
  */
-function run(cmd, args, opts = {}) {
+export function run(cmd, args, opts = {}) {
   return execFileSync(cmd, args, {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],

@@ -21,6 +21,7 @@ import {
   parseBriefs,
   renderBrief,
   retryTransient,
+  run,
   tempWorktrees,
   worktreeOfBranch,
 } from './ship.mjs';
@@ -259,4 +260,49 @@ test('retryTransient fails at once on a non-transient error', () => {
     { stderr: /404/ }
   );
   assert.equal(calls, 1);
+});
+
+test('run kills a command that outlives its timeout and names command and timeout', () => {
+  const started = Date.now();
+  assert.throws(() => run('sleep', ['5'], { timeoutMs: 200 }), {
+    timedOut: true,
+    message: /sleep 5.*timed out after 0\.2s/,
+  });
+  assert.ok(Date.now() - started < 3000);
+});
+
+test('a timed-out call is transient: retried with backoff, then reported', () => {
+  const waits = [];
+  let calls = 0;
+  assert.throws(
+    () =>
+      retryTransient(
+        () => {
+          calls++;
+          return run('sleep', ['5'], { timeoutMs: 100 });
+        },
+        { backoff: [1, 2], wait: (ms) => waits.push(ms) }
+      ),
+    { timedOut: true, message: /sleep 5.*timed out after 0\.1s/ }
+  );
+  assert.equal(calls, 3);
+  assert.deepEqual(waits, [1, 2]);
+});
+
+test('a waiter deadline caps the call timeout and ends the retries', () => {
+  const started = Date.now();
+  let calls = 0;
+  assert.throws(
+    () =>
+      retryTransient(
+        () => {
+          calls++;
+          return run('sleep', ['5'], { timeoutMs: 60_000, deadline: Date.now() + 300 });
+        },
+        { backoff: [1, 1], wait: () => {}, deadline: Date.now() + 300 }
+      ),
+    { timedOut: true }
+  );
+  assert.equal(calls, 1);
+  assert.ok(Date.now() - started < 3000);
 });
