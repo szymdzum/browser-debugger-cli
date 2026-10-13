@@ -114,6 +114,7 @@ void describe('Follow modes and interrupts', () => {
   ] as const) {
     void it(`dom screenshot --follow stops on ${signal} with exit ${exitCode} and its stop line`, async () => {
       const dir = makeTempDir('bdg-follow-');
+      const started = Date.now();
       const result = await followThenSignal(
         'dom',
         ['screenshot', dir, '--follow', '--interval', LONG_INTERVAL_MS, '--json'],
@@ -121,6 +122,10 @@ void describe('Follow modes and interrupts', () => {
         firstFrame
       );
       assert.equal(result.exitCode, exitCode, `${result.stdout}\n${result.stderr}`);
+      assert.ok(
+        Date.now() - started < Number(LONG_INTERVAL_MS) / 2,
+        'the stop did not wait for the inter-frame delay'
+      );
       const frames = ndjsonEnvelopes(result);
       assert.match(result.stderr, new RegExp(`Captured ${frames.length} frames?\\b`));
       assert.equal(fs.readdirSync(dir).length, frames.length);

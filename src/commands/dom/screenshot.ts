@@ -282,7 +282,10 @@ async function handleSequenceCapture(
     try {
       await captureSequenceFrame(outputPath, options);
     } catch (error) {
-      reportSequenceError(error, frameCount - 1, options.json ?? false);
+      if (!interrupt.aborted) reportSequenceError(error, frameCount - 1, options.json ?? false);
+      log.debug(`Capture failed after the interrupt: ${getErrorMessage(error)}`);
+      frameCount--;
+      break;
     }
     if (options.json) {
       console.log(JSON.stringify(buildSuccessResponse({ frame: frameCount, path: outputPath })));
