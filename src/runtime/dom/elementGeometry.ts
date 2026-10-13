@@ -410,9 +410,13 @@ const MASKED_BY_JS = `(el, describe) => {
  * Page-side search for what an element paints through its descendants in the
  * flat tree (shadow root, a slot's assigned nodes or fallback content): the
  * first rendered descendant element with `visibility: visible`, a box with
- * area and paint of its own (a background, border or shadow, or a replaced
- * element such as an image), or the element holding such text. An empty box
- * paints nothing (hidden text keeps its layout space). Content of a
+ * area and paint of its own (a background, border, outline or shadow with a
+ * visible color, `::before`/`::after` content, a list marker, or a replaced
+ * element such as an image), or the element holding such text (with a
+ * visible color or a `text-shadow`). An empty box paints nothing (hidden text
+ * keeps its layout space). Not evaluated: text moved out of view by
+ * `text-indent` or pushed out of a sized `overflow: hidden` box, and
+ * `filter: opacity(0)`. Content of a
  * descendant (or of the element itself, or of an ancestor in the flat tree,
  * containing blocks not considered) with no area that clips its overflow,
  * or that is fully transparent or cut away ({@link CLIP_PATH_CUTS_ALL_JS},
@@ -432,14 +436,32 @@ export const SHOWING_DESCENDANT_JS = `(el) => {
   const clipRectCutsAll = ${CLIP_RECT_CUTS_ALL_JS};
   const unseen = (s) => parseFloat(s.opacity) === 0 || clipPathCutsAll(s.clipPath) || clipRectCutsAll(s.position, s.clip);
   const replaced = /^(img|svg|video|canvas|iframe|embed|object|input|textarea|select|progress|meter)$/;
+  const alpha = (color) => {
+    if (!color || color === 'transparent') return 0;
+    const open = color.indexOf('(');
+    if (open < 0) return 1;
+    const parts = color.slice(open + 1, color.lastIndexOf(')')).replace('/', ' ').split(/[ ,]+/).filter(Boolean);
+    const last = parts.length === (color.startsWith('color(') ? 5 : 4) ? parts[parts.length - 1] : null;
+    return last === null ? 1 : parseFloat(last) / (last.endsWith('%') ? 100 : 1);
+  };
+  const lined = (width, style, color) => parseFloat(width) > 0 && style !== 'none' && style !== 'hidden' && alpha(color) > 0;
+  const generated = (n) => ['::before', '::after'].some((pseudo) => {
+    const p = n.ownerDocument.defaultView.getComputedStyle(n, pseudo);
+    return p.display !== 'none' && p.content !== 'none' && p.content !== 'normal';
+  });
   const paintsOwn = (n, s) =>
-    replaced.test(n.localName) || s.backgroundImage !== 'none' || (s.backgroundColor !== 'transparent' && !s.backgroundColor.endsWith(', 0)')) ||
-    s.boxShadow !== 'none' || ['Top', 'Right', 'Bottom', 'Left'].some((side) => parseFloat(s['border' + side + 'Width']) > 0 && !/^(none|hidden)$/.test(s['border' + side + 'Style']));
+    replaced.test(n.localName) || s.backgroundImage !== 'none' || alpha(s.backgroundColor) > 0 || s.boxShadow !== 'none' ||
+    ['Top', 'Right', 'Bottom', 'Left'].some((side) => lined(s['border' + side + 'Width'], s['border' + side + 'Style'], s['border' + side + 'Color'])) ||
+    lined(s.outlineWidth, s.outlineStyle, s.outlineColor) ||
+    (s.display.includes('list-item') && (s.listStyleType !== 'none' || s.listStyleImage !== 'none')) || generated(n);
+  const inkVisible = (s) => alpha(s.webkitTextFillColor || s.color) > 0 || s.textShadow !== 'none';
   const flatParent = ${FLAT_PARENT_JS};
   const textHolder = (t) => {
     if (!t.data.trim()) return null;
     const holder = flatParent(t);
-    if (!holder || styleOf(holder).visibility !== 'visible') return null;
+    if (!holder) return null;
+    const s = styleOf(holder);
+    if (s.visibility !== 'visible' || !inkVisible(s)) return null;
     const range = t.ownerDocument.createRange();
     range.selectNodeContents(t);
     return hasArea(range.getBoundingClientRect()) ? holder : null;

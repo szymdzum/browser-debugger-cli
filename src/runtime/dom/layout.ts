@@ -455,7 +455,7 @@ function elementLayout(raw: RawElementLayout, page: PageLayout): ElementLayout {
     raw.geometry.invisible
   );
   const painted =
-    raw.computed.display !== 'contents' && content
+    raw.computed.display !== 'contents' && content && placement.inViewport !== 'hidden'
       ? {
           ...pageBox(content, page.scroll),
           viewport: { x: Math.round(content.x), y: Math.round(content.y) },

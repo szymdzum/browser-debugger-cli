@@ -80,6 +80,19 @@ const CASES: Case[] = [
     hiddenReason: /^visibility: hidden$/,
     visible: false,
   })),
+  ...['bg-red', 'floats-green', 'text-shadow', 'pseudo', 'outline', 'marker'].map((id) => ({
+    id,
+    inspect: null,
+    inViewport: 'visible',
+    visible: true,
+  })),
+  ...['bg-clear', 'clip-rect', 'text-clear', 'text-fill-clear'].map((id) => ({
+    id,
+    inspect: /\[hidden: visibility: hidden\]/,
+    inViewport: 'hidden',
+    hiddenReason: /^visibility: hidden$/,
+    visible: false,
+  })),
   { id: 'far', inspect: /\[offscreen: below\]/, inViewport: 'below', visible: true },
 ];
 
@@ -132,12 +145,16 @@ void describe('Visibility verdict from what an element paints', () => {
       const layout = await ok(['dom', 'layout', `#${c.id}`, '--json']);
       const [element] = (
         JSON.parse(layout) as {
-          data: { elements: { inViewport: string; hiddenReason?: string }[] };
+          data: { elements: { inViewport: string; hiddenReason?: string; content?: object }[] };
         }
       ).data.elements;
       assert.equal(element?.inViewport, c.inViewport, `layout #${c.id}: ${layout}`);
       if (c.hiddenReason)
         assert.match(element.hiddenReason ?? '', c.hiddenReason, `layout #${c.id}`);
+      if (c.inViewport === 'hidden') {
+        assert.equal(element?.content, undefined, `layout #${c.id} content: ${layout}`);
+        assert.doesNotMatch(inspect, /\(content\)/, `inspect #${c.id}`);
+      }
 
       const query = await bdg(['dom', 'query', `#${c.id}:visible`, '--json']);
       const matched = query.exitCode === 0 && /"count":\s*[1-9]/.test(query.output);

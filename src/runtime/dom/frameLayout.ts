@@ -142,6 +142,7 @@ export function placeInOwnerFrame(
       geometry: {
         ...inner,
         rect,
+        content: inner.content ? mapBox(mapping, inner.content) : null,
         clip: intersection(ownClip, frameView, outer.clip),
         clipper: inner.clipper ?? (inside(rect, frameView) ? outer.clipper : frame.element),
         hidden: inner.hidden ?? (outer.hidden ? 'inside a hidden iframe' : null),
