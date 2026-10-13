@@ -66,13 +66,13 @@ void describe('evaluateScript with a result Chrome cannot send', () => {
     clock.restore();
   });
 
-  void it('fails within 8 s when the page answers while the result is missing (102)', async () => {
+  void it('fails within 14 s when the page answers while the result is missing (102)', async () => {
     const script = "'x'.repeat(2 ** 29)";
     const outcome = evaluateScript(pageThatCannotSend(script), script).catch(
       (error: unknown) => error
     );
     await clock.tickAndFlush(1_000);
-    await clock.tickAndFlush(6_000);
+    await clock.tickAndFlush(12_000);
     await new Promise((resolve) => setImmediate(resolve));
     const error = await Promise.race([outcome, Promise.resolve('still waiting')]);
     assert.ok(error instanceof CommandError, `got ${String(error)}`);
@@ -86,7 +86,7 @@ void describe('evaluateScript with a result Chrome cannot send', () => {
       (error: unknown) => error
     );
     await clock.tickAndFlush(1_000);
-    await clock.tickAndFlush(6_000);
+    await clock.tickAndFlush(12_000);
     await new Promise((resolve) => setImmediate(resolve));
     const error = await Promise.race([outcome, Promise.resolve('still waiting')]);
     assert.ok(error instanceof CommandError, `got ${String(error)}`);
@@ -132,7 +132,7 @@ void describe('evaluateScript with a script that finishes after the check', () =
     await clock.tickAndFlush(3_000);
     answer({ result: { type: 'string', value: 'done' } });
     await new Promise((resolve) => setImmediate(resolve));
-    await clock.tickAndFlush(6_000);
+    await clock.tickAndFlush(12_000);
     await new Promise((resolve) => setImmediate(resolve));
     const result = await Promise.race([outcome, Promise.resolve('still waiting')]);
     assert.deepEqual(result, { value: 'done', type: 'string' });

@@ -17,7 +17,7 @@ import {
   type FixtureServer,
 } from '@/__testutils__/fixtureServer.js';
 
-const FAST_MS = 18_000;
+const FAST_MS = 30_000;
 
 /**
  * Run `dom eval` and time it.

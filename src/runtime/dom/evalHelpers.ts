@@ -900,7 +900,7 @@ async function untilResultLost<T>(
  * its own answer (built, then sent) arrives: sending up to 256 MiB takes a
  * few seconds.
  */
-const UNSENT_GRACE_MS = 6_000;
+const UNSENT_GRACE_MS = 12_000;
 
 /**
  * Ask the page, once a second until stopped, whether it answers (it does
