@@ -279,7 +279,6 @@ export function formatBytes(bytes: number): string {
  * @returns e.g. "50 MiB", "12.3 MiB"
  */
 export function formatMiB(bytes: number, fractionDigits = 1): string {
-  void bytes;
-  void fractionDigits;
-  throw new Error('not implemented');
+  const mebibytes = bytes / (1024 * 1024);
+  return `${fractionDigits === 0 ? Math.round(mebibytes) : mebibytes.toFixed(fractionDigits)} MiB`;
 }

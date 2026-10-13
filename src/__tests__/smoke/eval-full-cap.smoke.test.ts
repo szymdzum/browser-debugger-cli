@@ -1,7 +1,7 @@
 /**
  * `dom eval --full` result cap smoke test (#693).
  *
- * A result over 50 MB is refused with exit 81 and a suggestion, in human and
+ * A result over 50 MiB is refused with exit 81 and a suggestion, in human and
  * `--json` output, before the CLI holds it (a 200 MB string used to end in a
  * V8 out-of-memory crash, exit 134); a result under the cap, and any result
  * without `--full`, behaves as before.

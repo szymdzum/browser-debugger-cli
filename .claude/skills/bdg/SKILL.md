@@ -161,7 +161,7 @@ bdg dom frames                                 # The page's iframes, cross-origi
 bdg eval --frame pay "document.title"          # In an iframe: index, name/id, or part of its URL
 ```
 
-Exit 91 means the script threw. `--full` (whole value, not the first 20000 characters) refuses a result over 50 MB of output (bytes; objects measured as the indented JSON human output prints, also with --json) with exit 81: return a slice or `.length`. A result over 256 MiB is refused without `--full` too (exit 102 for a string or Map, 81 for an object), within about 15 s. Prefer `dom query` / `dom get` / `dom inspect` when they answer the question.
+Exit 91 means the script threw. `--full` (whole value, not the first 20000 characters) refuses a result over 50 MiB of output (bytes; objects measured as the indented JSON human output prints, also with --json) with exit 81: return a slice or `.length`. A result over 256 MiB is refused without `--full` too (exit 102 for a string or Map, 81 for an object), within about 15 s (an object over the cap exits 81 in under a second). To read data that big, keep it in the page (`bdg dom eval '(window.data = <expr>, window.data.length)'`) and read slices under 50 MiB: `bdg dom eval 'window.data.slice(0, 40000000)' --full`. Prefer `dom query` / `dom get` / `dom inspect` when they answer the question.
 
 ## Network and Console
 
