@@ -2,6 +2,8 @@
  * Async utilities for common patterns.
  */
 
+import { MAX_TIMER_DELAY_MS } from '@/constants.js';
+
 /**
  * Delay execution for a specified duration, ending early when `signal` aborts.
  *
@@ -37,7 +39,7 @@ export class TimeoutError extends Error {
  * @returns `ms`, at most {@link MAX_TIMER_DELAY_MS}
  */
 export function capTimerDelay(ms: number): number {
-  throw new Error(`not implemented: ${String(ms)}`);
+  return Math.min(ms, MAX_TIMER_DELAY_MS);
 }
 
 /** Options of {@link raceTimeout} */
@@ -49,27 +51,41 @@ export interface RaceTimeoutOptions<R> {
 }
 
 /**
- * Wait for a promise, giving up after a time; the timer is cleared either way.
+ * Wait for a promise, giving up after a time. The timer is capped
+ * ({@link capTimerDelay}) and cleared however the wait ends. Every timer
+ * race goes through here; the variants only differ in what a timeout yields
+ * (`onTimeout`).
  *
  * @param promise - Work to wait for
  * @param ms - Milliseconds to wait at most
  * @param options - Abort signal and what a timeout yields
- * @returns The promise's result, or undefined when the time ran out first
+ * @returns The promise's result, or what `onTimeout` gives (undefined by default)
+ * @throws The signal's reason when aborted, or what `onTimeout` throws
  */
 export async function raceTimeout<T, R = undefined>(
   promise: Promise<T>,
   ms: number,
   options: RaceTimeoutOptions<R> = {}
-): Promise<T | R | undefined> {
-  void options;
+): Promise<T | R> {
+  const { signal, onTimeout } = options;
   let timer: NodeJS.Timeout | undefined;
-  const timeout = new Promise<undefined>((resolve) => {
-    timer = setTimeout(() => resolve(undefined), ms);
+  let onAbort: (() => void) | undefined;
+  const ended = new Promise<R>((resolve, reject) => {
+    timer = setTimeout(() => {
+      Promise.resolve()
+        .then(() => onTimeout?.() as R | Promise<R>)
+        .then(resolve, reject);
+    }, capTimerDelay(ms));
+    if (!signal) return;
+    onAbort = () => reject(signal.reason as Error);
+    if (signal.aborted) onAbort();
+    else signal.addEventListener('abort', onAbort, { once: true });
   });
   try {
-    return await Promise.race([promise, timeout]);
+    return await Promise.race([promise, ended]);
   } finally {
     clearTimeout(timer);
+    if (onAbort) signal?.removeEventListener('abort', onAbort);
   }
 }
 
@@ -77,7 +93,7 @@ export async function raceTimeout<T, R = undefined>(
  * Wait for a promise, failing with a {@link TimeoutError} after a time.
  *
  * @param promise - Work to wait for
- * @param ms - Milliseconds to wait at most
+ * @param ms - Milliseconds to wait at most (at most {@link MAX_TIMER_DELAY_MS})
  * @param label - Operation name for the timeout message
  * @param options - Abort signal
  * @returns The promise's result
@@ -89,9 +105,12 @@ export function withTimeout<T>(
   label: string,
   options: { signal?: AbortSignal } = {}
 ): Promise<T> {
-  void promise;
-  void options;
-  throw new Error(`not implemented: ${label} ${String(ms)}`);
+  return raceTimeout(promise, ms, {
+    ...options,
+    onTimeout: (): never => {
+      throw new TimeoutError(`${label} timeout (${capTimerDelay(ms) / 1000}s)`);
+    },
+  });
 }
 
 /**

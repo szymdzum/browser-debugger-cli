@@ -62,6 +62,7 @@ import {
   fillTooShortWarning,
   type FillNotTypedReason,
 } from '@/ui/messages/commands.js';
+import { raceTimeout } from '@/utils/async.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -298,10 +299,6 @@ const READ_BACK_TIMEOUT_MS = 1000;
  */
 async function withReadBack(cdp: CDPConnection, result: FillResult): Promise<FillResult> {
   if (!result.success) return result;
-  let timer: NodeJS.Timeout | undefined;
-  const timedOut = new Promise<undefined>((resolve) => {
-    timer = setTimeout(() => resolve(undefined), READ_BACK_TIMEOUT_MS);
-  });
   const readBack = cdp
     .send('Runtime.evaluate', {
       expression: FILL_READ_BACK_SCRIPT,
@@ -313,7 +310,7 @@ async function withReadBack(cdp: CDPConnection, result: FillResult): Promise<Fil
       log.debug(`Filled value not read back: ${getErrorMessage(error)}`);
       return undefined;
     });
-  const mismatch = await Promise.race([readBack, timedOut]).finally(() => clearTimeout(timer));
+  const mismatch = await raceTimeout(readBack, READ_BACK_TIMEOUT_MS);
   return isValueMismatch(mismatch) ? { ...result, valueMismatch: mismatch } : result;
 }
 
@@ -594,16 +591,8 @@ async function readPressProbe(cdp: CDPConnection, stop: boolean): Promise<PressO
  * @returns Its response, or null when it took longer than {@link PRESS_SETTLE_TIMEOUT_MS}
  */
 async function withinSettleTime<T>(pending: Promise<T>): Promise<T | null> {
-  let timer: NodeJS.Timeout | undefined;
-  const timeout = new Promise<null>((resolve) => {
-    timer = setTimeout(() => resolve(null), PRESS_SETTLE_TIMEOUT_MS);
-  });
   pending.catch((error: unknown) => log.debug(`Late press probe read: ${getErrorMessage(error)}`));
-  try {
-    return await Promise.race([pending, timeout]);
-  } finally {
-    clearTimeout(timer);
-  }
+  return raceTimeout(pending, PRESS_SETTLE_TIMEOUT_MS, { onTimeout: () => null });
 }
 
 /**

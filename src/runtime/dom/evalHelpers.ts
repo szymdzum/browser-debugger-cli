@@ -16,8 +16,9 @@ import { pendingNavigationUrl } from '@/runtime/page/navigation.js';
 import { findReplacedBuiltins } from '@/runtime/page/replacedBuiltins.js';
 import { senderFor, type CDPSender } from '@/telemetry/objectExpander.js';
 import { formatRemoteObject } from '@/telemetry/remoteObject.js';
-import { evalCopiedByBrowserWarning, evalPreviewWarning } from '@/ui/messages/commands.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { evalCopiedByBrowserWarning, evalPreviewWarning } from '@/ui/messages/commands.js';
+import { raceTimeout } from '@/utils/async.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -453,16 +454,12 @@ async function withDeadline<T>(
   ms: number,
   onTimeout: () => CommandError | Promise<CommandError>
 ): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-  const expired = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => void Promise.resolve(onTimeout()).then(reject, reject), ms);
-  });
   work.catch(() => undefined);
-  try {
-    return await Promise.race([work, expired]);
-  } finally {
-    clearTimeout(timer);
-  }
+  return raceTimeout(work, ms, {
+    onTimeout: async (): Promise<never> => {
+      throw await onTimeout();
+    },
+  });
 }
 
 /** What a busy target is called in messages: the page, or an iframe (`--frame`) */
@@ -592,15 +589,11 @@ export async function settledWithin<T>(
   work: Promise<T>,
   ms: number
 ): Promise<{ settled: true; value: T } | { settled: false }> {
-  let timer: NodeJS.Timeout | undefined;
-  const timeout = new Promise<{ settled: false }>((resolve) => {
-    timer = setTimeout(() => resolve({ settled: false }), ms);
-  });
-  try {
-    return await Promise.race([work.then((value) => ({ settled: true as const, value })), timeout]);
-  } finally {
-    clearTimeout(timer);
-  }
+  return raceTimeout(
+    work.then((value) => ({ settled: true as const, value })),
+    ms,
+    { onTimeout: () => ({ settled: false as const }) }
+  );
 }
 
 /** Where a `bdg dom eval` script runs (default: the page's main frame) */

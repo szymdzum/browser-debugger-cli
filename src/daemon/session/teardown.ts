@@ -7,7 +7,7 @@ import type { ChromeNoticeCode, NoticeSink } from '@/errors/notices.js';
 import { clearChromePid } from '@/session/chrome.js';
 import type { CleanupFunction, LaunchedChrome } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
-import { delay } from '@/utils/async.js';
+import { delay, raceTimeout } from '@/utils/async.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { isProcessAlive, killChromeProcess } from '@/utils/process.js';
 
@@ -81,7 +81,7 @@ export async function teardownSession(context: TeardownContext): Promise<void> {
  */
 async function requestBrowserClose(cdp: CDPConnection, pid: number, log: Logger): Promise<void> {
   try {
-    await Promise.race([cdp.send('Browser.close'), delay(BROWSER_CLOSE_REPLY_MS)]);
+    await raceTimeout(cdp.send('Browser.close'), BROWSER_CLOSE_REPLY_MS);
   } catch (error) {
     log.debug(`Browser.close failed: ${getErrorMessage(error)}`);
   }
