@@ -2,7 +2,8 @@
  * Ctrl-C and SIGTERM: every command run by `CommandRunner` reports them
  * ({@link reportInterrupts}: the `--json` envelope or one line, exit 130 or
  * 143); a command that cancels its daemon request instead of dying
- * mid-request reports them itself ({@link abortOnInterrupt}). Before any
+ * mid-request reports them itself ({@link abortOnInterrupt}, also for a
+ * start and a follow mode, which differ in what a second signal does). Before any
  * command runs, the entry point reports them the same way
  * ({@link reportInterruptsUntilHandedOver}).
  */
@@ -57,18 +58,19 @@ export interface AbortOnInterruptOptions {
  * @returns The abort signal, and the disposer of the listeners
  */
 export function abortOnInterrupt(options: AbortOnInterruptOptions = {}): InterruptHandle {
-  void options;
+  const onSecondSignal =
+    options.onSecondSignal ?? ((signal) => process.exit(interruptExitCode(signal)));
   const interrupt = new AbortController();
-  for (const signal of INTERRUPT_SIGNALS) {
+  const removers = INTERRUPT_SIGNALS.map((signal) =>
     onOwnInterrupt(signal, () => {
-      if (interrupt.signal.aborted) process.exit(interruptExitCode(signal));
-      interrupt.abort(signal);
-    });
-  }
+      if (interrupt.signal.aborted) onSecondSignal(signal);
+      else interrupt.abort(signal);
+    })
+  );
   return {
     signal: interrupt.signal,
     dispose: () => {
-      throw new Error('not implemented');
+      for (const remove of removers) remove();
     },
   };
 }
@@ -83,10 +85,12 @@ const ownListeners = new WeakSet<() => void>();
  *
  * @param signal - The signal
  * @param listener - Its handler
+ * @returns Removes the listener
  */
-export function onOwnInterrupt(signal: InterruptSignal, listener: () => void): void {
+export function onOwnInterrupt(signal: InterruptSignal, listener: () => void): () => void {
   ownListeners.add(listener);
   process.on(signal, listener);
+  return () => process.removeListener(signal, listener);
 }
 
 /**

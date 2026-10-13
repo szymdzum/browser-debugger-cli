@@ -468,17 +468,21 @@ function registerTabCommands(page: Command): void {
     )
     .addOption(jsonOption())
     .action(async (target: string, options: BaseOptions) => {
-      const interrupt = abortOnInterrupt().signal;
-      await runTabCommand(
-        () => switchTab(target, interrupt),
-        options,
-        formatSwitch,
-        'Failed to switch tabs',
-        (data) => ({
-          tab: shownTab(data.tab),
-          ...(data.previous && { previous: shownTab(data.previous) }),
-        })
-      );
+      const { signal: interrupt, dispose } = abortOnInterrupt();
+      try {
+        await runTabCommand(
+          () => switchTab(target, interrupt),
+          options,
+          formatSwitch,
+          'Failed to switch tabs',
+          (data) => ({
+            tab: shownTab(data.tab),
+            ...(data.previous && { previous: shownTab(data.previous) }),
+          })
+        );
+      } finally {
+        dispose();
+      }
     });
 
   page

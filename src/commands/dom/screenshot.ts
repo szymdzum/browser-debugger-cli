@@ -189,16 +189,20 @@ async function handlePageScreenshot(
   outputPath: string,
   options: DomScreenshotCommandOptions
 ): Promise<void> {
-  const interrupt = abortOnInterrupt().signal;
-  await runCommand(
-    async () => {
-      const request = buildScreenshotRequest(options);
-      const result = await captureScreenshot(outputPath, request, interrupt);
-      return { success: true, data: result };
-    },
-    options,
-    formatDomScreenshot
-  );
+  const { signal: interrupt, dispose } = abortOnInterrupt();
+  try {
+    await runCommand(
+      async () => {
+        const request = buildScreenshotRequest(options);
+        const result = await captureScreenshot(outputPath, request, interrupt);
+        return { success: true, data: result };
+      },
+      options,
+      formatDomScreenshot
+    );
+  } finally {
+    dispose();
+  }
 }
 
 /**
@@ -213,22 +217,26 @@ async function handleElementScreenshot(
   outputPath: string,
   options: DomScreenshotCommandOptions
 ): Promise<void> {
-  const interrupt = abortOnInterrupt().signal;
-  await runCommand(
-    async () => {
-      const lookup = resolveElementTarget(options);
-      const target = await unlessInterrupted(lookup, interrupt, screenshotInterrupted);
-      const request = buildScreenshotRequest(options, target.nodeId);
-      const shot = await captureScreenshot(outputPath, request, interrupt);
-      const data: ScreenshotResult & { indexSource?: IndexSource } = {
-        ...addElementInfo(shot, options),
-        ...(target.indexSource && { indexSource: target.indexSource }),
-      };
-      return { success: true, data };
-    },
-    options,
-    (data) => withIndexSourceLine(formatDomScreenshot(data), data.indexSource)
-  );
+  const { signal: interrupt, dispose } = abortOnInterrupt();
+  try {
+    await runCommand(
+      async () => {
+        const lookup = resolveElementTarget(options);
+        const target = await unlessInterrupted(lookup, interrupt, screenshotInterrupted);
+        const request = buildScreenshotRequest(options, target.nodeId);
+        const shot = await captureScreenshot(outputPath, request, interrupt);
+        const data: ScreenshotResult & { indexSource?: IndexSource } = {
+          ...addElementInfo(shot, options),
+          ...(target.indexSource && { indexSource: target.indexSource }),
+        };
+        return { success: true, data };
+      },
+      options,
+      (data) => withIndexSourceLine(formatDomScreenshot(data), data.indexSource)
+    );
+  } finally {
+    dispose();
+  }
 }
 
 async function captureSequenceFrame(
@@ -259,13 +267,10 @@ async function handleSequenceCapture(
 
   const format = options.format ?? 'png';
   let frameCount = 0;
-  let stopping = false;
-  process.once('SIGINT', () => {
-    stopping = true;
-  });
+  const { signal: interrupt } = abortOnInterrupt();
 
   console.error(`Capturing to ${absoluteDir} every ${interval}ms...`);
-  while (!stopping) {
+  while (!interrupt.aborted) {
     frameCount++;
     const filename = formatFrameFilename(frameCount, format);
     const outputPath = path.join(absoluteDir, filename);
