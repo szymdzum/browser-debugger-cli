@@ -396,20 +396,40 @@ test('appendSnapshotEntries handles an empty snapshot', () => {
 test('parseSnapshotArgs accepts no arguments or a valid --accept call', () => {
   const dir = mkdtempSync(join(tmpdir(), 'ship-dl-'));
   writeFileSync(join(dir, 'mine.pdf'), '');
-  assert.deepEqual(parseSnapshotArgs([], dir), { accept: null });
-  assert.deepEqual(parseSnapshotArgs(['--accept', 'mine.pdf'], dir), { accept: ['mine.pdf'] });
+  assert.deepEqual(parseSnapshotArgs([], { downloads: dir }), { accept: null });
+  assert.deepEqual(parseSnapshotArgs(['--accept', 'mine.pdf'], { downloads: dir }), {
+    accept: [{ key: 'downloads', name: 'mine.pdf' }],
+  });
+});
+
+test('parseSnapshotArgs routes each name to the directory that has it, both when in both', () => {
+  const bdg = mkdtempSync(join(tmpdir(), 'ship-bdg-'));
+  const downloads = mkdtempSync(join(tmpdir(), 'ship-dl-'));
+  writeFileSync(join(bdg, 'daemon.sock'), '');
+  writeFileSync(join(downloads, 'mine.pdf'), '');
+  writeFileSync(join(bdg, 'both'), '');
+  writeFileSync(join(downloads, 'both'), '');
+  assert.deepEqual(parseSnapshotArgs(['--accept', 'daemon.sock', 'mine.pdf', 'both'], { bdg, downloads }), {
+    accept: [
+      { key: 'bdg', name: 'daemon.sock' },
+      { key: 'downloads', name: 'mine.pdf' },
+      { key: 'bdg', name: 'both' },
+      { key: 'downloads', name: 'both' },
+    ],
+  });
 });
 
 test('parseSnapshotArgs rejects anything else so the snapshot is never overwritten', () => {
   const dir = mkdtempSync(join(tmpdir(), 'ship-dl-'));
   writeFileSync(join(dir, 'x'), '');
   for (const argv of [['--acept', 'x'], ['x', '--accept'], ['--accept'], ['x']])
-    assert.ok('error' in parseSnapshotArgs(argv, dir), argv.join(' '));
+    assert.ok('error' in parseSnapshotArgs(argv, { downloads: dir }), argv.join(' '));
 });
 
-test('parseSnapshotArgs names a missing file and refuses newlines', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'ship-dl-'));
-  assert.match(parseSnapshotArgs(['--accept', 'gone.txt'], dir).error, /gone\.txt does not exist/);
-  writeFileSync(join(dir, 'a\nb'), '');
-  assert.match(parseSnapshotArgs(['--accept', 'a\nb'], dir).error, /newline/);
+test('parseSnapshotArgs names a name found in neither directory and refuses newlines', () => {
+  const bdg = mkdtempSync(join(tmpdir(), 'ship-bdg-'));
+  const downloads = mkdtempSync(join(tmpdir(), 'ship-dl-'));
+  assert.match(parseSnapshotArgs(['--accept', 'gone.txt'], { bdg, downloads }).error, /gone\.txt does not exist in .*ship-bdg-.* or .*ship-dl-/);
+  writeFileSync(join(bdg, 'a\nb'), '');
+  assert.match(parseSnapshotArgs(['--accept', 'a\nb'], { bdg, downloads }).error, /newline/);
 });

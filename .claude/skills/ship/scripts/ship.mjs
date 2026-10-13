@@ -788,44 +788,55 @@ export function appendSnapshotEntries(file, names) {
 
 /**
  * Checks the arguments of `ship snapshot`: none takes a snapshot, and
- * `--accept <name>…` accepts names that exist in `dir` and hold no newline.
+ * `--accept <name>…` accepts names that hold no newline and exist in at
+ * least one of the snapshotted directories (a name in both is accepted in both).
  *
  * @param {string[]} argv
- * @param {string} dir directory the accepted names must exist in
- * @returns {{ accept: string[] | null } | { error: string }}
+ * @param {Record<string, string>} dirs snapshot key → directory
+ * @returns {{ accept: { key: string, name: string }[] | null } | { error: string }}
  */
-export function parseSnapshotArgs(argv, dir) {
+export function parseSnapshotArgs(argv, dirs) {
   if (!argv.length) return { accept: null };
   const names = argv.slice(1);
   if (argv[0] !== '--accept' || !names.length)
     return { error: 'snapshot takes no arguments, or --accept <name>…' };
   const bad = names.find((n) => n.includes('\n') || n.includes('\r'));
   if (bad !== undefined) return { error: `name contains a newline: ${JSON.stringify(bad)}` };
-  const missing = names.find((n) => !existsSync(join(dir, n)));
-  if (missing !== undefined) return { error: `${missing} does not exist in ${dir}` };
-  return { accept: names };
+  const accept = [];
+  for (const name of names) {
+    const keys = Object.keys(dirs).filter((k) => existsSync(join(dirs[k], name)));
+    if (!keys.length)
+      return { error: `${name} does not exist in ${Object.values(dirs).join(' or ')}` };
+    accept.push(...keys.map((key) => ({ key, name })));
+  }
+  return { accept };
 }
 
 /**
  * Snapshots ~/.bdg and ~/Downloads at session start, for gate 8. With
- * `--accept <name>…` it appends entries to the ~/Downloads snapshot instead
- * (a file the user put there during the session); it needs an existing snapshot.
- * Any other argument is a usage error and leaves the snapshot alone.
+ * `--accept <name>…` it appends entries to the matching snapshot instead
+ * (a file the user put in ~/Downloads, or their own live session's file in
+ * ~/.bdg); it needs an existing snapshot. Any other argument is a usage
+ * error and leaves the snapshot alone.
  *
  * @param {string[]} [argv]
  */
 function snapshot(argv = []) {
-  const parsed = parseSnapshotArgs(argv, join(homedir(), 'Downloads'));
+  const dirs = { bdg: join(homedir(), '.bdg'), downloads: join(homedir(), 'Downloads') };
+  const parsed = parseSnapshotArgs(argv, dirs);
   if ('error' in parsed) return usage(`snapshot [--accept <name>…]: ${parsed.error}`);
   if (parsed.accept) {
-    if (!existsSync(SNAPSHOT.downloads))
+    if (parsed.accept.some(({ key }) => !existsSync(SNAPSHOT[key])))
       return usage('snapshot --accept <name>…: needs a snapshot from ship snapshot');
-    appendSnapshotEntries(SNAPSHOT.downloads, parsed.accept);
-    console.log(`accepted in ~/Downloads snapshot: ${parsed.accept.join(', ')}`);
+    for (const key of Object.keys(dirs)) {
+      const names = parsed.accept.filter((a) => a.key === key).map((a) => a.name);
+      if (names.length) appendSnapshotEntries(SNAPSHOT[key], names);
+    }
+    console.log(`accepted: ${parsed.accept.map(({ key, name }) => `${name} (~/${key === 'bdg' ? '.bdg' : 'Downloads'})`).join(', ')}`);
     return EXIT.ok;
   }
-  writeFileSync(SNAPSHOT.bdg, listDir(join(homedir(), '.bdg')).join('\n'));
-  writeFileSync(SNAPSHOT.downloads, listDir(join(homedir(), 'Downloads')).join('\n'));
+  writeFileSync(SNAPSHOT.bdg, listDir(dirs.bdg).join('\n'));
+  writeFileSync(SNAPSHOT.downloads, listDir(dirs.downloads).join('\n'));
   console.log(`snapshot of ~/.bdg and ~/Downloads in ${SNAPSHOT.bdg}, ${SNAPSHOT.downloads}`);
   return EXIT.ok;
 }
@@ -1141,7 +1152,7 @@ function log(argv) {
 const COMMANDS = {
   snapshot: [
     snapshot,
-    "session start: snapshot ~/.bdg and ~/Downloads (gate 8); --accept <name>… adds a user's own ~/Downloads file to the snapshot",
+    "session start: snapshot ~/.bdg and ~/Downloads (gate 8); --accept <name>… adds a user's own ~/Downloads or ~/.bdg file to the snapshot",
   ],
   worktree: [worktree, '<N> <branch>: agent worktree from origin/main, node_modules linked'],
   brief: [brief, '<role> N=<n> KEY=value…: render a brief with the shared blocks'],
