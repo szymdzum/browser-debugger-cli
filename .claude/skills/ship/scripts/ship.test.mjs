@@ -21,6 +21,7 @@ import {
   overlappingFiles,
   parseArgs,
   parseBriefs,
+  parseSnapshotArgs,
   renderBrief,
   retryTransient,
   run,
@@ -390,4 +391,25 @@ test('appendSnapshotEntries handles an empty snapshot', () => {
   writeFileSync(file, '');
   appendSnapshotEntries(file, ['x']);
   assert.equal(readFileSync(file, 'utf8'), 'x\n');
+});
+
+test('parseSnapshotArgs accepts no arguments or a valid --accept call', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ship-dl-'));
+  writeFileSync(join(dir, 'mine.pdf'), '');
+  assert.deepEqual(parseSnapshotArgs([], dir), { accept: null });
+  assert.deepEqual(parseSnapshotArgs(['--accept', 'mine.pdf'], dir), { accept: ['mine.pdf'] });
+});
+
+test('parseSnapshotArgs rejects anything else so the snapshot is never overwritten', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ship-dl-'));
+  writeFileSync(join(dir, 'x'), '');
+  for (const argv of [['--acept', 'x'], ['x', '--accept'], ['--accept'], ['x']])
+    assert.ok('error' in parseSnapshotArgs(argv, dir), argv.join(' '));
+});
+
+test('parseSnapshotArgs names a missing file and refuses newlines', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ship-dl-'));
+  assert.match(parseSnapshotArgs(['--accept', 'gone.txt'], dir).error, /gone\.txt does not exist/);
+  writeFileSync(join(dir, 'a\nb'), '');
+  assert.match(parseSnapshotArgs(['--accept', 'a\nb'], dir).error, /newline/);
 });
