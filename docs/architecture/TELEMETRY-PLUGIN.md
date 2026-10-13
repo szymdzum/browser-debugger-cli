@@ -41,8 +41,8 @@ export interface TelemetryPlugin {
 | `logger`| Session logger scoped to `session` |
 
 Plugins push data into the store and must return a cleanup function. The
-session runs all cleanups in `teardownSession()`
-(`src/daemon/session/teardown.ts`) whenever it ends: `bdg stop`, Chrome/CDP
+session runs all cleanups, through the releases on its `ResourceStack`
+(`src/daemon/session/startSequence.ts`), whenever it ends: `bdg stop`, Chrome/CDP
 disconnect, `--timeout`, daemon signals, or a failed start.
 
 ## Default Plugins

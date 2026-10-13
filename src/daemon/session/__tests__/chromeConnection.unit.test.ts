@@ -3,6 +3,7 @@
  */
 
 import * as assert from 'node:assert/strict';
+import * as net from 'node:net';
 import { afterEach, describe, it, mock } from 'node:test';
 
 import { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
@@ -188,5 +189,47 @@ void describe('tabWebSocketUrl', () => {
       tabWebSocketUrl('wss://host.test/prefix/devtools/page/AAA', 'B/B'),
       'wss://host.test/prefix/devtools/page/B%2FB'
     );
+  });
+});
+
+void describe('setupChromeConnection with --chrome-ws-url and a stop (#659)', () => {
+  void it('a stop ends the DevTools endpoint probe at once instead of after its timeout', async () => {
+    const stop = new AbortController();
+    let stoppedAt = 0;
+    const sockets: net.Socket[] = [];
+    const silent = net.createServer((socket) => {
+      sockets.push(socket);
+      stoppedAt = Date.now();
+      stop.abort(new Error('Session was stopped during startup'));
+    });
+    await new Promise<void>((resolve) => silent.listen(0, '127.0.0.1', resolve));
+    const { port } = silent.address() as net.AddressInfo;
+    const chromeWsUrl = `ws://127.0.0.1:${port}/devtools/browser/abc`;
+    const config: SessionConfig = {
+      url: 'http://127.0.0.1:47802/',
+      port,
+      telemetry: [],
+      includeAll: false,
+      headless: true,
+      chromeWsUrl,
+    };
+    try {
+      await assert.rejects(
+        setupChromeConnection(
+          config,
+          new TelemetryStore(),
+          createLogger('session'),
+          () => undefined,
+          stop.signal
+        ),
+        CommandError
+      );
+      assert.ok(stoppedAt > 0, 'the probe reached the endpoint');
+      const afterStopMs = Date.now() - stoppedAt;
+      assert.ok(afterStopMs < 2000, `ended ${afterStopMs} ms after the stop (probe timeout 5 s)`);
+    } finally {
+      sockets.forEach((socket) => socket.destroy());
+      silent.close();
+    }
   });
 });

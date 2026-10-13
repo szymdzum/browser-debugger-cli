@@ -94,6 +94,19 @@ void describe('launchChrome aborted by a stop', () => {
     assert.equal(fs.existsSync(pidFile), false, 'no Chrome may be spawned');
   });
 
+  void it('checks the stop before reserving the port or creating the profile (#659)', async () => {
+    const dir = fs.mkdtempSync(path.join(root, 'precheck-'));
+    const userDataDir = path.join(dir, 'profile');
+    const launch = launchChrome({
+      port: -1,
+      userDataDir,
+      logger: silentLogger,
+      signal: AbortSignal.abort(),
+    });
+    await assertAborted(launch);
+    assert.equal(fs.existsSync(userDataDir), false, 'no profile may be created');
+  });
+
   for (const afterMs of [0, 1, 2, 5, 10, 20, 50]) {
     void it(`leaves no Chrome running when stopped ${afterMs} ms into the launch`, async () => {
       const stop = new AbortController();

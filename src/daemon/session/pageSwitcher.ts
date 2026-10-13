@@ -109,14 +109,24 @@ export class PageSwitcher {
   }
 
   /**
-   * Give up the connection and cleanups for teardown.
+   * Give up the cleanups of what follows the current tab, for teardown.
    *
-   * @returns What was held
+   * @returns The cleanups held
    */
-  release(): { cdp: CDPConnection | null; cleanups: CleanupFunction[] } {
-    const held = { cdp: this.cdp, cleanups: this.cleanups };
-    this.cdp = null;
+  takeCleanups(): CleanupFunction[] {
+    const held = this.cleanups;
     this.cleanups = [];
+    return held;
+  }
+
+  /**
+   * Give up the page connection, for teardown.
+   *
+   * @returns The connection held, if any
+   */
+  takeConnection(): CDPConnection | null {
+    const held = this.cdp;
+    this.cdp = null;
     return held;
   }
 

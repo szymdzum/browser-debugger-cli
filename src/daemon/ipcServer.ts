@@ -12,6 +12,7 @@ import type { Socket } from 'net';
 
 import { SessionController } from '@/daemon/SessionController.js';
 import { SocketServer } from '@/daemon/server/SocketServer.js';
+import { runShutdown, type ShutdownSteps } from '@/daemon/server/shutdown.js';
 import { malformedIpcFrameError, unknownIpcRequestError } from '@/errors/messages.js';
 import {
   type ClientRequestUnion,
@@ -105,11 +106,14 @@ export class IPCServer {
   private readonly startTime: number = Date.now();
   private readonly socketServer = new SocketServer();
   private readonly controller: SessionController;
-  private shuttingDown = false;
+  private shuttingDown: Promise<void> | null = null;
   private idleTimer: NodeJS.Timeout | null = null;
   private inFlightRequests = 0;
 
-  constructor() {
+  /**
+   * @param exit - Ends the process once shut down (tests pass a fake)
+   */
+  constructor(private readonly exit: (code: number) => void = (code) => process.exit(code)) {
     this.controller = new SessionController(
       this.startTime,
       getSessionFilePath('DAEMON_SOCKET'),
@@ -136,16 +140,13 @@ export class IPCServer {
   /**
    * Stop the session (if any) and the server, then exit the process.
    *
-   * Used by signal handlers. Idempotent.
+   * Used by signal handlers. Idempotent; the same path as a session ending
+   * ({@link runShutdown} documents the order).
+   *
+   * @returns Resolved once shut down
    */
-  async shutdown(): Promise<void> {
-    if (this.shuttingDown) return;
-    this.shuttingDown = true;
-    await this.controller.stopActiveSession();
-    await this.waitForInFlightRequests();
-    await delay(SHUTDOWN_DELAY_MS);
-    await this.stop();
-    process.exit(0);
+  shutdown(): Promise<void> {
+    return this.shutDownOnce();
   }
 
   /**
@@ -165,21 +166,41 @@ export class IPCServer {
   }
 
   /**
-   * Stop accepting clients and exit shortly after, so in-flight responses flush.
+   * Shut down after the session ended, failed to start, or never came.
    */
   private scheduleShutdown(): void {
-    if (this.shuttingDown) return;
-    this.shuttingDown = true;
-    this.controller.refuseNewSessions();
-    this.socketServer.unpublish();
-    void (async () => {
-      await this.waitForInFlightRequests();
-      await this.controller.stopActiveSession();
-      await delay(SHUTDOWN_DELAY_MS);
-      log.info('Session ended, shutting down daemon');
-      await this.stop();
-      process.exit(0);
-    })();
+    void this.shutDownOnce('Session ended, shutting down daemon');
+  }
+
+  /**
+   * The daemon's one shutdown path, run once whoever asks first.
+   * `shuttingDown` is set before the first step runs, so a caller re-entering
+   * from a step (a session end reported while the session stops) joins it;
+   * the socket is unpublished synchronously, before any new client connects.
+   *
+   * @param closing - Logged before the server closes
+   * @returns Resolved once shut down
+   */
+  private shutDownOnce(closing?: string): Promise<void> {
+    if (this.shuttingDown) return this.shuttingDown;
+    const steps: ShutdownSteps = {
+      refuseNewSessions: () => this.controller.refuseNewSessions(),
+      unpublish: () => this.socketServer.unpublish(),
+      stopSession: () => this.controller.stopActiveSession(),
+      waitForInFlightRequests: () => this.waitForInFlightRequests(),
+      flush: () => delay(SHUTDOWN_DELAY_MS),
+      stopServer: () => {
+        if (closing) log.info(closing);
+        return this.stop();
+      },
+      exit: () => this.exit(0),
+    };
+    let run = (_shutdown: Promise<void>): void => {};
+    this.shuttingDown = new Promise<void>((resolve, reject) => {
+      run = (shutdown) => void shutdown.then(resolve, reject);
+    });
+    run(runShutdown(steps));
+    return this.shuttingDown;
   }
 
   /**

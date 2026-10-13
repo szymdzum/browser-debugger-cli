@@ -511,3 +511,56 @@ function createMockCDP(options: MockCDPOptions = {}): MockCDPWithEmit {
 
   return mock as unknown as MockCDPWithEmit;
 }
+
+describe('Page Readiness - Stop signal (#659)', () => {
+  /**
+   * Run a readiness wait with a long budget, stopped at the first `send` matching `stopAt`.
+   *
+   * @param stopAt - Stops the wait when it sends this
+   * @param options - Mock page state
+   * @returns The stop's reason, the wait's rejection and how long the wait took after the stop
+   */
+  async function stoppedWait(
+    stopAt: (method: string, expression: string) => boolean,
+    options: MockCDPOptions
+  ): Promise<{ reason: Error; error: unknown; afterStopMs: number }> {
+    const stop = new AbortController();
+    const reason = new Error('Session was stopped during startup');
+    let stoppedAt = 0;
+    const mockCDP = createMockCDP({
+      ...options,
+      onSend: (method, params) => {
+        const expression = (params?.['expression'] as string | undefined) ?? '';
+        if (!stoppedAt && stopAt(method, expression)) {
+          stoppedAt = Date.now();
+          stop.abort(reason);
+        }
+      },
+    });
+    let error: unknown;
+    try {
+      await waitForPageReady(mockCDP, { maxWaitMs: 60_000, signal: stop.signal });
+    } catch (caught) {
+      error = caught;
+    }
+    return { reason, error, afterStopMs: Date.now() - stoppedAt };
+  }
+
+  test('a stop during the load-event wait ends it with the stop reason', async () => {
+    const { reason, error, afterStopMs } = await stoppedWait(
+      (_method, expression) => expression.includes('document.readyState'),
+      { loadEventAlreadyFired: false }
+    );
+    assert.equal(error, reason);
+    assert.ok(afterStopMs < 1000, `ended ${afterStopMs} ms after the stop`);
+  });
+
+  test('a stop during the quiet wait ends it with the stop reason', async () => {
+    const { reason, error, afterStopMs } = await stoppedWait(
+      (_method, expression) => expression.includes('Date.now() - window.__bdg_lastMutation'),
+      { loadEventAlreadyFired: true, domStable: false }
+    );
+    assert.equal(error, reason);
+    assert.ok(afterStopMs < 1000, `ended ${afterStopMs} ms after the stop`);
+  });
+});
