@@ -52,6 +52,7 @@ export interface PageReadinessOptions {
  *
  * @param cdp - CDP connection
  * @param options - Optional configuration
+ * @throws The signal's reason when it aborts (checked every 100 ms at most); a timeout is not an error
  *
  * @example
  * ```typescript
@@ -80,6 +81,7 @@ export async function waitForPageReady(
 
     log.info('Page ready');
   } catch (error) {
+    if (signal?.aborted) throw signal.reason;
     log.info(`${getErrorMessage(error)}, proceeding anyway`);
   }
 }

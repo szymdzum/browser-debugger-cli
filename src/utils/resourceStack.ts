@@ -16,9 +16,8 @@ export type Release = () => void | Promise<void>;
  * Releases of the resources acquired so far, run last-in first-out.
  *
  * {@link dispose} may run while an acquire is still in progress (a stop
- * during a start): what that acquire registers later is released by the
- * next `dispose`, or by the running one if it registers before that one
- * finishes.
+ * during a start); see there for when what that acquire registers later
+ * is released.
  */
 export class ResourceStack {
   private readonly releases: Array<{ release: Release; label: string }> = [];
@@ -65,6 +64,11 @@ export class ResourceStack {
    * Release everything registered, last first, each release isolated (a
    * failure is logged and the rest still run). Concurrent and repeated calls
    * queue: each resource is released once. Never rejects.
+   *
+   * A release registered while a dispose is draining runs in that dispose; one
+   * registered after the last dispose has drained runs only on the caller's
+   * next `dispose` (`Session.launch` disposes again when a start it could
+   * not stop in time fails, for exactly that).
    *
    * @returns Resolved once the stack is empty
    */

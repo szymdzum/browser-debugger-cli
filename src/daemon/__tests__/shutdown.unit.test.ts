@@ -9,8 +9,11 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
+import type { SessionController } from '@/daemon/SessionController.js';
 import { IPCServer } from '@/daemon/ipcServer.js';
 import { runShutdown, type ShutdownSteps } from '@/daemon/server/shutdown.js';
+import { getPeek, stopSession } from '@/ipc/client.js';
+import { isConnectionError } from '@/ipc/utils/errors.js';
 import { getSessionFilePath } from '@/session/paths.js';
 
 /**
@@ -53,6 +56,56 @@ void describe('runShutdown', () => {
     ]);
   });
 });
+
+/** The controller's internals the tests reach into: its session, and the callback a session end calls */
+interface ControllerInternals {
+  session: unknown;
+  onSessionEnded: (reason: 'normal') => void;
+}
+
+/**
+ * The server's session controller, opened up for tests.
+ *
+ * @param server - The server
+ * @returns Its controller's internals
+ */
+function controllerOf(server: IPCServer): ControllerInternals {
+  return (server as unknown as { controller: SessionController })
+    .controller as unknown as ControllerInternals;
+}
+
+/**
+ * A running session whose stop finishes when the test says so.
+ *
+ * @param onStop - Called on each stop
+ * @returns The fake session and a function finishing its stop
+ */
+function fakeSession(onStop: () => void = () => {}): { session: unknown; finishStop: () => void } {
+  let finishStop = (): void => {};
+  const stopped = new Promise<void>((resolve) => (finishStop = resolve));
+  const session = {
+    info: () => ({ chromePid: 0 }),
+    stop: () => {
+      onStop();
+      return stopped;
+    },
+  };
+  return { session, finishStop };
+}
+
+/**
+ * The error a client gets for a peek.
+ *
+ * @returns The rejection
+ */
+async function peekError(): Promise<unknown> {
+  try {
+    await getPeek();
+  } catch (error) {
+    return error;
+  }
+  return undefined;
+}
 
 void describe('IPCServer shutdown callers', () => {
   let dir: string;
@@ -98,5 +151,45 @@ void describe('IPCServer shutdown callers', () => {
     socket.destroy();
     assert.equal(fs.existsSync(getSessionFilePath('DAEMON_SOCKET')), false);
     assert.equal(fs.existsSync(getSessionFilePath('DAEMON_PID')), false);
+  });
+
+  void it('a session end shuts down through the same path', async () => {
+    controllerOf(server).onSessionEnded('normal');
+    assert.equal(await exited, 0);
+    assert.equal(fs.existsSync(getSessionFilePath('DAEMON_SOCKET')), false);
+  });
+
+  void it('an idle daemon shuts down through the same path', async () => {
+    assert.equal(await exited, 0);
+    assert.equal(fs.existsSync(getSessionFilePath('DAEMON_SOCKET')), false);
+  });
+
+  void it('a client arriving during a signal teardown gets the no-daemon answer', async () => {
+    const { session, finishStop } = fakeSession();
+    controllerOf(server).session = session;
+    const shutdown = server.shutdown();
+    const duringTeardown = await peekError();
+    finishStop();
+    assert.equal(await exited, 0);
+    await shutdown;
+    const noDaemon = await peekError();
+    assert.ok(isConnectionError(duringTeardown), String(duringTeardown));
+    assert.ok(isConnectionError(noDaemon), String(noDaemon));
+    assert.equal(String(duringTeardown), String(noDaemon));
+  });
+
+  void it("bdg stop's request is answered before the daemon exits", async () => {
+    const events: string[] = [];
+    const controller = controllerOf(server);
+    const { session, finishStop } = fakeSession(() => controller.onSessionEnded('normal'));
+    controller.session = session;
+    void exited.then(() => events.push('exit'));
+    const reply = stopSession().then((response) => {
+      events.push(`reply ${response.status}`);
+    });
+    finishStop();
+    await reply;
+    await exited;
+    assert.deepEqual(events, ['reply ok', 'exit']);
   });
 });

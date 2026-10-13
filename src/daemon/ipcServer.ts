@@ -12,7 +12,7 @@ import type { Socket } from 'net';
 
 import { SessionController } from '@/daemon/SessionController.js';
 import { SocketServer } from '@/daemon/server/SocketServer.js';
-import { runShutdown } from '@/daemon/server/shutdown.js';
+import { runShutdown, type ShutdownSteps } from '@/daemon/server/shutdown.js';
 import { malformedIpcFrameError, unknownIpcRequestError } from '@/errors/messages.js';
 import {
   type ClientRequestUnion,
@@ -174,12 +174,16 @@ export class IPCServer {
 
   /**
    * The daemon's one shutdown path, run once whoever asks first.
+   * `shuttingDown` is set before the first step runs, so a caller re-entering
+   * from a step (a session end reported while the session stops) joins it;
+   * the socket is unpublished synchronously, before any new client connects.
    *
    * @param closing - Logged before the server closes
    * @returns Resolved once shut down
    */
   private shutDownOnce(closing?: string): Promise<void> {
-    this.shuttingDown ??= runShutdown({
+    if (this.shuttingDown) return this.shuttingDown;
+    const steps: ShutdownSteps = {
       refuseNewSessions: () => this.controller.refuseNewSessions(),
       unpublish: () => this.socketServer.unpublish(),
       stopSession: () => this.controller.stopActiveSession(),
@@ -190,7 +194,12 @@ export class IPCServer {
         return this.stop();
       },
       exit: () => this.exit(0),
+    };
+    let run = (_shutdown: Promise<void>): void => {};
+    this.shuttingDown = new Promise<void>((resolve, reject) => {
+      run = (shutdown) => void shutdown.then(resolve, reject);
     });
+    run(runShutdown(steps));
     return this.shuttingDown;
   }
 
