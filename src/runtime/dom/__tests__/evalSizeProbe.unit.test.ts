@@ -66,13 +66,13 @@ void describe('evaluateScript with a result Chrome cannot send', () => {
     clock.restore();
   });
 
-  void it('fails within 5 s when the page answers while the result is missing (102)', async () => {
+  void it('fails within 8 s when the page answers while the result is missing (102)', async () => {
     const script = "'x'.repeat(2 ** 29)";
     const outcome = evaluateScript(pageThatCannotSend(script), script).catch(
       (error: unknown) => error
     );
     await clock.tickAndFlush(1_000);
-    await clock.tickAndFlush(4_000);
+    await clock.tickAndFlush(6_000);
     await new Promise((resolve) => setImmediate(resolve));
     const error = await Promise.race([outcome, Promise.resolve('still waiting')]);
     assert.ok(error instanceof CommandError, `got ${String(error)}`);
@@ -86,7 +86,7 @@ void describe('evaluateScript with a result Chrome cannot send', () => {
       (error: unknown) => error
     );
     await clock.tickAndFlush(1_000);
-    await clock.tickAndFlush(4_000);
+    await clock.tickAndFlush(6_000);
     await new Promise((resolve) => setImmediate(resolve));
     const error = await Promise.race([outcome, Promise.resolve('still waiting')]);
     assert.ok(error instanceof CommandError, `got ${String(error)}`);
@@ -101,6 +101,41 @@ void describe('evaluateScript with a result Chrome cannot send', () => {
     assert.ok(error instanceof CommandError, `got ${JSON.stringify(error)}`);
     assert.equal(error.exitCode, 81);
     assert.match(error.message, /too large/i);
+  });
+});
+
+void describe('evaluateScript with a script that finishes after the check', () => {
+  let clock: ClockHelper;
+
+  beforeEach(() => {
+    clock = useFakeClock();
+  });
+
+  afterEach(() => {
+    clock.restore();
+  });
+
+  void it('returns the result when it arrives after the page answered the check', async () => {
+    const script = '"done"';
+    let answer: (value: unknown) => void = () => undefined;
+    const slow = new Promise((resolve) => {
+      answer = resolve;
+    });
+    const page = {
+      send: (method: string, params?: { expression?: string }) =>
+        method === 'Runtime.evaluate' && params?.expression === script
+          ? slow
+          : Promise.resolve({ result: { type: 'number', value: 1 } }),
+    } as unknown as CDPConnection;
+    const outcome = evaluateScript(page, script).catch((error: unknown) => error);
+    await clock.tickAndFlush(1_000);
+    await clock.tickAndFlush(3_000);
+    answer({ result: { type: 'string', value: 'done' } });
+    await new Promise((resolve) => setImmediate(resolve));
+    await clock.tickAndFlush(6_000);
+    await new Promise((resolve) => setImmediate(resolve));
+    const result = await Promise.race([outcome, Promise.resolve('still waiting')]);
+    assert.deepEqual(result, { value: 'done', type: 'string' });
   });
 });
 

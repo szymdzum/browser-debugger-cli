@@ -291,9 +291,12 @@ export const MAX_JSONL_BUFFER_SIZE = 256 * 1024 * 1024;
 export const EVAL_FULL_MAX_BYTES = 50 * 1024 * 1024;
 
 /**
- * Largest `bdg dom eval` result Chrome is asked to send: 256 MiB. Chrome never
- * answers a command whose answer is larger, so an object counted past it (by
- * string lengths) is refused (exit 81) instead of waiting for a timeout.
+ * Cap on what the page counts of a `bdg dom eval` object result without
+ * `--full`: 256 MiB, counted in characters (string lengths and keys, a lower
+ * bound), not bytes. Chrome never answers a command whose serialized answer is
+ * larger, and non-ASCII text takes more of it per character (about 60 million
+ * `é` already fail), so an object counted past the cap is refused (exit 81)
+ * instead of waiting for a timeout; one under it may still be lost (exit 102).
  */
 export const EVAL_TRANSFER_MAX_BYTES = 256 * 1024 * 1024;
 

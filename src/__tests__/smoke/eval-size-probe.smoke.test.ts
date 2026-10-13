@@ -17,7 +17,7 @@ import {
   type FixtureServer,
 } from '@/__testutils__/fixtureServer.js';
 
-const FAST_MS = 10_000;
+const FAST_MS = 18_000;
 
 /**
  * Run `dom eval` and time it.
@@ -89,6 +89,16 @@ void describe('dom eval size probe', () => {
     );
     assert.equal(result.exitCode, 81, result.stderr.slice(0, 200));
     assert.ok(result.ms < FAST_MS, `${result.ms} ms`);
+  });
+
+  void it('a healthy script that runs 3 s before returning a small value is not reported lost', async () => {
+    const result = await runCommand(
+      'dom',
+      ['eval', `const e = Date.now(); while (Date.now() - e < 3000); 'done'`],
+      { timeout: 60000 }
+    );
+    assert.equal(result.exitCode, 0, result.stderr);
+    assert.equal(result.stdout, 'done\n');
   });
 
   void it('the session stays usable', async () => {

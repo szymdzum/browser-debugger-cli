@@ -864,10 +864,10 @@ const UNSENT_CHECK_MS = 1_000;
 
 /**
  * Wait for a script's answer, or fail early when it was lost. A script
- * without `await` runs to the end before the page handles another command,
- * and answers go out in order: a trivial evaluation answered while the
- * script's answer has not arrived means Chrome could not send it (about
- * 256 MiB and more), so there is no point in waiting out the time limit.
+ * without `await` runs to the end before the page handles another command:
+ * once a trivial evaluation is answered the script has finished, and if its
+ * answer has not arrived a grace period later, Chrome could not send it
+ * (about 256 MiB and more), so there is no point in waiting out the time limit.
  *
  * @param cdp - CDP connection of the page
  * @param pending - The script's evaluation
@@ -895,18 +895,28 @@ async function untilResultLost<T>(
 }
 
 /**
- * Ask the page, once a second until stopped, whether it answers while the
- * script's answer is still missing.
+ * How long the script's answer gets after the page answered the check. The
+ * check is answered as soon as the script has finished, which can be before
+ * its own answer (built, then sent) arrives: sending up to 256 MiB takes a
+ * few seconds.
+ */
+const UNSENT_GRACE_MS = 6_000;
+
+/**
+ * Ask the page, once a second until stopped, whether it answers (it does
+ * only once the script has finished), then give the script's answer
+ * {@link UNSENT_GRACE_MS} more to arrive.
  *
  * @param cdp - CDP connection of the page
  * @param signal - Aborted once the script's answer arrived
- * @returns True when the page answered although the script's answer is missing
+ * @returns True when the answer is still missing after the grace period
  */
 async function checkForLostResult(cdp: CDPSender, signal: AbortSignal): Promise<boolean> {
   try {
     await delay(UNSENT_CHECK_MS, signal);
     if (signal.aborted) return false;
     await cdp.send('Runtime.evaluate', { expression: '1', returnByValue: true });
+    await delay(UNSENT_GRACE_MS, signal);
     return !signal.aborted;
   } catch (error) {
     log.debug(`Result check ended: ${getErrorMessage(error)}`);
