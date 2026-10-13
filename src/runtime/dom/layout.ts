@@ -16,7 +16,9 @@ import { operationFailedError } from '@/errors/messages.js';
 import type { DomLayoutCommand } from '@/ipc/protocol/commands.js';
 import type {
   ElementLayout,
+  LayoutBox,
   LayoutComputedStyle,
+  LayoutPoint,
   LayoutResult,
   PageLayout,
 } from '@/ipc/protocol/domTypes.js';
@@ -26,6 +28,7 @@ import {
   VIEWPORT_SIZE_JS,
   classifyViewportPosition,
   type ElementGeometry,
+  type ViewportPlacement,
 } from '@/runtime/dom/elementGeometry.js';
 import {
   ELEMENT_CONTEXT_JS,
@@ -405,6 +408,38 @@ function roundPage(page: PageLayout): PageLayout {
 }
 
 /**
+ * A viewport box in page coordinates, rounded.
+ *
+ * @param box - Box in viewport coordinates
+ * @param scroll - Page scroll
+ * @returns Page box
+ */
+function pageBox(box: LayoutBox, scroll: LayoutPoint): LayoutBox {
+  return {
+    x: Math.round(box.x + scroll.x),
+    y: Math.round(box.y + scroll.y),
+    width: Math.round(box.width),
+    height: Math.round(box.height),
+  };
+}
+
+/**
+ * An element that is rendered but cannot be seen (`opacity: 0`, a
+ * `clip-path` cutting it away) is hidden, with that reason, wherever it is.
+ *
+ * @param placement - Where it is relative to the viewport
+ * @param invisible - Why it cannot be seen, if so
+ * @returns The placement, or hidden with the reason
+ */
+function hiddenIfInvisible(
+  placement: ViewportPlacement,
+  invisible: string | null
+): ViewportPlacement {
+  if (!invisible || placement.inViewport === 'hidden') return placement;
+  return { inViewport: 'hidden', hiddenReason: invisible };
+}
+
+/**
  * Layout of one element. A `display: contents` element (no box of its own)
  * (a `<slot>`) is placed by the box around the content it shows (elements and text).
  *
@@ -415,7 +450,11 @@ function roundPage(page: PageLayout): PageLayout {
 function elementLayout(raw: RawElementLayout, page: PageLayout): ElementLayout {
   const { content } = raw.geometry;
   const rect = raw.computed.display === 'contents' && content ? content : raw.geometry.rect;
-  const placement = classifyViewportPosition(raw.geometry, page.viewport);
+  const placement = hiddenIfInvisible(
+    classifyViewportPosition(raw.geometry, page.viewport),
+    raw.geometry.invisible
+  );
+  const painted = rect !== content && content && pageBox(content, page.scroll);
   const inView = placement.inViewport === 'visible' || placement.inViewport === 'partly';
   const text = textPreview(raw.text);
   return {
@@ -424,17 +463,14 @@ function elementLayout(raw: RawElementLayout, page: PageLayout): ElementLayout {
     element: raw.element,
     ...(text && { text }),
     ...(raw.context && { context: raw.context }),
-    bounds: {
-      x: Math.round(rect.x + page.scroll.x),
-      y: Math.round(rect.y + page.scroll.y),
-      width: Math.round(rect.width),
-      height: Math.round(rect.height),
-    },
+    bounds: pageBox(rect, page.scroll),
+    ...(painted && { content: painted }),
     viewport: { x: Math.round(rect.x), y: Math.round(rect.y) },
     ...placement,
     ...(inView && raw.cover && { coveredBy: raw.cover.element }),
     ...(inView && raw.cover?.transparent && { coverTransparent: true }),
     ...(raw.geometry.invisible && { invisible: raw.geometry.invisible }),
+    ...(raw.geometry.shownBy && { shownBy: raw.geometry.shownBy }),
     ...(raw.geometry.masked && { masked: raw.geometry.masked }),
     ...(raw.geometry.inert && { inert: true }),
     ...(raw.geometry.fixed && { fixed: true }),

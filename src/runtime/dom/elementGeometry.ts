@@ -35,6 +35,12 @@ export interface ElementGeometry {
   /** Why it cannot be seen regardless of position, e.g. `display: none`, `clipped by div#acc: zero height` */
   hidden: string | null;
   /**
+   * The descendant showing a `visibility: hidden` element's content (one that
+   * sets `visibility: visible`), e.g. `span#label` ({@link SHOWING_DESCENDANT_JS});
+   * the element is then not hidden
+   */
+  shownBy?: string | null;
+  /**
    * Why it cannot be seen although it is rendered ({@link INVISIBLE_REASON_JS}),
    * e.g. `opacity: 0 on div#menu`
    */
@@ -401,6 +407,48 @@ const MASKED_BY_JS = `(el, describe) => {
 }`;
 
 /**
+ * Page-side search for what an element paints through its descendants in the
+ * flat tree (shadow root, a slot's assigned nodes or fallback content): the
+ * first rendered descendant element with `visibility: visible` and a box with
+ * area, or the element holding such text. Content of a descendant (or of the
+ * element itself) with no area that clips its overflow is not searched: it
+ * paints nothing. A `visibility: hidden` element whose descendant overrides
+ * it to `visible` shows that descendant; `opacity` and `clip-path` are judged
+ * separately ({@link INVISIBLE_REASON_JS}). Searches at most 500 nodes. Null
+ * when nothing shows.
+ */
+export const SHOWING_DESCENDANT_JS = `(el) => {
+  const styleOf = (n) => n.ownerDocument.defaultView.getComputedStyle(n);
+  const hasArea = (r) => r.width > 0 && r.height > 0;
+  const clips = (n, s) => !hasArea(n.getBoundingClientRect()) && (s.overflowX !== 'visible' || s.overflowY !== 'visible');
+  const childrenOf = (n) => n.localName === 'slot' && n.getRootNode().host ? n.assignedNodes({ flatten: true }) : Array.from((n.shadowRoot || n).childNodes);
+  const rendered = (n) => typeof n.checkVisibility !== 'function' || n.checkVisibility();
+  const textShows = (t) => {
+    const holder = t.assignedSlot || t.parentElement || t.parentNode.host;
+    const range = t.ownerDocument.createRange();
+    range.selectNodeContents(t);
+    return styleOf(holder).visibility === 'visible' && hasArea(range.getBoundingClientRect()) && holder;
+  };
+  if (clips(el, styleOf(el))) return null;
+  const queue = childrenOf(el);
+  for (let seen = 0; queue.length > 0 && seen < 500; seen++) {
+    const n = queue.shift();
+    if (n.nodeType === 3 && n.data.trim()) {
+      const holder = textShows(n);
+      if (holder) return holder;
+    }
+    if (n.nodeType !== 1) continue;
+    const s = styleOf(n);
+    if (s.display === 'none') continue;
+    const boxed = s.display !== 'contents';
+    if (boxed && !rendered(n)) continue;
+    if (boxed && s.visibility === 'visible' && hasArea(n.getBoundingClientRect())) return n;
+    if (!boxed || !clips(n, s)) queue.push(...childrenOf(n));
+  }
+  return null;
+}`;
+
+/**
  * Page-side measurement of an element ({@link ElementGeometry}): its box in
  * top-level viewport coordinates, its clip by ancestors
  * ({@link ANCESTOR_CLIP_JS}) and by the viewports of its iframes, why it
@@ -431,6 +479,7 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
   const scrollLock = ${SCROLL_LOCK_JS};
   const invisibleReason = ${INVISIBLE_REASON_JS};
   const maskedBy = ${MASKED_BY_JS};
+  const showingDescendant = ${SHOWING_DESCENDANT_JS};
   const describe = ${ELEMENT_DESCRIPTION_JS};
   const reasons = ${JSON.stringify(LAYOUT_REASONS)};
   const styleOf = (node) => node.ownerDocument.defaultView.getComputedStyle(node);
@@ -473,7 +522,15 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
     const r = range ? range.getBoundingClientRect() : n.getBoundingClientRect();
     const style = styleOf(holder);
     if (style.visibility !== 'visible') return { why: 'visibility: ' + style.visibility };
-    return r.width <= 0 || r.height <= 0 ? { why: 'zero size' } : { r: r };
+    if (r.width > 0 && r.height > 0) return { r: r };
+    return n.nodeType === 1 ? measureEmpty(n, r) : { why: 'zero size' };
+  };
+  const measureEmpty = (n, r) => {
+    const inner = shownContent(n);
+    if (inner) return inner.box ? { r: inner.box } : { why: inner.why || 'zero size' };
+    const clipped = flatContent(n).some((c) => c.nodeType === 1 || c.data.trim());
+    if (!clipped) return { why: 'zero size' };
+    return { why: reasons.clippedBy + describe(n) + ': ' + (r.height <= 0 ? reasons.zeroHeight : reasons.zeroWidth) };
   };
   const shownContent = (node) => {
     const s = styleOf(node);
@@ -492,7 +549,7 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
     }
     return { box: union, why: why };
   };
-  const hiddenReason = (style, box, content, unshown) => {
+  const hiddenReason = (style, box, content, unshown, shower) => {
     if (style.display === 'none') return 'display: none';
     if (style.display === 'contents') {
       if (content) return null;
@@ -503,8 +560,8 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
     }
     const skipped = skippedReason(el);
     if (skipped) return skipped;
-    if (style.visibility !== 'visible') return 'visibility: ' + style.visibility;
-    if ((box.width === 0 || box.height === 0) && !content) return 'zero size';
+    if (style.visibility !== 'visible' && !shower) return 'visibility: ' + style.visibility;
+    if ((box.width === 0 || box.height === 0) && !content) return unshown ? reasons.contentNotShown + unshown : 'zero size';
     return null;
   };
   const isSticky = () => {
@@ -521,15 +578,18 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
   };
   const box = el.getBoundingClientRect();
   let rect = { left: box.left, top: box.top, right: box.right, bottom: box.bottom };
-  const shown = box.width === 0 || box.height === 0 ? shownContent(el) : null;
-  let content = shown && shown.box;
+  const empty = box.width === 0 || box.height === 0;
+  const shown = empty ? shownContent(el) : null;
+  const shower = styleOf(el).visibility !== 'visible' ? showingDescendant(el) : null;
+  const showerBox = shower && empty ? shower.getBoundingClientRect() : null;
+  let content = (shown && shown.box) || (showerBox && { left: showerBox.left, top: showerBox.top, right: showerBox.right, bottom: showerBox.bottom });
   const own = ancestorClip(el, content || rect, describe);
   let clip = own.clip;
   let overlay = own.overlay;
   let clipper = own.clipper;
   let fixed = own.fixed;
   let fixedBy = own.fixedBy;
-  let hidden = hiddenReason(styleOf(el), box, content, shown && shown.why) || own.collapsed;
+  let hidden = hiddenReason(styleOf(el), box, content, shown && shown.why, shower) || own.collapsed;
   let x = 0;
   let y = 0;
   for (let view = el.ownerDocument.defaultView; view && view.frameElement; view = view.parent) {
@@ -561,7 +621,7 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
   const masked = hidden || invisible ? null : maskedBy(el, describe);
   const lock = scrollLock(top, describe);
   if (lock && fixedBy === top.document.body) fixed = false;
-  return { rect: toBox(rect), content: toBox(content), clip: toBox(clip), clipOverlay: overlay, clipper: clipper, hidden: hidden, invisible: invisible, masked: masked, inert: isInert(), fixed: fixed, sticky: !fixed && isSticky(), pageScroll: scrollRange(top), scrollLock: lock, offset: { x: x, y: y } };
+  return { rect: toBox(rect), content: toBox(content), clip: toBox(clip), clipOverlay: overlay, clipper: clipper, hidden: hidden, shownBy: !hidden && shower ? describe(shower) : null, invisible: invisible, masked: masked, inert: isInert(), fixed: fixed, sticky: !fixed && isSticky(), pageScroll: scrollRange(top), scrollLock: lock, offset: { x: x, y: y } };
 }`;
 
 /**

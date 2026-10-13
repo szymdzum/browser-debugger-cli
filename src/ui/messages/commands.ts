@@ -719,6 +719,17 @@ export const LAYOUT_REASONS = {
   on: ' on ',
 } as const;
 
+/**
+ * The descendant showing a `visibility: hidden` element's content, for
+ * `bdg dom layout` and `bdg dom inspect`.
+ *
+ * @param element - Description of the descendant
+ * @returns e.g. "shown by span#label (visibility: visible)"
+ */
+export function shownByText(element: string): string {
+  return `shown by ${element} (visibility: visible)`;
+}
+
 /** Why an out-of-view text's contrast in `dom audit` is approximate: none of its ancestors paints a background */
 export const AUDIT_OUT_OF_VIEW_RISK = 'only its ancestors were checked';
 
@@ -1165,6 +1176,7 @@ export function inspectVisibilityBadges(visibility: InspectVisibility): string[]
     visibility.offscreen && `[offscreen: ${visibility.offscreen}]`,
     visibility.coveredBy && `[${coverText(visibility.coveredBy, visibility.coverTransparent)}]`,
     visibility.masked && `[${maskedText(visibility.masked)}]`,
+    visibility.shownBy && `[${shownByText(visibility.shownBy)}]`,
   ].filter((badge): badge is string => Boolean(badge));
 }
 

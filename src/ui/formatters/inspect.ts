@@ -87,7 +87,7 @@ export function inspectHeader(data: InspectOutput): string {
     data.content !== undefined && `"${data.content}"`,
     data.placeholder !== undefined && `placeholder "${data.placeholder}"`,
     data.rect &&
-      `${data.rect.w}x${data.rect.h}${data.rect.screen ? ` (${data.rect.screen.w}x${data.rect.screen.h} on screen)` : ''} @${data.rect.x},${data.rect.y}${data.rect.in ? ' (fixed: viewport position)' : ''}`,
+      `${data.rect.w}x${data.rect.h}${data.rect.content ? ' (content)' : ''}${data.rect.screen ? ` (${data.rect.screen.w}x${data.rect.screen.h} on screen)` : ''} @${data.rect.x},${data.rect.y}${data.rect.in ? ' (fixed: viewport position)' : ''}`,
     kind && `[${kind}]`,
     ...inspectVisibilityBadges(data.visibility),
     data.context && `in ${data.context}`,
