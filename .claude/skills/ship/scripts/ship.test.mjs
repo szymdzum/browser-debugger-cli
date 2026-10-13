@@ -443,3 +443,18 @@ test('closedIssues reads Closes, Fixes and Resolves in any case, and nothing els
   assert.deepEqual(closedIssues(''), []);
   assert.deepEqual(closedIssues(undefined), []);
 });
+
+test('closedIssues needs a digit boundary, accepts this repo\'s issue URL, ignores fenced code', () => {
+  assert.deepEqual(closedIssues('Closes #12abc'), []);
+  assert.deepEqual(closedIssues('Closes #12.'), ['12']);
+  assert.deepEqual(closedIssues('Closes https://github.com/szymdzum/browser-debugger-cli/issues/12'), ['12']);
+  assert.deepEqual(closedIssues('Closes https://github.com/other/repo/issues/12'), []);
+  assert.deepEqual(closedIssues('text\n```\nCloses #7\n```\nFixes #8'), ['8']);
+  assert.deepEqual(closedIssues('~~~md\nCloses #7\n~~~'), []);
+});
+
+test('parseSnapshotArgs refuses empty, dot and path-like names', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ship-dl-'));
+  for (const name of ['', '.', '..', '../etc/hosts', 'a/b'])
+    assert.match(parseSnapshotArgs(['--accept', name], { downloads: dir }).error, /plain entry/, name);
+});

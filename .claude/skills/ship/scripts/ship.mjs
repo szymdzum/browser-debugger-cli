@@ -774,12 +774,16 @@ async function gates(argv) {
 
 /**
  * Issue numbers the PR body closes with `Closes`, `Fixes` or `Resolves`
- * (any case, optional colon), as strings.
+ * (any case, optional colon; `#N` or this repo's issue URL), as strings.
+ * Fenced code blocks are ignored; "doesn't close #5" still counts.
  *
  * @param {string} [body]
  */
 export function closedIssues(body) {
-  const found = [...(body ?? '').matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\s+#(\d+)/gi)];
+  const text = (body ?? '').replace(/^ {0,3}(`{3,}|~{3,})[\s\S]*?(^ {0,3}\1[`~]*[ \t]*$|(?![\s\S]))/gm, '');
+  const ref = `(?:#|https://github\\.com/${REPO}/issues/)(\\d+)(?![\\w/-])`;
+  const keyword = '\\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\\s+';
+  const found = [...text.matchAll(new RegExp(keyword + ref, 'gi'))];
   return [...new Set(found.map((m) => m[1]))];
 }
 
@@ -822,6 +826,9 @@ export function parseSnapshotArgs(argv, dirs) {
     return { error: 'snapshot takes no arguments, or --accept <name>…' };
   const bad = names.find((n) => n.includes('\n') || n.includes('\r'));
   if (bad !== undefined) return { error: `name contains a newline: ${JSON.stringify(bad)}` };
+  const unsafe = names.find((n) => n === '' || n === '.' || n === '..' || /[\\/]/.test(n));
+  if (unsafe !== undefined)
+    return { error: `name must be a plain entry of the directory, not ${JSON.stringify(unsafe)}` };
   const accept = [];
   for (const name of names) {
     const keys = Object.keys(dirs).filter((k) => existsSync(join(dirs[k], name)));
