@@ -127,7 +127,10 @@ void describe('Follow modes and interrupts', () => {
         'the stop did not wait for the inter-frame delay'
       );
       const frames = ndjsonEnvelopes(result);
-      assert.match(result.stderr, new RegExp(`Captured ${frames.length} frames?\\b`));
+      assert.match(
+        result.stderr,
+        new RegExp(`Captured ${frames.length} ${frames.length === 1 ? 'frame' : 'frames'}$`, 'm')
+      );
       assert.equal(fs.readdirSync(dir).length, frames.length);
       const first = frames[0]?.['data'] as { frame?: number; path?: string };
       assert.equal(first.frame, 1);
@@ -145,6 +148,17 @@ void describe('Follow modes and interrupts', () => {
     assert.equal(result.exitCode, 0, `${result.stdout}\n${result.stderr}`);
     assert.equal(ndjsonEnvelopes(result).length, 2);
     assert.match(result.stderr, /Captured 2 frames/);
+  });
+
+  void it('dom screenshot --follow --limit 1 says "1 frame", not "1 frames"', async () => {
+    const dir = makeTempDir('bdg-follow-');
+    const result = await runCommand(
+      'dom',
+      ['screenshot', dir, '--follow', '--interval', '100', '--limit', '1', '--json'],
+      { timeout: COMMAND_TIMEOUT_MS }
+    );
+    assert.equal(result.exitCode, 0, `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stderr, /Captured 1 frame$/m);
   });
 
   for (const [command, args, stopLine] of [

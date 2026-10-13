@@ -11,6 +11,7 @@ import { describe, it } from 'node:test';
 import type { Command } from 'commander';
 
 import { generateMachineReadableHelp } from '@/commands/helpJson.js';
+import { FOLLOW_BEHAVIOR } from '@/commands/optionBehaviors/shared.js';
 import { BEHAVIOR_TABLES, behaviorKey, listBehaviorKeys } from '@/commands/optionBehaviors.js';
 import { buildProgram } from '@/program.js';
 
@@ -48,5 +49,13 @@ void describe('OPTION_BEHAVIORS', () => {
     for (const flags of ['--headless', '--no-headless', '-a, --all']) {
       assert.ok(withBehavior.includes(flags), `${flags} has no behavior`);
     }
+  });
+});
+
+void describe('FOLLOW_BEHAVIOR', () => {
+  void it('describes --json as one whole envelope per refresh, the first with the backlog (#714)', () => {
+    assert.match(FOLLOW_BEHAVIOR, /envelope per refresh/);
+    assert.match(FOLLOW_BEHAVIOR, /first .*backlog/);
+    assert.doesNotMatch(FOLLOW_BEHAVIOR, /compact object/);
   });
 });
