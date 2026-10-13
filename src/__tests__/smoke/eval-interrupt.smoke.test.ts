@@ -42,6 +42,16 @@ function loopScript(tag: string): string {
 }
 
 /**
+ * `--frame` arguments.
+ *
+ * @param frame - Frame, if any
+ * @returns Arguments
+ */
+function frameArgs(frame: string | undefined): string[] {
+  return frame === undefined ? [] : ['--frame', frame];
+}
+
+/**
  * Describe a command result for assertion messages.
  *
  * @param result - Command result
@@ -97,8 +107,7 @@ void describe('Interrupted dom eval', () => {
    * @returns The eval's result
    */
   function startLoop(tag: string, stop: AbortSignal, frame?: string): Promise<CommandResult> {
-    const frameArgs = frame === undefined ? [] : ['--frame', frame];
-    return runCommand('dom', ['eval', loopScript(tag), ...frameArgs, '--json'], {
+    return runCommand('dom', ['eval', loopScript(tag), ...frameArgs(frame), '--json'], {
       timeout: COMMAND_TIMEOUT_MS,
       interrupt: stop,
     });
@@ -111,12 +120,28 @@ void describe('Interrupted dom eval', () => {
    * @returns The result and its duration
    */
   async function timedEval(frame?: string): Promise<{ result: CommandResult; ms: number }> {
-    const frameArgs = frame === undefined ? [] : ['--frame', frame];
     const startedAt = Date.now();
-    const result = await runCommand('dom', ['eval', '1+1', ...frameArgs], {
+    const result = await runCommand('dom', ['eval', '1+1', ...frameArgs(frame)], {
       timeout: COMMAND_TIMEOUT_MS,
     });
     return { result, ms: Date.now() - startedAt };
+  }
+
+  /**
+   * Start a looping eval and interrupt it once its script runs.
+   *
+   * @param tag - Beacon query string
+   * @param frame - `--frame` value, if any
+   * @returns The interrupted eval's result (exit 130 asserted)
+   */
+  async function interruptLoop(tag: string, frame?: string): Promise<CommandResult> {
+    const stop = new AbortController();
+    const loop = startLoop(tag, stop.signal, frame);
+    await untilBeacon(tag);
+    stop.abort();
+    const interrupted = await loop;
+    assert.equal(interrupted.exitCode, 130, shown(interrupted));
+    return interrupted;
   }
 
   /**
@@ -126,12 +151,7 @@ void describe('Interrupted dom eval', () => {
    * @param frame - `--frame` value, if any
    */
   async function interruptThenEval(tag: string, frame?: string): Promise<void> {
-    const stop = new AbortController();
-    const loop = startLoop(tag, stop.signal, frame);
-    await untilBeacon(tag);
-    stop.abort();
-    const interrupted = await loop;
-    assert.equal(interrupted.exitCode, 130, shown(interrupted));
+    await interruptLoop(tag, frame);
     const next = await timedEval(frame);
     assert.equal(next.result.exitCode, 0, shown(next.result));
     assert.equal(next.result.stdout.trim(), '2', shown(next.result));
@@ -146,12 +166,7 @@ void describe('Interrupted dom eval', () => {
   });
 
   void it('says the script was stopped on the page', async () => {
-    const stop = new AbortController();
-    const loop = startLoop('message-loop', stop.signal);
-    await untilBeacon('message-loop');
-    stop.abort();
-    const result = await loop;
-    assert.equal(result.exitCode, 130, shown(result));
+    const result = await interruptLoop('message-loop');
     const envelope = JSON.parse(result.stdout.trim()) as { suggestion?: string };
     assert.match(envelope.suggestion ?? '', /stopped on the page/, shown(result));
     assert.match(envelope.suggestion ?? '', /bdg peek/, shown(result));
@@ -161,15 +176,15 @@ void describe('Interrupted dom eval', () => {
     const stop = new AbortController();
     const loop = startLoop('parallel-loop', stop.signal);
     await untilBeacon('parallel-loop');
-    const sent = new AbortController();
-    const startedAt = Date.now();
+    let connected: () => void = () => undefined;
+    const sent = new Promise<void>((resolve) => (connected = resolve));
     const other = runCommand('dom', ['eval', '1+1', '--debug'], {
       timeout: COMMAND_TIMEOUT_MS,
       onStderr: (stderr) => {
-        if (stderr.includes('Connected to daemon')) sent.abort();
+        if (stderr.includes('Connected to daemon')) connected();
       },
     });
-    await new Promise((resolve) => sent.signal.addEventListener('abort', resolve, { once: true }));
+    await sent;
     const interruptedAt = Date.now();
     stop.abort();
     const [interrupted, answered] = await Promise.all([loop, other]);
@@ -179,7 +194,7 @@ void describe('Interrupted dom eval', () => {
     assert.equal(answered.stdout.trim(), '2', shown(answered));
     assert.ok(
       answeredAfter < ANSWER_WITHIN_MS,
-      `the other eval answered ${answeredAfter} ms after the interrupt (sent ${interruptedAt - startedAt} ms before it)`
+      `the other eval answered ${answeredAfter} ms after the interrupt (limit ${ANSWER_WITHIN_MS} ms)`
     );
   });
 

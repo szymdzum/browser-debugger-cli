@@ -805,7 +805,11 @@ export interface EvalTarget {
   abandoned?: AbortSignal;
 }
 
-/** `bdg dom eval` evaluations Chrome has not answered yet, in the order they were sent */
+/**
+ * `bdg dom eval` evaluations Chrome has not answered yet, in the order they
+ * were sent; one set for every target, as a same-process iframe's script
+ * runs on the page's thread though it is sent on another connection
+ */
 const pendingEvaluations = new Set<Promise<unknown>>();
 
 /** How long the target gets to answer before an abandoned eval's script counts as running */
@@ -833,20 +837,17 @@ function stopWhenAbandoned(
 ): void {
   const earlier = [...pendingEvaluations];
   pendingEvaluations.add(evaluation);
-  let settled = false;
   const stop = (): void => {
-    void stopAbandonedScript(cdp, scope, earlier, () => settled).catch((error: unknown) => {
+    void stopAbandonedScript(cdp, scope, evaluation, earlier).catch((error: unknown) => {
       log.debug(`Could not stop an abandoned eval: ${getErrorMessage(error)}`);
     });
   };
+  const done = (): void => {
+    pendingEvaluations.delete(evaluation);
+    abandoned?.removeEventListener('abort', stop);
+  };
   abandoned?.addEventListener('abort', stop, { once: true });
-  void evaluation
-    .catch(() => undefined)
-    .finally(() => {
-      settled = true;
-      pendingEvaluations.delete(evaluation);
-      abandoned?.removeEventListener('abort', stop);
-    });
+  evaluation.then(done, done);
 }
 
 /**
@@ -854,15 +855,16 @@ function stopWhenAbandoned(
  *
  * @param cdp - Where to check and stop the target
  * @param scope - Whether the script runs in the page or an iframe
+ * @param evaluation - The script's evaluation
  * @param earlier - Evaluations sent before it
- * @param settled - Whether its evaluation has settled
  */
 async function stopAbandonedScript(
   cdp: CDPSender,
   scope: BusyScope,
-  earlier: Promise<unknown>[],
-  settled: () => boolean
+  evaluation: Promise<unknown>,
+  earlier: Promise<unknown>[]
 ): Promise<void> {
+  const settled = (): boolean => !pendingEvaluations.has(evaluation);
   await Promise.allSettled(earlier);
   if (settled() || (await isAnswering(cdp, ABANDONED_CHECK_MS)) || settled()) return;
   log.debug('The client of a running eval disconnected; stopping its script');
