@@ -51,6 +51,28 @@ void describe('layoutLine', () => {
     );
   });
 
+  void it('shows the painted content box of an element whose own box has no area', () => {
+    const host = layout({
+      inViewport: 'visible',
+      bounds: { x: 103, y: 148, width: 0, height: 0 },
+      content: { x: 8, y: 148, width: 95, height: 18 },
+      shownBy: 'span#label',
+    });
+    assert.equal(
+      layoutLine(host),
+      '[0] button#save "Save"  8,148 95×18 (content)  visible  shown by span#label (visibility: visible)'
+    );
+  });
+
+  void it('does not repeat an invisible reason that is already the hidden reason', () => {
+    const faded = layout({
+      inViewport: 'hidden',
+      hiddenReason: 'opacity: 0',
+      invisible: 'opacity: 0',
+    });
+    assert.equal(layoutLine(faded), '[0] button#save "Save"  hidden (opacity: 0)');
+  });
+
   void it('does not promise to centre an element larger than the viewport', () => {
     const tall = layout({ bounds: { x: 0, y: 1180, width: 300, height: 900 } });
     assert.match(

@@ -26,7 +26,8 @@ type LayoutOutput = Omit<LayoutResult, 'success'> & { indexSource?: IndexSource 
 
 /**
  * One element as a compact line: index, description, text, page position
- * and size (not for hidden elements, which have no meaningful box), where it
+ * and size (not for hidden elements, which have no meaningful box; for an
+ * element whose own box has no area, those of the content it paints), where it
  * is relative to the viewport, what covers it, an inert or invisible element
  * and the iframe or shadow root it is in (unless the position already names
  * it as the clipping iframe).
@@ -36,10 +37,11 @@ type LayoutOutput = Omit<LayoutResult, 'success'> & { indexSource?: IndexSource 
  * @returns e.g. `[0] button#save "Save"  420,1180 120×40  below fold (scroll down 500px to centre it)`
  */
 export function layoutLine(element: ElementLayout, viewport?: LayoutSize): string {
-  const { bounds } = element;
+  const box = element.content ?? element.bounds;
   return [
     `[${element.index}] ${element.element}${element.text ? ` "${element.text}"` : ''}`,
-    element.inViewport !== 'hidden' && `${bounds.x},${bounds.y} ${bounds.width}×${bounds.height}`,
+    element.inViewport !== 'hidden' &&
+      `${box.x},${box.y} ${box.width}×${box.height}${element.content ? ' (content)' : ''}`,
     layoutPositionLabel(element, viewport),
     element.coveredBy && coverText(element.coveredBy, element.coverTransparent),
     element.inert && 'inert',
