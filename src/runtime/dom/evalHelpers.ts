@@ -1000,7 +1000,7 @@ async function untilResultLost<T>(
  *
  * @param cdp - CDP connection of the page
  * @param pending - The script's evaluation
- * @param lost - The error for a lost answer
+ * @param lost - The error for a lost answer, or undefined when it cannot be told to be lost
  * @param onScriptFinished - Called once the page answered a check: the script has finished
  * @returns The answer
  * @throws The error `lost` returns, when the answer was lost
@@ -1008,13 +1008,14 @@ async function untilResultLost<T>(
 export async function untilAnswerLost<T>(
   cdp: CDPSender,
   pending: Promise<T>,
-  lost: () => Error,
+  lost: () => Error | undefined,
   onScriptFinished?: () => void
 ): Promise<T> {
   const stop = new AbortController();
   const answered = pending.finally(() => stop.abort());
   const unsent = checkForLostResult(cdp, stop.signal, onScriptFinished).then((isLost) => {
-    if (isLost) throw lost();
+    const error = isLost ? lost() : undefined;
+    if (error) throw error;
     return new Promise<never>(() => undefined);
   });
   answered.catch(() => undefined);

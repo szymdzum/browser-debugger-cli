@@ -3434,7 +3434,7 @@ export function replyTooLargeError(
  */
 export function chromeReplyLostError(cap: number): ErrorWithSuggestion {
   return {
-    message: `The reply is over the ${formatMiB(cap, 0)} limit (Chrome could not send it)`,
+    message: `Chrome could not send the reply: it is over Chrome's message limit (about ${formatMiB(cap, 0)} of UTF-8 bytes; non-ASCII text reaches it with fewer characters)`,
     suggestion: SMALLER_CDP_REPLY_SUGGESTION,
   };
 }

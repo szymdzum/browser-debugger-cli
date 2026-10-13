@@ -12,7 +12,7 @@ import { after, before, describe, it } from 'node:test';
 
 import { MAX_JSONL_BUFFER_SIZE } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
-import { replyTooLargeError } from '@/errors/messages.js';
+import { chromeReplyLostError, replyTooLargeError } from '@/errors/messages.js';
 import { formatReplyOverflowError } from '@/ipc/transport/errors.js';
 import { sendRequest } from '@/ipc/transport/index.js';
 import { JSONLBufferOverflowError } from '@/ipc/transport/jsonl.js';
@@ -43,6 +43,16 @@ void describe('replyTooLargeError', () => {
     const err = replyTooLargeError(257 * MIB, MAX_JSONL_BUFFER_SIZE, 'dom_eval_request', false);
     assert.match(err.message, /257\.0 MiB/);
     assert.match(err.message, /stopped/);
+  });
+});
+
+void describe('chromeReplyLostError', () => {
+  void it("blames Chrome's message limit, not the character count, and gives the hint", () => {
+    const err = chromeReplyLostError(MAX_JSONL_BUFFER_SIZE);
+    assert.match(err.message, /Chrome could not send the reply/);
+    assert.match(err.message, /about 256 MiB of UTF-8 bytes/);
+    assert.match(err.message, /non-ASCII/);
+    assert.match(err.suggestion, /returnByValue/);
   });
 });
 
