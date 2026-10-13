@@ -21,6 +21,9 @@ import {
   parseBriefs,
   renderBrief,
   retryTransient,
+  run,
+  withWaiterDeadline,
+  writeWithRecheck,
   tempWorktrees,
   worktreeOfBranch,
 } from './ship.mjs';
@@ -259,4 +262,114 @@ test('retryTransient fails at once on a non-transient error', () => {
     { stderr: /404/ }
   );
   assert.equal(calls, 1);
+});
+
+test('run kills a command that outlives its timeout and names command and timeout', () => {
+  const started = Date.now();
+  assert.throws(() => run('sleep', ['5'], { timeoutMs: 200 }), {
+    timedOut: true,
+    message: /sleep 5.*timed out after 0\.2s/,
+  });
+  assert.ok(Date.now() - started < 3000);
+});
+
+test('a timed-out call is transient: retried with backoff, then reported', () => {
+  const waits = [];
+  let calls = 0;
+  assert.throws(
+    () =>
+      retryTransient(
+        () => {
+          calls++;
+          return run('sleep', ['5'], { timeoutMs: 100 });
+        },
+        { backoff: [1, 2], wait: (ms) => waits.push(ms) }
+      ),
+    { timedOut: true, message: /sleep 5.*timed out after 0\.1s/ }
+  );
+  assert.equal(calls, 3);
+  assert.deepEqual(waits, [1, 2]);
+});
+
+test('a waiter deadline caps the call timeout and ends the retries', () => {
+  const started = Date.now();
+  let calls = 0;
+  assert.throws(
+    () =>
+      retryTransient(
+        () => {
+          calls++;
+          return run('sleep', ['5'], { timeoutMs: 60_000, deadline: Date.now() + 300 });
+        },
+        { backoff: [1, 1], wait: () => {}, deadline: Date.now() + 300 }
+      ),
+    { timedOut: true }
+  );
+  assert.equal(calls, 1);
+  assert.ok(Date.now() - started < 3000);
+});
+
+test('a waiter ends as timeout (exit 4) on any error at the deadline, and resets the deadline', async () => {
+  const lines = [];
+  const log = console.log;
+  console.log = (l) => lines.push(l);
+  try {
+    const code = await withWaiterDeadline(0.0005, async () => {
+      await new Promise((r) => setTimeout(r, 100));
+      throw Object.assign(new Error('Command failed'), { stderr: 'HTTP 502' });
+    });
+    assert.equal(code, EXIT.timeout);
+    assert.match(lines[0], /^timeout: .*502/);
+    assert.equal(run('sleep', ['0.3']), '');
+    await assert.rejects(
+      withWaiterDeadline(10, async () => {
+        throw new Error('boom');
+      }),
+      /boom/
+    );
+  } finally {
+    console.log = log;
+  }
+});
+
+test('writeWithRecheck: a timed-out write that took effect succeeds, otherwise state is unknown', () => {
+  const timedOut = () => {
+    throw Object.assign(new Error('`gh pr merge 1` timed out after 180s'), { timedOut: true });
+  };
+  assert.equal(
+    writeWithRecheck(timedOut, () => true, 'merge'),
+    null
+  );
+  assert.throws(() => writeWithRecheck(timedOut, () => false, 'merge of PR #1'), {
+    message: /timed out after 180s; merge of PR #1 state unknown, check gh pr view/,
+  });
+  assert.throws(
+    () =>
+      writeWithRecheck(
+        () => {
+          throw new Error('denied');
+        },
+        () => true,
+        'merge'
+      ),
+    /denied/
+  );
+});
+
+test('a waiter timeout that is not a positive number is a usage error, not an instant timeout', async () => {
+  const err = console.error;
+  console.error = () => {};
+  try {
+    for (const bad of ['abc', '0', '-5', '']) {
+      let ran = false;
+      const code = await withWaiterDeadline(bad, async () => {
+        ran = true;
+        return EXIT.ok;
+      });
+      assert.equal(code, EXIT.usage, bad);
+      assert.equal(ran, false);
+    }
+  } finally {
+    console.error = err;
+  }
 });

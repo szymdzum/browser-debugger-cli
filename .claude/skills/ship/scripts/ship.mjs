@@ -25,19 +25,38 @@ const SNAPSHOT = {
 /** Exit codes of this script, so the orchestrator can branch on them */
 export const EXIT = { ok: 0, failed: 1, usage: 2, superseded: 3, timeout: 4 };
 
+const CALL_TIMEOUT_MS = 60_000;
+const WRITE_TIMEOUT_MS = 180_000;
+let waiterDeadline = null;
+
 /**
  * Runs a command and returns its trimmed stdout; throws with stderr on failure.
+ * A command that outlives `timeoutMs` (default 60 s, so a hung gh cannot block
+ * a waiter) is killed and fails with `timedOut` set and a message naming the
+ * command and the timeout. `deadline` (epoch ms) caps the timeout further;
+ * `timeoutMs: 0` means no timeout, for long builds.
  *
  * @param {string} cmd
  * @param {string[]} args
- * @param {object} [opts]
+ * @param {{ timeoutMs?: number, deadline?: number | null } & object} [opts]
  */
-function run(cmd, args, opts = {}) {
-  return execFileSync(cmd, args, {
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-    ...opts,
-  }).trim();
+export function run(cmd, args, opts = {}) {
+  const { timeoutMs = CALL_TIMEOUT_MS, deadline = waiterDeadline, ...execOpts } = opts;
+  let timeout = timeoutMs;
+  if (deadline && timeout) timeout = Math.min(timeout, Math.max(deadline - Date.now(), 1));
+  else if (deadline) timeout = Math.max(deadline - Date.now(), 1);
+  try {
+    return execFileSync(cmd, args, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      ...execOpts,
+      ...(timeout ? { timeout, killSignal: 'SIGKILL' } : {}),
+    }).trim();
+  } catch (err) {
+    if (err?.code !== 'ETIMEDOUT') throw err;
+    const message = `\`${cmd} ${args.join(' ')}\` timed out after ${timeout / 1000}s`;
+    throw Object.assign(new Error(message), { timedOut: true, stderr: message });
+  }
 }
 
 const TRANSIENT_GH =
@@ -46,13 +65,14 @@ const RETRY_BACKOFF_MS = [2000, 5000, 10_000, 20_000];
 
 /**
  * Whether a failed gh call looks like a network or GitHub hiccup worth retrying.
- * Only gh's stderr counts: the error message starts with the command line, whose
- * numbers (a PR 502, `--limit 500`) must not look like an HTTP status.
+ * A call killed by its timeout counts too. Only gh's stderr counts: the error
+ * message starts with the command line, whose numbers (a PR 502, `--limit 500`)
+ * must not look like an HTTP status.
  *
  * @param {{ stderr?: unknown }} err
  */
 export function isTransientGhError(err) {
-  return TRANSIENT_GH.test(String(err?.stderr ?? ''));
+  return err?.timedOut === true || TRANSIENT_GH.test(String(err?.stderr ?? ''));
 }
 
 /**
@@ -60,17 +80,19 @@ export function isTransientGhError(err) {
  * retry); a non-transient failure, or the last transient one, is thrown.
  *
  * @param {() => unknown} fn
- * @param {{ backoff?: number[], wait?: (ms: number) => void }} [opts]
+ * @param {{ backoff?: number[], wait?: (ms: number) => void, deadline?: number | null }} [opts]
  */
 export function retryTransient(fn, opts = {}) {
   const backoff = opts.backoff ?? RETRY_BACKOFF_MS;
   const wait =
     opts.wait ?? ((ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms));
+  const deadline = opts.deadline ?? waiterDeadline;
   for (let attempt = 0; ; attempt++) {
     try {
       return fn();
     } catch (err) {
       if (attempt >= backoff.length || !isTransientGhError(err)) throw err;
+      if (deadline && Date.now() >= deadline) throw err;
       const firstLine = String(err.stderr || err.message)
         .trim()
         .split('\n')[0];
@@ -210,10 +232,65 @@ export function judgeConclusions(conclusions, mode = {}) {
  * @param {string[]} argv `<pr>` or `<sha> --push`, optional `--timeout=<minutes>`
  */
 async function ciWait(argv) {
-  const { positional, keys, flags } = parseArgs(argv);
+  const { keys } = parseArgs(argv);
+  return withWaiterDeadline(keys.timeout ?? 45, () => ciWaitLoop(argv));
+}
+
+/**
+ * Runs a waiter with an overall deadline that caps every gh call and its
+ * retries. Any error caught at or past the deadline (a killed call, a 502
+ * rethrown after the last retry) ends the wait as `timeout`, exit 4. A
+ * timeout that is not a positive number is a usage error, exit 2.
+ *
+ * @param {number | string} minutes
+ * @param {() => Promise<number>} wait
+ */
+export async function withWaiterDeadline(minutes, wait) {
+  if (!Number.isFinite(Number(minutes)) || Number(minutes) <= 0)
+    return usage('--timeout=<minutes> must be a positive number');
+  const deadline = Date.now() + Number(minutes) * 60_000;
+  waiterDeadline = deadline;
+  try {
+    return await wait();
+  } catch (err) {
+    if (Date.now() < deadline) throw err;
+    console.log(`timeout: ${err.stderr || err.message}`);
+    return EXIT.timeout;
+  } finally {
+    waiterDeadline = null;
+  }
+}
+
+/**
+ * Runs a gh write that may succeed server-side before it is killed: after a
+ * timeout it re-reads the state and carries on if the effect happened.
+ *
+ * @param {() => unknown} write
+ * @param {() => boolean} happened
+ * @param {string} what
+ */
+export function writeWithRecheck(write, happened, what) {
+  try {
+    return write();
+  } catch (err) {
+    if (err?.timedOut !== true) throw err;
+    if (happened()) return null;
+    throw Object.assign(new Error(`${err.message}; ${what} state unknown, check gh pr view`), {
+      timedOut: true,
+    });
+  }
+}
+
+/**
+ * Polls until the workflows finished; `ciWait` wraps it with the deadline.
+ *
+ * @param {string[]} argv as for `ciWait`
+ */
+async function ciWaitLoop(argv) {
+  const { positional, flags } = parseArgs(argv);
   const target = positional[0];
   if (!target) return usage('ci-wait <pr> | ci-wait <sha> --push');
-  const deadline = Date.now() + Number(keys.timeout ?? 45) * 60_000;
+  const deadline = waiterDeadline;
   const push = flags.has('push');
   let pr = null;
   let sha = target;
@@ -270,17 +347,31 @@ async function ciWait(argv) {
 /**
  * Waits for one workflow run (a repeat dispatch) and prints its jobs.
  *
- * @param {string[]} argv `<run id>`
+ * @param {string[]} argv `<run id>`, optional `--timeout=<minutes>` (default 60)
  */
 async function runWait(argv) {
-  const id = argv[0];
-  if (!id) return usage('run-wait <run id>');
+  const { positional, keys } = parseArgs(argv);
+  if (!positional[0]) return usage('run-wait <run id> [--timeout=<minutes>]');
+  return withWaiterDeadline(keys.timeout ?? 60, () => runWaitLoop(positional[0]));
+}
+
+/**
+ * Polls one run until it completed, or the waiter deadline passes.
+ *
+ * @param {string} id
+ */
+async function runWaitLoop(id) {
+  const deadline = waiterDeadline;
   for (;;) {
     const r = ghJson(['run', 'view', id, '--json', 'status,conclusion,headSha,jobs']);
     if (r.status === 'completed') {
       for (const j of r.jobs) console.log(`${j.conclusion.padEnd(9)} ${j.name}`);
       console.log(`run ${id} on ${r.headSha.slice(0, 10)}: ${r.conclusion}`);
       return r.conclusion === 'success' ? EXIT.ok : EXIT.failed;
+    }
+    if (Date.now() > deadline) {
+      console.log(`timeout: run ${id} ${r.status}`);
+      return EXIT.timeout;
     }
     await sleep(POLL_MS);
   }
@@ -311,21 +402,25 @@ async function repeat(argv) {
       '20',
     ]) ?? [];
   const before = new Set(dispatchRuns().map((r) => r.databaseId));
-  run('gh', [
-    'workflow',
-    'run',
-    'ci.yml',
-    '--repo',
-    REPO,
-    '--ref',
-    pr.headRefName,
-    '-f',
-    `smoke_files=${files.join(' ')}`,
-    '-f',
-    `repeat=${keys.repeat ?? 10}`,
-    '-f',
-    `node=${keys.node ?? 22}`,
-  ]);
+  run(
+    'gh',
+    [
+      'workflow',
+      'run',
+      'ci.yml',
+      '--repo',
+      REPO,
+      '--ref',
+      pr.headRefName,
+      '-f',
+      `smoke_files=${files.join(' ')}`,
+      '-f',
+      `repeat=${keys.repeat ?? 10}`,
+      '-f',
+      `node=${keys.node ?? 22}`,
+    ],
+    { timeoutMs: WRITE_TIMEOUT_MS }
+  );
   for (let i = 0; i < 10; i++) {
     await sleep(5000);
     const hit = dispatchRuns().find(
@@ -800,8 +895,9 @@ async function merge(argv) {
     console.log('not merged: the head moved while the gates ran');
     return EXIT.superseded;
   }
-  if (pr.isDraft) run('gh', ['pr', 'ready', String(pr.number), '--repo', REPO]);
-  run('gh', [
+  if (pr.isDraft)
+    run('gh', ['pr', 'ready', String(pr.number), '--repo', REPO], { timeoutMs: WRITE_TIMEOUT_MS });
+  const mergeArgs = [
     'pr',
     'merge',
     String(pr.number),
@@ -812,7 +908,12 @@ async function merge(argv) {
     pr.headRefOid,
     '--subject',
     `${pr.title} (#${pr.number})`,
-  ]);
+  ];
+  writeWithRecheck(
+    () => run('gh', mergeArgs, { timeoutMs: WRITE_TIMEOUT_MS }),
+    () => prInfo(prNumber).state === 'MERGED',
+    `merge of PR #${pr.number}`
+  );
   let mergeSha = null;
   for (let i = 0; i < 5 && !mergeSha; i++) {
     mergeSha = prInfo(prNumber).mergeCommit?.oid ?? null;
@@ -996,7 +1097,10 @@ const COMMANDS = {
   brief: [brief, '<role> N=<n> KEY=value…: render a brief with the shared blocks'],
   'ci-wait': [ciWait, '<pr> | <sha> --push: wait for CI (+ Security); exit 3 when superseded'],
   repeat: [repeat, '<pr> <smoke files…>: dispatch the repeat=10 run on the PR head'],
-  'run-wait': [runWait, '<run id>: wait for a dispatched run, print its jobs'],
+  'run-wait': [
+    runWait,
+    '<run id> [--timeout=<min>]: wait for a dispatched run, print its jobs; exit 4 on timeout',
+  ],
   'merge-check': [mergeCheck, '<pr> [test files…]: gate 6 on current main, in a temp worktree'],
   gates: [gates, '<pr> --tier=N [--macos] [--timing] [--repeat=<id>]: mechanical gates'],
   merge: [merge, '<pr> --tier=N [gate flags]: gates, merge on that head, clean up'],
