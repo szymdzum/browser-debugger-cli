@@ -75,12 +75,12 @@ function fakeOperations(
       }
       return Promise.resolve(value);
     };
-  const release =
-    (name: string) =>
-    (): Promise<void> => {
-      calls.push(name);
-      return name === options.failing ? Promise.reject(new Error('release failed')) : Promise.resolve();
-    };
+  const release = (name: string) => (): Promise<void> => {
+    calls.push(name);
+    return name === options.failing
+      ? Promise.reject(new Error('release failed'))
+      : Promise.resolve();
+  };
   const ops: StartOperations = {
     launchChrome: step('launchChrome', options.external ? null : chrome),
     findPageTarget: step('findPageTarget', undefined),
@@ -105,9 +105,9 @@ function fakeOperations(
  * @param options - See {@link fakeOperations}
  * @returns Calls made, signals passed, whether the start failed, and the stop signal
  */
-async function startThenDispose(options: Parameters<typeof fakeOperations>[1] = {}): Promise<
-  Fake & { failed: boolean; signal: AbortSignal }
-> {
+async function startThenDispose(
+  options: Parameters<typeof fakeOperations>[1] = {}
+): Promise<Fake & { failed: boolean; signal: AbortSignal }> {
   const controller = new AbortController();
   const fake = fakeOperations(controller, options);
   const stack = new ResourceStack(silent);

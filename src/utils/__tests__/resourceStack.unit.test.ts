@@ -24,7 +24,8 @@ void describe('ResourceStack', () => {
   void it('runs the releases last first', async () => {
     const { stack } = createStack();
     const ran: string[] = [];
-    for (const name of ['chrome', 'cdp', 'collectors']) stack.defer(() => void ran.push(name), name);
+    for (const name of ['chrome', 'cdp', 'collectors'])
+      stack.defer(() => void ran.push(name), name);
     await stack.dispose();
     assert.deepEqual(ran, ['collectors', 'cdp', 'chrome']);
   });
