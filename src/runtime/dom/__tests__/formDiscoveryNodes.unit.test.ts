@@ -9,7 +9,11 @@ import { describe, it } from 'node:test';
 
 import { FakeObjectPage } from '@/__testutils__/fakeObjectPage.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
-import { formDiscoveryGroup, readFormDiscovery } from '@/runtime/dom/formDiscoveryNodes.js';
+import {
+  evaluateFormDiscovery,
+  formDiscoveryGroup,
+  readFormDiscovery,
+} from '@/runtime/dom/formDiscoveryNodes.js';
 import type { RawFormData } from '@/runtime/dom/formTypes.js';
 import type { CDPSender } from '@/telemetry/objectExpander.js';
 
@@ -214,6 +218,23 @@ void describe('readFormDiscovery', () => {
       [1, 1]
     );
     assert.deepEqual(page.releasedUses, []);
+  });
+
+  void it('releases the group when the discovery script fails to run (#606)', async () => {
+    const sent: string[] = [];
+    const cdp = {
+      send: (method: string, params: Record<string, unknown> = {}): Promise<unknown> => {
+        sent.push(`${method} ${JSON.stringify(params['objectGroup'] ?? '')}`);
+        if (method === 'Page.createIsolatedWorld')
+          return Promise.resolve({ executionContextId: 1 });
+        if (method === 'Page.getFrameTree')
+          return Promise.resolve({ frameTree: { frame: { id: 'F' } } });
+        if (method === 'Runtime.evaluate') return Promise.reject(new Error('context destroyed'));
+        return Promise.resolve({});
+      },
+    } as unknown as Parameters<typeof evaluateFormDiscovery>[0];
+    await assert.rejects(evaluateFormDiscovery(cdp, GROUP), /context destroyed/);
+    assert.ok(sent.includes(`Runtime.releaseObjectGroup "${GROUP}"`), sent.join(', '));
   });
 
   void it('rejects a result that is not discovery data, and still releases', async () => {

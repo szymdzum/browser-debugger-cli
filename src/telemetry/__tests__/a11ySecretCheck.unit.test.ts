@@ -12,6 +12,7 @@ import { FakeObjectPage } from '@/__testutils__/fakeObjectPage.js';
 import { makeTempDir, removeTempDirs } from '@/__testutils__/tempDirs.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { collectA11yTree } from '@/telemetry/a11y.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
  * A text field with a value.
@@ -75,6 +76,29 @@ void describe('a11y secret field check', () => {
         'a plain value was masked'
       );
       assert.deepEqual(page.releasedUses, []);
+    } finally {
+      await daemon.close();
+    }
+  });
+
+  void it('reads the tree when the release of a check times out (#606)', async () => {
+    const page = new FakeObjectPage({
+      callResult: () => ({ result: { type: 'boolean', value: false } }),
+    });
+    const timedOut = Object.assign(new Error('Runtime.releaseObjectGroup timed out'), {
+      exitCode: EXIT_CODES.CDP_TIMEOUT,
+    });
+    const daemon = await startFakeDaemon({
+      send: (method, params) => {
+        if (method === 'Runtime.releaseObjectGroup') return Promise.reject(timedOut);
+        return method === 'Accessibility.getFullAXTree' && params?.['frameId'] === undefined
+          ? Promise.resolve({ nodes: NODES })
+          : page.send(method, params);
+      },
+    });
+    try {
+      const tree = await collectA11yTree();
+      assert.deepEqual([tree.nodes.get('1')?.value, tree.nodes.get('2')?.value], ['Paris', 'Lyon']);
     } finally {
       await daemon.close();
     }

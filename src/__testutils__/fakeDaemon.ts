@@ -2,7 +2,8 @@
  * A fake daemon on the session socket, for tests of CLI-side helpers that
  * send CDP calls through the daemon (`callCDP`, `callBdgScript`): it answers
  * the handshake and passes `cdp_call` requests to a fake page, all on their
- * own connections, as concurrently as the real daemon. Point
+ * own connections, as concurrently as the real daemon. A page error with an
+ * `exitCode` is answered with that code, like the daemon's 102 and 107. Point
  * `BDG_SESSION_DIR` at a temporary directory before starting it.
  */
 
@@ -47,7 +48,13 @@ async function answer(page: FakeDaemonPage, request: FakeRequest): Promise<objec
     const result = await page.send(request.method ?? '', request.params);
     return { ...base, status: 'ok', data: { result } };
   } catch (error) {
-    return { ...base, status: 'error', error: getErrorMessage(error) };
+    const { exitCode } = error as { exitCode?: unknown };
+    return {
+      ...base,
+      status: 'error',
+      error: getErrorMessage(error),
+      ...(typeof exitCode === 'number' && { exitCode }),
+    };
   }
 }
 
