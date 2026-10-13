@@ -93,6 +93,7 @@ const CASES: Case[] = [
     hiddenReason: /^visibility: hidden$/,
     visible: false,
   })),
+  { id: 'partly-clipped', inspect: null, inViewport: 'partly', visible: true },
   { id: 'far', inspect: /\[offscreen: below\]/, inViewport: 'below', visible: true },
 ];
 

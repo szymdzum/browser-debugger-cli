@@ -41,6 +41,7 @@ const VERDICT_HTML = `<!doctype html><meta charset="utf-8"><title>visibility ver
 <div id="pseudo" style="visibility:hidden"><span class="pseudo" style="visibility:visible"></span></div>
 <div id="outline" style="visibility:hidden"><span style="visibility:visible;display:inline-block;width:30px;height:10px;outline:2px solid red"></span></div>
 <ul id="marker" style="visibility:hidden;margin:0"><li style="visibility:visible"><span style="visibility:hidden">Item</span></li></ul>
+<div style="height:10px;overflow:hidden"><span id="partly-clipped" style="display:inline-block;height:20px">Partly clipped</span></div>
 <div style="height:3000px"></div>
 <div id="far">Far below</div>
 <script>

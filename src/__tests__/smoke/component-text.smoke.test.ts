@@ -130,6 +130,19 @@ void describe('Text web components render themselves', () => {
     assert.ok(visible.every((slot) => !slot.context?.includes('x-acc')));
   });
 
+  void it('does not match with :visible buttons a collapsed accordion clips away', async () => {
+    const query = JSON.parse(await bdg(['dom', 'query', 'button:visible', '--json'])) as {
+      data: { count: number; nodes: { preview?: string }[] };
+    };
+    assert.equal(query.data.count, 6);
+    assert.ok(query.data.nodes.every((node) => node.preview !== 'Hidden'));
+    const hint = await runCommand('dom', ['query', '#light-hidden:visible'], { timeout: 60000 });
+    assert.match(
+      `${hint.stdout}${hint.stderr}`,
+      /1 element matches without :visible but is hidden/
+    );
+  });
+
   void it('says a click on a slot found no box to aim at, not display: none', async () => {
     const output = await bdg(['dom', 'click', 'slot', '--index', '7']);
     assert.match(

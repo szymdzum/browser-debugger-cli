@@ -407,6 +407,25 @@ const MASKED_BY_JS = `(el, describe) => {
 }`;
 
 /**
+ * Page-side test of an element cut away entirely by an overflow clip: it or
+ * an ancestor in the flat tree (slots, shadow hosts) has a box with no area
+ * and clips its overflow (not an inline or `display: contents` one, to which
+ * `overflow` does not apply), as `dom layout`'s `clipped by …: zero height`.
+ * Containing blocks are not considered.
+ */
+export const CLIPPED_AWAY_JS = `(el) => {
+  const flatParent = ${FLAT_PARENT_JS};
+  for (let n = el; n; n = flatParent(n)) {
+    if (n.nodeType !== 1) continue;
+    const s = n.ownerDocument.defaultView.getComputedStyle(n);
+    if (s.display === 'inline' || s.display === 'contents' || (s.overflowX === 'visible' && s.overflowY === 'visible')) continue;
+    const r = n.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return true;
+  }
+  return false;
+}`;
+
+/**
  * Page-side search for what an element paints through its descendants in the
  * flat tree (shadow root, a slot's assigned nodes or fallback content): the
  * first rendered descendant element with `visibility: visible`, a box with
@@ -466,9 +485,8 @@ export const SHOWING_DESCENDANT_JS = `(el) => {
     range.selectNodeContents(t);
     return hasArea(range.getBoundingClientRect()) ? holder : null;
   };
-  for (let n = el; n; n = flatParent(n)) {
-    if (n.nodeType === 1 && clips(n, styleOf(n))) return null;
-  }
+  const clippedAway = ${CLIPPED_AWAY_JS};
+  if (clippedAway(el)) return null;
   const queue = childrenOf(el);
   for (let next = 0; next < queue.length && next < 500; next++) {
     const n = queue[next];
