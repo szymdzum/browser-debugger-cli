@@ -161,7 +161,7 @@ bdg dom frames                                 # The page's iframes, cross-origi
 bdg eval --frame pay "document.title"          # In an iframe: index, name/id, or part of its URL
 ```
 
-Exit 91 means the script threw. `--full` (whole value, not the first 20000 characters) refuses a result over 50 MB with exit 81: return a slice or `.length`. Prefer `dom query` / `dom get` / `dom inspect` when they answer the question.
+Exit 91 means the script threw. `--full` (whole value, not the first 20000 characters) refuses a result over 50 MB of output (bytes) with exit 81: return a slice or `.length`. Prefer `dom query` / `dom get` / `dom inspect` when they answer the question.
 
 ## Network and Console
 

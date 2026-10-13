@@ -90,6 +90,31 @@ void describe('dom eval --full cap', () => {
     assert.equal(after.exitCode, 0, after.stderr);
   });
 
+  void it('refuses what the page copy undercounts or the page-side count misses', async () => {
+    const cases: Record<string, string> = {
+      map: `new Map([[1, 'z'.repeat(60 * 1024 * 1024)]])`,
+      multibyte: `'€'.repeat(20 * 1024 * 1024)`,
+      floats: `new Array(5e6).fill(0.1234567890123456)`,
+    };
+    for (const [name, expression] of Object.entries(cases)) {
+      const result = await runCommand('dom', ['eval', expression, '--full'], { timeout: 120000 });
+      assert.equal(result.exitCode, 81, `${name}: ${result.stdout.length} chars out`);
+      assert.match(result.stderr, /50 MB/, name);
+    }
+  });
+
+  void it('returns an object under the cap exactly as formatted', async () => {
+    const result = await runCommand(
+      'dom',
+      ['eval', `({ a: [1, 2.5, 'é'], b: { c: null } })`, '--full'],
+      { timeout: 60000 }
+    );
+    assert.equal(result.exitCode, 0, result.stderr);
+    const expected =
+      '{\n  "a": [\n    1,\n    2.5,\n    "é"\n  ],\n  "b": {\n    "c": null\n  }\n}\n';
+    assert.equal(result.stdout, expected);
+  });
+
   void it('without --full the same 200 MB eval still prints the preview', async () => {
     const result = await runCommand('dom', ['eval', `'x'.repeat(200 * 1024 * 1024)`], {
       timeout: 120000,
@@ -97,5 +122,14 @@ void describe('dom eval --full cap', () => {
     assert.equal(result.exitCode, 0, result.stderr);
     assert.ok(result.stdout.length < MAX_VALUE_LENGTH + 100, `${result.stdout.length}`);
     assert.match(result.stdout, /more chars \(use --full\)/);
+  });
+
+  void it('refuses an object over the cap on a page that replaced built-ins', async () => {
+    const result = await runCommand(
+      'dom',
+      ['eval', `Object.keys = () => ['a']; ({ a: 'z'.repeat(60 * 1024 * 1024) })`, '--full'],
+      { timeout: 120000 }
+    );
+    assert.equal(result.exitCode, 81, `${result.stdout.length} chars out`);
   });
 });

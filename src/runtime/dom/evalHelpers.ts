@@ -238,7 +238,7 @@ const BRIEF_SUBTYPES = new Set(['node', 'arraybuffer', 'dataview']);
  * below the 20th become `[…]` (with `full`: no entries are cut, levels
  * below the 100th), and a throwing getter becomes `[Error: …]`. Called with
  * a size cap as its argument (`--full`), it adds up the length of every
- * string and key, 8 per number and 1 per element as it copies, stops once the
+ * string and key, the digits of every number and 2 per element or container as it copies (a lower bound of the output, {@link assertWithinFullCap} measures it exactly), stops once the
  * sum passes the cap, and returns `{ tooLarge: sum so far }` instead of
  * `{ copy }` (so a huge value is never built nor sent). It uses the
  * page's built-ins ({@link COPY_BUILTINS}), so it only runs when the page
@@ -270,7 +270,7 @@ export function jsonSafeCopyFunction(full = false): string {
     if (typeof list.length === 'number') {
       for (let i = 0; i < list.length; i++) {
         if (i === MAX_ITEMS) { result.push('…'); break; }
-        spend(1);
+        spend(2);
         result.push(next(list[i]));
       }
       return result;
@@ -278,13 +278,13 @@ export function jsonSafeCopyFunction(full = false): string {
     let count = 0;
     for (const item of list) {
       if (count++ === MAX_ITEMS) { result.push('…'); break; }
-      spend(1);
+      spend(2);
       result.push(next(item));
     }
     return result;
   };
   const leaf = (value) => {
-    spend(typeof value === 'string' ? value.length + 2 : 8);
+    spend(typeof value === 'string' ? value.length + 2 : typeof value === 'number' ? String(value).length : 8);
     if (value === undefined) return null;
     if (typeof value === 'number') {
       if (Number.isNaN(value) || !Number.isFinite(value)) return String(value);
@@ -306,6 +306,7 @@ export function jsonSafeCopyFunction(full = false): string {
     if (type === 'Date') return isNaN(value) ? 'Invalid Date' : value.toISOString();
     if (type === 'RegExp') return String(value);
     if (type === 'Error' || value instanceof Error) return value.name + ': ' + value.message;
+    spend(2);
     ancestors.add(value);
     try {
       if (type === 'Map') return items(value, ([k, v]) => [next(k), next(v)]);
@@ -441,16 +442,19 @@ function unwrapGuardedCopy(answer: unknown): { value: unknown } {
 }
 
 /**
- * Refuse a string result over the `--full` cap (the daemon holds it, but it
- * goes no further).
+ * Refuse a result whose output is over the `--full` cap: the UTF-8 bytes of a
+ * string, or of an object's or array's JSON text formatted as printed (2-space
+ * indent). Runs in the daemon, before the result goes over IPC to the CLI,
+ * whatever way it was copied (a Map or Set, the browser's copy on a page that
+ * replaced built-ins, typed arrays).
  *
- * @param value - A primitive result
- * @throws CommandError (81) for a string over {@link EVAL_FULL_MAX_BYTES}
+ * @param value - The result's value
+ * @throws CommandError (81) for a result over {@link EVAL_FULL_MAX_BYTES}
  */
 function assertWithinFullCap(value: unknown): void {
-  if (typeof value === 'string' && value.length > EVAL_FULL_MAX_BYTES) {
-    throw evalResultTooLarge(value.length, true);
-  }
+  const text = typeof value === 'string' ? value : (JSON.stringify(value, null, 2) ?? '');
+  const bytes = Buffer.byteLength(text);
+  if (bytes > EVAL_FULL_MAX_BYTES) throw evalResultTooLarge(bytes, true);
 }
 
 /**
@@ -854,7 +858,9 @@ export async function evaluateScript(
       EVAL_TIMEOUT_MS,
       () => promiseTimeout()
     );
-    return await toEvalResult(session, settled, target.full ?? false);
+    const result = await toEvalResult(session, settled, target.full ?? false);
+    if (target.full) assertWithinFullCap(result.value);
+    return result;
   } catch (error) {
     throw scope === 'page' && isContextLostError(error)
       ? await pageContextLostError(error, session)
