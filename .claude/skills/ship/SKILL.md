@@ -37,7 +37,7 @@ Files:
 #<N> <slug>  tier <1|2|3>
 - [ ] Implementer: ship brief implementer N=<N> BRANCH=<type>/<slug> → fill scope → spawn (background)
 - [ ] Report ends with `PR <url> HEAD <sha>`; ship ci-wait <pr> (background, 60-minute timeout)
-- [ ] Reviewer: ship brief reviewer … → findings to the same implementer; Not-checked risks resumed
+- [ ] Reviewer: ship brief reviewer … → findings to the same implementer
 - [ ] Tester (tier 2–3): ship brief tester … → findings routed
 - [ ] Fix rounds ≤ 2; the reviewer re-checks each fix commit (SendMessage to the same reviewer)
 - [ ] Tier 3: second review of the fix commit; ship repeat for timing
@@ -55,7 +55,7 @@ An implementer's report ends with `PR <url> HEAD <sha>`. Without that line the w
 
 Render the reviewer brief with the claims of the change and its risks (races, failure and cleanup paths, leaks, security, contracts, recently merged features it could break); never the implementer's reasoning. Reviewers and testers run in the **foreground**.
 
-- Findings come back as **blocking / should-fix / nit** with file:line and a scenario. **Tier 3: a risk from your list under "Not checked" means you resume the reviewer for it** before sending anything on. Tier 1–2: you judge whether the skipped risk matters (the S4 and S5 resumes found nothing new).
+- Findings come back as **blocking / should-fix / nit** with file:line and a scenario. A risk under "Not checked": you judge whether the skipped risk matters (resuming the reviewer for it found nothing in S4–S6).
 - Send every finding to the **same implementer** (SendMessage, so it keeps its context): test and fix in one commit, or an argued rejection; you decide disputes. Nits about the change go into the same commit, never pushed alone (every push is a full CI run).
 - **Each fix commit is re-checked by the same reviewer** (SendMessage with the new SHA and the findings it addressed): cheaper than a new review and still not the author. Tier 3 adds a fresh second reviewer on the fix commit.
 - **At most two fix rounds.** Findings left after the second go to the user: a third round needs an explicit yes; the alternative is to file them.
@@ -79,7 +79,7 @@ After a round, **one verifier** reproduces all older-code findings on current `m
 
 Merge only when all hold on the head SHA you merge. `ship gates <pr> --tier=N` checks the mechanical ones (M); you judge the rest (J). `ship merge <pr>` with the same flags runs the gates, merges with `--match-head-commit`, and removes the worktree if nothing is uncommitted and the branch once `main` contains it. For a PR built on another PR's branch, everything is checked against that base branch.
 
-1. **J Review resolved:** every blocking and should-fix finding fixed or rejected with a reason you accept, re-checked on its fix commit; Not-checked risks resumed.
+1. **J Review resolved:** every blocking and should-fix finding fixed or rejected with a reason you accept, re-checked on its fix commit.
 2. **J Fresh-agent test done** (tier 2–3), its findings about the change fixed.
 3. **M+J Red commit:** the first commit is `test: …` (M); the reviewer ran it and it failed on an assertion about the issue (J). Exempt: tier 1.
 4. **M Repeat run** passed on the final head (`--repeat=<id>`; `--timing` makes a missing one fail). Tier 3 timing: Linux and macOS, repeat ≥ 10; CI or environment changes: the full smoke suite with repeat ≥ 3 on Node 22 only, the full Node matrix only for the Node runtime or `engines`).

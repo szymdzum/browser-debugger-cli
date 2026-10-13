@@ -87,7 +87,7 @@ Run `npm run check`, `npm test`, `npm run build` and the affected smoke files (`
 
 ## Reviewer
 
-Give the reviewer the diff's claims, the issue and the risks, never the implementer's reasoning. At tier 3, a finding it lists under **Not checked** that is on your risk list means you resume it for that item before the review counts; at tier 1–2 you judge whether it matters.
+Give the reviewer the diff's claims, the issue and the risks, never the implementer's reasoning. At every tier you judge whether a risk it lists under **Not checked** matters.
 
 <!-- brief:reviewer -->
 Review commits `<BASE>..<HEAD>` of branch `<BRANCH>` (bdg, issue #<N>; the implementer's worktree is `../bdg-<N>`: don't modify it). `<BASE>` is the merge base with `origin/main` or the tip of the unmerged branch this PR builds on. Review exactly `<HEAD>`, even if the branch moves while you work. Your own worktree:
