@@ -664,9 +664,14 @@ export type BusyScope = 'page' | 'frame';
  *
  * @param cdp - CDP connection
  * @param scope - Whether the target is the page or an iframe
+ * @param mayStop - Checked right before the script is terminated (default: always)
  * @returns The timeout error to report
  */
-async function terminatePageScripts(cdp: CDPSender, scope: BusyScope): Promise<CommandError> {
+async function terminatePageScripts(
+  cdp: CDPSender,
+  scope: BusyScope,
+  mayStop: () => boolean = () => true
+): Promise<CommandError> {
   const pendingUrl = await pendingNavigationUrl(cdp).catch((error: unknown) => {
     log.debug(`Could not check for a pending navigation: ${getErrorMessage(error)}`);
     return undefined;
@@ -675,7 +680,7 @@ async function terminatePageScripts(cdp: CDPSender, scope: BusyScope): Promise<C
     const err = navigationPendingError(pendingUrl);
     return new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.CDP_TIMEOUT);
   }
-  const err = pageBusyError(EVAL_TIMEOUT_MS, scope, await terminateExecution(cdp));
+  const err = pageBusyError(EVAL_TIMEOUT_MS, scope, mayStop() && (await terminateExecution(cdp)));
   return new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.CDP_TIMEOUT);
 }
 
@@ -805,53 +810,83 @@ export interface EvalTarget {
   abandoned?: AbortSignal;
 }
 
+/** A `bdg dom eval` the daemon has not answered yet */
+interface PendingEvaluation {
+  /** Settles once the daemon answered (or Chrome did) */
+  released: Promise<void>;
+}
+
 /**
- * `bdg dom eval` evaluations Chrome has not answered yet, in the order they
- * were sent; one set for every target, as a same-process iframe's script
- * runs on the page's thread though it is sent on another connection
+ * `bdg dom eval` evaluations the daemon has not answered yet, in the order
+ * they were sent; one set for every target, as a same-process iframe's
+ * script runs on the page's thread though it is sent on another connection
  */
-const pendingEvaluations = new Set<Promise<unknown>>();
+const pendingEvaluations = new Set<PendingEvaluation>();
 
 /** How long the target gets to answer before an abandoned eval's script counts as running */
 const ABANDONED_CHECK_MS = 500;
 
+/** Calls that end an eval's tracking for {@link stopWhenAbandoned} */
+interface EvalTracking {
+  /** The daemon answered: the eval is no longer stopped when its client goes */
+  answered: () => void;
+  /** The page answered a check sent after the script: it has finished */
+  scriptFinished: () => void;
+}
+
 /**
- * Stop an eval's script when its client disconnects, as its time limit
- * would ({@link terminatePageScripts}). `Runtime.terminateExecution` stops
- * the running script or else the next one, so it is sent only while the
- * evaluation is still pending, once every evaluation sent before it has
- * settled (a script queued behind another client's must not stop that
- * one), and only when the target does not answer (a script awaiting a
- * promise, or whose result is on its way, leaves it idle). A client gone
- * before the evaluation was sent (e.g. while a `--frame` connection was
- * set up) gets its script stopped the same way.
+ * Stop an eval's script when its client disconnects before the daemon
+ * answered, as its time limit would ({@link terminatePageScripts}).
+ * `Runtime.terminateExecution` stops the running script or else the next
+ * one, so it is sent only while the eval may still be running: not
+ * answered, every eval sent before it answered (a script queued behind
+ * another client's must not stop that one), not known to have finished (a
+ * result Chrome could not send), not awaiting while an eval sent after it
+ * is pending (that one's script may be the busy one; a script without
+ * `await` keeps later ones queued behind it), and the target not answering
+ * a check (a script awaiting a promise, or whose result is on its way,
+ * leaves it idle). The conditions are checked again right before the stop.
+ * A client gone before the evaluation was sent (e.g. while a `--frame`
+ * connection was set up) gets its script stopped the same way.
  *
  * @param cdp - Where to check and stop the target
  * @param scope - Whether the script runs in the page or an iframe
  * @param evaluation - The script's pending `Runtime.evaluate`
+ * @param script - The script (one with `await` may wait while others run)
  * @param abandoned - Aborts when the client disconnects
+ * @returns Calls ending the tracking
  */
 function stopWhenAbandoned(
   cdp: CDPSender,
   scope: BusyScope,
   evaluation: Promise<unknown>,
+  script: string,
   abandoned: AbortSignal | undefined
-): void {
+): EvalTracking {
+  let release = (): void => undefined;
+  const entry: PendingEvaluation = { released: new Promise((resolve) => (release = resolve)) };
   const earlier = [...pendingEvaluations];
-  pendingEvaluations.add(evaluation);
+  pendingEvaluations.add(entry);
+  let scriptDone = false;
+  const mayStop = (): boolean =>
+    pendingEvaluations.has(entry) &&
+    !scriptDone &&
+    (!mentionsAwait(script) || pendingEvaluations.size === 1);
   const stop = (): void => {
-    void stopAbandonedScript(cdp, scope, evaluation, earlier).catch((error: unknown) => {
+    void stopAbandonedScript(cdp, scope, earlier, mayStop).catch((error: unknown) => {
       log.debug(`Could not stop an abandoned eval: ${getErrorMessage(error)}`);
     });
   };
-  const done = (): void => {
-    pendingEvaluations.delete(evaluation);
+  const answered = (): void => {
+    pendingEvaluations.delete(entry);
     abandoned?.removeEventListener('abort', stop);
+    release();
   };
   log.debug(`dom eval sent (${pendingEvaluations.size} pending)`);
-  evaluation.then(done, done);
+  evaluation.then(answered, answered);
   if (abandoned?.aborted) stop();
   else abandoned?.addEventListener('abort', stop, { once: true });
+  return { answered, scriptFinished: () => (scriptDone = true) };
 }
 
 /**
@@ -859,20 +894,19 @@ function stopWhenAbandoned(
  *
  * @param cdp - Where to check and stop the target
  * @param scope - Whether the script runs in the page or an iframe
- * @param evaluation - The script's evaluation
- * @param earlier - Evaluations sent before it
+ * @param earlier - Evals sent before it
+ * @param mayStop - Whether its script may still be the one running
  */
 async function stopAbandonedScript(
   cdp: CDPSender,
   scope: BusyScope,
-  evaluation: Promise<unknown>,
-  earlier: Promise<unknown>[]
+  earlier: PendingEvaluation[],
+  mayStop: () => boolean
 ): Promise<void> {
-  const settled = (): boolean => !pendingEvaluations.has(evaluation);
-  await Promise.allSettled(earlier);
-  if (settled() || (await isAnswering(cdp, ABANDONED_CHECK_MS)) || settled()) return;
+  await Promise.all(earlier.map((evaluation) => evaluation.released));
+  if (!mayStop() || (await isAnswering(cdp, ABANDONED_CHECK_MS)) || !mayStop()) return;
   log.debug('The client of a running eval disconnected; stopping its script');
-  await terminatePageScripts(cdp, scope);
+  await terminatePageScripts(cdp, scope, mayStop);
 }
 
 /**
@@ -945,6 +979,7 @@ const UNSENT_CHECK_MS = 1_000;
  * @param pending - The script's evaluation
  * @param script - The script (one with `await` may still be waiting)
  * @param full - `--full`: a lost result is over its cap
+ * @param onScriptFinished - Called once the page answered a check: the script has finished
  * @returns The answer
  * @throws CommandError (102, or 81 with `--full`) when the answer was lost
  */
@@ -952,12 +987,13 @@ async function untilResultLost<T>(
   cdp: CDPSender,
   pending: Promise<T>,
   script: string,
-  full: boolean
+  full: boolean,
+  onScriptFinished?: () => void
 ): Promise<T> {
   if (mentionsAwait(script)) return pending;
   const stop = new AbortController();
   const answered = pending.finally(() => stop.abort());
-  const lost = checkForLostResult(cdp, stop.signal).then((isLost) => {
+  const lost = checkForLostResult(cdp, stop.signal, onScriptFinished).then((isLost) => {
     if (isLost) throw resultUnsent(full);
     return new Promise<never>(() => undefined);
   });
@@ -981,13 +1017,19 @@ const UNSENT_GRACE_MS = 12_000;
  *
  * @param cdp - CDP connection of the page
  * @param signal - Aborted once the script's answer arrived
+ * @param onScriptFinished - Called once the page answered the check
  * @returns True when the answer is still missing after the grace period
  */
-async function checkForLostResult(cdp: CDPSender, signal: AbortSignal): Promise<boolean> {
+async function checkForLostResult(
+  cdp: CDPSender,
+  signal: AbortSignal,
+  onScriptFinished?: () => void
+): Promise<boolean> {
   try {
     await delay(UNSENT_CHECK_MS, signal);
     if (signal.aborted) return false;
     await cdp.send('Runtime.evaluate', { expression: '1', returnByValue: true });
+    onScriptFinished?.();
     await delay(UNSENT_GRACE_MS, signal);
     return !signal.aborted;
   } catch (error) {
@@ -1100,11 +1142,18 @@ export async function evaluateScript(
   const session = senderFor(cdp, target.sessionId);
   const scope: BusyScope = target.uniqueContextId ? 'frame' : 'page';
   const objectGroup = `bdg-eval-${++evaluations}`;
+  let tracking: EvalTracking | undefined;
   try {
     const evaluation = executeScript(session, script, evaluateOptions(target, objectGroup));
-    stopWhenAbandoned(target.recovery ?? session, scope, evaluation, target.abandoned);
+    tracking = stopWhenAbandoned(
+      target.recovery ?? session,
+      scope,
+      evaluation,
+      script,
+      target.abandoned
+    );
     const response = await withDeadline(
-      untilResultLost(session, evaluation, script, target.full ?? false),
+      untilResultLost(session, evaluation, script, target.full ?? false, tracking.scriptFinished),
       EVAL_TIMEOUT_MS + TERMINATION_GRACE_MS,
       () => evaluationTimeoutError(target.recovery ?? session, scope, script, target.full ?? false)
     );
@@ -1121,6 +1170,7 @@ export async function evaluateScript(
       ? await pageContextLostError(error, session)
       : error;
   } finally {
+    tracking?.answered();
     void releaseObjectGroup(session, objectGroup);
   }
 }
