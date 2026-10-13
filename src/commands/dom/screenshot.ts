@@ -29,6 +29,7 @@ import { missingArgumentError } from '@/errors/messages.js';
 import type { DomScreenshotCommand } from '@/ipc/protocol/commands.js';
 import type { ScreenshotResult, ElementBounds, IndexSource } from '@/types.js';
 import { OutputBuilder, buildSuccessResponse } from '@/ui/OutputBuilder.js';
+import { capturedFramesMessage } from '@/ui/messages/commands.js';
 import { formatDomScreenshot } from '@/ui/formatters/dom.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { delay } from '@/utils/async.js';
@@ -295,7 +296,7 @@ async function handleSequenceCapture(
     if (limit > 0 && frameCount >= limit) break;
     await delay(interval, interrupt);
   }
-  console.error(`Captured ${frameCount} frames`);
+  console.error(capturedFramesMessage(frameCount));
   process.exit(
     interrupt.aborted ? interruptExitCode(interruptSignal(interrupt)) : EXIT_CODES.SUCCESS
   );
@@ -327,7 +328,7 @@ function reportSequenceError(error: unknown, captured: number, json: boolean): n
     console.error(genericError(message));
     if (suggestion) console.error(suggestion);
   }
-  console.error(`Captured ${captured} frames`);
+  console.error(capturedFramesMessage(captured));
   process.exit(exitCode);
 }
 

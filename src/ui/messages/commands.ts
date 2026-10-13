@@ -2178,5 +2178,5 @@ export function cliLoadFailedError(file: string): ErrorWithSuggestion {
  * @returns The line printed on stderr when the sequence ends
  */
 export function capturedFramesMessage(count: number): string {
-  throw new Error('not implemented');
+  return `Captured ${count} ${count === 1 ? 'frame' : 'frames'}`;
 }
