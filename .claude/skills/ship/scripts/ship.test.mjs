@@ -6,11 +6,13 @@
  */
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
 import {
+  appendSnapshotEntries,
   EXIT,
   inScope,
   insertLogRow,
@@ -19,6 +21,7 @@ import {
   overlappingFiles,
   parseArgs,
   parseBriefs,
+  parseSnapshotArgs,
   renderBrief,
   retryTransient,
   run,
@@ -372,4 +375,41 @@ test('a waiter timeout that is not a positive number is a usage error, not an in
   } finally {
     console.error = err;
   }
+});
+
+test('appendSnapshotEntries separates names when the snapshot has no trailing newline', () => {
+  const file = join(mkdtempSync(join(tmpdir(), 'ship-snap-')), 'snap.txt');
+  writeFileSync(file, 'a.png\nb.png');
+  appendSnapshotEntries(file, ['mine.pdf', 'other.txt']);
+  assert.equal(readFileSync(file, 'utf8'), 'a.png\nb.png\nmine.pdf\nother.txt\n');
+  appendSnapshotEntries(file, ['third']);
+  assert.equal(readFileSync(file, 'utf8'), 'a.png\nb.png\nmine.pdf\nother.txt\nthird\n');
+});
+
+test('appendSnapshotEntries handles an empty snapshot', () => {
+  const file = join(mkdtempSync(join(tmpdir(), 'ship-snap-')), 'snap.txt');
+  writeFileSync(file, '');
+  appendSnapshotEntries(file, ['x']);
+  assert.equal(readFileSync(file, 'utf8'), 'x\n');
+});
+
+test('parseSnapshotArgs accepts no arguments or a valid --accept call', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ship-dl-'));
+  writeFileSync(join(dir, 'mine.pdf'), '');
+  assert.deepEqual(parseSnapshotArgs([], dir), { accept: null });
+  assert.deepEqual(parseSnapshotArgs(['--accept', 'mine.pdf'], dir), { accept: ['mine.pdf'] });
+});
+
+test('parseSnapshotArgs rejects anything else so the snapshot is never overwritten', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ship-dl-'));
+  writeFileSync(join(dir, 'x'), '');
+  for (const argv of [['--acept', 'x'], ['x', '--accept'], ['--accept'], ['x']])
+    assert.ok('error' in parseSnapshotArgs(argv, dir), argv.join(' '));
+});
+
+test('parseSnapshotArgs names a missing file and refuses newlines', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ship-dl-'));
+  assert.match(parseSnapshotArgs(['--accept', 'gone.txt'], dir).error, /gone\.txt does not exist/);
+  writeFileSync(join(dir, 'a\nb'), '');
+  assert.match(parseSnapshotArgs(['--accept', 'a\nb'], dir).error, /newline/);
 });
