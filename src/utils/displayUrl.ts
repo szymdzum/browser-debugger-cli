@@ -117,13 +117,23 @@ export function displayTabSwitch<T extends { tab: { url: string } }>(
   };
 }
 
+/** Schemes whose URLs have no authority, so no user info to remove by position */
+const OPAQUE_SCHEME = /^(?:about|blob|chrome|data|file|javascript|mailto|vbscript):/i;
+
+/** A URL with a scheme and `//`, or a scheme-relative one */
+const HIERARCHICAL_URL = /^(?:[a-z][a-z\d+.-]*:)?\/\//i;
+
 /**
  * A URL as the user typed it, as bdg shows it in errors: {@link displayUrl}
- * also for input that does not parse.
+ * also for input that does not parse. A scheme-less `host` (`localhost:3000`,
+ * `user:pass@host:abc/p`) is read as `http://` would read it, so its user
+ * info is removed by position (up to the last `@` before the path, query or
+ * fragment) and its secret parameters masked; the `http://` is not shown.
  *
  * @param url - URL as typed
  * @returns The URL to show
  */
 export function displayTypedUrl(url: string): string {
-  throw new Error(`not implemented: ${url.length}`);
+  if (HIERARCHICAL_URL.test(url) || OPAQUE_SCHEME.test(url)) return displayUrl(url);
+  return displayUrl(`http://${url}`).slice('http://'.length);
 }
