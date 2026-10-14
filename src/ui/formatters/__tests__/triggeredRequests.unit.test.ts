@@ -190,7 +190,7 @@ void describe('formatTriggeredRequestLines with repeated requests', () => {
     const requests = [
       beacon(0, { failed: true, errorText: 'net::ERR_ABORTED' }),
       beacon(1, { failed: true, errorText: 'net::ERR_ABORTED' }),
-      beacon(2, { pending: true }),
+      triggered('event?s=2', { method: 'POST', resourceType: 'Other', pending: true }),
     ];
     assert.deepEqual(formatTriggeredRequestLines(requests), [
       'POST 127.0.0.1:8080/event → FAILED (net::ERR_ABORTED) ×2, pending ×1',
