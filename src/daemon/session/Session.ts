@@ -27,6 +27,7 @@ import {
 import { withMatchedStylesReset } from '@/daemon/session/matchedStylesReset.js';
 import { PageSwitcher, type PageHost, type PageStart } from '@/daemon/session/pageSwitcher.js';
 import { telemetryPluginsOf } from '@/daemon/session/plugins.js';
+import { assertTabRendered } from '@/daemon/session/renderedFrame.js';
 import { acquireSessionResources, type StartOperations } from '@/daemon/session/startSequence.js';
 import { TabTracker } from '@/daemon/session/tabs.js';
 import { releaseConnection, terminateChrome } from '@/daemon/session/teardown.js';
@@ -99,6 +100,13 @@ export function lossEndReason(
   if (cause) return 'disconnected';
   return chrome === 'running' ? 'closed' : 'crash';
 }
+
+/**
+ * Commands that wait for Chrome to render a frame: on a background tab of an
+ * attached Chrome they would never be answered (headless Linux Chrome does
+ * not render background tabs), so they fail fast there instead.
+ */
+const NEEDS_RENDERED_FRAME: ReadonlySet<CommandName> = new Set<CommandName>(['dom_screenshot']);
 
 /** How long Chrome gets to exit after the page connection drops, before the end is called a closed tab */
 const CRASH_SETTLE_MS = 500;
@@ -347,6 +355,7 @@ export class Session {
       const cdp = this.pages.connection;
       if (!cdp) throw new Error('No active session');
       if (PAGE_ACTIONS.has(name)) this.tabs.refuseActionAfterMove();
+      if (this.attachedTab && NEEDS_RENDERED_FRAME.has(name)) await assertTabRendered(cdp);
       return withMatchedStylesReset(cdp, name, () => handler(cdp, params, abandoned));
     });
   }

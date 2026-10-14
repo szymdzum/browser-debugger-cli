@@ -5,7 +5,9 @@
  * it (its `window.__marker` stays, the error it logged before the attach is
  * in `bdg console`), runs commands on it, and `bdg stop` leaves both tabs.
  *
- * A download the tab starts is recorded, one started by another tab is not;
+ * A screenshot of a background tab exits 85 at once (with bdg's focus
+ * emulation turned off, macOS headless Chrome renders no frame of it, as
+ * Linux never does). A download the tab starts is recorded, one started by another tab is not;
  * both are saved into the throwaway profile's download folder. Closing the
  * attached tab ends the session as `closed`; `bdg cleanup` (plain and
  * `--force`) leaves Chrome and its tabs alone.
@@ -19,7 +21,7 @@ import * as fs from 'node:fs';
 import * as net from 'node:net';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { after, before, describe, it } from 'node:test';
+import { after, afterEach, before, describe, it } from 'node:test';
 
 import { runCommand } from '@/__testutils__/commandRunner.js';
 import { startFixtureServer, type FixtureServer } from '@/__testutils__/fixtureServer.js';
@@ -230,11 +232,15 @@ void describe('bdg attach', () => {
         `--unsafely-treat-insecure-origin-as-secure=http://inner.test:${new URL(fixture.url).port}`,
       ],
     });
-    tabA = await openTab(chrome.port, `${fixture.url}attach-a`);
     tabB = await openTab(chrome.port, `${fixture.url}attach-b`);
+    tabA = await openTab(chrome.port, `${fixture.url}attach-a`);
     assert.equal(await evaluateInTab(tabA, 'window.__marker'), 'kept');
     assert.equal(await evaluateInTab(tabB, 'document.title'), 'Attach B');
     proxy = await startCountingProxy(chrome.port);
+  });
+
+  afterEach(async () => {
+    await runCommand('stop', [], { timeout: 15000, env });
   });
 
   after(async () => {
@@ -347,6 +353,25 @@ void describe('bdg attach', () => {
     assert.ok(pages.some((page) => page.url.endsWith('/attach-a')));
     assert.ok(pages.some((page) => page.url.endsWith('/attach-b')));
     assert.equal(await evaluateInTab(tabA, 'window.__marker'), 'kept');
+  });
+
+  void it('refuses a screenshot of a background tab at once (85) and never brings it to the front', async () => {
+    const start = await runJson('attach', ['attach-b', '--chrome-ws-url', String(proxy.port)]);
+    assert.equal(start.exitCode, 0, JSON.stringify(start.envelope));
+    const unfocused = await run('cdp', [
+      'Emulation.setFocusEmulationEnabled',
+      '--params',
+      '{"enabled":false}',
+    ]);
+    assert.equal(unfocused.exitCode, 0, unfocused.output);
+    const began = Date.now();
+    const shot = await runJson('dom', ['screenshot', path.join(sessionDir, 'hidden.png')]);
+    assert.equal(shot.exitCode, 85, JSON.stringify(shot.envelope));
+    assert.match(shot.envelope.error ?? '', /in the background/);
+    assert.match(shot.envelope.suggestion ?? '', /Bring the tab to the front/);
+    assert.ok(Date.now() - began < 10000, 'refused without waiting');
+    assert.equal(await evaluateInTab(tabB, 'document.visibilityState'), 'hidden');
+    assert.equal(await evaluateInTab(tabA, 'document.visibilityState'), 'visible');
   });
 
   void it('ends the session as closed when the attached tab closes', async () => {

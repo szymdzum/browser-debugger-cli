@@ -3554,3 +3554,14 @@ export function emptyTabPatternError(tabList: string): ErrorWithSuggestion {
     suggestion: `Give an index or part of the URL or title:\n${tabList}`,
   };
 }
+
+/**
+ * A command that needs a rendered frame, on an attached tab Chrome does not
+ * render (in the background): it would wait forever (`bdg attach`).
+ */
+export function backgroundTabError(): ErrorWithSuggestion {
+  return {
+    message: "The attached tab is in the background, so Chrome doesn't render it",
+    suggestion: 'Bring the tab to the front in Chrome, then run the command again',
+  };
+}
