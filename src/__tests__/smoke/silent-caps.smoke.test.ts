@@ -75,6 +75,21 @@ void describe('Silent caps', () => {
     });
   });
 
+  void describe('Shown on /caps-shown', () => {
+    before(() => open(`${fixture.url}caps-shown`));
+
+    void it('counts the rows beyond the 10 a read returns', async () => {
+      const data = (
+        JSON.parse(await bdg(['dom', 'click', '#big', '--json'])) as {
+          data: { shown?: unknown[]; moreShown?: number; moreShownPartial?: boolean };
+        }
+      ).data;
+      assert.equal(data.shown?.length, 3);
+      assert.equal(data.moreShown, 12);
+      assert.equal(data.moreShownPartial, undefined);
+    });
+  });
+
   void describe('console --level on /caps-console', () => {
     before(() => open(`${fixture.url}caps-console`));
 

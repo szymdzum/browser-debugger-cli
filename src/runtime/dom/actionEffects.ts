@@ -179,6 +179,10 @@ export interface ReadSnapshot {
   settle?: SettleSignals;
   /** Elements the action showed (when asked for) */
   shown?: ShownElement[];
+  /** Elements beyond the page's own cap that also qualified */
+  shownCut?: number;
+  /** The page's time budget stopped the scan, so more may exist */
+  shownPartial?: boolean;
   /** First form that fired `submit` during the watch (same document only) */
   submitted?: FormSubmit;
   /** The pressed button's own change (same document only) */
@@ -317,10 +321,11 @@ function unreportedShown(shown: ShownElement[], messages: NewMessage[]): ShownEl
  *
  * @param shown - Elements the page found shown by the action
  * @param messages - New messages being reported
+ * @param cut - Elements the page found beyond the ones it returned
  * @returns Elements beyond {@link MAX_SHOWN_ELEMENTS}
  */
-export function shownLeftOut(shown: ShownElement[], messages: NewMessage[]): number {
-  return Math.max(0, unreportedShown(shown, messages).length - MAX_SHOWN_ELEMENTS);
+export function shownLeftOut(shown: ShownElement[], messages: NewMessage[], cut = 0): number {
+  return Math.max(0, unreportedShown(shown, messages).length - MAX_SHOWN_ELEMENTS) + cut;
 }
 
 /**
@@ -770,13 +775,14 @@ function effectsOf(
         ? newMessages(start.messages, snapshot.messages, snapshot.fresh)
         : { messages: [], more: 0 };
     const shown = shownElements(snapshot?.shown ?? [], messages);
-    const moreShown = shownLeftOut(snapshot?.shown ?? [], messages);
+    const moreShown = shownLeftOut(snapshot?.shown ?? [], messages, snapshot?.shownCut);
     return {
       ...(navigation && { navigation }),
       ...(messages.length > 0 && { messages }),
       ...(more > 0 && { moreMessages: more }),
       ...(shown.length > 0 && { shown }),
       ...(moreShown > 0 && { moreShown }),
+      ...(moreShown > 0 && snapshot?.shownPartial && { moreShownPartial: true }),
       ...pressOutcomes(snapshot),
     };
   } catch (error) {

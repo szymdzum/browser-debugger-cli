@@ -45,6 +45,9 @@ export function consoleIndexGapNote(skipped: ConsoleSkipped): string {
   return `[n] are positions in the session's message list; not listed in between: ${reasons.join(', ')}`;
 }
 
+/** Order of the levels in the hidden-messages note; `other` are dir, table, groups, ... */
+const HIDDEN_ORDER = ['error', 'warning', 'info', 'debug', 'other'] as const;
+
 /**
  * Note under the header of a `--level` list: how many messages the filter hid.
  *
@@ -53,9 +56,14 @@ export function consoleIndexGapNote(skipped: ConsoleSkipped): string {
  * @returns e.g. `3 messages hidden by --level error (2 info, 1 warning)`
  */
 export function consoleHiddenByLevelNote(level: ConsoleLevel, hidden: HiddenByLevel): string {
-  const counts = Object.entries(hidden).map(([name, count]) => ({ name, count }));
+  const counts = HIDDEN_ORDER.flatMap((name) => {
+    const count = hidden[name];
+    return count ? [{ name, count }] : [];
+  });
   const total = counts.reduce((sum, { count }) => sum + count, 0);
-  const detail = counts.map(({ name, count }) => `${count} ${name}`).join(', ');
+  const detail = counts
+    .map(({ name, count }) => `${count} ${name === 'other' ? 'other types' : name}`)
+    .join(', ');
   return `${pluralize(total, 'message')} hidden by --level ${level} (${detail})`;
 }
 

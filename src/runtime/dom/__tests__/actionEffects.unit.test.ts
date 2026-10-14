@@ -504,6 +504,7 @@ void describe('shownElements', () => {
     const shown = ['Saved', 'one', 'two', 'three', 'four'].map((text) => ({ text, element: 'li' }));
     assert.equal(shownLeftOut(shown, [{ text: 'Saved', element: 'li' }]), 1);
     assert.equal(shownLeftOut(shown.slice(0, 3), []), 0);
+    assert.equal(shownLeftOut(shown, [], 5), 7);
   });
 });
 

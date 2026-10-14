@@ -108,8 +108,11 @@ void describe('console --level hides', () => {
     const output = formatConsole([], { level: 'error', hiddenByLevel: { info: 3 } });
     assert.match(output, /Console Messages \(0 total\)/);
     assert.match(output, /3 messages hidden by --level error \(3 info\)/);
-    const two = formatConsole([], { level: 'error', hiddenByLevel: { info: 2, warning: 1 } });
-    assert.match(two, /3 messages hidden by --level error \(2 info, 1 warning\)/);
+    const two = formatConsole([], {
+      level: 'error',
+      hiddenByLevel: { other: 1, info: 2, warning: 1 },
+    });
+    assert.match(two, /4 messages hidden by --level error \(1 warning, 2 info, 1 other types\)/);
   });
 
   void it('adds hiddenByLevel to the JSON, total unchanged', () => {

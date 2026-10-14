@@ -375,10 +375,11 @@ export function downloadsDirUnavailableReason(detail: string): string {
  * Last `New text:` or `Shown:` row when an action made more messages or elements appear than are listed.
  *
  * @param count - Messages or elements not listed
- * @returns e.g. `(+4 more)`
+ * @param partial - The count is a minimum
+ * @returns e.g. `(+4 more)`, `(+4 or more)`
  */
-export function moreMessagesText(count: number): string {
-  return `(+${count} more)`;
+export function moreMessagesText(count: number, partial = false): string {
+  return `(+${count} ${partial ? 'or ' : ''}more)`;
 }
 
 /**

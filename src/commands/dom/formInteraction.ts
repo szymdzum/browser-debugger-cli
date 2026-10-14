@@ -613,7 +613,7 @@ function formatActionOutput(
     'Shown',
     [
       ...(result.shown ?? []).map(shownElementText),
-      ...(result.moreShown ? [moreMessagesText(result.moreShown)] : []),
+      ...(result.moreShown ? [moreMessagesText(result.moreShown, result.moreShownPartial)] : []),
     ],
     keyWidth
   );
