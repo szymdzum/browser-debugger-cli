@@ -6,6 +6,7 @@
  */
 
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import { describe, it } from 'node:test';
 
 import { Command } from 'commander';
@@ -13,6 +14,7 @@ import { Command } from 'commander';
 import {
   cdpCallResult,
   handleDescribeMethod,
+  interruptedEventWork,
   isBareDomain,
   methodToSend,
   pageExceptionResult,
@@ -215,5 +217,36 @@ void describe('bdg cdp --help', () => {
     assert.doesNotMatch(description, /Execution: case-insensitive \(/);
     assert.match(description, /bundled methods are case-insensitive/);
     assert.match(description, /Other methods are sent as typed \(case-sensitive\)/);
+  });
+});
+
+void describe('interruptedEventWork', () => {
+  const out = path.resolve('events.ndjson');
+
+  void it('a call with --out may have been sent and writes the resolved file', () => {
+    assert.deepEqual(interruptedEventWork('Tracing.end', { out: 'events.ndjson' }), {
+      sent: 'CDP call',
+      writing: out,
+    });
+  });
+
+  void it('--events --out without a method writes an events file', () => {
+    assert.deepEqual(interruptedEventWork(undefined, { out: 'events.ndjson' }), {
+      file: 'events file',
+      writing: out,
+    });
+  });
+
+  void it('a script call with --out is stopped and still names the file', () => {
+    assert.deepEqual(interruptedEventWork('Runtime.evaluate', { out: 'events.ndjson' }), {
+      stopped: 'script',
+      writing: out,
+    });
+  });
+
+  void it('without --out: the call alone, or nothing for a read', () => {
+    assert.deepEqual(interruptedEventWork('Tracing.end', {}), { sent: 'CDP call' });
+    assert.deepEqual(interruptedEventWork('Runtime.evaluate', {}), { stopped: 'script' });
+    assert.equal(interruptedEventWork(undefined, {}), undefined);
   });
 });

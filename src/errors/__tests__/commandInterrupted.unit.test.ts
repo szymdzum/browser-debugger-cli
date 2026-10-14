@@ -52,6 +52,22 @@ void describe('commandInterruptedError', () => {
     );
   });
 
+  void it('says a call that writes a file may have reached the page and names the file (#758)', () => {
+    const { suggestion } = commandInterruptedError({ sent: 'CDP call', writing: '/tmp/t.ndjson' });
+    assert.match(suggestion, /^The CDP call may already have reached the page; /);
+    assert.match(suggestion, /\/tmp\/t\.ndjson/);
+    assert.match(suggestion, /may or may not have been written/);
+    assert.match(suggestion, /missing or partial file means the collection stopped early/);
+    assert.match(suggestion, /start over .*Tracing\.end/);
+    assert.doesNotMatch(suggestion, /run (it|the command) again/);
+  });
+
+  void it('names the file of a stopped script that writes one (#758)', () => {
+    const { suggestion } = commandInterruptedError({ stopped: 'script', writing: '/tmp/t.ndjson' });
+    assert.match(suggestion, /^The script was stopped on the page if it was still running; /);
+    assert.match(suggestion, /file \/tmp\/t\.ndjson may or may not have been written/);
+  });
+
   void it('is one line in text output', () => {
     const line = commandInterruptedLine(commandInterruptedError({ sent: 'fill' }));
     assert.match(line, /^Interrupted\. The fill may/);

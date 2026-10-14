@@ -46,6 +46,8 @@ export const CDP_BEHAVIORS: BehaviorTable = {
     default: 'Events are returned in the output, kept to about 20000 characters',
     whenEnabled:
       'The daemon writes every event as one NDJSON line ({ method, params, ts }) as it arrives, to a new temp file next to the target (created exclusively, never through a symlink) that replaces the file only once the command succeeded: a failed method or write leaves an existing file as it was. The events are written unredacted (headers, cookies, Set-Cookie and URLs as sent; the masking of network har and details network does not apply), so the file is 0600, also over an existing file of another mode (the temp file is created 0600 and replaces the old inode; nothing is chmod-ed before the command succeeded). A symlink at the path is replaced by a regular file, and the file it pointed to is left untouched. It returns { file, count, bytes } instead of the events. Should the disk fall over 64 MB behind, further events are dropped and counted (dropped, complete: false); --events removes events from the buffer only once the file is in place. A trace becomes a DevTools Performance file with: jq -s \'{traceEvents: [.[] | select(.method == "Tracing.dataCollected") | .params.value[]]}\' trace.ndjson > trace.json',
+    automaticBehavior:
+      'Ctrl-C or SIGTERM does not stop the daemon: it ends the collection and may still write the file, and the call may have reached the page. The Interrupted suggestion names the path (The CDP call may already have reached the page; the file … may or may not have been written; check …) and never says to run it again',
   },
   'cdp:--listen': {
     default: 'Events between commands are not kept',
