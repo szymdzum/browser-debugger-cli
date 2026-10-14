@@ -10,9 +10,6 @@ import { describe, it } from 'node:test';
 import type { CDPConnection } from '@/connection/cdp.js';
 import { evaluateScript } from '@/runtime/dom/evalHelpers.js';
 
-/** How long the page gets to receive a stop after the client disconnected */
-const STOP_WINDOW_MS = 1_500;
-
 /**
  * A page that never sends the eval's result and, once `busy`, answers
  * nothing else either (another client's script runs).
@@ -50,8 +47,14 @@ void describe('evaluateScript after its answer', () => {
       /could not send its result/i
     );
     page.busy = true;
+    const sentBeforeDisconnect = page.sent.length;
     client.abort();
-    await new Promise((resolve) => setTimeout(resolve, STOP_WINDOW_MS));
-    assert.ok(!page.sent.includes('Runtime.terminateExecution'), page.sent.join(', '));
+    await new Promise((resolve) => setImmediate(resolve));
+    const afterDisconnect = page.sent.slice(sentBeforeDisconnect);
+    assert.deepEqual(
+      afterDisconnect,
+      [],
+      'a stop begins with a busy probe, then terminateExecution'
+    );
   });
 });

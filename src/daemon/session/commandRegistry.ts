@@ -34,7 +34,6 @@ import { readBlockedSubmit } from '@/runtime/dom/blockedSubmit.js';
 import {
   evaluateScript,
   type LostCheckTiming,
-  mentionsAwait,
   untilAnswerLost,
   withBusyPageRecovery,
 } from '@/runtime/dom/evalHelpers.js';
@@ -59,6 +58,7 @@ import { evaluateInFrame, listFrames } from '@/runtime/dom/frames.js';
 import { inspectElement } from '@/runtime/dom/inspect.js';
 import { inspectLayout } from '@/runtime/dom/layout.js';
 import { onScriptTarget } from '@/runtime/dom/targetNode.js';
+import { hasTopLevelAwait } from '@/runtime/dom/topLevelAwait.js';
 import { waitForCondition } from '@/runtime/dom/wait.js';
 import { readAuthState, writeAuthState } from '@/runtime/page/authState.js';
 import { sendForBdgScript } from '@/runtime/page/bdgWorld.js';
@@ -531,7 +531,7 @@ export function mayLoseReply(params: CommandSchemas['cdp_call']['requestSchema']
   if (params.method !== 'Runtime.evaluate' || params.isolated) return false;
   const { expression, awaitPromise, contextId, uniqueContextId } = params.params ?? {};
   if (contextId !== undefined || uniqueContextId !== undefined) return false;
-  return awaitPromise !== true && typeof expression === 'string' && !mentionsAwait(expression);
+  return awaitPromise !== true && typeof expression === 'string' && !hasTopLevelAwait(expression);
 }
 
 /**
