@@ -18,6 +18,7 @@ export type {
   ConsoleJsonOutput,
   ConsoleLevel,
   ConsoleSkipped,
+  HiddenByLevel,
   ConsoleSummary,
   DeduplicatedMessage,
 } from './console/shared.js';

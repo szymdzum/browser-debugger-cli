@@ -58,6 +58,8 @@ export interface ConsoleFormatOptions {
   level?: ConsoleLevel | undefined;
   /** Messages between the first and last listed index that the filters left out */
   skipped?: ConsoleSkipped | undefined;
+  /** Messages of the page the level filter hid, per level (`--level`) */
+  hiddenByLevel?: HiddenByLevel | undefined;
   /** Distinct errors and warnings listed, the newest (0 = all; default {@link DEFAULT_GROUP_LIMIT}) */
   groupLimit?: number | undefined;
   /** Oldest messages the session dropped at its limit */
@@ -93,6 +95,9 @@ export function newestGroups(
   if (keep === 0 || groups.length <= keep) return { shown: groups, more: 0 };
   return { shown: groups.slice(-keep), more: groups.length - keep };
 }
+
+/** Messages the `--level` filter hid, per level of the messages (`other`: dir, table, groups, ...) */
+export type HiddenByLevel = Partial<Record<ConsoleInternalLevel, number>>;
 
 /**
  * Messages the page and level filters left out between the first and last
@@ -134,6 +139,8 @@ export interface ConsoleJsonOutput {
   moreErrors?: number;
   /** Earlier distinct warnings not in `warnings` */
   moreWarnings?: number;
+  /** Messages of the page that `--level` hid, per level; absent when none (`summary.total` counts the listed ones only) */
+  hiddenByLevel?: HiddenByLevel;
   /** Oldest messages the session dropped at its limit (10000 are kept) */
   dropped?: number;
   /** When the page crashed (epoch ms), while it is not loaded again */

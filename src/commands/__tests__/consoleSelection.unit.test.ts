@@ -6,9 +6,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { listsMessages, skippedMessages } from '@/commands/console.js';
+import { hiddenByLevel, listsMessages, skippedMessages } from '@/commands/console.js';
 import type { ConsoleMessage } from '@/types.js';
-import { formatConsole, lastMessages } from '@/ui/formatters/console.js';
+import { buildConsoleJsonOutput, formatConsole, lastMessages } from '@/ui/formatters/console.js';
 import { consoleIndexGapNote } from '@/ui/messages/consoleMessages.js';
 
 /**
@@ -89,5 +89,33 @@ void describe('console index gaps', () => {
       consoleIndexGapNote({ otherPages: 2, otherLevels: 1 }),
       "[n] are positions in the session's message list; not listed in between: 1 message of another level, 2 messages from another page load (-H lists all)"
     );
+  });
+});
+
+void describe('console --level hides', () => {
+  void it('counts the current page messages of other levels, also when none is listed', () => {
+    const all = [message(0, 1), message(1, 1, 'warning'), message(2, 1, 'info'), message(3, 0)];
+    assert.deepEqual(hiddenByLevel(all, { level: 'error' }, 1), { info: 2, warning: 1 });
+    assert.deepEqual(hiddenByLevel(all, { level: 'error', history: true }, 1), {
+      info: 3,
+      warning: 1,
+    });
+    assert.deepEqual(hiddenByLevel(all, {}, 1), {});
+    assert.deepEqual(hiddenByLevel(all, { level: 'info' }, 1), { warning: 1 });
+  });
+
+  void it('says it under the header', () => {
+    const output = formatConsole([], { level: 'error', hiddenByLevel: { info: 3 } });
+    assert.match(output, /Console Messages \(0 total\)/);
+    assert.match(output, /3 messages hidden by --level error \(3 info\)/);
+    const two = formatConsole([], { level: 'error', hiddenByLevel: { info: 2, warning: 1 } });
+    assert.match(two, /3 messages hidden by --level error \(2 info, 1 warning\)/);
+  });
+
+  void it('adds hiddenByLevel to the JSON, total unchanged', () => {
+    const output = buildConsoleJsonOutput([], { hiddenByLevel: { info: 3 } });
+    assert.deepEqual(output.hiddenByLevel, { info: 3 });
+    assert.equal(output.summary.total, 0);
+    assert.equal(buildConsoleJsonOutput([], {}).hiddenByLevel, undefined);
   });
 });

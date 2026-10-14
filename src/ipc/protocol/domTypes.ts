@@ -167,6 +167,8 @@ export interface ActionEffects {
   moreMessages?: number;
   /** Elements a hover or key press showed (at most 3, outermost first; absent when none) */
   shown?: ShownElement[];
+  /** How many more elements qualified than `shown` lists */
+  moreShown?: number;
   /**
    * A form fired `submit` during the action, in the same document (absent
    * otherwise; a submit that loaded a new document is the navigation):

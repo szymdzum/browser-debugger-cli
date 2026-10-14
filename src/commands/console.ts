@@ -30,6 +30,7 @@ import {
   type ConsoleFormatOptions,
   type ConsoleLevel,
   type ConsoleSkipped,
+  type HiddenByLevel,
 } from '@/ui/formatters/console.js';
 import { pageCrashedNote } from '@/ui/messages/commands.js';
 import {
@@ -124,6 +125,25 @@ function applyFilters(
     : filterByCurrentNavigation(messages, currentNavigationId);
   if (options.level) filtered = filterByLevel(filtered, options.level);
   return filtered;
+}
+
+/**
+ * Messages of the page in view that `--level` hid, per level.
+ *
+ * @param messages - All messages of the session
+ * @param options - `--history` and `--level`
+ * @param currentNavigationId - Navigation id of the current page, if known
+ * @returns Counts per level of the hidden messages (empty without `--level` or when none)
+ */
+export function hiddenByLevel(
+  messages: ConsoleMessage[],
+  options: Pick<ConsoleCommandOptions, 'history' | 'level'>,
+  currentNavigationId?: number
+): HiddenByLevel {
+  void messages;
+  void options;
+  void currentNavigationId;
+  throw new Error('not implemented');
 }
 
 /**

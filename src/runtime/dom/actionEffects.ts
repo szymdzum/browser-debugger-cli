@@ -303,6 +303,19 @@ export function shownElements(shown: ShownElement[], messages: NewMessage[]): Sh
 }
 
 /**
+ * How many elements qualify as shown but are not listed by {@link shownElements}.
+ *
+ * @param shown - Elements the page found shown by the action
+ * @param messages - New messages being reported
+ * @returns Elements beyond {@link MAX_SHOWN_ELEMENTS}
+ */
+export function shownLeftOut(shown: ShownElement[], messages: NewMessage[]): number {
+  void shown;
+  void messages;
+  throw new Error('not implemented');
+}
+
+/**
  * Bursts of a read within {@link BUSY_WINDOW_MS} that may make the DOM look
  * busy, else none: at least {@link BUSY_BURSTS} of them, or a single one
  * older than {@link BUSY_RECENT_MS} (quiet since, unless the page stalled
