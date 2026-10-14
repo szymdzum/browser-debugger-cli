@@ -4,7 +4,7 @@
  * A zero-size `<g role=button>` has no `click()` method and no box for the
  * mouse, so `dom click` (and `--double`) dispatch the events themselves (method
  * `dom`) and the page's listener sees them. A fallback script that throws is
- * reported as a script failure (110), never as "removed" (83/87).
+ * reported as a script failure (91), never as "removed" (83/87).
  */
 
 import * as assert from 'node:assert/strict';
@@ -87,8 +87,9 @@ void describe('Clicking SVG elements without a box', () => {
       'eval',
       'document.querySelector("g[aria-label=other]").dispatchEvent = () => { throw new Error("boom"); }; 1',
     ]);
-    const text = await bdg(['dom', 'click', 'g[aria-label=other]'], 110);
+    const text = await bdg(['dom', 'click', 'g[aria-label=other]'], 91);
     assert.match(text, /boom/);
+    assert.match(text, /The page's own code threw during the click/);
     assert.doesNotMatch(text, /removed|no longer in the page/);
   });
 });

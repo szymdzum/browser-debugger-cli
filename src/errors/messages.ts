@@ -2239,7 +2239,7 @@ export function clickTargetDetachedError(selector: string): ErrorWithSuggestion 
 
 /**
  * An action's page script threw (on a page whose built-ins all look like the
- * browser's).
+ * browser's): the page's own code failed, not bdg's.
  *
  * @param action - The action, e.g. `fill`
  * @param exception - What the script threw, e.g. `TypeError: x is not a function`
@@ -2253,19 +2253,19 @@ export function actionScriptFailedError(
   selector: string,
   listIndex?: number
 ): ErrorWithSuggestion {
+  const message = `The page's own code threw during the ${action}: ${exception}`;
+  const cause = `An event listener or a method the page replaced on the element (focus, click, dispatchEvent) threw: check`;
+  const inspect = `or inspect its methods with ${sessionCommand("bdg dom eval '…'")}`;
   if (Number.isInteger(listIndex) && (listIndex ?? -1) >= 0) {
     return {
-      message: `The ${action} script failed in the page: ${exception}`,
-      suggestion: `Check the element with ${sessionCommand(`bdg dom get ${listIndex}`)}, or act on it with ${sessionCommand("bdg dom eval '…'")}`,
+      message,
+      suggestion: `${cause} ${sessionCommand(`bdg dom listeners ${listIndex}`)}, ${inspect}`,
     };
   }
   const damage = detectSelectorQuoteDamage(selector);
-  return {
-    message: `The ${action} script failed in the page: ${exception}`,
-    suggestion: damage.damaged
-      ? `The selector looks damaged by shell quoting${damage.details ? ` (${damage.details})` : ''}; query it first with ${sessionCommand(`bdg dom query ${JSON.stringify(selector)}`)}, then act on the index`
-      : `Check the element with ${sessionCommand(`bdg dom get ${JSON.stringify(selector)}`)}, or act on it with ${sessionCommand("bdg dom eval '…'")}`,
-  };
+  const checkListeners = `${cause} ${sessionCommand(`bdg dom listeners ${JSON.stringify(selector)}`)}, ${inspect}`;
+  const quoting = `. If the selector was damaged by shell quoting${damage.details ? ` (${damage.details})` : ''}, query it first with ${sessionCommand(`bdg dom query ${JSON.stringify(selector)}`)}, then act on the index`;
+  return { message, suggestion: damage.damaged ? checkListeners + quoting : checkListeners };
 }
 
 /**

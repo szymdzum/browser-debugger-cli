@@ -58,7 +58,7 @@ export class ActionScriptError extends CommandError {
     selector: string
   ) {
     const err = actionScriptFailedError(action, exception, selector);
-    super(err.message, { suggestion: err.suggestion }, EXIT_CODES.SOFTWARE_ERROR);
+    super(err.message, { suggestion: err.suggestion }, EXIT_CODES.SCRIPT_ERROR);
   }
 }
 
