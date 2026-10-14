@@ -43,7 +43,7 @@ function buildContextText(node: A11yNode, domContext: DomContext | null): string
   }
 
   if (domContext) {
-    const tagPart = `<${domContext.tag}`;
+    const tagPart = `<${domContext.tag}${domContext.id ? `#${domContext.id}` : ''}`;
     const { shown } = labelClasses(domContext.classes, 3);
     const classPart = shown.length > 0 ? `.${shown.join('.')}` : '';
     const previewPart = domContext.preview && !domContext.text ? ` "${domContext.preview}"` : '';
@@ -113,7 +113,7 @@ export function formatSemanticNodeWithContext(data: SemanticNodeWithContext): st
   const line = `${roleText}${contextText}${keysText}${propsText}${inferredText}`;
   const text = textNotOnRoleLine(node, domContext);
   if (text) return joinLines(line, elementTextLine(text));
-  if (domContext?.childCount !== undefined && !node.name) {
+  if (domContext?.childCount !== undefined && !node.name && !holdsNoChildren(domContext.tag)) {
     return joinLines(
       line,
       emptyElementLine(
@@ -124,6 +124,39 @@ export function formatSemanticNodeWithContext(data: SemanticNodeWithContext): st
     );
   }
   return line;
+}
+
+/**
+ * Elements that cannot hold children (void elements) or whose content is a
+ * value shown on the role line (form controls): an empty-element line adds
+ * nothing for them.
+ */
+const NO_CHILDREN_TAGS = new Set([
+  'area',
+  'base',
+  'br',
+  'col',
+  'embed',
+  'hr',
+  'img',
+  'input',
+  'link',
+  'meta',
+  'source',
+  'track',
+  'wbr',
+  'select',
+  'textarea',
+]);
+
+/**
+ * Whether an element is one that never has children to list.
+ *
+ * @param tag - Lowercase tag name
+ * @returns True for void elements, `select` and `textarea`
+ */
+function holdsNoChildren(tag: string): boolean {
+  return NO_CHILDREN_TAGS.has(tag);
 }
 
 /**

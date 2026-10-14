@@ -648,7 +648,7 @@ void describe('Reading text in dom get and dom query', () => {
   void it('reads the content a shadow root shows through a slot', async () => {
     assert.match(
       await bdg(['dom', 'get', '#note-text']),
-      /^\[Paragraph\] <p> "Note: Slotted note text"$/m
+      /^\[Paragraph\] <p#note-text> "Note: Slotted note text"$/m
     );
     assert.deepEqual(await queryPreviews('#note-text'), ['Note: Slotted note text']);
   });

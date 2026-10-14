@@ -788,6 +788,7 @@ export async function getDomContext(
   const keys = keyAttributes(tag, attributes, state);
   return {
     tag,
+    ...(attributes['id'] && { id: attributes['id'] }),
     classes,
     ...(keys && { attributes: keys }),
     ...(attributes['type'] !== undefined && { typeAttribute: attributes['type'] }),
