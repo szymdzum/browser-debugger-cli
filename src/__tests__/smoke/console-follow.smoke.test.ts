@@ -110,13 +110,23 @@ void describe('console --follow across a navigation', () => {
     const result = await followDuring(['--json', '--level', 'error'], leave, (stdout) =>
       arrived(stdout)
     );
-    const texts = result.stdout
+    const messages = result.stdout
       .split('\n')
       .filter((line) => line.trim() !== '')
       .flatMap((line) => {
-        const data = (JSON.parse(line) as { data: { messages?: Array<{ text: string }> } }).data;
-        return (data.messages ?? []).map((message) => message.text);
+        const data = (
+          JSON.parse(line) as {
+            data: { messages?: Array<{ text: string; navigationId?: number }> };
+          }
+        ).data;
+        return data.messages ?? [];
       });
+    const texts = messages.map((message) => message.text);
+    const pageOf = (text: string): number | undefined =>
+      messages.find((message) => message.text === text)?.navigationId;
+    assert.notEqual(pageOf('fourth error'), undefined, texts.join('|'));
+    assert.notEqual(pageOf('arrived error'), undefined, texts.join('|'));
+    assert.notEqual(pageOf('fourth error'), pageOf('arrived error'), texts.join('|'));
     const many = texts.filter((text) => text.endsWith(' error') && !text.startsWith('arrived'));
     assert.deepEqual(many.slice(-4), [
       'first error',

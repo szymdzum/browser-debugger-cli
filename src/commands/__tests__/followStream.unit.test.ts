@@ -142,6 +142,28 @@ void describe('console follow cursor', () => {
     assert.equal(cursor.next(kept, 1, 10).length, 0);
   });
 
+  void it('prints new messages once when the session drops count goes down', () => {
+    const cursor = createFollowCursor({}, 0);
+    const a = message('a', 1, 1);
+    const b = message('b', 1, 2);
+    assert.deepEqual(texts(cursor.next([a, b], 1, 5)), ['a', 'b']);
+    const c = message('c', 2, 3);
+    assert.deepEqual(texts(cursor.next([c], 2, 0)), ['c']);
+    assert.deepEqual(texts(cursor.next([c], 2, 0)), []);
+    assert.deepEqual(texts(cursor.next([c, message('d', 2, 4)], 2, 0)), ['d']);
+  });
+
+  void it('keeps distinct and identical messages straight across an eviction', () => {
+    const cursor = createFollowCursor({}, 0);
+    const x = (): ConsoleMessage => message('x', 1, 100);
+    const y = message('y', 1, 100);
+    const z = message('z', 1, 101);
+    cursor.next([x(), y, x(), z, x()], 1, 0);
+    const kept = [x(), z, x(), x(), y, x()];
+    assert.deepEqual(texts(cursor.next(kept, 1, 2)), ['x', 'y', 'x']);
+    assert.deepEqual(texts(cursor.next(kept, 1, 2)), []);
+  });
+
   void it('prints a separator between the left page and the new page', () => {
     const text = formatConsoleFollowLines([message('left', 1, 1), message('right', 2, 2)], {
       streamNavigationId: 1,
