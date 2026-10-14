@@ -12,21 +12,28 @@
  * attached tab ends the session as `closed`; `bdg cleanup` (plain and
  * `--force`) leaves Chrome and its tabs alone.
  *
+ * Without `--chrome-ws-url` bdg finds Chrome through the `DevToolsActivePort`
+ * file of `--user-data-dir` (never the real Chrome profile here).
+ *
  * bdg reaches Chrome through a TCP proxy that counts the WebSocket upgrades
  * it forwards.
  */
 
 import * as assert from 'node:assert/strict';
+import { spawn, type ChildProcess } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as net from 'node:net';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { after, afterEach, before, describe, it } from 'node:test';
 
+import * as chromeLauncher from 'chrome-launcher';
+
 import { runCommand } from '@/__testutils__/commandRunner.js';
 import { startFixtureServer, type FixtureServer } from '@/__testutils__/fixtureServer.js';
 import { CDPConnection } from '@/connection/cdp.js';
 import { launchChrome } from '@/connection/launcher.js';
+import { needsNoSandbox } from '@/connection/launcher/flagsBuilder.js';
 import type { CDPTarget, LaunchedChrome } from '@/types.js';
 
 interface Envelope<T> {
@@ -206,6 +213,51 @@ async function until(condition: () => boolean): Promise<void> {
   }
 }
 
+/**
+ * Whether a process group still has a member.
+ *
+ * @param pgid - Process group id
+ * @returns True while any process of the group runs
+ */
+function groupAlive(pgid: number): boolean {
+  try {
+    process.kill(-pgid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Stop a Chrome spawned as its own process group (`detached`) and wait until
+ * the browser process has exited and none of its helpers (network service,
+ * GPU, renderers, which write the profile's cache) is left, so its profile
+ * can be removed. Bounded by {@link until}.
+ *
+ * @param child - The Chrome process, group leader
+ */
+async function killProcessGroup(child: ChildProcess): Promise<void> {
+  const pgid = child.pid;
+  if (pgid === undefined) return;
+  const exited =
+    child.exitCode !== null || child.signalCode !== null
+      ? Promise.resolve()
+      : new Promise<void>((resolve) => child.once('exit', () => resolve()));
+  if (groupAlive(pgid)) process.kill(-pgid, 'SIGTERM');
+  await exited;
+  await until(() => !groupAlive(pgid));
+}
+
+/**
+ * Remove a Chrome profile dir once its Chrome is gone (retrying a directory
+ * a late writer refilled).
+ *
+ * @param dir - The profile dir
+ */
+function removeProfile(dir: string): void {
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+}
+
 void describe('bdg attach', () => {
   let fixture: FixtureServer;
   let chrome: LaunchedChrome;
@@ -249,14 +301,107 @@ void describe('bdg attach', () => {
     await chrome.kill().catch(() => undefined);
     await fixture.close();
     fs.rmSync(sessionDir, { recursive: true, force: true });
-    fs.rmSync(profile, { recursive: true, force: true });
+    removeProfile(profile);
     fs.rmSync(downloadDir, { recursive: true, force: true });
   });
 
-  void it('requires --chrome-ws-url (exit 81 naming the flag)', async () => {
-    const { exitCode, envelope } = await runJson('attach', ['attach-a']);
-    assert.equal(exitCode, 81);
-    assert.match(envelope.suggestion ?? '', /--chrome-ws-url/);
+  void it('finds Chrome through DevToolsActivePort: lists and attaches, one WebSocket each', async () => {
+    const version = (await (
+      await fetch(`http://127.0.0.1:${chrome.port}/json/version`)
+    ).json()) as { webSocketDebuggerUrl: string };
+    const browserPath = new URL(version.webSocketDebuggerUrl).pathname;
+    const proxied = fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-attach-port-'));
+    fs.writeFileSync(path.join(proxied, 'DevToolsActivePort'), `${proxy.port}\n${browserPath}\n`);
+    try {
+      const before = proxy.upgrades();
+      const list = await runJson<TabsData>('attach', ['--user-data-dir', proxied]);
+      assert.equal(list.exitCode, 0, JSON.stringify(list.envelope));
+      assert.ok(list.envelope.data?.tabs.some((tab) => tab.url.endsWith('/attach-b')));
+      assert.equal(proxy.upgrades() - before, 1);
+
+      const start = await runJson<StartData>('attach', ['attach-b', '--user-data-dir', proxied]);
+      assert.equal(start.exitCode, 0, JSON.stringify(start.envelope));
+      assert.equal(start.envelope.data?.attached, true);
+      assert.match(start.envelope.data?.targetUrl ?? '', /\/attach-b$/);
+      assert.equal(proxy.upgrades() - before, 2);
+      const title = await run('cdp', [
+        'Runtime.evaluate',
+        '--params',
+        '{"expression":"document.title","returnByValue":true}',
+      ]);
+      assert.match(title.output, /Attach B/);
+      assert.equal(proxy.upgrades() - before, 2);
+    } finally {
+      fs.rmSync(proxied, { recursive: true, force: true });
+    }
+  });
+
+  void it('reads the DevToolsActivePort a Chrome on port 0 wrote, attaches without reloading', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-attach-port0-'));
+    const portFile = path.join(dir, 'DevToolsActivePort');
+    const child = spawn(
+      process.env['CHROME_PATH'] ?? chromeLauncher.getChromePath(),
+      [
+        '--headless=new',
+        '--remote-debugging-port=0',
+        `--user-data-dir=${dir}`,
+        '--no-first-run',
+        '--no-default-browser-check',
+        ...(needsNoSandbox() ? ['--no-sandbox'] : []),
+        `${fixture.url}attach-a`,
+      ],
+      { stdio: 'ignore', detached: true }
+    );
+    try {
+      await until(
+        () => fs.existsSync(portFile) && fs.readFileSync(portFile, 'utf8').includes('\n/')
+      );
+      const list = await runJson<TabsData>('attach', ['--user-data-dir', dir]);
+      assert.equal(list.exitCode, 0, JSON.stringify(list.envelope));
+      assert.ok(list.envelope.data?.tabs.some((tab) => tab.url.endsWith('/attach-a')));
+      const start = await runJson<StartData>('attach', ['attach-a', '--user-data-dir', dir]);
+      assert.equal(start.exitCode, 0, JSON.stringify(start.envelope));
+      const marker = await run('cdp', [
+        'Runtime.evaluate',
+        '--params',
+        '{"expression":"window.__marker","returnByValue":true}',
+      ]);
+      assert.match(marker.output, /kept/);
+    } finally {
+      await runCommand('stop', [], { timeout: 15000, env });
+      await killProcessGroup(child);
+      removeProfile(dir);
+    }
+  });
+
+  void it('exits 83 without a DevToolsActivePort file or with a stale one, 81 with both flags', async () => {
+    const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-attach-none-'));
+    const stale = fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-attach-stale-'));
+    fs.writeFileSync(
+      path.join(stale, 'DevToolsActivePort'),
+      `${await freePort()}\n/devtools/browser/gone\n`
+    );
+    try {
+      const none = await runJson('attach', ['--user-data-dir', empty]);
+      assert.equal(none.exitCode, 83, JSON.stringify(none.envelope));
+      assert.match(none.envelope.suggestion ?? '', /chrome:\/\/inspect\/#remote-debugging/);
+      for (const args of [[], ['attach-a']]) {
+        const result = await runJson('attach', [...args, '--user-data-dir', stale]);
+        assert.equal(result.exitCode, 83, JSON.stringify(result.envelope));
+        assert.match(result.envelope.suggestion ?? '', /chrome:\/\/inspect\/#remote-debugging/);
+      }
+      assert.equal(fs.existsSync(path.join(sessionDir, 'daemon.sock')), false);
+      const both = await runJson('attach', [
+        '--user-data-dir',
+        empty,
+        '--chrome-ws-url',
+        String(proxy.port),
+      ]);
+      assert.equal(both.exitCode, 81, JSON.stringify(both.envelope));
+    } finally {
+      fs.rmSync(empty, { recursive: true, force: true });
+      fs.rmSync(stale, { recursive: true, force: true });
+    }
   });
 
   void it('lists the page tabs over one connection and leaves no session', async () => {

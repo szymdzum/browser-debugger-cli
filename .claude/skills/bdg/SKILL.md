@@ -41,12 +41,14 @@ Sessions run until `bdg stop` (no timeout). With an HMR dev server, start once a
 ### Attach to a Tab As It Is
 
 ```bash
-bdg attach --chrome-ws-url 9222               # List the page tabs: [0] title — url (0-based), then exit
-bdg attach checkout --chrome-ws-url 9222      # Session on the only tab whose URL/title contains "checkout"
-bdg attach 2 --chrome-ws-url 9222             # ... or by index from the list (a number is always an index)
+bdg attach                                    # List the page tabs of your Chrome: [0] title — url (0-based), then exit
+bdg attach checkout                           # Session on the only tab whose URL/title contains "checkout"
+bdg attach 2                                  # ... or by index from the list (a number is always an index)
+bdg attach --user-data-dir <dir>              # Another Chromium profile (Canary, Edge, Brave)
+bdg attach checkout --chrome-ws-url 9222      # A Chrome started with --remote-debugging-port=9222 --user-data-dir=<dir>
 ```
 
-For a Chrome started with `--remote-debugging-port=9222 --user-data-dir=<dir>`. The tab is never navigated or reloaded: its state stays, console messages and errors it logged earlier are replayed, earlier network requests are not available. No match exits 83 (with the tab list), several 81 (use an index). One connection to the browser; downloads of that tab are listed (saved where your Chrome saves them); `bdg stop` only detaches (tab and Chrome stay; `--kill-chrome` exits 81); `page switch` exits 81 (stop and attach to the other tab).
+Without `--chrome-ws-url`, bdg reads `DevToolsActivePort` from Chrome stable's profile (or `--user-data-dir`): the user enables remote debugging at `chrome://inspect/#remote-debugging` and clicks Allow in Chrome's prompt (one prompt per command). No file or a stale one exits 83 (ask the user to enable it), prompt declined 82, unanswered after 30 s 102. The tab is never navigated or reloaded: its state stays, console messages and errors it logged earlier are replayed, earlier network requests are not available. No match exits 83 (with the tab list), several 81 (use an index). One connection to the browser; downloads of that tab are listed (saved where your Chrome saves them); `bdg stop` only detaches (tab and Chrome stay; `--kill-chrome` exits 81); `page switch` exits 81 (stop and attach to the other tab).
 
 ### Keep a Login Across Sessions
 

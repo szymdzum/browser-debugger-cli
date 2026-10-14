@@ -5,8 +5,9 @@
  * Finds the appropriate CDP target for the session.
  */
 
+import { connectToBrowser } from '@/connection/browserConnection.js';
 import { listPageTabs, matchTab } from '@/connection/browserTabs.js';
-import { CDPConnection } from '@/connection/cdp.js';
+import type { CDPConnection } from '@/connection/cdp.js';
 import { ChromeLaunchError } from '@/connection/errors.js';
 import { launchChrome } from '@/connection/launcher.js';
 import { HTTP_LOCALHOST } from '@/constants.js';
@@ -201,9 +202,6 @@ async function resolveExternalTarget(
   };
 }
 
-/** Connection attempts to the browser endpoint of a running Chrome */
-const ATTACH_CONNECT_ATTEMPTS = 2;
-
 /**
  * Attach to a tab of a running Chrome as it is (`bdg attach`): one
  * connection to the browser endpoint, the tab chosen from
@@ -217,7 +215,8 @@ const ATTACH_CONNECT_ATTEMPTS = 2;
  * @param onDisconnect - Called with the connection if it is later lost (socket closed or tab closed)
  * @param signal - The session's stop signal
  * @returns The connection, routed to the tab
- * @throws CommandError 83/81 when the tab cannot be chosen, 90 when another session drives it
+ * @throws CommandError 82/102 when Chrome's prompt is declined or unanswered, 83 for a stale
+ *   `DevToolsActivePort`, 83/81 when the tab cannot be chosen, 90 when another session drives it
  */
 export async function attachToBrowserTab(
   config: SessionConfig,
@@ -227,11 +226,11 @@ export async function attachToBrowserTab(
   signal: AbortSignal | undefined
 ): Promise<CDPConnection> {
   const wsUrl = config.chromeWsUrl ?? '';
-  const cdp = new CDPConnection(log);
-  await cdp.connect(wsUrl, {
-    maxRetries: ATTACH_CONNECT_ATTEMPTS,
+  const cdp = await connectToBrowser(wsUrl, {
+    log,
     signal,
-    onDisconnect: () => onDisconnect(cdp),
+    onDisconnect,
+    activePortFile: config.activePortFile,
   });
   try {
     const tabs = await listPageTabs(cdp);

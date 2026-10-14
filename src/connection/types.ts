@@ -48,6 +48,8 @@ export interface CDPTarget {
 export interface ConnectionOptions {
   /** Milliseconds to wait for the initial socket open */
   timeout?: number;
+  /** Milliseconds the WebSocket upgrade may take (default `WEBSOCKET_CONFIG.handshakeTimeout`) */
+  handshakeTimeout?: number;
   /** Number of connection attempts before failing */
   maxRetries?: number;
   /** Interval between ping frames to keep CDP alive */

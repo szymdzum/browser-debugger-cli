@@ -416,6 +416,8 @@ export interface SessionStartOptions {
   chromeWsUrl: string | undefined;
   /** `bdg attach`: the tab to attach to (pattern or index), without navigating */
   attachTab?: string | undefined;
+  /** `bdg attach`: the `DevToolsActivePort` file `chromeWsUrl` was read from */
+  activePortFile?: string | undefined;
   /** Quiet mode - minimal output for AI agents */
   quiet: boolean;
   /** Print the result as a JSON envelope */

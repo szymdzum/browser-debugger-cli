@@ -90,11 +90,20 @@ export const SESSION_BEHAVIORS: BehaviorTable = {
       'A port (9222), host:port or http://host:port is turned into the browser WebSocket URL via /json/version; a browser URL uses the first open tab. Refused with exit 90 when another running bdg session launched that Chrome or drives that tab (sessions of this BDG_SESSION_DIR, and of others that claimed a port). Downloads are not redirected: they go to the download folder of that Chrome (usually ~/Downloads), and only downloads of the session page are reported (not those of tabs or popups it opens)',
   },
   'attach:--chrome-ws-url': {
-    default: 'Required for now: without it bdg attach exits 81',
+    default:
+      "Without it bdg attach reads the DevToolsActivePort file of Chrome stable's default profile (or --user-data-dir) and connects to the browser path it names; with --user-data-dir too it exits 81",
     whenEnabled:
       'bdg attach lists the page tabs of that Chrome (no tab argument) or starts a session on the tab the argument names, without navigating or reloading it',
     automaticBehavior:
-      'A port (9222), host:port or http://host:port is turned into the browser WebSocket URL via /json/version once; after that the session uses one WebSocket to the browser endpoint (Target.getTargets, Target.attachToTarget with flatten) and no HTTP. Downloads of that tab and its iframes are reported and saved where the browser saves them (its download settings are kept; events of other tabs are ignored). dom screenshot of a background tab Chrome does not render exits 85 within 2 s (no animation frame came) (Chrome does not render it; bdg never brings it to the front). Not reported: downloads of popups or tabs it opens, events without a frame id, and tabs of a non-default (incognito) browser context. Console messages and errors logged before the attach are replayed; earlier network requests are not available. bdg stop only detaches; --kill-chrome and page switch exit 81',
+      'A port (9222), host:port or http://host:port is turned into the browser WebSocket URL via /json/version once; after that the session uses one WebSocket to the browser endpoint (Target.getTargets, Target.attachToTarget with flatten) and no HTTP. Downloads of that tab and its iframes are reported and saved where the browser saves them (its download settings are kept; events of other tabs are ignored). dom screenshot of a tab Chrome does not render (in the background, or its main thread busy over 2 s) exits 85 within 2 s (no animation frame came; bdg never brings it to the front). Not reported: downloads of popups or tabs it opens, events without a frame id, and tabs of a non-default (incognito) browser context. Console messages and errors logged before the attach are replayed; earlier network requests are not available. bdg stop only detaches; --kill-chrome and page switch exit 81',
+  },
+  'attach:--user-data-dir': {
+    default:
+      "bdg attach reads DevToolsActivePort from Chrome stable's default profile (macOS ~/Library/Application Support/Google/Chrome, Linux $CHROME_CONFIG_HOME or $XDG_CONFIG_HOME or ~/.config + /google-chrome, Windows %LOCALAPPDATA%\\Google\\Chrome\\User Data)",
+    whenEnabled:
+      'Reads DevToolsActivePort from that profile dir instead (Chrome Canary, Edge, Brave, any Chromium started with --remote-debugging-port=0 --user-data-dir)',
+    automaticBehavior:
+      'Chrome writes the file when remote debugging is enabled at chrome://inspect/#remote-debugging; bdg builds ws://127.0.0.1:<port>/devtools/browser/<id> from it with no HTTP call (/json is 404 in that mode). Chrome asks the user to allow each connection: bdg opens exactly one per command and never retries; declined exits 82, unanswered within 30 s exits 102 (Ctrl-C exits 130, no session left). No file, an unreadable file or a stale one (nothing listening: remote debugging turned off or Chrome closed) exits 83 naming the file. Combined with --chrome-ws-url exits 81',
   },
   'stop:--kill-chrome': {
     default:

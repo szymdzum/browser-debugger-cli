@@ -14,6 +14,8 @@ export interface SessionConfig {
   chromeWsUrl?: string;
   /** `bdg attach`: tab of the `chromeWsUrl` browser to attach to (pattern or index); never navigated */
   attachTab?: string;
+  /** `bdg attach`: the `DevToolsActivePort` file `chromeWsUrl` came from (nothing listening: a stale file, 83) */
+  activePortFile?: string;
   /** Custom Chrome flags (e.g., ['--ignore-certificate-errors']) */
   chromeFlags?: string[];
   /** Viewport size to emulate (`--viewport`) */

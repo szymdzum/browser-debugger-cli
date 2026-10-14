@@ -223,7 +223,7 @@ export class CDPConnection implements CDPEventSource {
     return new Promise((resolve, reject) => {
       this.ws = this.createWebSocket(wsUrl, {
         perMessageDeflate: false,
-        handshakeTimeout: WEBSOCKET_CONFIG.handshakeTimeout,
+        handshakeTimeout: options.handshakeTimeout ?? WEBSOCKET_CONFIG.handshakeTimeout,
         maxPayload: WEBSOCKET_CONFIG.maxPayload,
       });
 

@@ -3484,15 +3484,79 @@ export function chromeReplyLostError(cap: number): ErrorWithSuggestion {
   };
 }
 
+/** How to let `bdg attach` reach a Chrome (#473) */
+const REMOTE_DEBUGGING_SUGGESTION =
+  'Enable remote debugging at chrome://inspect/#remote-debugging in Chrome (or start Chrome with --remote-debugging-port), or pass --chrome-ws-url <url>, or --user-data-dir <dir> for another Chromium profile';
+
 /**
- * `bdg attach` without a way to reach the browser (PR1 of #473: the flag is
- * required until discovery lands).
+ * `bdg attach` found no `DevToolsActivePort` file: remote debugging is off.
+ *
+ * @param file - The file looked for
  */
-export function attachNeedsChromeWsUrlError(): ErrorWithSuggestion {
+export function devToolsActivePortMissingError(file: string): ErrorWithSuggestion {
   return {
-    message: 'bdg attach needs the Chrome to attach to',
+    message: `No DevToolsActivePort file at ${file}: Chrome has remote debugging off`,
+    suggestion: REMOTE_DEBUGGING_SUGGESTION,
+  };
+}
+
+/**
+ * `bdg attach` found a `DevToolsActivePort` file it cannot read or parse.
+ *
+ * @param file - The file
+ */
+export function devToolsActivePortUnreadableError(file: string): ErrorWithSuggestion {
+  return {
+    message: `The DevToolsActivePort file at ${file} could not be read (expected a port, then /devtools/browser/<id>)`,
+    suggestion: REMOTE_DEBUGGING_SUGGESTION,
+  };
+}
+
+/**
+ * No Chrome answers on the port a `DevToolsActivePort` file names (remote
+ * debugging turned off, or Chrome closed, after it wrote the file; the port
+ * may be free or another program's now).
+ *
+ * @param file - The file
+ * @param endpoint - host:port it names
+ */
+export function staleDevToolsActivePortError(file: string, endpoint: string): ErrorWithSuggestion {
+  return {
+    message: `No Chrome answers at ${endpoint}, the port ${file} names (a stale file): remote debugging was turned off or Chrome closed`,
+    suggestion: REMOTE_DEBUGGING_SUGGESTION,
+  };
+}
+
+/** How to get past Chrome's "Allow remote debugging?" prompt */
+const ALLOW_PROMPT_SUGGESTION =
+  "Run the command again and click Allow in Chrome's remote debugging prompt";
+
+/** The user declined Chrome's "Allow remote debugging?" prompt for `bdg attach`. */
+export function remoteDebuggingDeclinedError(): ErrorWithSuggestion {
+  return {
+    message: 'Chrome refused the connection: the remote debugging prompt was declined',
+    suggestion: ALLOW_PROMPT_SUGGESTION,
+  };
+}
+
+/**
+ * Chrome's "Allow remote debugging?" prompt got no answer in time.
+ *
+ * @param seconds - How long bdg waited
+ */
+export function remoteDebuggingUnansweredError(seconds: number): ErrorWithSuggestion {
+  return {
+    message: `Chrome's remote debugging prompt was not answered within ${seconds}s`,
+    suggestion: ALLOW_PROMPT_SUGGESTION,
+  };
+}
+
+/** `bdg attach` with both `--chrome-ws-url` and `--user-data-dir`. */
+export function attachEndpointConflictError(): ErrorWithSuggestion {
+  return {
+    message: '--chrome-ws-url and --user-data-dir both name the Chrome to attach to',
     suggestion:
-      'Pass --chrome-ws-url <port | http://host:port | ws://…/devtools/browser/<id>> of a Chrome started with --remote-debugging-port and --user-data-dir',
+      'Pass one of them: --chrome-ws-url names the endpoint, --user-data-dir the profile whose DevToolsActivePort is read',
   };
 }
 
@@ -3580,11 +3644,13 @@ export function emptyTabPatternError(tabList: string): ErrorWithSuggestion {
 
 /**
  * A command that needs a rendered frame, on an attached tab Chrome does not
- * render (in the background): it would wait forever (`bdg attach`).
+ * render (in the background, or its main thread busy): it would wait
+ * forever (`bdg attach`).
  */
 export function backgroundTabError(): ErrorWithSuggestion {
   return {
-    message: "The attached tab is in the background, so Chrome doesn't render it",
-    suggestion: 'Bring the tab to the front in Chrome, then run the command again',
+    message: 'The attached tab is not rendering (in the background, or busy)',
+    suggestion:
+      'Bring the tab to the front in Chrome, or wait until the page is idle, then run the command again',
   };
 }
