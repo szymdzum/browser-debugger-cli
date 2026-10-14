@@ -8,6 +8,7 @@ import { describe, it } from 'node:test';
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import { evaluateScript } from '@/runtime/dom/evalHelpers.js';
+import { wrapEvalScript } from '@/runtime/dom/evalSource.js';
 
 /**
  * A page whose script runs until `Runtime.terminateExecution` arrives and
@@ -26,7 +27,7 @@ class BusyPage {
    */
   send(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
     this.sent.push(method);
-    if (method === 'Runtime.evaluate' && params['expression'] === 'loop') {
+    if (method === 'Runtime.evaluate' && params['expression'] === wrapEvalScript('loop')) {
       return new Promise((resolve) => {
         this.stopScript = () =>
           resolve({

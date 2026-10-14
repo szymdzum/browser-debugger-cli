@@ -10,6 +10,7 @@ import { useFakeClock, type ClockHelper } from '@/__testutils__/testClock.js';
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CommandError } from '@/errors/index.js';
 import { evaluateScript } from '@/runtime/dom/evalHelpers.js';
+import { wrapEvalScript } from '@/runtime/dom/evalSource.js';
 
 /**
  * A page that never answers the script's evaluation (the result is too large
@@ -22,7 +23,7 @@ function pageThatCannotSend(script: string): CDPConnection {
   const never = new Promise<never>(() => undefined);
   return {
     send: (method: string, params?: { expression?: string }) =>
-      method === 'Runtime.evaluate' && params?.expression === script
+      method === 'Runtime.evaluate' && params?.expression === wrapEvalScript(script)
         ? never
         : Promise.resolve({ result: { type: 'number', value: 1 } }),
   } as unknown as CDPConnection;

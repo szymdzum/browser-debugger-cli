@@ -32,6 +32,7 @@ import { handleDomQuery, QUERY_LIST_LIMIT } from '@/commands/dom/query.js';
 import { handleDomScreenshot } from '@/commands/dom/screenshot.js';
 import { registerWaitCommand } from '@/commands/dom/wait.js';
 import {
+  EVAL_SCOPE_HELP,
   SELECTOR_OR_INDEX_ARGUMENT,
   QUERY_CLASS_HELP,
   SELECTOR_SCOPE_HELP,
@@ -92,6 +93,7 @@ export function registerDomCommands(program: Command): void {
     )
     .option('--full', EVAL_FULL_HELP)
     .option('-j, --json', 'Output as JSON')
+    .addHelpText('after', EVAL_SCOPE_HELP)
     .action(async (script: string, options: DomEvalCommandOptions) => {
       await handleDomEval(script, options);
     });

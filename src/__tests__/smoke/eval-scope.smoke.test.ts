@@ -103,6 +103,17 @@ const CASES: ScopeCase[] = [
     error: /^SyntaxError: Unexpected token '\)'\n {4}at bdg-eval:2:1$/,
   },
   { script: 'throw new Error("x")', exitCode: 91, error: /^Error: x\n {4}at bdg-eval:1:7$/ },
+  {
+    script: '1;\nthrow new Error("y")',
+    exitCode: 91,
+    error: /^Error: y\n {4}at bdg-eval:2:7$/,
+  },
+  {
+    script: '"use strict"; sc10 = 10',
+    exitCode: 91,
+    error: /^ReferenceError: sc10 is not defined\n {4}at bdg-eval:1:20$/,
+    globals: { sc10: 'undefined' },
+  },
   { script: 'return 1', exitCode: 91, error: /^SyntaxError: Illegal return statement/ },
 ];
 
