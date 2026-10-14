@@ -181,11 +181,25 @@ void describe('usageErrorDetails', () => {
     assert.equal(usageErrorDetails(unknown, peek()).suggestion, 'Did you mean: query?');
   });
 
-  void it('reports a group run without a subcommand', () => {
+  void it('reports a group run without a subcommand, listing them', () => {
+    const dom = program().commands.find((c) => c.name() === 'dom') as Command;
     const error = commanderError('commander.help', '(outputHelp)');
-    assert.deepEqual(usageErrorDetails(error, peek()), {
-      message: 'Missing subcommand',
-      suggestion: 'Run "bdg peek --help" for usage',
+    assert.deepEqual(usageErrorDetails(error, dom), {
+      message: 'dom needs a subcommand: query, a11y',
+      suggestion: 'Run "bdg dom --help" for usage',
     });
+  });
+
+  void it('reports --json on a bare group as the missing subcommand, not an unknown option', () => {
+    const dom = program().commands.find((c) => c.name() === 'dom') as Command;
+    const error = commanderError('commander.unknownOption', "error: unknown option '--json'");
+    assert.equal(
+      usageErrorDetails(error, dom, ['node', 'bdg', 'dom', '--json'], true).message,
+      'dom needs a subcommand: query, a11y'
+    );
+    assert.equal(
+      usageErrorDetails(error, dom, ['node', 'bdg', 'dom', '--json']).message,
+      "unknown option '--json'"
+    );
   });
 });

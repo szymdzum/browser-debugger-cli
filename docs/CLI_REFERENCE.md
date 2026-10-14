@@ -1820,7 +1820,7 @@ Bare `bdg --json` (or `-j`, with no command and no URL) is an error envelope: `s
 ### Machine-readable help
 
 ```bash
-bdg --help --json                # Compact: every command with its one-line description, arguments and flags, plus exit codes (~29 KB)
+bdg --help --json                # Compact: every command with its one-line description, arguments and flags, plus exit codes (~58 KB)
 bdg dom query --help --json      # One command in full: option behaviors, defaults, choices, help text (examples), exit codes
 bdg dom --help --json            # A group: its own options in full, its subcommands compact
 bdg --help --json --full         # Every command in full at once (~120 KB)
@@ -1828,9 +1828,14 @@ bdg --help --json --full         # Every command in full at once (~120 KB)
 
 The compact form has the same top-level fields as the full one (`command`, `exitCodes`, `taskMappings`,
 `runtimeState`, `decisionTrees`, `capabilities`) plus `details`; its `command` tree has `name`,
-`description` (first line), `arguments` (`"<selector> [index]"`), `options` (flags → description) and
-`subcommands`, leaving out empty fields and the hidden global options (`--debug`, `-q`, `--session`, valid on
-every command). Per-command help has `name`, `version`, `description`, `path` (`"bdg dom query"`),
+`description` (first line), `arguments` (`"<selector> [index]"`), `options` and `subcommands`, leaving out
+empty fields and the hidden global options (`--debug`, `-q`, `--session`, valid on every command). `options` is
+one array shape in every help document, root included: `[{ flags, description, required, takesValue, optional }]`
+(per-command help adds defaults, choices and `behavior` to each entry).
+
+`bdg <unknown> --help --json` and `bdg <group> <unknown> --help --json` are error envelopes (`Unknown command`,
+exit 81, with a did-you-mean), like `bdg <unknown> --json`. A command group run with `--json` and no
+subcommand (`bdg page --json`) is exit 81 with `page needs a subcommand: info, navigate, …`. Per-command help has `name`, `version`, `description`, `path` (`"bdg dom query"`),
 `command` and `exitCodes`. Help JSON is printed without indentation.
 
 See [`src/types.ts`](../src/types.ts) for complete type definitions.

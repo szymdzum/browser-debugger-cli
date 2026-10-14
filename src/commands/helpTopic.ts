@@ -9,9 +9,11 @@ import { CommandError } from '@/errors/index.js';
 import {
   didYouMeanSuggestion,
   missingSubcommandMessage,
+  unknownCommandError,
   unknownHelpTopicError,
   usageHelpSuggestion,
 } from '@/errors/messages.js';
+import { JSON_FLAGS } from '@/utils/cliArgs.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { findSimilar } from '@/utils/suggestions.js';
 
@@ -33,15 +35,17 @@ export function helpTopicPath(args: string[]): string[] {
 }
 
 /**
- * Reject `bdg help <topic>` for a command that does not exist (instead of
- * showing the general help and exiting 0). Stops at a command without
- * subcommands (further words are its arguments) and at `help` itself.
+ * Reject a command path that does not exist: `bdg help <topic>` and
+ * `bdg <command> --help --json` (instead of showing the general help and
+ * exiting 0). Stops at a command without subcommands (further words are its
+ * arguments) and at `help` itself.
  *
  * @param program - Root command with all commands registered
- * @param topic - Command path after `help`
+ * @param topic - Command words, e.g. ['dom', 'quer']
+ * @param viaHelp - Whether the topic was asked through `bdg help` (else `--help`)
  * @throws CommandError (81) naming the unknown command
  */
-export function assertKnownHelpTopic(program: Command, topic: string[]): void {
+export function assertKnownHelpTopic(program: Command, topic: string[], viaHelp = true): void {
   let command = program;
   const path: string[] = [];
   for (const word of topic) {
@@ -52,10 +56,14 @@ export function assertKnownHelpTopic(program: Command, topic: string[]): void {
         word,
         command.commands.map((c) => c.name())
       );
-      const err = unknownHelpTopicError(
-        [...path, word].join(' '),
-        closest && [...path, closest].join(' ')
-      );
+      const err =
+        path.length === 0 && !viaHelp
+          ? unknownCommandError(word, closest ? [closest] : [])
+          : unknownHelpTopicError(
+              [...path, word].join(' '),
+              closest && [...path, closest].join(' '),
+              viaHelp
+            );
       throw new CommandError(
         err.message,
         { suggestion: err.suggestion },
@@ -126,19 +134,23 @@ function typedOption(flag: string, argv: string[]): string {
  * @param error - Commander error (not a help or version display)
  * @param command - Command the error came from (see resolveCommand)
  * @param argv - Process arguments (to name an option as typed)
+ * @param bareGroup - Whether the command is a group addressed without a subcommand
+ *   (its `--json` is then a missing subcommand, not an unknown option)
  * @returns Message and suggestion
  */
 export function usageErrorDetails(
   error: CommanderError,
   command: Command,
-  argv: string[] = process.argv
+  argv: string[] = process.argv,
+  bareGroup = false
 ): { message: string; suggestion: string } {
   const help = usageHelpSuggestion(commandPath(command));
-  if (error.code === 'commander.help') {
-    return { message: missingSubcommandMessage(), suggestion: help };
-  }
   const { message, suggestion } = splitCommanderHint(error.message);
   const flag = error.code === 'commander.unknownOption' && UNKNOWN_OPTION.exec(message)?.[1];
+  if (error.code === 'commander.help' || (bareGroup && flag && JSON_FLAGS.includes(flag))) {
+    const names = command.commands.map((sub) => sub.name());
+    return { message: missingSubcommandMessage(command.name(), names), suggestion: help };
+  }
   if (!flag) return { message, suggestion: suggestion ?? help };
   const typed = typedOption(flag, argv);
   const closest = closestOption(/^-[^-]../.test(typed) ? `-${typed}` : typed, command);

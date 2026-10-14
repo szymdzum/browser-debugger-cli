@@ -307,6 +307,17 @@ const SESSION_TELEMETRY: TelemetryType[] = ['dom', 'network', 'console'];
 /** A word that cannot be a URL: no dot, colon or slash */
 const BARE_WORD = /^[a-z][a-z0-9_-]*$/i;
 
+/**
+ * Whether a word has no dot, colon or slash, so it can only be a command name
+ * (a dotless host needs a full URL; `localhost` is the one that works bare).
+ *
+ * @param word - Command-line word
+ * @returns True for a word that cannot be a URL
+ */
+export function isBareWord(word: string): boolean {
+  return BARE_WORD.test(word) && word.toLowerCase() !== 'localhost';
+}
+
 /** Flags users type as commands (`bdg version`). */
 const FLAG_WORDS: Record<string, string> = { version: '--version', help: '--help' };
 
@@ -322,7 +333,7 @@ const FLAG_WORDS: Record<string, string> = { version: '--version', help: '--help
  * @throws CommandError (81) for a bare word other than `localhost`
  */
 function assertNotCommandTypo(arg: string, commandNames: string[]): void {
-  if (!BARE_WORD.test(arg) || arg.toLowerCase() === 'localhost') return;
+  if (!isBareWord(arg)) return;
   const flag = FLAG_WORDS[arg.toLowerCase()];
   const err = unknownCommandError(arg, flag ? [flag] : findSimilar(arg, commandNames));
   throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
