@@ -812,10 +812,10 @@ void describe('DOM interactions', () => {
 
   void it('names the element an action hit and puts warnings before the details', async () => {
     await bdg(['dom', 'query', '.toggle']);
-    assert.match(await bdg(['dom', 'click', '1']), /Element: +input\.toggle in li "Buy milk"/);
+    assert.match(await bdg(['dom', 'click', '1']), /Element: +input\.toggle in li \("Buy milk"\)/);
     const first = await bdg(['dom', 'click', '.toggle']);
     assert.match(first, /^⚠ Element Clicked \(with warnings\)\n⚠ Warning: 2 elements match/);
-    assert.match(first, /Element: +input\.toggle in li "Write report"/);
+    assert.match(first, /Element: +input\.toggle in li \("Write report"\)/);
     assert.match(
       await bdg(['dom', 'click', '#behind']),
       /^⚠ Element Clicked \(no visible effect observed: no DOM change, requests or navigation within 300 ms\)\n⚠ Warning: Element is under transparent div \(clicks land on it\)/
@@ -839,7 +839,7 @@ void describe('DOM interactions', () => {
       assert.match(await bdg(['dom', 'fill', '.bare', 'Large']), /Element: +select\.bare "Large"/);
       assert.match(
         await bdg(['dom', 'click', '.pick']),
-        /Element: +input\.pick in span#sorts "Name \(A to Z\) Size"/
+        /Element: +input\.pick in span#sorts \("Name \(A to Z\) Size"\)/
       );
     } finally {
       await evaluate("document.getElementById('sorts').remove(); 1");
@@ -865,7 +865,7 @@ void describe('DOM interactions', () => {
         'select#s2 "By aria"',
         'select#s3 "by-name"',
         'select#s4 "Two"',
-        'input.row-pick in p "Row"',
+        'input.row-pick in p ("Row")',
       ]);
     } finally {
       await evaluate("document.getElementById('naming').remove(); 1");
