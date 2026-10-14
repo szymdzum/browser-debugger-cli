@@ -210,11 +210,12 @@ test('isTransientGhError ignores numbers in the command line', () => {
   assert.equal(isTransientGhError(limit), false);
 });
 
-test('retry covers reads only: run() has no retry, ghJson alone wraps it', () => {
+test('retry covers reads only: run() has no retry, ghJson and the resolveSha gh read wrap it', () => {
   const src = readFileSync(join(import.meta.dirname, 'ship.mjs'), 'utf8');
-  const runFn = src.slice(src.indexOf('function run('), src.indexOf('const TRANSIENT_GH'));
+  const runFn = src.slice(src.indexOf('function run('), src.indexOf('/** Smallest remaining waiter budget'));
   assert.ok(!runFn.includes('retryTransient'));
-  assert.equal(src.match(/retryTransient\(\(\) =>/g).length, 1);
+  assert.equal(src.match(/retryTransient\(\(\) =>/g).length, 2);
+  assert.ok(/function resolveSha[\s\S]*?retryTransient\(\(\) =>\s*exec\('gh'/.test(src));
   assert.ok(/function ghJson[\s\S]*?retryTransient\(\(\) => run\('gh'/.test(src));
 });
 
@@ -458,6 +459,31 @@ test('statusLine prints the elapsed whole minutes of a started job', () => {
     'Smoke Tests (macOS) in_progress 23 min'
   );
   assert.equal(statusLine('CI', 'queued', null, now), 'CI queued');
+});
+
+test('statusLine prints no elapsed time for a zero, unparsable or missing start and clamps the future', () => {
+  const now = Date.parse('2026-10-14T12:30:00Z');
+  for (const bad of ['0001-01-01T00:00:00Z', 'not a date', '', undefined])
+    assert.equal(statusLine('x', 'queued', bad, now), 'x queued', String(bad));
+  assert.equal(statusLine('x', 'queued', '2026-10-14T12:40:00Z', now), 'x queued 0 min');
+});
+
+test('resolveSha refuses a SHA that starts with a dash before running git', () => {
+  const exec = () => assert.fail('no command may run');
+  assert.throws(() => resolveSha('--output=/tmp/x', exec), /cannot start with "-"/);
+  assert.throws(() => resolveSha('-abc1234', exec), /cannot start with "-"/);
+});
+
+test('resolveSha retries a transient gh failure of its fallback read', () => {
+  const full = 'e'.repeat(40);
+  let ghCalls = 0;
+  const exec = (cmd) => {
+    if (cmd === 'git') throw new Error('unknown revision');
+    if (++ghCalls === 1) throw Object.assign(new Error('gh failed'), { stderr: 'HTTP 502' });
+    return full;
+  };
+  assert.equal(resolveSha('eeeeeee', exec), full);
+  assert.equal(ghCalls, 2);
 });
 
 test('repeatDispatch passes node and space-separated files as workflow inputs', () => {

@@ -75,11 +75,14 @@ export const MIN_CALL_BUDGET_MS = 2000;
  */
 export function resolveSha(sha, exec = run) {
   if (/^[0-9a-f]{40}$/i.test(sha)) return sha;
+  if (sha.startsWith('-')) throw new Error(`refusing "${sha}": a commit SHA cannot start with "-"`);
   try {
     return exec('git', ['rev-parse', '--verify', '--quiet', `${sha}^{commit}`], { deadline: null });
   } catch (err) {
     try {
-      return exec('gh', ['api', `repos/${REPO}/commits/${sha}`, '--jq', '.sha']);
+      return retryTransient(() =>
+        exec('gh', ['api', `repos/${REPO}/commits/${sha}`, '--jq', '.sha'])
+      );
     } catch (ghErr) {
       if (ghErr.budgetExhausted) throw ghErr;
       throw new Error(
@@ -142,8 +145,10 @@ export function noRunMessage(prNumber, mergeable) {
  * @param {number} [now]
  */
 export function statusLine(name, status, startedAt, now = Date.now()) {
-  if (!startedAt) return `${name} ${status}`;
-  return `${name} ${status} ${Math.floor((now - Date.parse(startedAt)) / 60_000)} min`;
+  const started = startedAt ? Date.parse(startedAt) : NaN;
+  if (!Number.isFinite(started) || new Date(started).getUTCFullYear() < 1970)
+    return `${name} ${status}`;
+  return `${name} ${status} ${Math.max(0, Math.floor((now - started) / 60_000))} min`;
 }
 
 /**
