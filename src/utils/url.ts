@@ -92,6 +92,24 @@ export function normalizeUrl(url: string): string {
 }
 
 /**
+ * The error for a `host:port` whose port is not a number from 0 to 65535,
+ * only for input where bdg prepended `http://` (a scheme would not be a port).
+ *
+ * @param url - URL as typed
+ * @param normalized - The URL after {@link normalizeUrl}
+ * @returns Invalid result naming the port, or undefined
+ */
+function invalidPortError(url: string, normalized: string): ValidationResult | undefined {
+  if (normalized !== `http://${url}`) return undefined;
+  const port = /^[^/?#:]+:([^/?#]*)/.exec(url)?.[1];
+  if (port === undefined || (/^\d+$/.test(port) && Number(port) <= 65535)) return undefined;
+  return invalid(
+    `Invalid port: '${port}' in '${url}'`,
+    'The port must be a number from 0 to 65535, e.g. localhost:3000'
+  );
+}
+
+/**
  * Validate that a URL is valid and usable for Chrome navigation.
  *
  * @param url - URL string to validate
@@ -171,6 +189,9 @@ export function validateUrl(url: string): ValidationResult {
       );
     }
   }
+
+  const invalidPort = invalidPortError(url, normalized);
+  if (invalidPort) return invalidPort;
 
   try {
     const parsed = new URL(normalized);

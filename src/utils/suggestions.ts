@@ -32,7 +32,7 @@ function findMatches(
     const normalizedCandidate = normalizeForComparison(candidate, caseInsensitive);
     const distance = levenshteinDistance(normalizedInput, normalizedCandidate);
 
-    if (distance > 0 && distance <= maxDistance) {
+    if (input !== candidate && distance <= maxDistance) {
       matches.push({ value: candidate, distance });
     }
   }
@@ -40,12 +40,38 @@ function findMatches(
   return matches.sort((a, b) => a.distance - b.distance);
 }
 
+/**
+ * Most edits a typo of this length may be from the word it means: 1 up to 5
+ * characters, 2 for longer words, so a short word is not matched to an
+ * unrelated one.
+ *
+ * @param word - Word as typed
+ * @returns Largest Levenshtein distance still suggested
+ */
+export function scaledMaxDistance(word: string): number {
+  return word.length <= 5 ? 1 : 2;
+}
+
+/**
+ * Candidates close to the input, best first. The default bound scales with
+ * the input length ({@link scaledMaxDistance}); case is folded unless asked
+ * otherwise, so a differently cased candidate is an exact match.
+ *
+ * @param input - Value as typed
+ * @param candidates - Valid values
+ * @param options - Bound and number of suggestions
+ * @returns Up to `maxSuggestions` candidates
+ */
 export function findSimilar(
   input: string,
   candidates: readonly string[],
   options: SimilarityOptions = {}
 ): string[] {
-  const { maxDistance = 3, maxSuggestions = 3, caseInsensitive = true } = options;
+  const {
+    maxDistance = scaledMaxDistance(input),
+    maxSuggestions = 3,
+    caseInsensitive = true,
+  } = options;
   const matches = findMatches(input, candidates, maxDistance, caseInsensitive);
   return matches.slice(0, maxSuggestions).map((m) => m.value);
 }
@@ -157,13 +183,17 @@ export function parseSingleNameSelector(selector: string): SingleNameSelector | 
   return { kind: match[1] === '#' ? 'id' : 'class', name: match[2] as string };
 }
 
+/** Shortest word matched to a command: shorter ones are ordinary text */
+const MIN_COMMAND_TYPO_LENGTH = 3;
+
 /**
- * Command names close to a mistyped word.
+ * Command names close to a mistyped word: at least 3 characters, within
+ * {@link scaledMaxDistance} edits, case folded.
  *
- * @param _word - Word as typed
- * @param _commandNames - Command names to compare with
+ * @param word - Word as typed
+ * @param commandNames - Command names to compare with
  * @returns Close command names, best first
  */
-export function findSimilarCommands(_word: string, _commandNames: readonly string[]): string[] {
-  throw new Error('not implemented');
+export function findSimilarCommands(word: string, commandNames: readonly string[]): string[] {
+  return word.length < MIN_COMMAND_TYPO_LENGTH ? [] : findSimilar(word, commandNames);
 }

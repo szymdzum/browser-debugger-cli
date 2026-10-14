@@ -1340,15 +1340,19 @@ export function spacedCommandError(url: string, command: string): ErrorWithSugge
  *
  * @param url - URL that failed
  * @param errorText - Chrome network error (e.g. net::ERR_NAME_NOT_RESOLVED)
+ * @param addedScheme - Whether bdg prepended `http://` to the URL as typed
  */
 export function navigationFailedError(
   url: string,
   errorText: string,
-  _addedScheme = false
+  addedScheme = false
 ): ErrorWithSuggestion {
+  const check = 'Check the URL and that the server is running and reachable from this machine';
   return {
     message: `Could not load ${url}: ${errorText}`,
-    suggestion: 'Check the URL and that the server is running and reachable from this machine',
+    suggestion: addedScheme
+      ? `bdg added http:// to what you typed. ${check}; for an HTTPS server use: bdg ${url.replace(/^http:/, 'https:')}`
+      : check,
   };
 }
 

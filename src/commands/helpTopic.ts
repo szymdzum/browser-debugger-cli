@@ -15,7 +15,7 @@ import {
 } from '@/errors/messages.js';
 import { JSON_FLAGS } from '@/utils/cliArgs.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import { findSimilar } from '@/utils/suggestions.js';
+import { findSimilar, findSimilarCommands } from '@/utils/suggestions.js';
 
 /**
  * Commander's typo hint on its own line: "(Did you mean query?)" or, for
@@ -52,7 +52,7 @@ export function assertKnownHelpTopic(program: Command, topic: string[], viaHelp 
     if (command.commands.length === 0 || word === 'help') return;
     const sub = command.commands.find((c) => c.name() === word || c.aliases().includes(word));
     if (!sub) {
-      const [closest] = findSimilar(
+      const [closest] = findSimilarCommands(
         word,
         command.commands.map((c) => c.name())
       );
