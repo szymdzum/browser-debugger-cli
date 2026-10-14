@@ -466,15 +466,16 @@ export type PointerAction = 'click' | 'double' | 'right' | 'hover';
 
 /**
  * Page script doing an action on the located target with DOM events (when
- * the mouse cannot reach it); evaluates to false if the target is gone.
+ * the mouse cannot reach it); evaluates to false if the target is gone. Elements
+ * without a `click()` method (SVG, MathML) get a dispatched `click` event.
  *
  * @param action - What to do
  * @returns Script
  */
 function domFallbackScript(action: PointerAction): string {
   const events: Record<PointerAction, string> = {
-    click: 'el.click();',
-    double: "el.click(); el.click(); el.dispatchEvent(new MouseEvent('dblclick', init));",
+    click: 'press();',
+    double: "press(); press(); el.dispatchEvent(new MouseEvent('dblclick', init));",
     right: "el.dispatchEvent(new MouseEvent('contextmenu', { ...init, button: 2 }));",
     hover:
       "['pointerover', 'pointerenter', 'mouseover', 'mouseenter', 'mousemove'].forEach((type) => el.dispatchEvent(new MouseEvent(type, init)));",
@@ -484,6 +485,7 @@ function domFallbackScript(action: PointerAction): string {
   delete window.__bdgClickTarget;
   if (!el || !el.isConnected) return false;
   const init = { bubbles: true, cancelable: true, composed: true, view: el.ownerDocument.defaultView };
+  const press = () => typeof el.click === 'function' ? el.click() : el.dispatchEvent(new MouseEvent('click', init));
   ${events[action]}
   return true;
 })()`;
@@ -770,7 +772,17 @@ async function performClick(
     expression: domFallbackScript(action),
     returnByValue: true,
     userGesture: true,
-  })) as { result?: { value?: unknown } };
+  })) as {
+    exceptionDetails?: Protocol.Runtime.ExceptionDetails;
+    result?: { value?: unknown };
+  };
+  if (response.exceptionDetails) {
+    throw new ActionScriptError(
+      POINTER_ACTION_NOUN[action],
+      exceptionSummary(response.exceptionDetails),
+      result.selector ?? ''
+    );
+  }
   if (response.result?.value !== true) {
     const err = clickTargetDetachedError(result.selector ?? '');
     throw new CommandError(

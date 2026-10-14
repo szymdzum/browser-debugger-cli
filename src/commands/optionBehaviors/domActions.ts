@@ -89,7 +89,7 @@ export const DOM_ACTION_BEHAVIORS: BehaviorTable = {
   },
   'click:--strict': {
     default:
-      'A covered, hidden or zero-size element is clicked with DOM events (method "dom", with a warning, exit 0); a press that was sent but missed the element, or removed it before a click arrived, only warns (exit 0; the missed press names bdg dom layout)',
+      'A covered, hidden or zero-size element is clicked with DOM events (method "dom", with a warning, exit 0; an SVG or MathML element, which has no click(), gets a dispatched click event; a fallback script that throws exits 110 naming the exception, not "removed"); a press that was sent but missed the element, or removed it before a click arrived, only warns (exit 0; the missed press names bdg dom layout)',
     whenEnabled:
       'Refuses with exit 90 (RESOURCE_CONFLICT: the page state blocks the request) when a real mouse cannot reach the element, naming what covers it and suggesting bdg dom layout <selector>; also when the mouse press never reached the element (it is released, no further presses for --double) or the page replaced the element with a like-for-like one (same tag, parent and text, at the press point; one with a different label is not detected) while the mouse was pressed, so it got no click (a re-render on pointerdown; an element that just unmounts on press is not reported; an element that re-renders after its click counts as clicked)',
     automaticBehavior:
