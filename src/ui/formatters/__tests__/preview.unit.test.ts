@@ -383,3 +383,25 @@ void describe('preview of pages and paused requests (#554)', () => {
     assert.equal(json.data.fetchInterception, true);
   });
 });
+
+describe('preview times (#727)', () => {
+  const output = {
+    version: '0.0.0',
+    success: true,
+    timestamp: new Date(2026, 9, 14, 12, 30, 45, 123).toISOString(),
+    duration: 65000,
+    target: { url: 'test', title: 'test' },
+    data: {},
+  };
+
+  test('compact Updated line shows the snapshot time', () => {
+    const text = formatPreview(output, { json: false, last: 1 });
+    assert.match(text, /Updated: 12:30:45\.123/);
+  });
+
+  test('verbose shows the snapshot time and the session start derived from it', () => {
+    const text = formatPreview(output, { json: false, last: 1, verbose: true });
+    assert.match(text, /Last updated:\s+12:30:45\.123/);
+    assert.match(text, /Session started:\s+12:29:40\.123/);
+  });
+});

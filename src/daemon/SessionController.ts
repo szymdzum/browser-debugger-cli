@@ -295,7 +295,7 @@ export class SessionController {
         QUERY_TIMEOUT_MS,
         'Peek'
       );
-      const snapshotAt = new Date();
+      const snapshotAt = new Date(data.startTime + data.duration);
       return {
         ...base,
         status: 'ok',
