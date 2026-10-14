@@ -93,7 +93,8 @@ export function normalizeUrl(url: string): string {
 
 /**
  * The error for a `host:port` whose port is not a number from 0 to 65535
- * (an empty port is the default one). Input with another scheme (`about:blank`)
+ * (an empty port is the default one). Userinfo before `@` is skipped and never
+ * echoed. Input with another scheme (`about:blank`)
  * is not a `host:port`.
  *
  * @param url - URL as typed
@@ -103,12 +104,13 @@ export function normalizeUrl(url: string): string {
 function invalidPortError(url: string, normalized: string): ValidationResult | undefined {
   const typedScheme = /^https?:\/\//i.test(url);
   if (!typedScheme && normalized !== `http://${url}`) return undefined;
-  const port = /^(?:https?:\/\/)?[^/?#:]+:([^/?#]*)/i.exec(url)?.[1];
+  const authority = /^(?:https?:\/\/)?([^/?#]*)/i.exec(url)?.[1] ?? '';
+  const port = /^[^:]+:([^:]*)$/.exec(authority.slice(authority.lastIndexOf('@') + 1))?.[1];
   if (port === undefined || port === '' || (/^\d+$/.test(port) && Number(port) <= 65535)) {
     return undefined;
   }
   return invalid(
-    `Invalid port: '${port}' in '${url}'`,
+    `Invalid port: '${port}'`,
     'The port must be a number from 0 to 65535, e.g. localhost:3000'
   );
 }

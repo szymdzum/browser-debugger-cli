@@ -58,6 +58,21 @@ void describe('start URL errors', () => {
     assert.match(result.valid ? '' : result.error, /Invalid URL format|hostname/);
   });
 
+  void it('skips userinfo and never echoes it', () => {
+    for (const url of [
+      'http://user:BASICPW46@127.0.0.1:51617/secret-names',
+      'http://u:PW-BASIC-623@127.0.0.1/url-creds?token=x',
+      'http://u:p@w@localhost:3000/',
+    ]) {
+      assert.equal(validateUrl(url).valid, true, url);
+    }
+    const bad = validateUrl('http://u:PW-SECRET@localhost:abc');
+    assert.equal(bad.valid, false);
+    const text = JSON.stringify(bad);
+    assert.match(text, /Invalid port: 'abc'/);
+    assert.doesNotMatch(text, /PW-SECRET/);
+  });
+
   void it('accepts an empty port and other schemes', () => {
     for (const url of ['localhost:', 'about:blank', 'localhost:3000', 'http://localhost:3000']) {
       assert.equal(validateUrl(url).valid, true, url);
