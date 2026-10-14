@@ -3460,3 +3460,85 @@ export function chromeReplyLostError(cap: number): ErrorWithSuggestion {
     suggestion: SMALLER_CDP_REPLY_SUGGESTION,
   };
 }
+
+/**
+ * `bdg attach` without a way to reach the browser (PR1 of #473: the flag is
+ * required until discovery lands).
+ */
+export function attachNeedsChromeWsUrlError(): ErrorWithSuggestion {
+  return {
+    message: 'bdg attach needs the Chrome to attach to',
+    suggestion:
+      'Pass --chrome-ws-url <port | http://host:port | ws://…/devtools/browser/<id>> of a Chrome started with --remote-debugging-port and --user-data-dir',
+  };
+}
+
+/**
+ * No tab's URL or title contains the `bdg attach` pattern.
+ *
+ * @param pattern - The pattern
+ * @param tabList - The tabs, one `[i] title — url` line each
+ */
+export function noTabMatchesError(pattern: string, tabList: string): ErrorWithSuggestion {
+  return {
+    message: `No tab matches "${pattern}"`,
+    suggestion: `Open tabs:\n${tabList}\nAttach by index: bdg attach <index>`,
+  };
+}
+
+/**
+ * Several tabs match the `bdg attach` pattern.
+ *
+ * @param pattern - The pattern
+ * @param candidates - The matching tabs, one `[i] title — url` line each
+ * @param count - How many match
+ */
+export function severalTabsMatchError(
+  pattern: string,
+  candidates: string,
+  count: number
+): ErrorWithSuggestion {
+  return {
+    message: `${count} tabs match "${pattern}"`,
+    suggestion: `Use an index or a longer pattern:\n${candidates}`,
+  };
+}
+
+/**
+ * A `bdg attach` index past the last tab.
+ *
+ * @param index - The index
+ * @param tabList - The tabs, one `[i] title — url` line each
+ * @param count - How many tabs are open
+ */
+export function attachIndexOutOfRangeError(
+  index: number,
+  tabList: string,
+  count: number
+): ErrorWithSuggestion {
+  return {
+    message: `No tab at index ${index} (${count} tabs open)`,
+    suggestion: `Open tabs:\n${tabList}`,
+  };
+}
+
+/**
+ * `bdg stop --kill-chrome` on a session `bdg attach` started: the browser is the user's.
+ */
+export function killAttachedChromeError(): ErrorWithSuggestion {
+  return {
+    message: '--kill-chrome is refused for an attached session: the Chrome is not bdg’s',
+    suggestion: 'Run bdg stop: it detaches and leaves the tab and Chrome as they are',
+  };
+}
+
+/**
+ * Moving an attached session (`bdg attach`) to another tab: it holds one
+ * connection to its tab.
+ */
+export function attachedTabSwitchError(): ErrorWithSuggestion {
+  return {
+    message: 'A session started with bdg attach stays on its tab',
+    suggestion: 'Stop it (bdg stop) and attach to the other tab: bdg attach <pattern|index>',
+  };
+}

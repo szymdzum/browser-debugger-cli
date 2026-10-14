@@ -5,6 +5,17 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import { CommandError } from '@/errors/index.js';
+import {
+  noTabMatchesError,
+  severalTabsMatchError,
+  attachIndexOutOfRangeError,
+} from '@/errors/messages.js';
+import { formatTabList } from '@/ui/formatters/attach.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
+
+/** A `bdg attach` argument that is an index from the tab list */
+const INDEX_PATTERN = /^\d+$/;
 
 /** A page tab of the browser, in `Target.getTargets` order */
 export interface PageTab {
@@ -30,8 +41,9 @@ export interface BrowserTargetInfo {
  * @returns Page tabs
  */
 export function pageTabs(targetInfos: readonly BrowserTargetInfo[]): PageTab[] {
-  void targetInfos;
-  throw new Error('not implemented');
+  return targetInfos
+    .filter((target) => target.type === 'page')
+    .map(({ targetId, title, url }, index) => ({ index, targetId, title, url }));
 }
 
 /**
@@ -41,8 +53,10 @@ export function pageTabs(targetInfos: readonly BrowserTargetInfo[]): PageTab[] {
  * @returns Page tabs
  */
 export async function listPageTabs(cdp: CDPConnection): Promise<PageTab[]> {
-  void cdp;
-  return Promise.reject(new Error('not implemented'));
+  const { targetInfos } = (await cdp.sendToBrowser('Target.getTargets')) as {
+    targetInfos: BrowserTargetInfo[];
+  };
+  return pageTabs(targetInfos);
 }
 
 /**
@@ -55,7 +69,31 @@ export async function listPageTabs(cdp: CDPConnection): Promise<PageTab[]> {
  * @throws CommandError 83 when nothing matches, 81 for several matches or an index out of range
  */
 export function matchTab(tabs: readonly PageTab[], query: string): PageTab {
-  void tabs;
-  void query;
-  throw new Error('not implemented');
+  if (INDEX_PATTERN.test(query)) {
+    const tab = tabs[Number(query)];
+    if (tab) return tab;
+    fail(attachIndexOutOfRangeError(Number(query), formatTabList(tabs), tabs.length));
+  }
+  const needle = query.toLowerCase();
+  const matches = tabs.filter(
+    (tab) => tab.url.toLowerCase().includes(needle) || tab.title.toLowerCase().includes(needle)
+  );
+  const [only] = matches;
+  if (only && matches.length === 1) return only;
+  if (!only) fail(noTabMatchesError(query, formatTabList(tabs)), EXIT_CODES.RESOURCE_NOT_FOUND);
+  return fail(severalTabsMatchError(query, formatTabList(matches), matches.length));
+}
+
+/**
+ * Throw a tab-choice error.
+ *
+ * @param err - Message and suggestion
+ * @param exitCode - Exit code (default 81)
+ * @throws CommandError always
+ */
+function fail(
+  err: { message: string; suggestion: string },
+  exitCode: number = EXIT_CODES.INVALID_ARGUMENTS
+): never {
+  throw new CommandError(err.message, { suggestion: err.suggestion }, exitCode);
 }

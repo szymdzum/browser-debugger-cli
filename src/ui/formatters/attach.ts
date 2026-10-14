@@ -11,6 +11,5 @@ import type { PageTab } from '@/connection/browserTabs.js';
  * @returns The list
  */
 export function formatTabList(tabs: readonly PageTab[]): string {
-  void tabs;
-  throw new Error('not implemented');
+  return tabs.map((tab) => `[${tab.index}] ${tab.title || '(no title)'} — ${tab.url}`).join('\n');
 }

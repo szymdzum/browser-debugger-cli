@@ -103,6 +103,8 @@ export class CDPConnection implements CDPEventSource {
   private missedPongs = 0;
 
   private wsUrl = '';
+  /** Page session that commands and events without a session id belong to (`bdg attach`) */
+  private defaultSessionId: string | undefined;
   private isIntentionallyClosed = false;
   private lostBecause: ConnectionLossCause | undefined;
   private onDisconnect?: ((code: number, reason: string) => void | Promise<void>) | undefined;
@@ -446,10 +448,57 @@ export class CDPConnection implements CDPEventSource {
    */
   private handleCDPEvent(message: CDPMessage): void {
     if (!message.method) return;
+    if (this.defaultSessionId !== undefined && !this.toPageEvent(message)) return;
 
     const handlers = this.eventHandlers.get(message.method);
     if (handlers) {
       handlers.forEach((handler) => handler(message.params, message.sessionId));
+    }
+  }
+
+  /**
+   * With a default page session: make its events page events (no session
+   * id) and keep the browser's own events from handlers, which would take
+   * them for the page's. The page session detaching (its tab closed) is
+   * handled like a closed page socket.
+   *
+   * @param message - Event (its session id is removed for the page session)
+   * @returns Whether handlers get the event
+   */
+  private toPageEvent(message: CDPMessage): boolean {
+    if (message.sessionId === this.defaultSessionId) {
+      delete message.sessionId;
+      return true;
+    }
+    if (message.sessionId !== undefined) return true;
+    const detached = message.params as { sessionId?: string } | undefined;
+    if (
+      message.method === 'Target.detachedFromTarget' &&
+      detached?.sessionId === this.defaultSessionId
+    ) {
+      this.pageSessionDetached();
+    }
+    return false;
+  }
+
+  /**
+   * The default page session ended (tab closed or detached by Chrome): the
+   * connection is of no use to the session any more, so it is closed and
+   * reported lost like a page socket Chrome closed.
+   */
+  private pageSessionDetached(): void {
+    this.logger.info('Page session detached; closing the browser connection');
+    this.isIntentionallyClosed = true;
+    this.stopKeepalive();
+    this.clearPendingMessages(new CDPConnectionError(WEBSOCKET_CONNECTION_CLOSED_ERROR));
+    this.ws?.close();
+    this.ws = null;
+    if (this.onDisconnect) {
+      void Promise.resolve(
+        this.onDisconnect(WEBSOCKET_CONFIG.normalClosure, 'Page session detached')
+      ).catch((error) =>
+        this.logger.info(`[cdp] onDisconnect callback error: ${getErrorMessage(error)}`)
+      );
     }
   }
 
@@ -574,9 +623,25 @@ export class CDPConnection implements CDPEventSource {
     params: Record<string, unknown> = {},
     sessionId?: string
   ): Promise<unknown> {
+    return this.sendMessage(method, params, sessionId ?? this.defaultSessionId);
+  }
+
+  /**
+   * Send a command over the socket and wait for its response.
+   *
+   * @param method - CDP method name
+   * @param params - Method parameters
+   * @param sessionId - Session the command is for (none: the socket's own target)
+   * @returns Promise resolving to the command result
+   */
+  private sendMessage(
+    method: string,
+    params: Record<string, unknown>,
+    sessionId: string | undefined
+  ): Promise<unknown> {
     const ws = this.ws;
     if (ws?.readyState !== WebSocket.OPEN) {
-      throw new CDPConnectionError(NOT_CONNECTED_BROWSER_ERROR);
+      return Promise.reject(new CDPConnectionError(NOT_CONNECTED_BROWSER_ERROR));
     }
 
     const id = ++this.messageId;
@@ -632,8 +697,7 @@ export class CDPConnection implements CDPEventSource {
    * @param sessionId - Session id from `Target.attachToTarget({ flatten: true })`
    */
   useDefaultSession(sessionId: string): void {
-    void sessionId;
-    throw new Error('not implemented');
+    this.defaultSessionId = sessionId;
   }
 
   /**
@@ -644,9 +708,7 @@ export class CDPConnection implements CDPEventSource {
    * @returns The command result
    */
   sendToBrowser(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
-    void method;
-    void params;
-    return Promise.reject(new Error('not implemented'));
+    return this.sendMessage(method, params, undefined);
   }
 
   /**
