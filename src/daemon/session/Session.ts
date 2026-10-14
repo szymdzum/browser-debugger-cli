@@ -252,7 +252,8 @@ export class Session {
    * @throws CommandError for an invalid URL
    */
   static create(url: string, options: SessionOptions, onEnded: SessionEndedCallback): Session {
-    const validation = options.attachTab === undefined ? validateUrl(url) : { valid: true as const };
+    const validation =
+      options.attachTab === undefined ? validateUrl(url) : { valid: true as const };
     if (!validation.valid) {
       throw new CommandError(
         validation.error,
