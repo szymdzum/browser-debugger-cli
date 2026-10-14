@@ -84,10 +84,14 @@ void describe('Interrupted bdg cdp with event flags', () => {
    * `--out`, interrupt it once collecting.
    *
    * @param json - Whether to ask for `--json`
+   * @param call - Method and its arguments (default `Page.reload`)
+   * @param relative - Whether `--out` is given relative to the working directory
    * @returns The out file and the interrupted result (exit 130, asserted)
    */
   async function interruptCollection(
-    json: boolean
+    json: boolean,
+    call: string[] = ['Page.reload'],
+    relative = false
   ): Promise<{ file: string; result: CommandResult }> {
     const dir = makeTempDir('bdg-collect-interrupt-');
     const file = path.join(dir, 'events.ndjson');
@@ -95,7 +99,7 @@ void describe('Interrupted bdg cdp with event flags', () => {
     const running = runCommand(
       'cdp',
       [
-        'Page.reload',
+        ...call,
         '--collect',
         'Page.frameNavigated',
         '--until',
@@ -103,7 +107,7 @@ void describe('Interrupted bdg cdp with event flags', () => {
         '--timeout',
         '30',
         '--out',
-        file,
+        relative ? path.relative(process.cwd(), file) : file,
         ...(json ? ['--json'] : []),
       ],
       { timeout: COMMAND_TIMEOUT_MS, interrupt: stop.signal }
@@ -128,5 +132,22 @@ void describe('Interrupted bdg cdp with event flags', () => {
     assert.equal(envelope.error, 'Interrupted', shown(result));
     assert.doesNotMatch(envelope.suggestion ?? '', /run it again/, shown(result));
     assert.ok((envelope.suggestion ?? '').includes(file), shown(result));
+  });
+
+  void it('names the --out file of a script call too, which is also stopped (Runtime.evaluate)', async () => {
+    const { file, result } = await interruptCollection(false, [
+      'Runtime.evaluate',
+      '--params',
+      '{"expression":"1"}',
+    ]);
+    assert.match(result.stderr, /script was stopped on the page/, shown(result));
+    assert.ok(result.stderr.includes(file), shown(result));
+    assert.doesNotMatch(result.stderr, /run it again/, shown(result));
+  });
+
+  void it('names the resolved absolute path of a relative --out', async () => {
+    const { file, result } = await interruptCollection(false, ['Page.reload'], true);
+    assert.ok(path.isAbsolute(file));
+    assert.ok(result.stderr.includes(file), shown(result));
   });
 });

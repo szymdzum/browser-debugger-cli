@@ -150,6 +150,16 @@ function parseSeconds(flag: string, value: string, min: number, exclusiveMin: bo
  */
 function outPath(out: string): string {
   assertFilePath(out, '.ndjson');
+  return resolveOutPath(out);
+}
+
+/**
+ * Absolute path of an `--out` file, without validating it.
+ *
+ * @param out - Path as typed
+ * @returns Absolute path
+ */
+export function resolveOutPath(out: string): string {
   return path.resolve(out);
 }
 

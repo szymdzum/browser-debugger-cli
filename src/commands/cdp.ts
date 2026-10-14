@@ -1,5 +1,3 @@
-import * as path from 'node:path';
-
 import { Option, type Command } from 'commander';
 
 import { resolveMethodTarget } from '@/cdp/methodTarget.js';
@@ -19,6 +17,7 @@ import {
   collectHints,
   EVENT_WAIT_MAX_S,
   planEventCommand,
+  resolveOutPath,
   runEventsRequest,
 } from '@/commands/cdpEvents.js';
 import { runCommand, type CommandResult } from '@/commands/shared/CommandRunner.js';
@@ -333,14 +332,14 @@ function interruptedCallWork(method: string): InterruptedWork {
  * @param options - Command options
  * @returns The interrupt message's work, absent for a read that writes nothing
  */
-function interruptedEventWork(
+export function interruptedEventWork(
   method: string | undefined,
   options: CdpCommandOptions
 ): InterruptedWork | undefined {
-  const writing = options.out === undefined ? undefined : path.resolve(options.out);
+  const writing = options.out === undefined ? undefined : resolveOutPath(options.out);
   if (method === undefined) return writing ? { file: 'events file', writing } : undefined;
   const call = interruptedCallWork(method);
-  return 'sent' in call && writing ? { ...call, writing } : call;
+  return writing ? { ...call, writing } : call;
 }
 
 /**

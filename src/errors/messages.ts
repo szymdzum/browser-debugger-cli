@@ -284,11 +284,13 @@ export function screenshotInterruptedError(signal: 'SIGINT' | 'SIGTERM'): ErrorW
  * on the page (`stopped`: `dom eval`), changed the session itself
  * (`session`: `stop` or `cleanup`), or a file it writes (`file`: what kind;
  * `writing`: its path once the write has started, absent before). A sent
- * call that also writes a file (`bdg cdp --out`) carries `writing` on `sent`.
+ * call or stopped script that also writes a file (`bdg cdp --out`) carries
+ * `writing` too: there it is the file the command may write, set whenever
+ * `--out` is given, whether or not the write has started.
  */
 export type InterruptedWork =
   | { sent: string; writing?: string | undefined }
-  | { stopped: 'script' }
+  | { stopped: 'script'; writing?: string | undefined }
   | { session: 'stop' | 'cleanup' }
   | InterruptedFileWrite;
 
@@ -324,7 +326,10 @@ function interruptedWorkText(work: InterruptedWork | undefined): string {
       : `${reached}; check with ${sessionCommand('bdg peek')} before repeating it`;
   }
   if ('stopped' in work) {
-    return `The ${work.stopped} was stopped on the page if it was still running; changes it made before the stop may remain; check with ${sessionCommand('bdg peek')} before repeating it`;
+    const stopped = `The ${work.stopped} was stopped on the page if it was still running; changes it made before the stop may remain`;
+    return work.writing
+      ? `${stopped}; the file ${work.writing} may or may not have been written; check ${work.writing} and ${sessionCommand('bdg peek')} before repeating it`
+      : `${stopped}; check with ${sessionCommand('bdg peek')} before repeating it`;
   }
   if ('session' in work) {
     const begun =
