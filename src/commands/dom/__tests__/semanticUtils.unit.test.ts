@@ -14,6 +14,7 @@ import {
   withSecretMasked,
 } from '@/commands/dom/semanticUtils.js';
 import { MASKED_VALUE, textPreview } from '@/runtime/dom/elementInfo.js';
+import type { DomContext } from '@/types.js';
 
 const NODE = { nodeId: '1', role: 'generic' };
 
@@ -223,7 +224,7 @@ void describe('withSecretMasked', () => {
 });
 
 void describe('buildContextText id', () => {
-  const context = (id?: string) => ({
+  const context = (id?: string): DomContext => ({
     tag: 'p',
     classes: ['a'],
     ...(id !== undefined && { id }),
@@ -265,7 +266,7 @@ void describe('buildContextText id', () => {
 });
 
 void describe('empty-element line by tag', () => {
-  const line = (tag: string) =>
+  const line = (tag: string): string =>
     formatSemanticNodeWithContext({
       node: NODE,
       domContext: { tag, classes: [], children: [], childCount: 0 },
