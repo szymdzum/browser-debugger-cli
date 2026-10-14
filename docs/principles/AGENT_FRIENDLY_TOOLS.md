@@ -146,7 +146,7 @@ MCP is the better fit for tools that need runtime capability negotiation, comple
 
 ## Checklist
 
-- [ ] Each command answers one question, and every leaf command supports `--json` (a group such as `bdg network` without a subcommand only prints help)
+- [ ] Each command answers one question, and every leaf command supports `--json` (a group such as `bdg network --json` answers with an error envelope, exit 81, naming its subcommands)
 - [ ] Data on stdout; logs on stderr; errors on stderr, or as the `--json` envelope on stdout
 - [ ] `--json` has a stable schema with a version, additive changes only
 - [ ] Exit codes follow the semantic ranges; errors carry a suggestion
