@@ -210,6 +210,25 @@ export interface CollectOptions extends CdpCollectParams {
 }
 
 /**
+ * Finish an `--out` file. A collection abandoned by its client before any
+ * event arrived leaves no file (an empty one would look like a result; an
+ * existing file stays as it was); any other collection renames the file in,
+ * also with no events.
+ *
+ * @param file - The open file
+ * @param abandoned - Whether the client went away
+ * @returns What was written
+ */
+async function finishFile(
+  file: NdjsonFile,
+  abandoned: boolean
+): Promise<{ file: string; count: number; bytes: number }> {
+  if (!abandoned || file.count > 0 || file.dropped > 0) return file.commit();
+  await file.discard();
+  return { file: file.file, count: 0, bytes: 0 };
+}
+
+/**
  * Send a method and collect events while it runs: subscribed before it is
  * sent, until the `until` event (included) or the timeout, but at least
  * until the method answered. A timeout is not an error: the events so far
@@ -255,7 +274,10 @@ export async function collectEvents(
       !file?.dropped &&
       (options.until === undefined || untilArrived.signal.aborted);
     const delivery = file
-      ? { ...(await file.commit()), ...(file.dropped > 0 && { dropped: file.dropped }) }
+      ? {
+          ...(await finishFile(file, options.signal?.aborted === true)),
+          ...(file.dropped > 0 && { dropped: file.dropped }),
+        }
       : {
           events: page.events,
           count: page.events.length,

@@ -57,6 +57,8 @@ void describe('commandInterruptedError', () => {
     assert.match(suggestion, /^The CDP call may already have reached the page; /);
     assert.match(suggestion, /\/tmp\/t\.ndjson/);
     assert.match(suggestion, /may or may not have been written/);
+    assert.match(suggestion, /missing or partial file means the collection stopped early/);
+    assert.match(suggestion, /start over .*Tracing\.end/);
     assert.doesNotMatch(suggestion, /run (it|the command) again/);
   });
 

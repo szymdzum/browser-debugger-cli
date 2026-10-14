@@ -322,13 +322,13 @@ function interruptedWorkText(work: InterruptedWork | undefined): string {
   if ('sent' in work) {
     const reached = `The ${work.sent} may already have reached the page`;
     return work.writing
-      ? `${reached}; the file ${work.writing} may or may not have been written; check ${work.writing} and ${sessionCommand('bdg peek')} before repeating it`
+      ? `${reached}; the file ${work.writing} may or may not have been written, and a missing or partial file means the collection stopped early; check ${work.writing} and ${sessionCommand('bdg peek')} before repeating it, and start over if the call ended something that cannot be repeated (e.g. Tracing.end after Tracing.start)`
       : `${reached}; check with ${sessionCommand('bdg peek')} before repeating it`;
   }
   if ('stopped' in work) {
     const stopped = `The ${work.stopped} was stopped on the page if it was still running; changes it made before the stop may remain`;
     return work.writing
-      ? `${stopped}; the file ${work.writing} may or may not have been written; check ${work.writing} and ${sessionCommand('bdg peek')} before repeating it`
+      ? `${stopped}; the file ${work.writing} may or may not have been written (a missing or partial file means the collection stopped early); check ${work.writing} and ${sessionCommand('bdg peek')} before repeating it`
       : `${stopped}; check with ${sessionCommand('bdg peek')} before repeating it`;
   }
   if ('session' in work) {

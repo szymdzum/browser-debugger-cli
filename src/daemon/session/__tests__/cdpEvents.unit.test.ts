@@ -239,6 +239,56 @@ void describe('collectEvents', () => {
     assert.deepEqual(strayFiles(dir, ['trace.ndjson']), []);
   });
 
+  void it('leaves no --out file when the client went away before any event (#758)', async () => {
+    const dir = fs.mkdtempSync(path.join(tmpDir, 'abandoned-'));
+    const file = path.join(dir, 'trace.ndjson');
+    const gone = new AbortController();
+    await collectEvents(
+      new FakeSource(),
+      () => {
+        gone.abort();
+        return Promise.resolve({});
+      },
+      { events: ['A.b'], timeoutMs: 1000, out: file, signal: gone.signal }
+    );
+    assert.deepEqual(fs.readdirSync(dir), []);
+  });
+
+  void it('leaves an existing --out file as it was when abandoned with no events (#758)', async () => {
+    const dir = fs.mkdtempSync(path.join(tmpDir, 'abandoned-old-'));
+    const file = path.join(dir, 'trace.ndjson');
+    fs.writeFileSync(file, 'old\n');
+    const gone = new AbortController();
+    await collectEvents(
+      new FakeSource(),
+      () => {
+        gone.abort();
+        return Promise.resolve({});
+      },
+      { events: ['A.b'], timeoutMs: 1000, out: file, signal: gone.signal }
+    );
+    assert.equal(fs.readFileSync(file, 'utf8'), 'old\n');
+    assert.deepEqual(strayFiles(dir, ['trace.ndjson']), []);
+  });
+
+  void it('keeps the partial --out file of an abandoned collection (#758)', async () => {
+    const dir = fs.mkdtempSync(path.join(tmpDir, 'abandoned-part-'));
+    const file = path.join(dir, 'trace.ndjson');
+    const gone = new AbortController();
+    const source = new FakeSource();
+    const outcome = await collectEvents(
+      source,
+      () => {
+        source.emit('A.b', { n: 1 });
+        gone.abort();
+        return Promise.resolve({});
+      },
+      { events: ['A.b'], timeoutMs: 1000, out: file, signal: gone.signal }
+    );
+    assert.equal(outcome.collected.count, 1);
+    assert.equal(fs.readFileSync(file, 'utf8').trimEnd().split('\n').length, 1);
+  });
+
   void it('drops and counts events while the --out file is too far behind', async () => {
     const source = new FakeSource();
     const file = path.join(tmpDir, 'slow.ndjson');
