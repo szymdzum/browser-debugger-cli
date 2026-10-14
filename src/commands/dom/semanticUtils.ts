@@ -113,7 +113,7 @@ export function formatSemanticNodeWithContext(data: SemanticNodeWithContext): st
   const line = `${roleText}${contextText}${keysText}${propsText}${inferredText}`;
   const text = textNotOnRoleLine(node, domContext);
   if (text) return joinLines(line, elementTextLine(text));
-  if (domContext?.childCount !== undefined && !node.name && !holdsNoChildren(domContext.tag)) {
+  if (domContext?.childCount !== undefined && !node.name && !NO_CHILDREN_TAGS.has(domContext.tag)) {
     return joinLines(
       line,
       emptyElementLine(
@@ -148,16 +148,6 @@ const NO_CHILDREN_TAGS = new Set([
   'select',
   'textarea',
 ]);
-
-/**
- * Whether an element is one that never has children to list.
- *
- * @param tag - Lowercase tag name
- * @returns True for void elements, `select` and `textarea`
- */
-function holdsNoChildren(tag: string): boolean {
-  return NO_CHILDREN_TAGS.has(tag);
-}
 
 /**
  * The element's text when the role line does not show it: text longer than
