@@ -624,6 +624,32 @@ export class CDPConnection implements CDPEventSource {
   }
 
   /**
+   * Route the connection's commands and events to one attached page: from
+   * now on `send()` without a session id goes to that session, and its
+   * events reach handlers as the page's own (no session id). For a
+   * connection to the browser endpoint (`bdg attach`).
+   *
+   * @param sessionId - Session id from `Target.attachToTarget({ flatten: true })`
+   */
+  useDefaultSession(sessionId: string): void {
+    void sessionId;
+    throw new Error('not implemented');
+  }
+
+  /**
+   * Send a command to the browser itself, past the default page session.
+   *
+   * @param method - CDP method name
+   * @param params - Method parameters
+   * @returns The command result
+   */
+  sendToBrowser(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
+    void method;
+    void params;
+    return Promise.reject(new Error('not implemented'));
+  }
+
+  /**
    * Register an event handler for CDP events.
    *
    * Type casting is safe because we store handlers as (params: unknown) \> void
