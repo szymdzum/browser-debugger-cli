@@ -446,6 +446,7 @@ async function sendStart(
         headless: options.headless,
         chromeWsUrl: options.chromeWsUrl,
         attachTab: options.attachTab,
+        activePortFile: options.activePortFile,
         chromeFlags: options.chromeFlags,
         viewport: options.viewport,
         colorScheme: options.colorScheme,
@@ -514,6 +515,18 @@ function omitDuration(
 }
 
 /**
+ * How long the running session has run: from its start time (the daemon's
+ * `duration` is whole seconds, 0 for a session under a second old).
+ *
+ * @param existing - Existing session from the daemon
+ * @returns Milliseconds
+ */
+function runningFor(existing: NonNullable<StartSessionResponse['existingSession']>): number {
+  if (existing.startTime !== undefined) return Math.max(0, Date.now() - existing.startTime);
+  return (existing.duration ?? 0) * 1000;
+}
+
+/**
  * Describe an error response to `start_session_request`.
  *
  * @param response - Error response from the daemon
@@ -533,11 +546,11 @@ function describeStartFailure(
     },
   });
   if (response.errorCode === IPCErrorCode.SESSION_ALREADY_RUNNING && existing) {
-    const { pid, targetUrl, duration } = existing;
+    const { pid, targetUrl } = existing;
     return {
       ok: false,
       error: response.message ?? 'Session already running',
-      human: sessionAlreadyRunningError(pid, duration ? duration * 1000 : 0, targetUrl),
+      human: sessionAlreadyRunningError(pid, runningFor(existing), targetUrl),
       exitCode,
       errorCode: response.errorCode,
       details: { ...details, suggestion: alreadyRunningSuggestion() },
