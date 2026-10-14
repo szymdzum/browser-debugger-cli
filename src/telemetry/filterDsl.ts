@@ -7,7 +7,11 @@
  */
 
 import { RESOURCE_TYPE_ABBREVIATIONS, resourceTypeFromName } from '@/constants.js';
-import { untypedFilterWordSuggestion } from '@/errors/messages.js';
+import {
+  MASKED_URL_FILTER_HINT,
+  untypedFilterWordSuggestion,
+  wildcardUrlFilterHint,
+} from '@/errors/messages.js';
 import { summarizeBlockedCookies } from '@/telemetry/blockedCookies.js';
 import { matchesWildcard } from '@/telemetry/filters.js';
 import { currentNavigationOf, isPreviousPage } from '@/telemetry/pageScope.js';
@@ -434,6 +438,9 @@ function stripQuotes(token: string): string {
  */
 export function parseFilterString(input: string): ParsedFilter[] {
   if (!input.trim()) return [];
+  if (input.split('"').length % 2 === 0) {
+    throw new Error('Unbalanced quote in filter\nClose the quote, or remove it');
+  }
 
   const tokens = tokenize(input);
   const filters: ParsedFilter[] = [];
@@ -614,6 +621,26 @@ export function applyFilters(
       return filter.negated ? !matches : matches;
     })
   );
+}
+
+/**
+ * Hints for `url:` filters that matched nothing.
+ *
+ * @param filters - Parsed filters of the query
+ * @param someMasked - Whether a candidate request's shown URL holds a masked value
+ *   (and `--include-sensitive` was not given)
+ * @returns At most one line per cause: masked values, a `*` pattern not at both ends
+ */
+export function urlFilterHints(filters: ParsedFilter[], someMasked: boolean): string[] {
+  const urlValues = filters.filter((f) => f.type === 'url' && !f.negated).map((f) => f.value);
+  if (urlValues.length === 0) return [];
+  const partial = urlValues.find(
+    (value) => value.includes('*') && !(value.startsWith('*') && value.endsWith('*'))
+  );
+  return [
+    ...(someMasked ? [MASKED_URL_FILTER_HINT] : []),
+    ...(partial === undefined ? [] : [wildcardUrlFilterHint(partial)]),
+  ];
 }
 
 /**

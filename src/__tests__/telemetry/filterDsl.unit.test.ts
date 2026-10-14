@@ -764,3 +764,12 @@ describe('url: filter (#652)', () => {
     assert.match(getFilterHelpText(), /url:/);
   });
 });
+
+describe('unbalanced quote (#652)', () => {
+  it('names the quote instead of a missing value', () => {
+    const result = validateFilterString('url:"v1');
+    assert.equal(result.valid, false);
+    if (result.valid) return;
+    assert.match(result.error, /quote/i);
+  });
+});

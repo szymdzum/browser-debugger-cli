@@ -180,4 +180,52 @@ void describe('network filter url:<text>', () => {
     assert.equal(result.exitCode, 81);
     assert.match(result.output, /Did you mean: url/);
   });
+
+  /**
+   * `network list` for a filter, human and `--json`.
+   *
+   * @param filter - `--filter` DSL
+   * @param extra - More arguments
+   * @returns Human output, and the `data` of the `--json` run
+   */
+  async function bothFormats(
+    filter: string,
+    extra: string[] = []
+  ): Promise<{ human: string; data: { requests: unknown[]; filterHints?: string[] } }> {
+    const args = ['list', '--last', '0', '--filter', filter, ...extra];
+    const human = await runCommand('network', args, { timeout: 30000 });
+    const json = await runCommand('network', [...args, '--json'], { timeout: 30000 });
+    const data = (JSON.parse(json.stdout) as { data: { requests: unknown[] } }).data;
+    return { human: human.stdout, data };
+  }
+
+  void it('hints that masked values match only with --include-sensitive', async () => {
+    const { human, data } = await bothFormats('url:abcdef');
+    assert.equal(data.requests.length, 0);
+    assert.match(
+      human,
+      /No matching requests found\.\n.*masked values match only with --include-sensitive/
+    );
+    assert.equal(data.filterHints?.length, 1);
+    const raw = await bothFormats('url:abcdef', ['--include-sensitive']);
+    assert.equal(raw.data.requests.length, 1);
+    assert.equal(raw.data.filterHints, undefined);
+    const unmasked = await bothFormats('url:nothing-like-this', ['--include-sensitive']);
+    assert.equal(unmasked.data.filterHints, undefined);
+  });
+
+  void it('hints that a pattern with * must match the whole URL', async () => {
+    const { human, data } = await bothFormats('url:uf-*');
+    assert.equal(data.requests.length, 0);
+    assert.ok(human.includes("'url:*uf-*'"), human);
+    assert.ok(data.filterHints?.some((hint) => hint.includes("'url:*uf-*'")));
+    assert.equal((await bothFormats('url:*uf-*')).data.filterHints, undefined);
+  });
+
+  void it('names an unbalanced quote', async () => {
+    const result = await listUrls('url:"v1');
+    assert.equal(result.exitCode, 81);
+    assert.match(result.output, /quote/i);
+    assert.doesNotMatch(result.output, /Missing value/);
+  });
 });

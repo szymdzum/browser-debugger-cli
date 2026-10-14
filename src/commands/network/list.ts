@@ -20,7 +20,13 @@ import { positiveIntRule, resourceTypeRule } from '@/commands/shared/validation.
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import type { TabSwitchInfo } from '@/ipc/protocol/tabTypes.js';
-import { applyFilters, getFilterHelpText, validateFilterString } from '@/telemetry/filterDsl.js';
+import { MASKED_VALUE } from '@/runtime/dom/elementInfo.js';
+import {
+  applyFilters,
+  getFilterHelpText,
+  urlFilterHints,
+  validateFilterString,
+} from '@/telemetry/filterDsl.js';
 import { resolvePreset, FILTER_PRESETS } from '@/telemetry/filterPresets.js';
 import { filterByResourceType } from '@/telemetry/filters.js';
 import type { NetworkRequest } from '@/types.js';
@@ -163,6 +169,23 @@ function filterRequests(
 }
 
 /**
+ * Hints for a `url:` filter that matched nothing.
+ *
+ * @param options - Command options
+ * @param shown - The requests with their URLs as shown
+ * @returns Hint lines, none when the filter has no `url:` or something matched
+ */
+function urlFilterHintsFor(
+  options: NetworkListCommandOptions,
+  shown: readonly NetworkRequest[]
+): string[] {
+  const validation = validateFilterString(buildFilterString(options));
+  if (!validation.valid) return [];
+  const someMasked = !options.includeSensitive && shown.some((r) => r.url.includes(MASKED_VALUE));
+  return urlFilterHints(validation.filters, someMasked);
+}
+
+/**
  * Formatter options for a listing.
  *
  * @param options - Command options
@@ -181,6 +204,7 @@ function buildFormatOptions(
     totalCount: result.totalCount,
     filteredCount: result.filteredCount,
     ...(options.sort && { sort: options.sort }),
+    ...(result.filterHints && { filterHints: result.filterHints }),
     ...(result.hiddenEarlierPages && { hiddenEarlierPages: result.hiddenEarlierPages }),
     ...(result.pageStart && { pageStart: result.pageStart }),
     evictions: {
@@ -330,6 +354,8 @@ interface NetworkListResult {
   page?: 'current';
   /** Requests of earlier pages matching the filters that `--page current` left out (left out when none) */
   hiddenEarlierPages?: number;
+  /** Why a `url:` filter matched nothing (left out otherwise) */
+  filterHints?: string[];
   /** Order of `requests` (`--sort`; left out: capture order) */
   sort?: SortKey;
   /**
@@ -442,9 +468,12 @@ export function registerListCommand(networkCmd: Command): void {
           const scope = options.page ?? defaultPageScope(options.preset);
           const scoped = scopeToPage(matching, scope, { all: requests, currentNavigationId });
           const pageStart = pageStartOf(requests);
+          const filterHints =
+            scoped.requests.length === 0 ? urlFilterHintsFor(options, requests) : [];
           return {
             success: true,
             data: {
+              ...(filterHints.length > 0 && { filterHints }),
               requests: selectRequests(scoped.requests, options.sort, lastN),
               totalCount: requests.length,
               filteredCount: scoped.requests.length,
