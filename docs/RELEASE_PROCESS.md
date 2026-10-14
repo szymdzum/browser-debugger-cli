@@ -19,7 +19,7 @@ How to release `browser-debugger-cli`. The version bump and CHANGELOG go through
    - Organization or user: `szymdzum`
    - Repository: `browser-debugger-cli`
    - Workflow filename: `release.yml`
-   - Environment: leave empty
+   - Environment: leave empty until the `isolate npm publish` change is merged, then set it to `npm` (the publish job runs in the GitHub environment `npm`; with the field set, no other job or workflow can publish)
 2. Optional, recommended once a release went through the workflow: in the same settings set **Publishing access** to "Require two-factor authentication and disallow tokens". Trusted Publishing keeps working; no token can publish.
 3. GitHub CLI authenticated locally (`gh auth status`).
 
@@ -77,7 +77,12 @@ Release notes: an overview, highlights, **breaking changes with what to do**, th
 
 ### 3. npm publish (automatic)
 
-Publishing the release starts the **Release** workflow. It checks out the tag, verifies the tag matches `package.json` and that `CI OK` passed on the tagged commit (a push run on `main`), runs the quality checks, contract tests and build, then runs `npm publish --provenance`. Follow it with:
+Publishing the release starts the **Release** workflow, which has two jobs so that no project code runs where the npm OIDC token exists:
+
+- **`build`** (`contents: read`, no `id-token`): checks out the tag, verifies the tag matches `package.json` and that `CI OK` passed on the tagged commit (a push run on `main`), runs `npm ci`, the quality checks, contract tests and build, then `npm pack` and uploads the tarball as the `npm-tarball` artifact. Its file name and sha512 are job outputs.
+- **`publish`** (`id-token: write`, GitHub environment `npm`): needs `build`; installs the pinned npm, downloads the tarball, checks its sha512 against the `build` output, then runs `npm publish <tarball> --provenance --access public --ignore-scripts` (`--tag next` for prereleases). It has no checkout and no `npm ci`, so it publishes exactly the tarball that `build` tested.
+
+Actions are pinned to full commit SHAs (Dependabot's `github-actions` updates keep the `# vX.Y.Z` comments current) and npm to an exact version; bump it deliberately when a newer npm is needed. Follow the run with:
 
 ```bash
 gh run list --workflow release.yml --limit 1
@@ -89,6 +94,14 @@ To publish an existing tag again (e.g. the workflow failed before publishing), r
 ```bash
 gh workflow run release.yml -f tag=v0.X.Y
 ```
+
+To rehearse without publishing (for example after changing the workflow), dispatch it with `dry_run`; `publish` then runs `npm publish --dry-run` on the verified tarball. A `release` event is never a dry run. The workflow file of the chosen `--ref` is used, so a branch can be tested before it merges:
+
+```bash
+gh workflow run release.yml --ref <branch> -f tag=v0.X.Y -f dry_run=true
+```
+
+A dry run of a tag that is already on npm still lists the tarball; it does not touch the registry. Provenance of a non-release dispatch records the dispatching ref, so publish real versions from the `release` event.
 
 ### 4. Verify
 
@@ -124,7 +137,7 @@ gh workflow run release.yml -f tag=v0.X.Y
 
 ### npm publish fails with 403 or ENEEDAUTH in the workflow
 
-Trusted Publishing is not set up or does not match: check the Trusted Publisher settings on npmjs.com (owner `szymdzum`, repository `browser-debugger-cli`, workflow `release.yml`), and that the workflow has `id-token: write` and runs npm 11.5.1+.
+Trusted Publishing is not set up or does not match: check the Trusted Publisher settings on npmjs.com (owner `szymdzum`, repository `browser-debugger-cli`, workflow `release.yml`), and that the `publish` job has `id-token: write`, runs in the environment `npm` (the Trusted Publisher's Environment field must be empty or `npm`) and uses npm 11.5.1+.
 
 ### Publishing by hand (fallback)
 
