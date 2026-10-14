@@ -2,9 +2,9 @@
  * Index script failure smoke test (#630).
  *
  * When an action script throws in the page on an element given by an
- * `a11y query` index, the suggestion names the index (`bdg dom get 0`),
+ * `a11y query` index, the suggestion names the index (`bdg dom listeners 0`),
  * never the cache's internal `a11y ...` key; for a selector it still names
- * the quoted selector. Both exit 110, in text and in `--json`.
+ * the quoted selector. Both exit 91 (the page threw), in text and in `--json`.
  */
 
 import * as assert from 'node:assert/strict';
@@ -49,7 +49,7 @@ async function bdg(args: string[], expectedExit = 0): Promise<string> {
  */
 async function failedClick(target: string): Promise<FailureJson> {
   const result = await runCommand('dom', ['click', target, '--json'], { timeout: 60000 });
-  assert.equal(result.exitCode, 110, `bdg dom click ${target} --json: ${result.stdout}`);
+  assert.equal(result.exitCode, 91, `bdg dom click ${target} --json: ${result.stdout}`);
   return JSON.parse(result.stdout) as FailureJson;
 }
 
@@ -71,23 +71,24 @@ void describe('Action script failure on an index', () => {
 
   void it('names the a11y index, not the cache key, in text and JSON', async () => {
     await bdg(['dom', 'a11y', 'query', 'role=button']);
-    const text = await bdg(['dom', 'click', '0'], 110);
+    const text = await bdg(['dom', 'click', '0'], 91);
     assert.match(text, /The click script failed in the page: Error: boom/);
-    assert.match(text, /Check the element with bdg dom get 0, or/);
+    assert.match(text, /The page's own code threw while bdg ran the click/);
+    assert.match(text, /bdg dom listeners 0 or bdg console/);
     assert.doesNotMatch(text, /a11y /);
     const json = await failedClick('0');
-    assert.match(json.suggestion, /bdg dom get 0, or/);
+    assert.match(json.suggestion, /bdg dom listeners 0 or bdg console/);
     assert.doesNotMatch(json.suggestion, /a11y /);
   });
 
   void it('names the index of a dom query result', async () => {
     await bdg(['dom', 'query', 'button']);
-    assert.match((await failedClick('0')).suggestion, /bdg dom get 0, or/);
+    assert.match((await failedClick('0')).suggestion, /bdg dom listeners 0 or bdg console/);
   });
 
   void it('still names the quoted selector for a selector target', async () => {
-    const text = await bdg(['dom', 'click', '#go'], 110);
-    assert.match(text, /Check the element with bdg dom get "#go", or/);
-    assert.match((await failedClick('#go')).suggestion, /bdg dom get "#go", or/);
+    const text = await bdg(['dom', 'click', '#go'], 91);
+    assert.match(text, /bdg dom listeners "#go" or bdg console/);
+    assert.match((await failedClick('#go')).suggestion, /bdg dom listeners "#go" or bdg console/);
   });
 });
