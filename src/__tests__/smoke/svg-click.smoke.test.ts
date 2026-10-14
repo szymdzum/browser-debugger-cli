@@ -82,7 +82,7 @@ void describe('Clicking SVG elements without a box', () => {
   });
 
   void it('reports a throwing fallback as a script failure, not as removed', async () => {
-    await bdg(['dom', 'eval', 'window.MouseEvent = function () { throw new Error("boom"); }; 1']);
+    await bdg(['dom', 'eval', 'document.querySelector("g[aria-label=other]").dispatchEvent = () => { throw new Error("boom"); }; 1']);
     const text = await bdg(['dom', 'click', 'g[aria-label=other]'], 110);
     assert.match(text, /boom/);
     assert.doesNotMatch(text, /removed|no longer in the page/);
