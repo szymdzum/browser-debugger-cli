@@ -239,7 +239,7 @@ export interface FillResult extends ActionEffects {
    * one-time code, card data, a CSS-masked field…): `value` is `••••`
    */
   sensitive?: boolean;
-  /** The element acted on, e.g. `input.toggle in div.view "Write report"` */
+  /** The element acted on, e.g. `input.toggle in div.view ("Write report")` */
   element?: string;
   elementType?: string;
   inputType?: string | null;
@@ -274,7 +274,7 @@ export interface ClickResult extends ActionEffects {
   success: boolean;
   error?: string;
   selector?: string;
-  /** The element acted on, e.g. `input.toggle in div.view "Write report"` */
+  /** The element acted on, e.g. `input.toggle in div.view ("Write report")` */
   element?: string;
   elementType?: string;
   matchCount?: number;
@@ -321,7 +321,7 @@ export interface PressKeyResult extends ActionEffects {
   success: boolean;
   error?: string;
   selector?: string;
-  /** The element acted on, e.g. `input.toggle in div.view "Write report"` */
+  /** The element acted on, e.g. `input.toggle in div.view ("Write report")` */
   element?: string;
   key?: string;
   times?: number;
@@ -359,7 +359,7 @@ export interface ScrollResult extends ActionEffects {
   exitCode?: number;
   scrollType: 'element' | 'position' | 'offset';
   selector?: string;
-  /** The element acted on, e.g. `input.toggle in div.view "Write report"` */
+  /** The element acted on, e.g. `input.toggle in div.view ("Write report")` */
   element?: string;
   scrolledTo?: { x: number; y: number };
   scrolledBy?: { x: number; y: number };
@@ -382,7 +382,7 @@ export interface SubmitResult extends ActionEffects {
   success: boolean;
   error?: string;
   selector?: string;
-  /** The element acted on, e.g. `input.toggle in div.view "Write report"` */
+  /** The element acted on, e.g. `input.toggle in div.view ("Write report")` */
   element?: string;
   clicked?: boolean;
   /** Set when the target is neither a form nor a button: a list from another command was likely meant */

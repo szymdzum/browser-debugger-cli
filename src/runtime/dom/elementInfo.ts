@@ -574,9 +574,11 @@ export const SIBLING_POSITION_JS = `(el) => {
  * `input[name=email]`, `input[name=nl-email] "Newsletter email"`; otherwise
  * by its position among same-looking siblings ({@link SIBLING_POSITION_JS}),
  * e.g. `div.figure (2nd of 3)`. Only an element that is the only one of its
- * kind is named by the nearest of three ancestors that has text, e.g.
- * `input.toggle in div.view "Write report"` (rows of a list share their
- * aria-label), leaving out the options
+ * kind is placed by the nearest of three ancestors that has text, e.g.
+ * `input.toggle in div.view ("Write report")`: text borrowed from the
+ * ancestor is in parentheses, as context, and an element with a name of its
+ * own keeps it quoted (`button in div.hdr "Open menu"`). The ancestor
+ * text leaves out the options
  * of `<select>`s in it (read like `innerText`: CSS-hidden text is left out of
  * a rendered ancestor; at most 500 text nodes; selects in shadow roots are
  * not looked into), and never past an editable ancestor, whose text may be
@@ -660,7 +662,7 @@ export const ELEMENT_IDENTITY_JS = `(el) => {
   for (let depth = 0; ancestor && depth < 3; depth++, ancestor = ancestor.parentElement) {
     if (isControl(ancestor)) break;
     const text = textOutsideSelects(ancestor);
-    if (text) return named(el) + ' in ' + describe(ancestor) + quoted(text);
+    if (text) return named(el) + ' in ' + describe(ancestor) + (attribute ? quoted(attribute) : ' ("' + cut(text) + '")');
   }
   return named(el) + quoted(attribute);
 }`;
