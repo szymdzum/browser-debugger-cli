@@ -77,6 +77,8 @@ export interface SessionOptions {
   chromeWsUrl?: string;
   /** `bdg attach`: the tab of the `chromeWsUrl` browser to attach to (pattern or index), without navigating. */
   attachTab?: string;
+  /** `bdg attach`: the `DevToolsActivePort` file `chromeWsUrl` came from (nothing listening there: a stale file). */
+  activePortFile?: string;
   /** Custom Chrome flags (e.g., ['--ignore-certificate-errors']). */
   chromeFlags?: string[];
   /** Viewport size the page is emulated at (`--viewport`). */

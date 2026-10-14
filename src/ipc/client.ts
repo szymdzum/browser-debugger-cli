@@ -214,6 +214,7 @@ export async function startSession(
       headless: options.headless,
       chromeWsUrl: options.chromeWsUrl,
       attachTab: options.attachTab,
+      activePortFile: options.activePortFile,
       chromeFlags: options.chromeFlags,
       viewport: options.viewport,
       colorScheme: options.colorScheme,

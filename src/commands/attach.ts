@@ -1,7 +1,10 @@
 /**
  * `bdg attach [tab]`: list the tabs of a running Chrome, or start a session
  * on one of them as it is (never navigated), over one connection to the
- * browser endpoint (#473).
+ * browser endpoint (#473). Without `--chrome-ws-url` the endpoint comes from
+ * the `DevToolsActivePort` file of Chrome's user data dir (Chrome stable's
+ * default, or `--user-data-dir`), which Chrome also writes when remote
+ * debugging is enabled at chrome://inspect/#remote-debugging.
  */
 
 import type { Command } from 'commander';
@@ -13,52 +16,63 @@ import type { BaseOptions } from '@/commands/shared/optionTypes.js';
 import { startSessionViaDaemon } from '@/commands/shared/startHelpers.js';
 import { positiveIntRule } from '@/commands/shared/validation.js';
 import { assertValidChromeWsUrl, resolveChromeWsUrl } from '@/commands/start.js';
+import { connectToBrowser } from '@/connection/browserConnection.js';
 import { listPageTabs, type PageTab } from '@/connection/browserTabs.js';
-import { CDPConnection } from '@/connection/cdp.js';
+import { defaultChromeUserDataDir, discoverBrowser } from '@/connection/devToolsActivePort.js';
 import { CommandError } from '@/errors/index.js';
-import { attachNeedsChromeWsUrlError } from '@/errors/messages.js';
+import { attachEndpointConflictError } from '@/errors/messages.js';
 import { formatTabList } from '@/ui/formatters/attach.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /** Options of `bdg attach` */
 interface AttachOptions extends BaseOptions {
   chromeWsUrl?: string;
+  userDataDir?: string;
   timeout?: string;
   quiet?: boolean;
 }
 
-/** Connection attempts for the tab list (Chrome is already running) */
-const LIST_CONNECT_ATTEMPTS = 2;
+/** The browser to attach to, and the `DevToolsActivePort` file that named it */
+interface BrowserEndpoint {
+  wsUrl: string;
+  activePortFile?: string;
+}
 
 /**
- * The browser WebSocket URL `--chrome-ws-url` names, checked and resolved
- * (a port or HTTP endpoint through its `/json/version`).
+ * The browser endpoint: `--chrome-ws-url` checked and resolved (a port or
+ * HTTP endpoint through its `/json/version`), else the `DevToolsActivePort`
+ * file of `--user-data-dir` or Chrome stable's default profile (no HTTP).
  *
- * @param value - Option value
- * @returns Browser WebSocket URL
- * @throws CommandError 81 without the option, 80/101 for a bad or unreachable endpoint
+ * @param options - Command options
+ * @returns Browser WebSocket URL, and the file it came from
+ * @throws CommandError 81 for both options, 83 without a readable file, 80/101 for a bad or unreachable endpoint
  */
-async function browserUrl(value: string | undefined): Promise<string> {
-  if (value === undefined) {
-    const err = attachNeedsChromeWsUrlError();
+async function browserEndpoint(options: AttachOptions): Promise<BrowserEndpoint> {
+  const { chromeWsUrl, userDataDir } = options;
+  if (chromeWsUrl !== undefined && userDataDir !== undefined) {
+    const err = attachEndpointConflictError();
     throw new CommandError(
       err.message,
       { suggestion: err.suggestion },
       EXIT_CODES.INVALID_ARGUMENTS
     );
   }
-  assertValidChromeWsUrl(value);
-  return (await resolveChromeWsUrl(value)) ?? value;
+  if (chromeWsUrl === undefined) {
+    const { wsUrl, file } = discoverBrowser(userDataDir ?? defaultChromeUserDataDir());
+    return { wsUrl, activePortFile: file };
+  }
+  assertValidChromeWsUrl(chromeWsUrl);
+  return { wsUrl: (await resolveChromeWsUrl(chromeWsUrl)) ?? chromeWsUrl };
 }
 
 /**
  * The page tabs of the browser, over one connection closed right after.
  *
- * @param wsUrl - Browser WebSocket URL
+ * @param endpoint - The browser
  * @returns The tabs
  */
-async function readTabs(wsUrl: string): Promise<PageTab[]> {
-  const cdp = await CDPConnection.create(wsUrl, { maxRetries: LIST_CONNECT_ATTEMPTS });
+async function readTabs({ wsUrl, activePortFile }: BrowserEndpoint): Promise<PageTab[]> {
+  const cdp = await connectToBrowser(wsUrl, { activePortFile });
   try {
     return await listPageTabs(cdp);
   } finally {
@@ -83,14 +97,18 @@ export function registerAttachCommand(program: Command): void {
       '--chrome-ws-url <url>',
       'Chrome to attach to: debugging port, http://host:port or ws://…/devtools/browser/<id>'
     )
+    .option(
+      '--user-data-dir <dir>',
+      "Chrome profile dir whose DevToolsActivePort names the browser (default: Chrome stable's; for Canary, Edge, Brave…)"
+    )
     .option('--timeout <seconds>', 'Auto-stop the session after this many seconds')
     .option('-q, --quiet', 'Quiet mode - minimal output for AI agents', false)
     .addOption(jsonOption())
     .action(async (tab: string | undefined, options: AttachOptions) => {
-      let wsUrl: string;
+      let endpoint: BrowserEndpoint;
       let timeout: number | undefined;
       try {
-        wsUrl = await browserUrl(options.chromeWsUrl);
+        endpoint = await browserEndpoint(options);
         timeout =
           options.timeout === undefined
             ? undefined
@@ -102,14 +120,14 @@ export function registerAttachCommand(program: Command): void {
       }
       if (tab === undefined) {
         await runCommand<AttachOptions, { tabs: PageTab[] }>(
-          async () => ({ success: true, data: { tabs: await readTabs(wsUrl) } }),
+          async () => ({ success: true, data: { tabs: await readTabs(endpoint) } }),
           options,
           ({ tabs }) => formatTabList(tabs)
         );
         return;
       }
       await startSessionViaDaemon(
-        wsUrl,
+        endpoint.wsUrl,
         {
           port: undefined,
           timeout,
@@ -117,7 +135,8 @@ export function registerAttachCommand(program: Command): void {
           includeAll: false,
           maxBodySize: undefined,
           headless: false,
-          chromeWsUrl: wsUrl,
+          chromeWsUrl: endpoint.wsUrl,
+          activePortFile: endpoint.activePortFile,
           attachTab: tab,
           quiet: options.quiet ?? false,
           json: options.json ?? false,

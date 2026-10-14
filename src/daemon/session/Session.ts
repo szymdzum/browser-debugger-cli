@@ -836,6 +836,7 @@ function buildConfig(url: string, port: number, options: SessionOptions): Sessio
       maxBodySize: options.maxBodySize,
       chromeWsUrl: options.chromeWsUrl,
       attachTab: options.attachTab,
+      activePortFile: options.activePortFile,
       chromeFlags: options.chromeFlags,
       viewport: options.viewport,
       colorScheme: options.colorScheme,
