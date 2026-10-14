@@ -22,7 +22,13 @@ import { formatSourceLocation, formatTimestamp } from './shared.js';
  */
 export function formatConsoleFollowLines(
   messages: ConsoleMessage[],
-  options: { header?: boolean; navigationId?: number; full?: boolean | undefined } = {}
+  options: {
+    header?: boolean;
+    navigationId?: number;
+    streamNavigationId?: number;
+    currentNavigationId?: number;
+    full?: boolean | undefined;
+  } = {}
 ): string {
   const fmt = new OutputFormatter();
   if (options.header) {

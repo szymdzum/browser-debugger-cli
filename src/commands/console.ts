@@ -271,6 +271,32 @@ export function messageKeys(messages: ConsoleMessage[]): string[] {
   });
 }
 
+/** Decides which messages a follow poll prints */
+export interface FollowCursor {
+  /**
+   * The messages not printed yet, in order.
+   *
+   * @param messages - All messages the session kept
+   * @param currentNavigationId - Navigation id of the current page, if known
+   * @returns Messages to print now
+   */
+  next(messages: ConsoleMessage[], currentNavigationId?: number): ConsoleMessage[];
+}
+
+/**
+ * Track what `console --follow` printed.
+ *
+ * @param _options - `--history` and `--level`
+ * @param _lastN - Messages to show at start (0 = all)
+ * @returns The cursor
+ */
+export function createFollowCursor(
+  _options: Pick<ConsoleCommandOptions, 'history' | 'level'>,
+  _lastN: number
+): FollowCursor {
+  throw new Error('not implemented');
+}
+
 /** Chrome Issues of the page currently loaded */
 interface PageIssues {
   issues: PageIssue[];
