@@ -179,6 +179,8 @@ export interface ReadSnapshot {
   settle?: SettleSignals;
   /** Elements the action showed (when asked for) */
   shown?: ShownElement[];
+  /** Elements near the target were left out of `shown` as a ticker's or a re-render */
+  skipped?: boolean;
   /** First form that fired `submit` during the watch (same document only) */
   submitted?: FormSubmit;
   /** The pressed button's own change (same document only) */
@@ -799,7 +801,8 @@ function pressOutcomes(
  * key's click, an expansion, a focus move), no request, dialog or new window
  * (`activity`; console errors are checked where they are collected) and no recent bursts of DOM changes that make the DOM look busy
  * ({@link recentBursts}): a page that re-renders on a timer is not the
- * action's doing.
+ * action's doing, unless the read left such elements out of `shown`
+ * (`skipped`): an action that changed the DOM is never silent.
  *
  * @param snapshot - Read after the action, if taken
  * @param reported - What the action is reported to have changed
@@ -818,7 +821,10 @@ export function reportedDomChanges(
   if (activity.requests + activity.dialogs > 0 || activity.opened) {
     return undefined;
   }
-  if (Object.keys(reported).length > 0 || recentBursts(snapshot.settle).length >= BUSY_BURSTS) {
+  if (
+    Object.keys(reported).length > 0 ||
+    (recentBursts(snapshot.settle).length >= BUSY_BURSTS && !snapshot.skipped)
+  ) {
     return undefined;
   }
   return nodes;

@@ -297,7 +297,9 @@ const NEAR_SCOPE_JS = `(target) => {
  * kind the page was already adding to their parent by itself when the action
  * began: between the previous watch and this one ({@link IDLE_WATCH_MS}) or
  * before the action's first event (an earlier action's timers, a ticker).
- * Only shown ones
+ * A read says when it
+ * skipped such elements (`skipped`), so the DOM change count can still be
+ * reported. Only shown ones
  * with visible text count, the outermost of nested ones, and not those
  * whose text a removed element had (a re-render). At most
  * {@link MAX_SHOWN}, within {@link SHOWN_BUDGET_MS}.
@@ -334,7 +336,12 @@ export const SHOWN_ELEMENTS_JS = `(state) => {
     const records = kindsIn(state.replaced, el.parentNode);
     return records !== undefined && (records.get(kind(el)) || 0) >= ${RERENDER_MIN_RECORDS};
   };
-  const near = (el) => ((scope !== null && within(scope, el)) || popup(el)) && !streamed(el) && !rerendered(el);
+  const near = (el) => {
+    if (!((scope !== null && within(scope, el)) || popup(el))) return false;
+    if (!streamed(el) && !rerendered(el)) return true;
+    state.skipped = true;
+    return false;
+  };
   const contentOf = (node) => (node.textContent || '').replace(/\\s+/g, ' ').trim();
   const removed = new Set(state.removed.map(contentOf));
   const candidates = new Set(state.added.filter((node) => node.isConnected && near(node)));
@@ -691,6 +698,7 @@ export const EFFECTS_READ_SCRIPT = `((stop, shown, focus) => {
     messages: (${MESSAGES_JS})(state.ids),
     settle: (${SETTLE_JS})(state),
     shown: shown ? (${SHOWN_ELEMENTS_JS})(state) : undefined,
+    skipped: state.skipped === true,
     ...(${OUTCOMES_JS})(state, focus)
   };
 })`;

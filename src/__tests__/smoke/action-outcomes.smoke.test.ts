@@ -245,6 +245,32 @@ void describe('Action outcomes', () => {
       return [...(data.shown ?? []), ...(data.messages ?? [])].map((item) => item.text).join('|');
     }
 
+    /**
+     * Wait until bdg's page watch has stopped observing the page for the next action.
+     */
+    async function idle(): Promise<void> {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        const output = await bdg(['dom', 'eval', 'String(window.__bdgIdle === undefined)']);
+        if (output.includes('true')) return;
+      }
+      assert.fail('the idle watch never ended');
+    }
+
+    void it('reports a list replaced three times in one action, whatever the earlier click did', async () => {
+      for (let click = 1; click <= 2; click++) {
+        const data = (await act(['click', '#flurry'])) as ActionData & {
+          messages?: unknown[];
+          domChanges?: number;
+        };
+        const reported = [data.shown, data.messages, data.domChanges];
+        assert.ok(
+          reported.some((part) => part !== undefined),
+          `click ${click} reported nothing`
+        );
+        await idle();
+      }
+    });
+
     void it('shows each Load more of 4 rows added at once', async () => {
       for (let click = 1; click <= 3; click++) {
         assert.match(await listed('#more'), new RegExp(`Row ${click * 4 - 3}`), `click ${click}`);
@@ -262,7 +288,7 @@ void describe('Action outcomes', () => {
       for (let click = 1; click <= 3; click++) {
         assert.match(await listed('#search'), new RegExp(`Result ${click}\\.`), `click ${click}`);
       }
-      await new Promise((resolve) => setTimeout(resolve, 4000));
+      await idle();
       assert.match(await listed('#search'), /Result 4\./);
     });
 
