@@ -197,6 +197,93 @@ void describe('Action outcomes', () => {
     });
   });
 
+  void describe('what Shown lists (#750)', () => {
+    void it('lists a dialog rendered inside an open shadow root', async () => {
+      await open(`${fixture.url}shown-shadow`);
+      const data = await act(['click', '#open-dialog']);
+      assert.match((data.shown ?? []).map((item) => item.text).join('|'), /Search the site/);
+    });
+
+    void it('lists what an aria-expanded button un-hid', async () => {
+      await open(`${fixture.url}shown-disclosure`);
+      const near = await act(['click', '#near-toggle']);
+      assert.match((near.shown ?? []).map((item) => item.text).join('|'), /Pricing/);
+      const far = await act(['click', '#far-toggle']);
+      assert.match((far.shown ?? []).map((item) => item.text).join('|'), /Ships within 3 days/);
+    });
+
+    void it('keeps a click without aria-expanded quiet about un-hidden elements', async () => {
+      const data = await act(['click', '#plain']);
+      assert.equal(data.shown, undefined);
+    });
+  });
+
+  void describe('content a user action adds again and again', () => {
+    before(() => open(`${fixture.url}shown-repeat`));
+
+    /**
+     * Texts a click listed as shown or new.
+     *
+     * @param selector - Button to click
+     * @returns Texts joined by `|`
+     */
+    async function listed(selector: string): Promise<string> {
+      const data = (await act(['click', selector])) as ActionData & {
+        messages?: Array<{ text: string }>;
+      };
+      return [...(data.shown ?? []), ...(data.messages ?? [])].map((item) => item.text).join('|');
+    }
+
+    void it('shows each Load more of 4 rows added at once', async () => {
+      for (let click = 1; click <= 3; click++) {
+        assert.match(await listed('#more'), new RegExp(`Row ${click * 4 - 3}`), `click ${click}`);
+      }
+    });
+
+    void it('shows replaced search results', async () => {
+      for (let click = 1; click <= 3; click++) {
+        assert.match(await listed('#search'), new RegExp(`Result ${click}\\.`), `click ${click}`);
+      }
+    });
+
+    void it('shows each todo added', async () => {
+      for (let click = 1; click <= 3; click++) {
+        assert.match(await listed('#add'), new RegExp(`Todo ${click}`), `click ${click}`);
+      }
+    });
+  });
+
+  void describe('a carousel beside an aria-expanded button', () => {
+    before(() => open(`${fixture.url}shown-quiet`));
+
+    for (const button of ['#car-btn']) {
+      void it(`${button} stays quiet`, async () => {
+        const data = await act(['click', button]);
+        assert.equal(data.shown, undefined);
+      });
+    }
+  });
+
+  void describe('dialogs without text (#750)', () => {
+    void it('lists the search dialog of /shadow-forms by its field', async () => {
+      await open(`${fixture.url}shadow-forms`);
+      const data = await act(['click', '#open-search']);
+      assert.deepEqual(
+        (data.shown ?? []).map((item) => item.text),
+        ['Search']
+      );
+    });
+
+    void it('lists a text-less dialog in the light DOM the same way', async () => {
+      await open(`${fixture.url}shown-shadow`);
+      const data = await act(['click', '#open-bare']);
+      assert.deepEqual(
+        (data.shown ?? []).map((item) => item.text),
+        ['Search']
+      );
+    });
+  });
+
   void describe('console errors on /tracker-errors', () => {
     before(() => open(`${fixture.url}tracker-errors`));
 

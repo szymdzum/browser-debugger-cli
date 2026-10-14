@@ -211,11 +211,19 @@ const LOADERS_JS = `() => {
  * They are kept by identity in the action's watch, so its read can tell
  * which of them the hover revealed, also through CSS `:hover` rules that
  * change no DOM, and elements moving in the page can't pass for revealed
- * ones. Does nothing without a running watch (another frame).
+ * ones. Does nothing without a running watch (another frame). With `press`
+ * (a click) it is taken only for an element with `aria-expanded` and looks
+ * only at the elements it names with `aria-controls` and at its next sibling
+ * element (a menu or panel after its button), so a carousel or another
+ * widget around the button is not mistaken for what the click revealed; the
+ * snapshot then adds the elements it un-hid to what the click showed and
+ * changes nothing else about how the click is read.
  */
-export const REVEAL_SNAPSHOT_JS = `(el) => {
+export const REVEAL_SNAPSHOT_JS = `(el, press) => {
   const state = window.__bdgEffects;
   if (!state || state.stopped) return;
+  const toggle = el.closest('[aria-expanded]');
+  if (press && !toggle) return;
   const deadline = performance.now() + ${REVEAL_BUDGET_MS};
   const shown = ${SHOWN_JS};
   const parent = el.parentElement;
@@ -227,13 +235,21 @@ export const REVEAL_SNAPSHOT_JS = `(el) => {
     looked++;
     if (!shown(candidate)) hidden.push(candidate);
   };
+  if (press) {
+    const root = el.getRootNode();
+    const named = (toggle.getAttribute('aria-controls') || '').split(/\\s+/).filter(Boolean);
+    const controlled = named.map((id) => (typeof root.getElementById === 'function' ? root.getElementById(id) : null));
+    for (const candidate of controlled.concat([toggle.nextElementSibling])) if (candidate) look(candidate);
+    state.reveal = { target: el, hidden: hidden, press: true };
+    return;
+  }
   for (const candidate of document.querySelectorAll(${JSON.stringify(REVEAL_GLOBAL_CANDIDATES)})) {
     if (!room()) break;
     look(candidate);
   }
   const walker = document.createTreeWalker(scope, NodeFilter.SHOW_ELEMENT);
   for (let node = scope; node && room(); node = walker.nextNode()) look(node);
-  state.reveal = { target: el, hidden: hidden };
+  state.reveal = { target: el, hidden: hidden, press: false };
 }`;
 
 /**
@@ -260,7 +276,12 @@ const NEAR_SCOPE_JS = `(target) => {
  * `password` or `one-time-code` and elements named like secrets is left
  * out. Also, after a hover, the
  * elements hidden before it that are shown now ({@link REVEAL_SNAPSHOT_JS}).
- * Background widgets elsewhere on the page do not count. Only shown ones
+ * The container is searched through shadow roots. After a click on an
+ * element with `aria-expanded`, the elements it un-hid among those it names
+ * with `aria-controls` and its next sibling count too. Background widgets
+ * elsewhere on the page do not count. A dialog with no text is listed by its
+ * name: the `aria-label`, placeholder or title of the first element in it
+ * (itself first) that is not a secret's. Only shown ones
  * with visible text count, the outermost of nested ones, and not those
  * whose text a removed element had (a re-render). At most
  * {@link MAX_SHOWN}, within {@link SHOWN_BUDGET_MS}.
@@ -271,7 +292,8 @@ export const SHOWN_ELEMENTS_JS = `(state) => {
   const shown = ${SHOWN_JS};
   const visibleText = ${VISIBLE_TEXT_JS};
   const word = /\\b(${MESSAGE_WORDS.join('|')})\\b/i;
-  const target = state.reveal ? state.reveal.target : state.keyTarget || state.pressTarget;
+  const hover = state.reveal && !state.reveal.press;
+  const target = hover ? state.reveal.target : state.keyTarget || state.pressTarget;
   const secretPart = (node) => /^(textarea|select|option)$/.test(node.localName) ||
     (node.localName === 'input' && node.type === 'password') ||
     /(password|one-time-code)$/i.test(node.getAttribute('autocomplete') || '') ||
@@ -281,8 +303,20 @@ export const SHOWN_ELEMENTS_JS = `(state) => {
     (el.hasAttribute('aria-live') && el.getAttribute('aria-live') !== 'off') ||
     word.test(el.getAttribute('class') || '') || word.test(el.id || '');
   const announced = (el) => ${PRESS_POPUP_ROLES}.test(el.getAttribute('role') || '');
-  const popup = state.reveal ? hoverPopup : announced;
-  const near = (el) => (scope !== null && scope.contains(el)) || popup(el);
+  const popup = hover ? hoverPopup : announced;
+  const within = (root, el) => {
+    for (let node = el; node; node = node.parentNode || node.host) if (node === root) return true;
+    return false;
+  };
+  const near = (el) => (scope !== null && within(scope, el)) || popup(el);
+  const dialogName = (el) => {
+    if (el.localName !== 'dialog' && !/^(dialog|alertdialog)$/.test(el.getAttribute('role') || '')) return '';
+    const nameOf = (node) => node.getAttribute('aria-label') || node.getAttribute('placeholder') || node.getAttribute('title') || '';
+    const candidates = [el].concat(Array.from(el.querySelectorAll('[aria-label], [placeholder], [title]')));
+    const named = candidates.find((node) => nameOf(node) !== '' && !secretPart(node));
+    const name = named ? nameOf(named) : '';
+    return name.replace(/\\s+/g, ' ').trim().slice(0, ${MAX_MESSAGE_TEXT});
+  };
   const contentOf = (node) => (node.textContent || '').replace(/\\s+/g, ' ').trim();
   const removed = new Set(state.removed.map(contentOf));
   const candidates = new Set(state.added.filter((node) => node.isConnected && near(node)));
@@ -291,11 +325,11 @@ export const SHOWN_ELEMENTS_JS = `(state) => {
   for (const el of candidates) {
     if (performance.now() > deadline) break;
     if (!shown(el) || removed.has(contentOf(el))) continue;
-    const text = visibleText(el, secretPart);
+    const text = visibleText(el, secretPart) || dialogName(el);
     if (text !== '') found.push({ el: el, text: text });
   }
   return found
-    .filter((m) => !found.some((other) => other !== m && other.el.contains(m.el)))
+    .filter((m) => !found.some((other) => other !== m && within(other.el, m.el)))
     .slice(0, ${MAX_SHOWN})
     .map((m) => ({ text: m.text, element: describe(m.el) }));
 }`;
