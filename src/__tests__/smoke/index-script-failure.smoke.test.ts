@@ -72,23 +72,23 @@ void describe('Action script failure on an index', () => {
   void it('names the a11y index, not the cache key, in text and JSON', async () => {
     await bdg(['dom', 'a11y', 'query', 'role=button']);
     const text = await bdg(['dom', 'click', '0'], 91);
-    assert.match(text, /The click script failed in the page: Error: boom/);
-    assert.match(text, /The page's own code threw while bdg ran the click/);
-    assert.match(text, /bdg dom listeners 0 or bdg console/);
+    assert.match(text, /The page's own code threw during the click: Error: boom/);
+    assert.match(text, /The page's own code threw during the click/);
+    assert.match(text, /bdg dom listeners 0, or inspect its methods with bdg dom eval/);
     assert.doesNotMatch(text, /a11y /);
     const json = await failedClick('0');
-    assert.match(json.suggestion, /bdg dom listeners 0 or bdg console/);
+    assert.match(json.suggestion, /bdg dom listeners 0, or inspect its methods with bdg dom eval/);
     assert.doesNotMatch(json.suggestion, /a11y /);
   });
 
   void it('names the index of a dom query result', async () => {
     await bdg(['dom', 'query', 'button']);
-    assert.match((await failedClick('0')).suggestion, /bdg dom listeners 0 or bdg console/);
+    assert.match((await failedClick('0')).suggestion, /bdg dom listeners 0, or inspect its methods with bdg dom eval/);
   });
 
   void it('still names the quoted selector for a selector target', async () => {
     const text = await bdg(['dom', 'click', '#go'], 91);
-    assert.match(text, /bdg dom listeners "#go" or bdg console/);
-    assert.match((await failedClick('#go')).suggestion, /bdg dom listeners "#go" or bdg console/);
+    assert.match(text, /bdg dom listeners "#go", or inspect its methods with bdg dom eval/);
+    assert.match((await failedClick('#go')).suggestion, /bdg dom listeners "#go", or inspect its methods with bdg dom eval/);
   });
 });

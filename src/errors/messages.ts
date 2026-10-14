@@ -2253,16 +2253,17 @@ export function actionScriptFailedError(
   selector: string,
   listIndex?: number
 ): ErrorWithSuggestion {
-  const message = `The ${action} script failed in the page: ${exception}`;
-  const pageCode = `The page's own code threw while bdg ran the ${action}: check its listeners with`;
+  const message = `The page's own code threw during the ${action}: ${exception}`;
+  const cause = `An event listener or a method the page replaced on the element (focus, click, dispatchEvent) threw: check`;
+  const inspect = `or inspect its methods with ${sessionCommand("bdg dom eval '…'")}`;
   if (Number.isInteger(listIndex) && (listIndex ?? -1) >= 0) {
     return {
       message,
-      suggestion: `${pageCode} ${sessionCommand(`bdg dom listeners ${listIndex}`)} or ${sessionCommand('bdg console')}`,
+      suggestion: `${cause} ${sessionCommand(`bdg dom listeners ${listIndex}`)}, ${inspect}`,
     };
   }
   const damage = detectSelectorQuoteDamage(selector);
-  const checkListeners = `${pageCode} ${sessionCommand(`bdg dom listeners ${JSON.stringify(selector)}`)} or ${sessionCommand('bdg console')}`;
+  const checkListeners = `${cause} ${sessionCommand(`bdg dom listeners ${JSON.stringify(selector)}`)}, ${inspect}`;
   const quoting = `. If the selector was damaged by shell quoting${damage.details ? ` (${damage.details})` : ''}, query it first with ${sessionCommand(`bdg dom query ${JSON.stringify(selector)}`)}, then act on the index`;
   return { message, suggestion: damage.damaged ? checkListeners + quoting : checkListeners };
 }

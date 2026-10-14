@@ -89,7 +89,7 @@ void describe('Clicking SVG elements without a box', () => {
     ]);
     const text = await bdg(['dom', 'click', 'g[aria-label=other]'], 91);
     assert.match(text, /boom/);
-    assert.match(text, /The page's own code threw while bdg ran the click/);
+    assert.match(text, /The page's own code threw during the click/);
     assert.doesNotMatch(text, /removed|no longer in the page/);
   });
 });
