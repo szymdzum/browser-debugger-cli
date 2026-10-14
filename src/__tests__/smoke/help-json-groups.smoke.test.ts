@@ -24,7 +24,11 @@ interface OptionEntry {
   description: string;
   required: boolean;
   takesValue: boolean;
+  optional: boolean;
 }
+
+const CORE_KEYS = ['description', 'flags', 'optional', 'required', 'takesValue'];
+const ENRICHMENT_KEYS = ['behavior', 'choices', 'defaultValue', 'defaultValueDescription'];
 
 interface HelpNode {
   name: string;
@@ -135,6 +139,31 @@ void describe('command groups and machine-readable help (#698)', () => {
         assert.equal(typeof option.description, 'string', node.name);
         assert.equal(typeof option.required, 'boolean', node.name);
         assert.equal(typeof option.takesValue, 'boolean', node.name);
+        assert.equal(typeof option.optional, 'boolean', node.name);
+        const extra = Object.keys(option).filter((key) => !CORE_KEYS.includes(key));
+        assert.deepEqual(
+          Object.keys(option)
+            .filter((key) => CORE_KEYS.includes(key))
+            .sort(),
+          CORE_KEYS,
+          `${node.name} ${option.flags}: core keys`
+        );
+        assert.ok(
+          extra.every((key) => ENRICHMENT_KEYS.includes(key)),
+          `${node.name} ${option.flags}: unexpected keys ${extra.join(',')}`
+        );
+      }
+    }
+    const full = await runJson<{ command: HelpNode }>(['--help', '--json', '--full']);
+    for (const node of flatten(full.json.command)) {
+      for (const option of node.options ?? []) {
+        assert.deepEqual(
+          Object.keys(option)
+            .filter((key) => CORE_KEYS.includes(key))
+            .sort(),
+          CORE_KEYS,
+          `full ${node.name} ${option.flags}`
+        );
       }
     }
     const rootOptions = root.json.command.options ?? [];

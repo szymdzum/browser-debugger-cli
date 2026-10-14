@@ -61,7 +61,13 @@ void describe('generateCompactHelp', () => {
       description: 'Find elements',
       arguments: '<selector> [index]',
       options: [
-        { flags: '--limit <n>', description: 'Matches to list', required: false, takesValue: true },
+        {
+          flags: '--limit <n>',
+          description: 'Matches to list',
+          required: false,
+          takesValue: true,
+          optional: false,
+        },
       ],
     });
   });

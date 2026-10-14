@@ -100,7 +100,7 @@ export interface CommandMetadata {
 /** An option in the compact help: what a script needs to build a command line */
 export type CompactOption = Pick<
   OptionMetadata,
-  'flags' | 'description' | 'required' | 'takesValue'
+  'flags' | 'description' | 'required' | 'takesValue' | 'optional'
 >;
 
 /**
@@ -392,6 +392,7 @@ function convertCompactCommand(command: Command): CompactCommand {
           description,
           required: mandatory,
           takesValue: required || optional,
+          optional,
         })
       ),
     }),
