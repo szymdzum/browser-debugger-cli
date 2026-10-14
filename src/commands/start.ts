@@ -19,6 +19,7 @@ import {
   invalidUserDataDirError,
   invalidViewportError,
   missingStartUrlError,
+  spacedCommandError,
   unknownCommandError,
 } from '@/errors/messages.js';
 import type { DialogAnswer } from '@/ipc/protocol/domTypes.js';
@@ -339,6 +340,61 @@ function assertNotCommandTypo(arg: string, commandNames: string[]): void {
   throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
 }
 
+/** Most characters of a quoted argument echoed back in an error */
+const ECHO_LIMIT = 100;
+
+/** Characters that are safe to paste unquoted into a shell */
+const SHELL_SAFE_WORD = /^[A-Za-z0-9_./:=@%+,-]+$/;
+
+/**
+ * The command a quoted first word means: an exact command name, or a close
+ * typo. A typo must be at least 3 characters and within 1 edit (up to 5
+ * characters) or 2 edits (longer), so ordinary text (`my site`, `a b`) is
+ * not matched to an unrelated command.
+ *
+ * @param first - First word of the argument
+ * @param commandNames - Registered top-level command names
+ * @returns The command name, or undefined
+ */
+function spacedCommandName(first: string, commandNames: string[]): string | undefined {
+  const word = first.toLowerCase();
+  if (commandNames.includes(word)) return word;
+  if (word.length < 3) return undefined;
+  return findSimilar(word, commandNames, {
+    maxDistance: word.length <= 5 ? 1 : 2,
+    maxSuggestions: 1,
+  })[0];
+}
+
+/**
+ * Reject a command typed as one quoted argument (`bdg "page info"`): the
+ * words are meant as separate arguments, so the error names them that way
+ * instead of suggesting `%20`. Only the first word decides: one with a dot,
+ * colon or slash is a URL and keeps the `%20` hint. The suggestion repeats the words only when they
+ * are short and safe to paste into a shell; otherwise it points to `--help`.
+ *
+ * @param arg - The URL argument
+ * @param commands - Registered top-level commands
+ * @throws CommandError (80) when the first word is, or is close to, a command
+ */
+export function assertNotSpacedCommand(arg: string, commands: readonly Command[]): void {
+  const [first = '', ...rest] = arg.trim().split(/\s+/);
+  if (rest.length === 0 || !/^[a-z][a-z0-9_-]*$/i.test(first)) return;
+  const name = spacedCommandName(
+    first,
+    commands.map((c) => c.name())
+  );
+  if (name === undefined) return;
+  const subcommands = commands.find((c) => c.name() === name)?.commands ?? [];
+  const [second = '', ...others] = rest;
+  const sub = subcommands.find((c) => c.name() === second.toLowerCase());
+  const words = [sub?.name() ?? second, ...others].join(' ');
+  const echoable = words.length <= ECHO_LIMIT && rest.every((w) => SHELL_SAFE_WORD.test(w));
+  const shown = arg.length > ECHO_LIMIT ? `${arg.slice(0, ECHO_LIMIT)}…` : arg;
+  const err = spacedCommandError(shown, echoable ? `${name} ${words}` : `${name} --help`);
+  throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_URL);
+}
+
 /**
  * The words of the command line that are not options or option values of
  * the root command (`bdg --session a netwrk list` gives `netwrk`, `list`).
@@ -412,10 +468,9 @@ function validateStartInput(
       EXIT_CODES.INVALID_ARGUMENTS
     );
   }
-  assertNotCommandTypo(
-    url,
-    program.commands.map((command) => command.name())
-  );
+  const commandNames = program.commands.map((command) => command.name());
+  assertNotCommandTypo(url, commandNames);
+  assertNotSpacedCommand(url, program.commands);
   assertValidUrl(url);
   getIPCRequestTimeout();
   assertStateNotAttached(options);

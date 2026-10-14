@@ -1322,6 +1322,20 @@ export function unknownCommandError(word: string, similar: string[]): ErrorWithS
 }
 
 /**
+ * A command typed as one quoted argument (`bdg "page info"`): the words, not
+ * a URL with spaces, are the mistake.
+ *
+ * @param url - The quoted argument as typed
+ * @param command - The command meant, words separated by single spaces
+ */
+export function spacedCommandError(url: string, command: string): ErrorWithSuggestion {
+  return {
+    message: `Invalid URL format: '${url}' (contains spaces)`,
+    suggestion: `Did you mean: bdg ${command}?`,
+  };
+}
+
+/**
  * The browser could not load the start URL at all.
  *
  * @param url - URL that failed
