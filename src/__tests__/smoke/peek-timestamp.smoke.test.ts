@@ -96,7 +96,9 @@ void describe('peek timestamp (#727)', () => {
     const stamps = result.stdout
       .split('\n')
       .filter((line) => line.startsWith('{'))
-      .map((line) => Date.parse((JSON.parse(line) as { data: { timestamp: string } }).data.timestamp));
+      .map((line) =>
+        Date.parse((JSON.parse(line) as { data: { timestamp: string } }).data.timestamp)
+      );
     assert.ok(stamps.length >= 2, result.stdout);
     for (const at of stamps) assert.ok(at >= before && at <= after, `${at} outside window`);
     assert.ok(stamps[1]! > stamps[0]!, 'the second line is later');

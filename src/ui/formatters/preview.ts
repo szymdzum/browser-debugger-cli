@@ -123,6 +123,7 @@ interface PreviousPageFlag {
  * Data payload of `peek --json` / `tail --json` (goes in the envelope's `data`).
  */
 export interface PreviewJsonData {
+  /** When the daemon took the snapshot (ISO), the instant the human `Updated:` line shows */
   timestamp: string;
   duration: number;
   target: BdgOutput['target'];
@@ -268,7 +269,7 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
   const fmt = new OutputFormatter();
 
   fmt.text(
-    `PREVIEW | Duration: ${Math.floor(output.duration / 1000)}s | Updated: ${formatTimestamp(Date.now())}`
+    `PREVIEW | Duration: ${Math.floor(output.duration / 1000)}s | Updated: ${formatTimestamp(Date.parse(output.timestamp))}`
   );
 
   if (options.follow && options.viewedAt) {
@@ -418,8 +419,8 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
   fmt.keyValueList(
     [
       ['Duration', `${Math.floor(output.duration / 1000)}s`],
-      ['Session started', formatTimestamp(Date.parse(output.timestamp))],
-      ['Last updated', formatTimestamp(Date.now())],
+      ['Session started', formatTimestamp(Date.parse(output.timestamp) - output.duration)],
+      ['Last updated', formatTimestamp(Date.parse(output.timestamp))],
     ],
     18
   );
