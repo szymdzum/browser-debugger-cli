@@ -299,7 +299,8 @@ const NEAR_SCOPE_JS = `(target) => {
  * before the action's first event (an earlier action's timers, a ticker).
  * A read says when it
  * skipped such elements (`skipped`), so the DOM change count can still be
- * reported. Only shown ones
+ * reported. A dialog with no text is listed by its name: the `aria-label`, placeholder or
+ * title of the first element in it (itself first) that is not a secret's. Only shown ones
  * with visible text count, the outermost of nested ones, and not those
  * whose text a removed element had (a re-render). At most
  * {@link MAX_SHOWN}, within {@link SHOWN_BUDGET_MS}.
@@ -342,6 +343,14 @@ export const SHOWN_ELEMENTS_JS = `(state) => {
     state.skipped = true;
     return false;
   };
+  const dialogName = (el) => {
+    if (el.localName !== 'dialog' && !/^(dialog|alertdialog)$/.test(el.getAttribute('role') || '')) return '';
+    const nameOf = (node) => node.getAttribute('aria-label') || node.getAttribute('placeholder') || node.getAttribute('title') || '';
+    const candidates = [el].concat(Array.from(el.querySelectorAll('[aria-label], [placeholder], [title]')));
+    const named = candidates.find((node) => nameOf(node) !== '' && !secretPart(node));
+    const name = named ? nameOf(named) : '';
+    return name.replace(/\\s+/g, ' ').trim().slice(0, ${MAX_MESSAGE_TEXT});
+  };
   const contentOf = (node) => (node.textContent || '').replace(/\\s+/g, ' ').trim();
   const removed = new Set(state.removed.map(contentOf));
   const candidates = new Set(state.added.filter((node) => node.isConnected && near(node)));
@@ -350,7 +359,7 @@ export const SHOWN_ELEMENTS_JS = `(state) => {
   for (const el of candidates) {
     if (performance.now() > deadline) break;
     if (!shown(el) || removed.has(contentOf(el))) continue;
-    const text = visibleText(el, secretPart);
+    const text = visibleText(el, secretPart) || dialogName(el);
     if (text !== '') found.push({ el: el, text: text });
   }
   return found

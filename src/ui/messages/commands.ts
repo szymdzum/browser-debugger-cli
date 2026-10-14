@@ -425,10 +425,10 @@ export function actionErrorRows(errors: ActionError[]): string[] {
  * it changed.
  *
  * @param nodes - Elements added or removed
- * @returns e.g. `DOM changed (200 nodes)`
+ * @returns e.g. `DOM changed (200 nodes)`, `DOM changed (1 node)`
  */
 export function domChangedText(nodes: number): string {
-  return `DOM changed (${nodes} nodes)`;
+  return `DOM changed (${nodes} ${nodes === 1 ? 'node' : 'nodes'})`;
 }
 
 /**

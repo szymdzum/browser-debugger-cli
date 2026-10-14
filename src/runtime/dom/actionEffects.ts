@@ -801,8 +801,9 @@ function pressOutcomes(
  * key's click, an expansion, a focus move), no request, dialog or new window
  * (`activity`; console errors are checked where they are collected) and no recent bursts of DOM changes that make the DOM look busy
  * ({@link recentBursts}): a page that re-renders on a timer is not the
- * action's doing, unless the read left such elements out of `shown`
- * (`skipped`): an action that changed the DOM is never silent.
+ * action's doing. When the read left elements out of `shown` (`skipped`:
+ * the page was adding them by itself, or re-rendering), any number of nodes
+ * is reported with no burst check: an action that added nodes is never silent.
  *
  * @param snapshot - Read after the action, if taken
  * @param reported - What the action is reported to have changed
@@ -815,16 +816,11 @@ export function reportedDomChanges(
   activity: OtherActivity
 ): number | undefined {
   const nodes = snapshot?.nodes;
-  if (!snapshot || snapshot.fresh || nodes === undefined || nodes < MIN_REPORTED_DOM_NODES) {
-    return undefined;
-  }
-  if (activity.requests + activity.dialogs > 0 || activity.opened) {
-    return undefined;
-  }
-  if (
-    Object.keys(reported).length > 0 ||
-    (recentBursts(snapshot.settle).length >= BUSY_BURSTS && !snapshot.skipped)
-  ) {
+  if (!snapshot || snapshot.fresh || nodes === undefined || nodes === 0) return undefined;
+  if (activity.requests + activity.dialogs > 0 || activity.opened) return undefined;
+  if (Object.keys(reported).length > 0) return undefined;
+  if (snapshot.skipped) return nodes;
+  if (nodes < MIN_REPORTED_DOM_NODES || recentBursts(snapshot.settle).length >= BUSY_BURSTS) {
     return undefined;
   }
   return nodes;

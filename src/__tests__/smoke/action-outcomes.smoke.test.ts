@@ -256,6 +256,21 @@ void describe('Action outcomes', () => {
       assert.fail('the idle watch never ended');
     }
 
+    void it('reports rows arriving 400 ms apart when clicked again once the last arrived', async () => {
+      for (let click = 1; click <= 3; click++) {
+        const data = (await act(['click', '#slow-more'])) as ActionData & {
+          messages?: unknown[];
+          domChanges?: number;
+        };
+        const reported = [data.shown, data.messages, data.domChanges];
+        assert.ok(
+          reported.some((part) => part !== undefined),
+          `click ${click} reported nothing`
+        );
+        await bdg(['dom', 'wait', `#slow-list li:nth-child(${click * 4})`]);
+      }
+    });
+
     void it('reports a list replaced three times in one action, whatever the earlier click did', async () => {
       for (let click = 1; click <= 2; click++) {
         const data = (await act(['click', '#flurry'])) as ActionData & {
@@ -308,6 +323,26 @@ void describe('Action outcomes', () => {
         assert.equal(data.shown, undefined);
       });
     }
+  });
+
+  void describe('dialogs without text (#750)', () => {
+    void it('lists the search dialog of /shadow-forms by its field', async () => {
+      await open(`${fixture.url}shadow-forms`);
+      const data = await act(['click', '#open-search']);
+      assert.deepEqual(
+        (data.shown ?? []).map((item) => item.text),
+        ['Search']
+      );
+    });
+
+    void it('lists a text-less dialog in the light DOM the same way', async () => {
+      await open(`${fixture.url}shown-shadow`);
+      const data = await act(['click', '#open-bare']);
+      assert.deepEqual(
+        (data.shown ?? []).map((item) => item.text),
+        ['Search']
+      );
+    });
   });
 
   void describe('console errors on /tracker-errors', () => {

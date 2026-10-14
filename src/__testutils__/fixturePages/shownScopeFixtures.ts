@@ -20,7 +20,8 @@
  *   ticker is only known as one to bdg once the page has been acted on, so its
  *   button is clicked last.
  * - `/shown-shadow`: `#open-dialog` opens a `<dialog>` with a heading and a
- *   search field in the open shadow root of `x-dialog`.
+ *   search field in the open shadow root of `x-dialog`; `#open-bare` adds a
+ *   `<dialog open>` with only a search field to its container.
  */
 
 import type { FixtureRoutes } from '@/__testutils__/fixtureRoutes.js';
@@ -51,6 +52,7 @@ const SHOWN_DISCLOSURE_HTML = `<!doctype html><title>shown disclosure</title>
 const SHOWN_SHADOW_HTML = `<!doctype html><title>shown shadow</title>
 <main>
 <button id="open-dialog">Open search</button>
+<button id="open-bare">Open bare</button>
 <x-dialog></x-dialog>
 </main>
 <script>
@@ -62,6 +64,9 @@ const SHOWN_SHADOW_HTML = `<!doctype html><title>shown shadow</title>
     open() {
       this.shadowRoot.innerHTML = '<dialog open><h2>Search the site</h2><input type="search" aria-label="Search"></dialog>';
     }
+  });
+  document.getElementById('open-bare').addEventListener('click', () => {
+    document.querySelector('main').insertAdjacentHTML('beforeend', '<dialog open><input type="search" aria-label="Search"></dialog>');
   });
   document.getElementById('open-dialog').addEventListener('click', () => document.querySelector('x-dialog').open());
 </script>`;
@@ -75,7 +80,7 @@ const SHOWN_REPEAT_HTML = `<!doctype html><title>shown repeat</title>
 <div><button id="flurry">Flurry</button><div id="fl"></div></div>
 <div><button id="slow-more">Slow more</button><ul id="slow-list"></ul></div>
 <script>
-  let rows = 0, searches = 0, todos = 0;
+  let rows = 0, later = 0, searches = 0, todos = 0;
   document.getElementById('more').addEventListener('click', () => {
     const list = document.getElementById('list');
     for (let i = 0; i < 4; i++) list.insertAdjacentHTML('beforeend', '<li class="item">Row ' + ++rows + '</li>');
@@ -101,7 +106,7 @@ const SHOWN_REPEAT_HTML = `<!doctype html><title>shown repeat</title>
   document.getElementById('slow-more').addEventListener('click', () => {
     let left = 4;
     const timer = setInterval(() => {
-      document.getElementById('slow-list').insertAdjacentHTML('beforeend', '<li class="item">Slow ' + ++rows + '</li>');
+      document.getElementById('slow-list').insertAdjacentHTML('beforeend', '<li class="item">Slow ' + ++later + '</li>');
       if (--left === 0) clearInterval(timer);
     }, 400);
   });
