@@ -414,7 +414,10 @@ test('timeoutMessage: runs seen but unfinished list their status', () => {
     last: 'x',
     seen: { CI: 'in_progress', Security: 'queued' },
   };
-  assert.equal(timeoutMessage(state, false), 'CI in_progress, Security queued');
+  assert.equal(
+    timeoutMessage(state, false),
+    'CI still in_progress, Security still queued after 45 min'
+  );
 });
 
 test('a budget error before the deadline ends the waiter with the gh failure count', async () => {
@@ -640,4 +643,62 @@ test('parseSnapshotArgs refuses empty, dot and path-like names', () => {
   const dir = mkdtempSync(join(tmpdir(), 'ship-dl-'));
   for (const name of ['', '.', '..', '../etc/hosts', 'a/b'])
     assert.match(parseSnapshotArgs(['--accept', name], { downloads: dir }).error, /plain entry/, name);
+});
+
+test('resolveSha lets a budget error through unchanged and never applies the waiter budget to git', () => {
+  const full = 'c'.repeat(40);
+  let gitOpts;
+  const exec = (cmd, args, opts) => {
+    if (cmd === 'git') {
+      gitOpts = opts;
+      throw new Error('unknown revision');
+    }
+    throw Object.assign(new Error('less than 2s left'), { budgetExhausted: true, timedOut: true });
+  };
+  assert.throws(() => resolveSha('ccccccc', exec), { budgetExhausted: true, message: 'less than 2s left' });
+  assert.deepEqual(gitOpts, { deadline: null });
+  assert.equal(resolveSha('ccccccc', () => full), full);
+});
+
+test('a budget error in resolveSha ends the waiter as a timeout', async () => {
+  const lines = [];
+  const log = console.log;
+  console.log = (l) => lines.push(l);
+  try {
+    const code = await withWaiterDeadline(10, async () => {
+      resolveSha('ddddddd', (cmd) => {
+        if (cmd === 'git') throw new Error('unknown revision');
+        throw Object.assign(new Error('no budget'), { budgetExhausted: true, timedOut: true });
+      });
+      return EXIT.ok;
+    });
+    assert.equal(code, EXIT.timeout);
+    assert.match(lines[0], /^timeout: no CI run found for/);
+  } finally {
+    console.log = log;
+  }
+});
+
+test('gh failures that recovered are not blamed when the budget later runs out', async () => {
+  const lines = [];
+  const log = console.log;
+  console.log = (l) => lines.push(l);
+  try {
+    const code = await withWaiterDeadline(10, async () => {
+      let n = 0;
+      retryTransient(
+        () => {
+          if (n++ === 0) throw Object.assign(new Error('x'), { stderr: 'unexpected EOF' });
+          return 'ok';
+        },
+        { backoff: [1], wait: () => {} }
+      );
+      throw Object.assign(new Error('no budget'), { timedOut: true, budgetExhausted: true });
+    });
+    assert.equal(code, EXIT.timeout);
+    assert.match(lines[0], /^timeout: no CI run found/);
+    assert.doesNotMatch(lines[0], /gh failed/);
+  } finally {
+    console.log = log;
+  }
 });

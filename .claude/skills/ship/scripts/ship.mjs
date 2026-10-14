@@ -76,11 +76,12 @@ export const MIN_CALL_BUDGET_MS = 2000;
 export function resolveSha(sha, exec = run) {
   if (/^[0-9a-f]{40}$/i.test(sha)) return sha;
   try {
-    return exec('git', ['rev-parse', '--verify', '--quiet', `${sha}^{commit}`]);
+    return exec('git', ['rev-parse', '--verify', '--quiet', `${sha}^{commit}`], { deadline: null });
   } catch (err) {
     try {
       return exec('gh', ['api', `repos/${REPO}/commits/${sha}`, '--jq', '.sha']);
     } catch (ghErr) {
+      if (ghErr.budgetExhausted) throw ghErr;
       throw new Error(
         `cannot resolve ${sha} to a commit (git: ${err.message.split('\n')[0]}; gh: ${ghErr.message.split('\n')[0]})`
       );
@@ -117,7 +118,7 @@ export function timeoutMessage(state, thrown) {
   if (state.failures > 0 && (thrown || seen.length === 0))
     return `gh failed ${state.failures} times: ${state.last}`;
   if (seen.length === 0) return `no CI run found for ${state.subject} after ${state.minutes} min`;
-  return seen.map(([name, status]) => `${name} ${status}`).join(', ');
+  return `${seen.map(([name, status]) => `${name} still ${status}`).join(', ')} after ${state.minutes} min`;
 }
 
 /**
@@ -222,7 +223,9 @@ export function retryTransient(fn, opts = {}) {
   const now = opts.now ?? Date.now;
   for (let attempt = 0; ; attempt++) {
     try {
-      return fn();
+      const result = fn();
+      if (waiterState) Object.assign(waiterState, { failures: 0, last: '' });
+      return result;
     } catch (err) {
       if (err?.budgetExhausted) throw err;
       const firstLine = String(err.stderr || err.message)
@@ -393,7 +396,9 @@ export async function withWaiterDeadline(minutes, wait) {
   } catch (err) {
     if (!err.budgetExhausted && Date.now() < deadline) throw err;
     const reason =
-      waiterState.failures > 0 ? timeoutMessage(waiterState, true) : err.stderr || err.message;
+      err.budgetExhausted || waiterState.failures > 0
+        ? timeoutMessage(waiterState, true)
+        : err.stderr || err.message;
     console.log(`timeout: ${reason}`);
     return EXIT.timeout;
   } finally {
@@ -434,6 +439,7 @@ async function ciWaitLoop(argv) {
   const deadline = waiterDeadline;
   const push = flags.has('push');
   let pr = null;
+  waiterState.subject = target.slice(0, 10);
   let sha = push ? resolveSha(target) : target;
   let workflows = ['CI', 'Security'];
   if (!push) {
