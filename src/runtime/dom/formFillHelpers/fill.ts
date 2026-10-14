@@ -525,7 +525,7 @@ export function mouseEvents(
 const PRESS_PROBE_PEEK_SCRIPT = `(() => {
   const probe = window.__bdgPressProbe;
   if (!probe) return { reached: true };
-  return { reached: probe.reached || probe.hidden, landedOn: probe.landedOn, replaced: !probe.clicked && probe.replaced() };
+  return { reached: probe.reached || probe.hidden, landedOn: probe.landedOn, releasedOn: probe.releasedOn, replaced: !probe.clicked && probe.replaced() };
 })()`;
 
 /** {@link PRESS_PROBE_PEEK_SCRIPT}, then stops the probe */
@@ -547,6 +547,8 @@ interface PressOutcome {
   landedOn?: string;
   /** The press reached the element but it left the page without getting a click */
   replaced?: true;
+  /** The press reached the element but the mouse was released on this other one */
+  releasedOn?: string;
 }
 
 /**
@@ -567,11 +569,17 @@ async function readPressProbe(cdp: CDPConnection, stop: boolean): Promise<PressO
       returnByValue: true,
     });
     const response = (await (stop ? withinSettleTime(read) : read)) as {
-      result?: { value?: { reached?: unknown; landedOn?: unknown; replaced?: unknown } };
+      result?: {
+        value?: { reached?: unknown; landedOn?: unknown; replaced?: unknown; releasedOn?: unknown };
+      };
     } | null;
     const value = response?.result?.value;
     if (value?.reached !== false) {
-      return value?.replaced === true ? { reached: true, replaced: true } : { reached: true };
+      return {
+        reached: true,
+        ...(value?.replaced === true && { replaced: true as const }),
+        ...(typeof value?.releasedOn === 'string' && { releasedOn: value.releasedOn }),
+      };
     }
     return typeof value.landedOn === 'string'
       ? { reached: false, landedOn: value.landedOn }
@@ -758,6 +766,7 @@ async function performClick(
               : clickLandedElsewhereWarning(press.landedOn, nextStep),
         }),
         ...(press.reached && replaced && { warning: clickTargetReplacedWarning() }),
+        ...(press.reached && press.releasedOn !== undefined && { releasedOn: press.releasedOn }),
       },
       result.selectedIndex,
       `${POINTER_ACTION_DONE[action].toLowerCase()} the first visible one`

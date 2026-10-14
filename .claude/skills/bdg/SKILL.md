@@ -83,6 +83,10 @@ New text: "Your password is invalid!" (div#flash)   # alert/status/aria-live mes
 Form submitted (cancelled by the page): form#login  # the form fired submit; the page handled it in script (not "nothing happened")
 Button changed: disabled, "Sending…"                # the pressed button's own change (a request in flight, or stuck)
 Activated:     button#plain (the key clicked it)    # pressKey Enter/Space clicked the button it was pressed on
+Expanded: true                                      # the clicked element's (or its control's) aria-expanded flipped (JSON expanded)
+Focus moved to: input#other "Other"                 # a fill's input handler moved focus off the field (JSON focusMoved)
+DOM changed (200 nodes)                             # only when nothing else is reported: 3+ elements added/removed (JSON domChanges)
+⚠ The mouse was released on button#next, not on ... # the page moved/replaced the clicked element mid-press (JSON releasedOn)
 Shown:         span "Something went wrong"          # text added next to the clicked control (no role/class needed)
 ⚠ Submit blocked: email: Please include an '@' ...  # the form's validation stopped the submit (click or Enter): fix the named fields
 Errors: Uncaught Error: handler exploded (app.js:3:142)  # console errors/exceptions the action caused

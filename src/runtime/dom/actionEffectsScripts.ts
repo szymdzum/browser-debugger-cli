@@ -5,7 +5,7 @@
  * is hidden around its target ({@link REVEAL_SNAPSHOT_JS}).
  */
 
-import { ELEMENT_DESCRIPTION_JS } from '@/runtime/dom/elementInfo.js';
+import { ELEMENT_DESCRIPTION_JS, ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
 
 /** Class or id words that mark an element as a message (flash, toast, field error) */
 const MESSAGE_WORDS = [
@@ -395,10 +395,13 @@ const CONTROL_LABEL_JS = `(el) => (el.localName === 'input' ? el.value : el.inne
  * when noted, since a dispatch clears a target in a shadow root); the pressed
  * control's change since the press (its disabled state or label); the
  * element a key press clicked inside the key's target (Enter or Space on a
- * button); and whether the key was Enter in a form's input. Empty parts are
- * left out.
+ * button); whether the key was Enter in a form's input; whether the
+ * `aria-expanded` of the first press's target (or of the control it labels)
+ * flipped between `true` and `false`; with `focus`, the element focus is on
+ * when it is not the field that got `input` (not the body); and the number
+ * of elements added or removed since the start. Empty parts are left out.
  */
-const OUTCOMES_JS = `(state) => {
+const OUTCOMES_JS = `(state, focus) => {
   const describe = ${ELEMENT_DESCRIPTION_JS};
   const outcomes = {};
   const submit = state.submits[0];
@@ -414,6 +417,18 @@ const OUTCOMES_JS = `(state) => {
   }
   if (state.keyClick) outcomes.activated = describe(state.keyClick);
   if (state.enterField) outcomes.enterField = true;
+  const toggle = state.expandable;
+  const flags = ['true', 'false'];
+  if (toggle) {
+    const now = toggle.el.getAttribute('aria-expanded');
+    if (now !== toggle.value && flags.includes(now) && flags.includes(toggle.value)) outcomes.expanded = now === 'true';
+  }
+  const active = document.activeElement;
+  const field = state.inputTarget;
+  if (focus && field && active && active !== field && !/^(body|html)$/.test(active.localName) && !field.contains(active)) {
+    outcomes.focusMoved = (${ELEMENT_IDENTITY_JS})(active);
+  }
+  outcomes.nodes = state.nodes;
   return outcomes;
 }`;
 
@@ -440,7 +455,8 @@ export const EFFECTS_START_SCRIPT = `(() => {
     ids: ids, changes: 0, targets: new Set(), path: new Set(), focus: document.activeElement,
     pressScroll: null, copied: false, stopped: false, added: [], removed: [], bursts: [],
     keyTarget: null, loaders: new Set((${LOADERS_JS})()),
-    pressTarget: null, submits: [], forms: [], control: null, keyClick: null, enterField: null
+    pressTarget: null, submits: [], forms: [], control: null, keyClick: null, enterField: null,
+    nodes: 0, expandable: null, inputTarget: null
   };
   const listen = EventTarget.prototype.addEventListener;
   const unlisten = EventTarget.prototype.removeEventListener;
@@ -456,6 +472,12 @@ export const EFFECTS_START_SCRIPT = `(() => {
       state.forms.push(form);
       listen.call(form, 'submit', onSubmit, true);
     }
+    if (!state.expandable) {
+      const labelled = first.closest('label');
+      const toggle = first.closest('[aria-expanded]') ||
+        (labelled && labelled.control && labelled.control.hasAttribute('aria-expanded') ? labelled.control : null);
+      if (toggle) state.expandable = { el: toggle, value: toggle.getAttribute('aria-expanded') };
+    }
     const control = state.control ? null : first.closest(${JSON.stringify(PRESSED_CONTROLS)});
     if (control) state.control = { el: control, disabled: control.matches(':disabled'), text: controlLabel(control) };
     if (event.type === 'keydown' && event.key === 'Enter' && first.localName === 'input' && first.form) {
@@ -468,6 +490,7 @@ export const EFFECTS_START_SCRIPT = `(() => {
   const keep = (list, nodes) => {
     for (const node of nodes) if (node.nodeType === 1 && list.length < ${MAX_TRACKED_NODES}) list.push(node);
   };
+  const elementCount = (nodes) => Array.from(nodes).filter((node) => node.nodeType === 1).length;
   const count = (records) => {
     let burst = false;
     for (const record of records) {
@@ -475,6 +498,7 @@ export const EFFECTS_START_SCRIPT = `(() => {
       state.changes++;
       burst = burst || structural(record);
       if (record.type === 'childList') {
+        state.nodes += elementCount(record.addedNodes) + elementCount(record.removedNodes);
         keep(state.added, record.addedNodes);
         keep(state.removed, record.removedNodes);
       }
@@ -505,6 +529,7 @@ export const EFFECTS_START_SCRIPT = `(() => {
     const path = event.composedPath().filter((node) => node.nodeType === 1);
     if (path[0]) state.targets.add(path[0]);
     if (path[0] && !state.keyTarget && event.type === 'keydown') state.keyTarget = path[0];
+    if (path[0] && !state.inputTarget && event.type === 'input') state.inputTarget = path[0];
     path.forEach((node) => state.path.add(node));
     if (!state.pressScroll && pressTypes.includes(event.type)) state.pressScroll = [scrollX, scrollY];
     if (event.type === 'submit') onSubmit(event);
@@ -549,16 +574,17 @@ export const START_DUE_TIMERS_SCRIPT = `globalThis.__bdgDueTimers = (${DUE_TIMER
 export const AWAIT_DUE_TIMERS_SCRIPT = 'globalThis.__bdgDueTimers';
 
 /**
- * Read after an action, called with `(stop, shown)`: `stop` also stops
+ * Read after an action, called with `(stop, shown, focus)`: `stop` also stops
  * watching, `shown` lists the elements the action showed
- * ({@link SHOWN_ELEMENTS_JS}). Returns the URL, the messages shown and,
+ * ({@link SHOWN_ELEMENTS_JS}), `focus` says where focus moved to away from
+ * the field the page got `input` on ({@link OUTCOMES_JS}). Returns the URL, the messages shown and,
  * when the snapshot is still there (same document), the number of changes
  * counted (plus one when the page scrolled after the press), why "no
  * effect" could not be claimed ({@link UNCERTAIN_JS}) and whether the page
  * is still working ({@link SETTLE_JS}). `fresh` means a new document
  * (everything shown is new).
  */
-export const EFFECTS_READ_SCRIPT = `((stop, shown) => {
+export const EFFECTS_READ_SCRIPT = `((stop, shown, focus) => {
   const state = window.__bdgEffects;
   if (!state) return { href: location.href, fresh: true, messages: (${MESSAGES_JS})({ map: new WeakMap(), next: 1 }) };
   if (!state.stopped) state.flush();
@@ -575,7 +601,7 @@ export const EFFECTS_READ_SCRIPT = `((stop, shown) => {
     messages: (${MESSAGES_JS})(state.ids),
     settle: (${SETTLE_JS})(state),
     shown: shown ? (${SHOWN_ELEMENTS_JS})(state) : undefined,
-    ...(${OUTCOMES_JS})(state)
+    ...(${OUTCOMES_JS})(state, focus)
   };
 })`;
 

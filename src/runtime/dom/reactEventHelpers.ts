@@ -812,7 +812,9 @@ export const FILL_READ_BACK_SCRIPT = `(() => {
  * and an element with the same tag, parent and trimmed text is now at the
  * press point (a re-render on `pointerdown`). An element that merely unmounts
  * on press, a sibling that slides under the mouse, and a replacement with a
- * different label are not reported, since the handler may have acted. The probe
+ * different label are not reported, since the handler may have acted. Where the
+ * mouse is released when that is not the element (`releasedOn`) is reported, unless it
+ * is an element the page rendered since (a replacement, as for a label change). The probe
  * listens on the window and on each shadow root around the element, since
  * an event path seen from outside a closed root stops at its host (#582);
  * the deepest listener the press got to decides. A press seen last at a
@@ -1011,6 +1013,13 @@ export const CLICK_ELEMENT_SCRIPT = `
         if (!probe.landedOn && path[0] && path[0].nodeType === 1) probe.landedOn = describe(path[0]);
       }
     };
+    const markReleased = (event) => {
+      const path = event.composedPath();
+      if (!probe.reached || probe.releasedOn || path.indexOf(el) !== -1 || closedHosts.indexOf(path[0]) !== -1) return;
+      const rendered = window.__bdgEffects ? window.__bdgEffects.added : [];
+      if (path.some((node) => rendered.indexOf(node) !== -1)) return;
+      if (path[0] && path[0].nodeType === 1) probe.releasedOn = describe(path[0]);
+    };
     const markClicked = (event) => {
       const path = event.composedPath();
       if (path.indexOf(el) !== -1 || closedHosts.indexOf(path[0]) !== -1) probe.clicked = true;
@@ -1031,12 +1040,14 @@ export const CLICK_ELEMENT_SCRIPT = `
     listenOn.forEach((target) => {
       target.addEventListener('pointerdown', markReached, true);
       target.addEventListener('mousedown', markReached, true);
+      target.addEventListener('pointerup', markReleased, true);
       target.addEventListener('click', markClicked, true);
     });
     probe.stop = () => {
       listenOn.forEach((target) => {
         target.removeEventListener('pointerdown', markReached, true);
         target.removeEventListener('mousedown', markReached, true);
+        target.removeEventListener('pointerup', markReleased, true);
         target.removeEventListener('click', markClicked, true);
       });
       probe.reached = probe.reached || probe.hidden;

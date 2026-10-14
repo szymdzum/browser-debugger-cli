@@ -920,7 +920,7 @@ export function createCommandRegistry(
               params.wait !== false
             )
           ),
-        { dialogs: params }
+        { reportFocusMove: true, dialogs: params }
       ),
 
     dom_click: async (cdp, params) => {

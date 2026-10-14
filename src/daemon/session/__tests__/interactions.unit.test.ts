@@ -210,6 +210,28 @@ void describe('createInteractionRunner', () => {
     assert.equal((await interact(fakeCdp(), throwing, { reportEffects: false })).errors, undefined);
   });
 
+  void it('reports DOM changes after a console log, but not next to a console error (#670)', async () => {
+    const store = new TelemetryStore();
+    const interact = createInteractionRunner(store);
+    const page = {
+      start: { href: 'https://shop.test/', messages: [] },
+      read: { href: 'https://shop.test/', fresh: false, changes: 5, nodes: 5, messages: [] },
+    };
+    const logging = (type: 'log' | 'error') => (): Promise<{ success: boolean }> => {
+      const message = { type, text: 'hi', timestamp: Date.now() };
+      store.receiveConsoleMessage()(message);
+      store.consoleMessages.push(message);
+      return Promise.resolve({ success: true });
+    };
+
+    const logged = await interact(fakeCdp(page), logging('log'));
+    assert.equal(logged.domChanges, 5);
+    assert.equal(logged.errors, undefined);
+    const failed = await interact(fakeCdp(page), logging('error'));
+    assert.equal(failed.domChanges, undefined);
+    assert.equal(failed.errors?.length, 1);
+  });
+
   void it('reports nothing when effects are off or the page could not be read', async () => {
     const interact = createInteractionRunner(new TelemetryStore());
     const action = (): Promise<{ success: boolean }> => Promise.resolve({ success: true });

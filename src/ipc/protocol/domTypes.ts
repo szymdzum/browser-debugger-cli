@@ -177,6 +177,23 @@ export interface ActionEffects {
   controlChange?: ControlChange;
   /** Element a key press clicked inside the key's target, e.g. a button Enter activated */
   activated?: string;
+  /**
+   * `aria-expanded` of the pressed element (or of the control it labels) after
+   * the press, when it flipped (`true` opened, `false` closed; absent otherwise)
+   */
+  expanded?: boolean;
+  /**
+   * Element focus was on after a fill whose `input` handler moved it away from
+   * the field, labelled as the `element` row is (absent otherwise)
+   */
+  focusMoved?: string;
+  /**
+   * Elements added plus elements removed during the action (top-level nodes,
+   * so a replaced row counts twice), only when that is at least 3, the page
+   * was not changing on its own and nothing else is reported: no other
+   * effect, request, dialog, new window or console error (absent otherwise)
+   */
+  domChanges?: number;
   /** "none" when the action had no visible effect: no DOM change, request or navigation */
   effect?: 'none';
   /** False when the page was still changing as the action returned (absent otherwise) */
@@ -291,6 +308,12 @@ export interface ClickResult extends ActionEffects {
   exitCode?: number;
   /** Why the DOM fallback was used (element covered or without size) */
   warning?: string;
+  /**
+   * The press reached the element but the mouse was released on another one
+   * (the page moved or replaced the element while pressed), e.g. `button#next`
+   * (absent otherwise)
+   */
+  releasedOn?: string;
   /** Dialogs answered while the command ran */
   dialogs?: DialogInfo[];
   /** Requests the action triggered (absent when network telemetry is off) */
