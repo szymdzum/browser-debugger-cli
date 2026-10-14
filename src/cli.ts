@@ -7,10 +7,10 @@
 import { CommanderError, type Command } from 'commander';
 
 import {
-  generateCommandHelp,
-  generateCompactHelp,
   commandLineWords,
   commandPath,
+  generateCommandHelp,
+  generateCompactHelp,
   generateMachineReadableHelp,
   resolveCommand,
 } from '@/commands/helpJson.js';
@@ -332,9 +332,9 @@ function handleFatalError(error: unknown): never {
   const message = getErrorMessage(error);
   const metadata = error instanceof CommandError ? error.metadata : {};
   if (isJsonMode()) {
-    console.log(
-      stringifyEnvelope(OutputBuilder.buildJsonError(message, { ...metadata, exitCode }))
-    );
+    const fields = { exitCode, ...metadata };
+    fields.exitCode = exitCode;
+    console.log(stringifyEnvelope(OutputBuilder.buildJsonError(message, fields)));
   } else {
     console.error(genericError(message));
     if (typeof metadata.suggestion === 'string') console.error(metadata.suggestion);

@@ -41,6 +41,11 @@ interface HelpNode {
 async function runJson<T>(args: string[]): Promise<{ exitCode: number | null; json: T }> {
   const [first = '', ...rest] = args;
   const result = await runCommand(first, rest, { timeout: 30000 });
+  assert.notEqual(
+    result.stdout.trim(),
+    '',
+    `bdg ${args.join(' ')}: no stdout (stderr: ${result.stderr})`
+  );
   return { exitCode: result.exitCode, json: JSON.parse(result.stdout) as T };
 }
 
@@ -85,6 +90,7 @@ void describe('command groups and machine-readable help (#698)', () => {
       assert.equal(exitCode, 81, args.join(' '));
       assert.equal(json.success, false, args.join(' '));
       assert.equal(json.error, plain.json.error, args.join(' '));
+      assert.deepEqual(Object.keys(json).slice(0, 4), ['version', 'success', 'error', 'exitCode']);
     }
     const typo = await runJson<Envelope>(['netwrk', '--help', '--json']);
     assert.equal(typo.exitCode, 81);
@@ -105,6 +111,8 @@ void describe('command groups and machine-readable help (#698)', () => {
       ['dom', '--help', '--json'],
       ['dom', 'query', '--limit', '5', '--help', '--json'],
       ['https://example.com', '--help', '--json'],
+      ['localhost', '--help', '--json'],
+      ['example.com', '--help', '--json'],
     ]) {
       const { exitCode } = await runJson<object>(args);
       assert.equal(exitCode, 0, args.join(' '));

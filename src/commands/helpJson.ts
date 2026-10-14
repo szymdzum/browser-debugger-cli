@@ -2,8 +2,9 @@
  * Machine-readable help generation using Commander.js introspection API.
  */
 
-import type { Command, Option, Argument } from 'commander';
 import type { EventEmitter } from 'node:events';
+
+import type { Command, Option, Argument } from 'commander';
 
 import { getAllDomainSummaries } from '@/cdp/schema.js';
 import { getOptionBehavior } from '@/commands/optionBehaviors.js';
