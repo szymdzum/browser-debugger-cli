@@ -4,6 +4,7 @@
  * Common types used across session messages and session commands.
  */
 
+import type { PageLoadingState } from '@/ipc/protocol/commands.js';
 import type { DownloadInfo } from '@/ipc/protocol/domTypes.js';
 import type { ColorScheme, ViewportSize } from '@/types.js';
 
@@ -45,4 +46,6 @@ export interface PageState {
   colorScheme?: ColorScheme;
   /** When the page's renderer crashed (epoch ms); `bdg page reload` brings it back */
   crashedAt?: number;
+  /** Set while the document has not finished loading (`document.readyState` is not `complete`) */
+  loading?: PageLoadingState;
 }

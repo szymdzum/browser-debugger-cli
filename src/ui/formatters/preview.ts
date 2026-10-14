@@ -19,6 +19,7 @@ import { pendingRequestsPausedNote } from '@/ui/messages/cdpEvents.js';
 import {
   downloadsSummary,
   moreCharsNote,
+  peekPageLines,
   withPageCrashedNote,
   withTabSwitchNote,
 } from '@/ui/messages/commands.js';
@@ -274,6 +275,8 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
     fmt.text(`Viewed at: ${options.viewedAt.toISOString()}`);
   }
 
+  peekPageLines(output.target).forEach((line) => fmt.text(line));
+
   fmt.blank();
 
   const lastCount = options.last;
@@ -424,6 +427,8 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
   if (options.follow && options.viewedAt) {
     fmt.keyValue('Viewed at', options.viewedAt.toISOString(), 18);
   }
+
+  peekPageLines(output.target).forEach((line) => fmt.text(line));
 
   fmt.blank();
 

@@ -1,4 +1,5 @@
 import type { Protocol } from '@/connection/typed-cdp.js';
+import type { PageLoadingState } from '@/ipc/protocol/commands.js';
 import type { DownloadInfo, FormIssue } from '@/ipc/protocol/domTypes.js';
 import type { TabRef, TabSwitchInfo } from '@/ipc/protocol/tabTypes.js';
 
@@ -326,6 +327,8 @@ export interface BdgOutput {
   target: {
     url: string;
     title: string;
+    /** Set while the document has not finished loading */
+    loading?: PageLoadingState;
   };
   data: {
     network?: NetworkRequest[];

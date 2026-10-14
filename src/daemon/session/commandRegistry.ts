@@ -6,7 +6,7 @@ import { CDPConnectionError, CDPProtocolError } from '@/connection/errors.js';
 import { PatternDetector } from '@/daemon/patternDetector.js';
 import { CdpEventListener, collectEvents } from '@/daemon/session/cdpEvents.js';
 import { ClientObjectGroups } from '@/daemon/session/clientObjectGroups.js';
-import { refreshCurrentTarget } from '@/daemon/session/currentTarget.js';
+import { refreshCurrentPage } from '@/daemon/session/currentTarget.js';
 import { createInteractionRunner, type TabReports } from '@/daemon/session/interactions.js';
 import { withTriggeredRequestCount } from '@/daemon/session/triggeredRequests.js';
 import { CommandError } from '@/errors/index.js';
@@ -619,7 +619,7 @@ export function createCommandRegistry(
 
   return {
     session_peek: async (cdp, params) => {
-      await refreshCurrentTarget(cdp, store);
+      const loading = await refreshCurrentPage(cdp, store);
       const lastN = calculateLastN(params.lastN);
       const offset = params.offset ?? 0;
       const duration = Date.now() - store.sessionStartTime;
@@ -654,6 +654,7 @@ export function createCommandRegistry(
         target: {
           url: store.targetInfo?.url ?? '',
           title: store.targetInfo?.title ?? '',
+          ...(loading && { loading }),
         },
         activeTelemetry: store.activeTelemetry,
         currentNavigationId: store.getCurrentNavigationId?.() ?? 0,
@@ -696,7 +697,7 @@ export function createCommandRegistry(
     },
 
     session_status: async (cdp, _params) => {
-      await refreshCurrentTarget(cdp, store);
+      const loading = await refreshCurrentPage(cdp, store);
       const duration = Date.now() - store.sessionStartTime;
       const lastNetworkRequest = store.networkRequests[store.networkRequests.length - 1];
       const lastConsoleMessage = store.consoleMessages[store.consoleMessages.length - 1];
@@ -707,6 +708,7 @@ export function createCommandRegistry(
         target: {
           url: store.targetInfo?.url ?? '',
           title: store.targetInfo?.title ?? '',
+          ...(loading && { loading }),
           ...(store.pageCrashedAt === undefined
             ? await pageAppearance(cdp)
             : { crashedAt: store.pageCrashedAt }),

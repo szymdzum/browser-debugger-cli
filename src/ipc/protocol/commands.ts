@@ -75,7 +75,7 @@ export interface SessionPeekData {
   version: string;
   startTime: number;
   duration: number;
-  target: { url: string; title: string };
+  target: { url: string; title: string; loading?: PageLoadingState };
   activeTelemetry: string[];
   network: Array<{
     requestId: string;
