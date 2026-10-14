@@ -7,7 +7,7 @@ import type { BehaviorTable } from '@/commands/optionBehaviors/shared.js';
 
 /** What DOM actions report about the network requests they triggered */
 const TRIGGERED_REQUESTS_BEHAVIOR =
-  'Requests (and WebSocket connections) that start after the action begins are returned as triggeredRequests (method, url, status, durationMs; pending when still running at return, loading when the response arrived but its body is still streaming; with resourceType; human output lists documents, XHR/fetch and WebSockets first (up to 10) and counts static assets on one line; absent when network telemetry is off). Attribution is by time: requests a page timer or poller starts meanwhile are listed too, whether or not the action caused them';
+  'Requests (and WebSocket connections) that start after the action begins are returned as triggeredRequests (method, url, status, durationMs; pending when still running at return, loading when the response arrived but its body is still streaming; with resourceType; human output lists documents, XHR/fetch and WebSockets first (up to 10 rows; requests with the same method, host and path share a row, e.g. POST host/event ×8 → 501; --json keeps every request) and counts static assets on one line; absent when network telemetry is off). Attribution is by time: requests a page timer or poller starts meanwhile are listed too, whether or not the action caused them';
 
 /** What every DOM action reports about the console errors it caused */
 const ACTION_ERRORS_BEHAVIOR =
