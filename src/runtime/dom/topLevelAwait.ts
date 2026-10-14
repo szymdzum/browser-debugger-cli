@@ -7,17 +7,28 @@
 
 import { Script } from 'node:vm';
 
+import { createLogger } from '@/ui/logging/index.js';
+
+const log = createLogger('dom');
+
+/** Longest script compiled to find its `await` (longer ones get the text search: compiling 10 MB takes about 0.7 s) */
+const MAX_COMPILED_LENGTH = 1_000_000;
+
 /**
  * Whether V8 compiles a source (it is not run).
  *
  * @param source - JavaScript
+ * @param label - What the source is compiled as, for the debug log (never the script)
  * @returns False on a SyntaxError
  */
-function compiles(source: string): boolean {
+function compiles(source: string, label: string): boolean {
   try {
     new Script(source);
     return true;
   } catch {
+    log.debug(
+      `Script does not compile as ${label} (V8's message is not logged: it may quote the script)`
+    );
     return false;
   }
 }
@@ -31,14 +42,15 @@ function compiles(source: string): boolean {
  * the second. `await` in a string, comment, regex or nested function counts
  * as none. A script without the word is not compiled at all; one V8 cannot
  * place this way (a syntax error, newer syntax than the daemon's Node,
- * `return` or `arguments` at the top) counts as awaiting, as a text search
- * would.
+ * `return` or `arguments` at the top) or over a million characters counts
+ * as awaiting, as a text search would.
  *
  * @param script - The script
  * @returns True when the script has a top-level `await`
  */
 export function hasTopLevelAwait(script: string): boolean {
   if (!/\bawait\b/.test(script)) return false;
-  if (!compiles(`(async function () {\n${script}\n})`)) return true;
-  return !compiles(`(class { static {\n${script}\n} })`);
+  if (script.length > MAX_COMPILED_LENGTH) return true;
+  if (!compiles(`(async function () {\n${script}\n})`, 'an async function body')) return true;
+  return !compiles(`(class { static {\n${script}\n} })`, 'a static block');
 }
