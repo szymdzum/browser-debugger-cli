@@ -286,7 +286,10 @@ export function screenshotInterruptedError(signal: 'SIGINT' | 'SIGTERM'): ErrorW
  * `writing`: its path once the write has started, absent before).
  */
 export type InterruptedWork =
-  { sent: string } | { stopped: 'script' } | { session: 'stop' | 'cleanup' } | InterruptedFileWrite;
+  | { sent: string; writing?: string | undefined }
+  | { stopped: 'script' }
+  | { session: 'stop' | 'cleanup' }
+  | InterruptedFileWrite;
 
 /** A file an interruptible command writes; `writing` is set as the write starts */
 export interface InterruptedFileWrite {
