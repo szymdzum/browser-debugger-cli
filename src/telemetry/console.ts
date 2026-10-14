@@ -13,6 +13,7 @@ import { CDPHandlerRegistry } from '@/connection/handlers.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { TypedCDPConnection } from '@/connection/typed-cdp.js';
 import { MAX_CONSOLE_MESSAGES } from '@/constants.js';
+import { evalLine } from '@/runtime/dom/evalSource.js';
 import { attachChildTargets } from '@/telemetry/attachedTargets.js';
 import type { ConsoleMessage, CleanupFunction, StackFrame } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
@@ -51,7 +52,7 @@ interface MessageContext {
 function convertCallFrame(frame: Protocol.Runtime.CallFrame): StackFrame {
   const stackFrame: StackFrame = {
     url: displayUrl(frame.url),
-    lineNumber: frame.lineNumber,
+    lineNumber: evalLine(frame.url, frame.lineNumber),
     columnNumber: frame.columnNumber,
     scriptId: frame.scriptId,
   };

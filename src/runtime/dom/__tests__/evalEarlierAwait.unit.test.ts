@@ -9,6 +9,7 @@ import { describe, it } from 'node:test';
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import { evaluateScript } from '@/runtime/dom/evalHelpers.js';
+import { wrapEvalScript } from '@/runtime/dom/evalSource.js';
 
 /** A script that waits for a timer */
 const AWAIT_TIMER = 'await new Promise((r) => setTimeout(r, 10000))';
@@ -29,6 +30,19 @@ const TERMINATED = {
 const DONE = { result: { type: 'number', value: 1 } };
 
 /** A command waiting for the page's thread */
+/** What the eval sends before and after a script */
+const [WRAPPER_START = '', WRAPPER_END = ''] = wrapEvalScript('SCRIPT').split('SCRIPT');
+
+/**
+ * The user's script in the expression an eval sent.
+ *
+ * @param expression - Sent `Runtime.evaluate` expression
+ * @returns The script
+ */
+function scriptOf(expression: string): string {
+  return expression.slice(WRAPPER_START.length, expression.length - WRAPPER_END.length);
+}
+
 interface Queued {
   expression: string;
   resolve: (value: unknown) => void;
@@ -60,7 +74,7 @@ class MainThreadPage {
     }
     if (method !== 'Runtime.evaluate') return Promise.resolve({});
     return new Promise((resolve) => {
-      this.queue.push({ expression: String(params['expression']), resolve });
+      this.queue.push({ expression: scriptOf(String(params['expression'])), resolve });
       this.run();
     });
   }

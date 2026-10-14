@@ -12,6 +12,7 @@ import type { CDPConnection } from '@/connection/cdp.js';
 import { EVAL_FULL_MAX_BYTES } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
 import { evaluateScript, sizeProbeFunction } from '@/runtime/dom/evalHelpers.js';
+import { wrapEvalScript } from '@/runtime/dom/evalSource.js';
 
 /**
  * A page whose answer to the script never arrives (Chrome could not send it)
@@ -24,7 +25,7 @@ function pageThatCannotSend(script: string): CDPConnection {
   const never = new Promise<never>(() => undefined);
   return {
     send: (method: string, params?: { expression?: string }) =>
-      method === 'Runtime.evaluate' && params?.expression === script
+      method === 'Runtime.evaluate' && params?.expression === wrapEvalScript(script)
         ? never
         : Promise.resolve({ result: { type: 'number', value: 1 } }),
   } as unknown as CDPConnection;
@@ -123,7 +124,7 @@ void describe('evaluateScript with a script that finishes after the check', () =
     });
     const page = {
       send: (method: string, params?: { expression?: string }) =>
-        method === 'Runtime.evaluate' && params?.expression === script
+        method === 'Runtime.evaluate' && params?.expression === wrapEvalScript(script)
           ? slow
           : Promise.resolve({ result: { type: 'number', value: 1 } }),
     } as unknown as CDPConnection;

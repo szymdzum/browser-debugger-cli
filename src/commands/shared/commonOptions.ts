@@ -69,6 +69,14 @@ Selectors search the page, open shadow roots and same-origin iframes (nested one
 included). They cannot reach into closed shadow roots or cross-origin iframes:
 use bdg dom eval --frame <frame> for those (see bdg dom frames).`;
 
+/** Help text after `dom eval`'s options: what a script leaves on the page */
+export const EVAL_SCOPE_HELP = `
+The script runs like the DevTools console (top-level await; the value of the
+last expression is the result), in a block of its own: its top-level const,
+let and class are gone after the call, so they never clash with the page or a
+later eval. var and function declarations, and window.x = ..., stay on the
+page as globals. Console messages and errors name it bdg-eval (bdg-eval:1:9).`;
+
 /** Help text after `dom query`'s options: how a match's classes are shown */
 export const QUERY_CLASS_HELP = `
 Each match shows its first class and how many more it has (class="px-2 +4");

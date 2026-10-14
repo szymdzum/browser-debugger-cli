@@ -16,6 +16,7 @@ import {
   scriptExecutionError,
   scriptTimeoutError,
 } from '@/errors/messages.js';
+import { describeEvalException, wrapEvalScript } from '@/runtime/dom/evalSource.js';
 import { hasTopLevelAwait } from '@/runtime/dom/topLevelAwait.js';
 import { pendingNavigationUrl } from '@/runtime/page/navigation.js';
 import { releaseObjectGroup } from '@/runtime/page/objectGroups.js';
@@ -78,10 +79,11 @@ function isRuntimeEvaluateResult(value: unknown): value is Protocol.Runtime.Eval
 }
 
 /**
- * Execute JavaScript in browser context via CDP
+ * Execute a `bdg dom eval` script in browser context via CDP, in a block
+ * named `bdg-eval` (see {@link wrapEvalScript})
  *
  * @param cdp - CDP connection instance
- * @param script - JavaScript expression to execute
+ * @param script - JavaScript to execute
  * @param options - Runtime.evaluate options (default: return the value as JSON)
  * @returns Execution result
  * @throws Error When script execution throws exception or returns invalid response
@@ -95,7 +97,7 @@ export async function executeScript(
   let response: unknown;
   try {
     response = await cdp.send('Runtime.evaluate', {
-      expression: script,
+      expression: wrapEvalScript(script),
       awaitPromise: true,
       ...options,
     });
@@ -126,7 +128,7 @@ export async function executeScript(
   }
 
   if (response.exceptionDetails) {
-    const errorMsg = describeException(response.exceptionDetails);
+    const errorMsg = describeEvalFailure(response.exceptionDetails);
     const err = scriptExecutionError(errorMsg, script);
     throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SCRIPT_ERROR);
   }
@@ -156,7 +158,7 @@ async function settlePromise(
     generatePreview: true,
   })) as Protocol.Runtime.AwaitPromiseResponse;
   if (settled.exceptionDetails) {
-    const err = scriptExecutionError(describeException(settled.exceptionDetails), script);
+    const err = scriptExecutionError(describeEvalFailure(settled.exceptionDetails), script);
     throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SCRIPT_ERROR);
   }
   return settled.result;
@@ -178,6 +180,17 @@ export function describeException(details: Protocol.Runtime.ExceptionDetails): s
     return `Uncaught ${typeof exception.value === 'string' ? exception.value : JSON.stringify(exception.value)}`;
   }
   return details.text || 'Unknown error executing script';
+}
+
+/**
+ * Message of an exception of a `bdg dom eval` script, at the script's own
+ * positions.
+ *
+ * @param details - Exception details
+ * @returns Readable message
+ */
+function describeEvalFailure(details: Protocol.Runtime.ExceptionDetails): string {
+  return describeEvalException(describeException(details), details);
 }
 
 /** Time after the limit within which a failed evaluate counts as V8 terminating it. */
@@ -1200,8 +1213,10 @@ function evaluateOptions(
 /**
  * Evaluate a `bdg dom eval` script.
  *
- * Runs like the DevTools console (REPL mode: top-level `const`/`let` may be
- * declared again in a later call, top-level `await` works), awaits promises,
+ * Runs like the DevTools console (REPL mode: top-level `await` works, the
+ * last expression's value is the result) in a block, so top-level
+ * `const`/`let`/`class` stay local to the call (`var` and functions become
+ * globals), awaits promises,
  * terminates scripts running longer than 20 s (so the page is not left
  * frozen by e.g. an endless loop), and returns a JSON-safe value. The eval's
  * objects are released without waiting: a script that started a busy loop

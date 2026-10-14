@@ -9,6 +9,7 @@ import { describe, it } from 'node:test';
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import { evaluateScript } from '@/runtime/dom/evalHelpers.js';
+import { wrapEvalScript } from '@/runtime/dom/evalSource.js';
 
 /**
  * A page that never sends the eval's result and, once `busy`, answers
@@ -27,7 +28,7 @@ class LostResultPage {
    */
   send(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
     this.sent.push(method);
-    if (method === 'Runtime.evaluate' && params['expression'] === 'lost') {
+    if (method === 'Runtime.evaluate' && params['expression'] === wrapEvalScript('lost')) {
       return new Promise(() => undefined);
     }
     if (method === 'Runtime.evaluate' && !this.busy) {

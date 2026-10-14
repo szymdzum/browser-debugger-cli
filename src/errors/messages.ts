@@ -2713,18 +2713,15 @@ export function pageNavigatedDuringEvalError(): ErrorWithSuggestion {
 const REDECLARED_PATTERN = /^SyntaxError: Identifier '([\w$]+)' has already been declared/;
 
 /**
- * Tip for a top-level `const`/`let` whose name the page or the script itself
- * already declares (`dom eval` runs like the console: names persist between
- * calls, and a page's own top-level `let`/`const`/`class` cannot be declared again).
+ * Tip for a name declared twice: `dom eval` runs a script in a block, so
+ * only the script itself, or a `var`/function of it meeting the page's own
+ * top-level `let`/`const`/`class`, can declare a name again.
  *
  * @param name - The redeclared identifier
  * @returns Tip
  */
 function redeclarationTip(name: string): string {
-  return [
-    `'${name}' is already declared at the top level, by the page or earlier in this script.`,
-    `Rename it, or wrap the script in a block so its names stay local: ${sessionCommand(`bdg dom eval '{ const ${name} = ...; ${name} }'`)}`,
-  ].join('\n');
+  return `'${name}' is already declared in this script (or, for a var or function, by the page's top-level let, const or class). Rename it.`;
 }
 
 /**

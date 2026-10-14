@@ -9,12 +9,14 @@ import { describe, it } from 'node:test';
 import { FakeObjectPage } from '@/__testutils__/fakeObjectPage.js';
 import type { CDPConnection } from '@/connection/cdp.js';
 import { evaluateScript } from '@/runtime/dom/evalHelpers.js';
+import { wrapEvalScript } from '@/runtime/dom/evalSource.js';
 
 void describe('evaluateScript', () => {
   void it('copies the results of concurrent evals when one releases its objects first (#584)', async () => {
     const page = new FakeObjectPage({
       lookupsFirst: 2,
-      hold: (method, params) => method === 'Runtime.evaluate' && params['expression'] === 'second',
+      hold: (method, params) =>
+        method === 'Runtime.evaluate' && params['expression'] === wrapEvalScript('second'),
       callResult: () => ({ result: { type: 'object', value: { copy: { copied: true } } } }),
       releaseFreesHeld: (objectGroup) => objectGroup.startsWith('bdg-eval'),
     });

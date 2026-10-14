@@ -16,8 +16,8 @@ void describe('scriptExecutionError()', () => {
 
     assert.doesNotMatch(suggestion, /quote damage/);
     assert.doesNotMatch(suggestion, /Math\.round\("x"\)/);
-    assert.match(suggestion, /'x' is already declared at the top level/);
-    assert.match(suggestion, /bdg dom eval '\{ const x = \.\.\.; x \}'/);
+    assert.match(suggestion, /'x' is already declared in this script/);
+    assert.doesNotMatch(suggestion, /wrap the script in a block/);
   });
 
   void it('suggests quoting a selector the shell left bare', () => {
