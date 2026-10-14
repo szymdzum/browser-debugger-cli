@@ -15,7 +15,7 @@
 import type { Protocol } from '@/connection/typed-cdp.js';
 
 /** Source URL of `bdg dom eval` scripts */
-export const EVAL_SOURCE_URL = 'bdg-eval';
+const EVAL_SOURCE_URL = 'bdg-eval';
 
 /** A stack frame position in a dom eval script (`bdg-eval:2:7`) */
 const STACK_POSITION = new RegExp(`\\b${EVAL_SOURCE_URL}:(\\d+):(\\d+)\\b`, 'g');
@@ -59,7 +59,8 @@ function withEvalPositions(text: string): string {
 
 /**
  * Message of a dom eval exception, at the user's positions. An exception
- * without a stack (a SyntaxError) gets its position as a stack line.
+ * without a stack (a SyntaxError) gets its position as a stack line (its
+ * 0-based line in the source is the script's 1-based line).
  *
  * @param description - Message from `describeException`
  * @param details - Exception details
@@ -72,6 +73,5 @@ export function describeEvalException(
   if (/\n\s+at /.test(description) || !/^SyntaxError\b/.test(description)) {
     return withEvalPositions(description);
   }
-  const line = evalLine(EVAL_SOURCE_URL, details.lineNumber);
-  return `${description}\n    at ${EVAL_SOURCE_URL}:${line + 1}:${details.columnNumber + 1}`;
+  return `${description}\n    at ${EVAL_SOURCE_URL}:${details.lineNumber}:${details.columnNumber + 1}`;
 }

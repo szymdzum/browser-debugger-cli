@@ -128,8 +128,7 @@ export async function executeScript(
   }
 
   if (response.exceptionDetails) {
-    const details = response.exceptionDetails;
-    const errorMsg = describeEvalException(describeException(details), details);
+    const errorMsg = describeEvalFailure(response.exceptionDetails);
     const err = scriptExecutionError(errorMsg, script);
     throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SCRIPT_ERROR);
   }
@@ -159,9 +158,7 @@ async function settlePromise(
     generatePreview: true,
   })) as Protocol.Runtime.AwaitPromiseResponse;
   if (settled.exceptionDetails) {
-    const details = settled.exceptionDetails;
-    const message = describeEvalException(describeException(details), details);
-    const err = scriptExecutionError(message, script);
+    const err = scriptExecutionError(describeEvalFailure(settled.exceptionDetails), script);
     throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SCRIPT_ERROR);
   }
   return settled.result;
@@ -183,6 +180,17 @@ export function describeException(details: Protocol.Runtime.ExceptionDetails): s
     return `Uncaught ${typeof exception.value === 'string' ? exception.value : JSON.stringify(exception.value)}`;
   }
   return details.text || 'Unknown error executing script';
+}
+
+/**
+ * Message of an exception of a `bdg dom eval` script, at the script's own
+ * positions.
+ *
+ * @param details - Exception details
+ * @returns Readable message
+ */
+function describeEvalFailure(details: Protocol.Runtime.ExceptionDetails): string {
+  return describeEvalException(describeException(details), details);
 }
 
 /** Time after the limit within which a failed evaluate counts as V8 terminating it. */
