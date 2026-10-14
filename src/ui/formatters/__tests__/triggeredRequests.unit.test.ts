@@ -142,3 +142,72 @@ void describe('formatTriggeredRequestLines with assets', () => {
     assert.equal(rows + more + assetCount, 21);
   });
 });
+
+void describe('formatTriggeredRequestLines with repeated requests', () => {
+  const beacon = (i: number, fields: Partial<TriggeredRequest> = {}): TriggeredRequest => ({
+    ...triggered(`event?s=${i}`, { method: 'POST', resourceType: 'Other', status: 501 }),
+    requestId: `b${i}`,
+    ...fields,
+  });
+  const beacons = (count: number, fields: Partial<TriggeredRequest> = {}): TriggeredRequest[] =>
+    Array.from({ length: count }, (_, i) => beacon(i, fields));
+
+  void it('shows requests with the same method, host and path as one row, query ignored', () => {
+    assert.deepEqual(formatTriggeredRequestLines(beacons(8)), [
+      'POST 127.0.0.1:8080/event ×8 → 501',
+    ]);
+  });
+
+  void it('leaves single requests as they are, in the order the groups first appeared', () => {
+    const one = triggered('api/cart', {
+      method: 'POST',
+      resourceType: 'Fetch',
+      status: 201,
+      durationMs: 85,
+    });
+    const two = triggered('api/list', { resourceType: 'Fetch', status: 200 });
+    assert.deepEqual(formatTriggeredRequestLines([one, ...beacons(2), two, beacon(9)]), [
+      'POST 127.0.0.1:8080/api/cart → 201 (85ms)',
+      'POST 127.0.0.1:8080/event ×3 → 501',
+      'GET 127.0.0.1:8080/api/list → 200',
+    ]);
+  });
+
+  void it('does not group a different method or path', () => {
+    const get = triggered('event?s=1', { resourceType: 'Fetch', status: 200 });
+    const other = triggered('event/2', { method: 'POST', resourceType: 'Other', status: 501 });
+    assert.equal(formatTriggeredRequestLines([...beacons(2), get, other]).length, 3);
+  });
+
+  void it('shows differing statuses compactly in the order they first appeared', () => {
+    const requests = [...beacons(2, { status: 200 }), beacon(2), ...beacons(1, { status: 200 })];
+    assert.deepEqual(formatTriggeredRequestLines(requests), [
+      'POST 127.0.0.1:8080/event → 200 ×3, 501 ×1',
+    ]);
+  });
+
+  void it('names failures and pending requests in a group', () => {
+    const requests = [
+      beacon(0, { failed: true, errorText: 'net::ERR_ABORTED' }),
+      beacon(1, { failed: true, errorText: 'net::ERR_ABORTED' }),
+      beacon(2, { pending: true }),
+    ];
+    assert.deepEqual(formatTriggeredRequestLines(requests), [
+      'POST 127.0.0.1:8080/event → FAILED (net::ERR_ABORTED) ×2, pending ×1',
+    ]);
+  });
+
+  void it('caps grouped rows, and counts the requests that are not shown', () => {
+    const rows = Array.from({ length: MAX_TRIGGERED_REQUESTS_SHOWN + 1 }, (_, i) =>
+      triggered(`r${i}`, { resourceType: 'Fetch', status: 200 })
+    );
+    const lines = formatTriggeredRequestLines([
+      ...beacons(8),
+      ...rows,
+      ...beacons(2).map((b) => ({ ...b, url: 'http://127.0.0.1:8080/late' })),
+    ]);
+    assert.equal(lines.length, MAX_TRIGGERED_REQUESTS_SHOWN + 1);
+    assert.equal(lines[0], 'POST 127.0.0.1:8080/event ×8 → 501');
+    assert.equal(lines.at(-1), '... and 4 more (--json lists up to 50)');
+  });
+});
