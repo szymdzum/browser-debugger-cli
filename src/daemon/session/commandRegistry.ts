@@ -34,6 +34,8 @@ import { readBlockedSubmit } from '@/runtime/dom/blockedSubmit.js';
 import {
   evaluateScript,
   type LostCheckTiming,
+  sendScriptCall,
+  stopsScriptWhenAbandoned,
   untilAnswerLost,
   withBusyPageRecovery,
 } from '@/runtime/dom/evalHelpers.js';
@@ -606,6 +608,28 @@ async function sendCdpCall(
 }
 
 /**
+ * Send a `bdg cdp` call; a raw script call (`Runtime.evaluate`,
+ * `Runtime.callFunctionOn`) has its script stopped when its client
+ * disconnects before the call settled, like a `dom eval` (#726).
+ *
+ * @param cdp - CDP connection
+ * @param params - Method, params, and whether it is a bdg page script
+ * @param store - Session state
+ * @param abandoned - Aborts when the client disconnects
+ * @returns The method's result
+ */
+function sendCdpCallStoppable(
+  cdp: CDPConnection,
+  params: CommandSchemas['cdp_call']['requestSchema'],
+  store: TelemetryStore,
+  abandoned: AbortSignal | undefined
+): Promise<unknown> {
+  const send = (): Promise<unknown> => sendCdpCall(cdp, params, store);
+  if (params.isolated || !stopsScriptWhenAbandoned(params.method)) return send();
+  return sendScriptCall(cdp, send, params.params?.['awaitPromise'] === true, abandoned);
+}
+
+/**
  * The Chrome Issues of the page currently loaded, for a peek.
  *
  * @param store - Telemetry of the session
@@ -831,7 +855,7 @@ export function createCommandRegistry(
 
     cdp_call: async (cdp, params, abandoned) => {
       const call = (): Promise<unknown> =>
-        sendCdpCall(cdp, params, store).then(
+        sendCdpCallStoppable(cdp, params, store, abandoned).then(
           (value) => {
             clientGroups.settled(cdp, params, true);
             return value;

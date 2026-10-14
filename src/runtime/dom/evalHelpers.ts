@@ -856,7 +856,7 @@ const pendingEvaluations = new Set<PendingEvaluation>();
  * @returns True for `Runtime.evaluate` and `Runtime.callFunctionOn`
  */
 export function stopsScriptWhenAbandoned(method: string): boolean {
-  throw new Error(`not implemented: ${method}`);
+  return method === 'Runtime.evaluate' || method === 'Runtime.callFunctionOn';
 }
 
 /** How long the target gets to answer before an abandoned eval's script counts as running */
@@ -969,6 +969,30 @@ function stopWhenAbandoned(
   if (abandoned?.aborted) stop();
   else abandoned?.addEventListener('abort', stop, { once: true });
   return { answered, scriptFinished: () => (scriptDone = true) };
+}
+
+/**
+ * Send a raw `bdg cdp` script call (see {@link stopsScriptWhenAbandoned})
+ * on the page, tracked like a `dom eval`: its script is stopped when its
+ * client disconnects before the call settled, with the same guards
+ * ({@link stopWhenAbandoned}), and later evals wait for it as for an eval.
+ *
+ * @param cdp - The page's connection
+ * @param send - Sends the call
+ * @param awaits - Whether the call waits for a promise (`awaitPromise`)
+ * @param abandoned - Aborts when the client disconnects
+ * @returns The call's answer
+ */
+export function sendScriptCall<T>(
+  cdp: CDPSender,
+  send: () => Promise<T>,
+  awaits: boolean,
+  abandoned: AbortSignal | undefined
+): Promise<T> {
+  checkAwaitingEvaluations(cdp, '');
+  const call = send();
+  stopWhenAbandoned(cdp, 'page', call, trackEvaluation(awaits, ''), abandoned);
+  return call;
 }
 
 /**
