@@ -608,7 +608,15 @@ function formatActionOutput(
     ],
     keyWidth
   );
-  listRows(fmt, 'Shown', (result.shown ?? []).map(shownElementText), keyWidth);
+  listRows(
+    fmt,
+    'Shown',
+    [
+      ...(result.shown ?? []).map(shownElementText),
+      ...(result.moreShown ? [moreMessagesText(result.moreShown, result.moreShownPartial)] : []),
+    ],
+    keyWidth
+  );
   listRows(
     fmt,
     'Errors',

@@ -108,6 +108,7 @@ Opened: popup https://idp.test/authorize (bdg page switch 1)          # a tab or
 ```
 
 - In `--json`: `navigation`, `messages`, `errors` (`[{ text, source, count }]`, max 3, then `moreErrors`), `downloads`, `opened`, `effect: "none"`, `submitBlocked` (`[{ field, message }]`) and pending work (timers, spinners) are fields on `data`.
+- `shown` lists at most 3 elements; `moreShown` (`(+N more)`) counts the rest (`(+N or more)` and `moreShownPartial` when the page scan ran out of time).
 - `errors` covers throws in handlers and their timers, unhandled rejections, `console.error` and the errors of a page the action navigated to; earlier errors and warnings are left out (`bdg console --level error` has them all).
 - Results the page shows later are not waited for: follow up with `bdg dom wait`.
 

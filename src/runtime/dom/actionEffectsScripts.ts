@@ -284,7 +284,9 @@ const NEAR_SCOPE_JS = `(target) => {
  * (itself first) that is not a secret's. Only shown ones
  * with visible text count, the outermost of nested ones, and not those
  * whose text a removed element had (a re-render). At most
- * {@link MAX_SHOWN}, within {@link SHOWN_BUDGET_MS}.
+ * {@link MAX_SHOWN}, within {@link SHOWN_BUDGET_MS}. Returns the
+ * elements, how many more qualified than they list (`cut`) and whether the
+ * time budget stopped the scan (`partial`: more may exist, uncounted).
  */
 export const SHOWN_ELEMENTS_JS = `(state) => {
   const deadline = performance.now() + ${SHOWN_BUDGET_MS};
@@ -322,16 +324,19 @@ export const SHOWN_ELEMENTS_JS = `(state) => {
   const candidates = new Set(state.added.filter((node) => node.isConnected && near(node)));
   if (state.reveal) for (const el of state.reveal.hidden) if (el.isConnected) candidates.add(el);
   const found = [];
+  let partial = false;
   for (const el of candidates) {
-    if (performance.now() > deadline) break;
+    if (performance.now() > deadline) { partial = true; break; }
     if (!shown(el) || removed.has(contentOf(el))) continue;
     const text = visibleText(el, secretPart) || dialogName(el);
     if (text !== '') found.push({ el: el, text: text });
   }
-  return found
-    .filter((m) => !found.some((other) => other !== m && within(other.el, m.el)))
-    .slice(0, ${MAX_SHOWN})
-    .map((m) => ({ text: m.text, element: describe(m.el) }));
+  const outermost = found.filter((m) => !found.some((other) => other !== m && within(other.el, m.el)));
+  return {
+    elements: outermost.slice(0, ${MAX_SHOWN}).map((m) => ({ text: m.text, element: describe(m.el) })),
+    cut: Math.max(0, outermost.length - ${MAX_SHOWN}),
+    partial: partial
+  };
 }`;
 
 /**
@@ -627,6 +632,7 @@ export const EFFECTS_READ_SCRIPT = `((stop, shown, focus) => {
     delete window.__bdgEffects;
   }
   const scrolled = state.pressScroll !== null && (state.pressScroll[0] !== scrollX || state.pressScroll[1] !== scrollY);
+  const listed = shown ? (${SHOWN_ELEMENTS_JS})(state) : undefined;
   return {
     href: location.href,
     fresh: false,
@@ -634,7 +640,9 @@ export const EFFECTS_READ_SCRIPT = `((stop, shown, focus) => {
     uncertain: (${UNCERTAIN_JS})(state, document.activeElement),
     messages: (${MESSAGES_JS})(state.ids),
     settle: (${SETTLE_JS})(state),
-    shown: shown ? (${SHOWN_ELEMENTS_JS})(state) : undefined,
+    shown: listed && listed.elements,
+    shownCut: listed && listed.cut,
+    shownPartial: listed && listed.partial,
     ...(${OUTCOMES_JS})(state, focus)
   };
 })`;

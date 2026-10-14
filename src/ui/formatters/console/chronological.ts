@@ -7,7 +7,11 @@ import { MAX_CONSOLE_TEXT_LENGTH } from '@/constants.js';
 import type { ConsoleMessage } from '@/types.js';
 import { capForDisplay } from '@/ui/formatters/longValues.js';
 import { OutputFormatter } from '@/ui/formatting.js';
-import { consoleDroppedNote, consoleIndexGapNote } from '@/ui/messages/consoleMessages.js';
+import {
+  consoleDroppedNote,
+  consoleHiddenByLevelNote,
+  consoleIndexGapNote,
+} from '@/ui/messages/consoleMessages.js';
 
 import { renderIssuesSection } from './issues.js';
 import { formatSourceLocation, formatTimestamp, type ConsoleFormatOptions } from './shared.js';
@@ -36,6 +40,9 @@ export function formatConsoleChronological(
   fmt.text(header);
   fmt.separator('━', 50);
   if (options.dropped) fmt.text(consoleDroppedNote(options.dropped));
+  if (options.level && options.hiddenByLevel) {
+    fmt.text(consoleHiddenByLevelNote(options.level, options.hiddenByLevel));
+  }
 
   if (displayMessages.length === 0) {
     fmt.text('No console messages');

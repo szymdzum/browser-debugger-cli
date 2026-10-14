@@ -30,6 +30,7 @@ import {
   type ConsoleFormatOptions,
   type ConsoleLevel,
   type ConsoleSkipped,
+  type HiddenByLevel,
 } from '@/ui/formatters/console.js';
 import { pageCrashedNote } from '@/ui/messages/commands.js';
 import {
@@ -127,6 +128,31 @@ function applyFilters(
 }
 
 /**
+ * Messages of the page in view that `--level` hid, per level.
+ *
+ * @param messages - All messages of the session
+ * @param options - `--history` and `--level`
+ * @param currentNavigationId - Navigation id of the current page, if known
+ * @returns Counts per level of the hidden messages (empty without `--level` or when none)
+ */
+export function hiddenByLevel(
+  messages: ConsoleMessage[],
+  options: Pick<ConsoleCommandOptions, 'history' | 'level'>,
+  currentNavigationId?: number
+): HiddenByLevel {
+  const hidden: HiddenByLevel = {};
+  if (!options.level) return hidden;
+  const inView = options.history
+    ? messages
+    : filterByCurrentNavigation(messages, currentNavigationId);
+  for (const { type } of inView) {
+    const level = LEVEL_MAP[type];
+    if (level !== options.level) hidden[level] = (hidden[level] ?? 0) + 1;
+  }
+  return hidden;
+}
+
+/**
  * Messages the filters left out between the first and the last listed
  * message (their session indices skip them), by why: logged by another page
  * load, or of another level. With `--history` every page load is listed, so
@@ -177,6 +203,7 @@ function buildFormatOptions(
   page?: PageNotes
 ): ConsoleFormatOptions {
   return {
+    ...(page?.hidden && Object.keys(page.hidden).length > 0 && { hiddenByLevel: page.hidden }),
     ...(options.last !== undefined && { groupLimit: lastN }),
     ...(dropped && { dropped }),
     ...(pageCrashedAt !== undefined && { pageCrashedAt }),
@@ -354,6 +381,8 @@ interface PageIssues {
 interface PageNotes extends PageIssues {
   /** The session's latest move to another tab */
   tabSwitch?: TabSwitchInfo | undefined;
+  /** Messages `--level` hid, per level */
+  hidden?: HiddenByLevel | undefined;
 }
 
 interface ConsoleResult extends PageNotes {
@@ -425,6 +454,7 @@ export function registerConsoleCommand(program: Command): void {
             issuesDropped,
           } = result.data;
           const filtered = applyFilters(messages, options, currentNavigationId);
+          const hidden = hiddenByLevel(messages, options, currentNavigationId);
           if (options.json) {
             return {
               success: true,
@@ -434,6 +464,7 @@ export function registerConsoleCommand(program: Command): void {
                   issues,
                   issuesDropped,
                   tabSwitch,
+                  hidden,
                 })
               ),
             };
@@ -444,6 +475,7 @@ export function registerConsoleCommand(program: Command): void {
             data: {
               messages,
               filtered,
+              hidden,
               dropped: droppedShown,
               pageCrashedAt,
               tabSwitch,
@@ -454,8 +486,16 @@ export function registerConsoleCommand(program: Command): void {
         },
         options,
         (data) => {
-          const { messages, filtered, dropped, pageCrashedAt, tabSwitch, issues, issuesDropped } =
-            data as ConsoleResult;
+          const {
+            messages,
+            filtered,
+            hidden,
+            dropped,
+            pageCrashedAt,
+            tabSwitch,
+            issues,
+            issuesDropped,
+          } = data as ConsoleResult;
           const skipped = skippedMessages(
             messages,
             lastMessages(filtered, lastN),
@@ -467,6 +507,7 @@ export function registerConsoleCommand(program: Command): void {
               issues,
               issuesDropped,
               tabSwitch,
+              hidden,
             })
           );
         }

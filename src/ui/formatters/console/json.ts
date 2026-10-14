@@ -60,6 +60,7 @@ export function buildConsoleJsonOutput(
     warnings: warnings.shown.map((d) => capMessageText(toJsonError(d, false), options.full)),
     ...(errors.more > 0 && { moreErrors: errors.more }),
     ...(warnings.more > 0 && { moreWarnings: warnings.more }),
+    ...(options.hiddenByLevel && { hiddenByLevel: options.hiddenByLevel }),
     ...(options.dropped && { dropped: options.dropped }),
     ...(options.pageCrashedAt !== undefined && { pageCrashedAt: options.pageCrashedAt }),
     ...(options.tabSwitch && { tabSwitch: options.tabSwitch }),

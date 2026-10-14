@@ -20,6 +20,7 @@ import {
   quietMs,
   reportedDomChanges,
   shownElements,
+  shownLeftOut,
   type NavigationEvents,
   type PageWork,
   type ReadSnapshot,
@@ -497,6 +498,13 @@ void describe('shownElements', () => {
       [3, 3, 120]
     );
     assert.ok(result[2]?.text.endsWith('…'));
+  });
+
+  void it('counts the elements beyond the cap, not those reported as messages', () => {
+    const shown = ['Saved', 'one', 'two', 'three', 'four'].map((text) => ({ text, element: 'li' }));
+    assert.equal(shownLeftOut(shown, [{ text: 'Saved', element: 'li' }]), 1);
+    assert.equal(shownLeftOut(shown.slice(0, 3), []), 0);
+    assert.equal(shownLeftOut(shown, [], 5), 7);
   });
 });
 
