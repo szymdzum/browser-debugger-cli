@@ -10,7 +10,7 @@ import type { DomContext } from '@/commands/dom/helpers/index.js';
 import { MASKED_VALUE, labelClasses } from '@/runtime/dom/elementInfo.js';
 import { synthesizeA11yNode } from '@/telemetry/roleInference.js';
 import type { A11yNode } from '@/types.js';
-import { keyAttributeItems, shortValue, withWrittenType } from '@/ui/formatters/keyAttributes.js';
+import { keyAttributeItems, shortId, withWrittenType } from '@/ui/formatters/keyAttributes.js';
 import { escapeControlChars, joinLines } from '@/ui/formatting.js';
 import { elementTextLine, emptyElementLine } from '@/ui/messages/commands.js';
 
@@ -83,11 +83,11 @@ export function buildContextText(node: A11yNode, domContext: DomContext | null):
   if (domContext) {
     const id = domContext.id;
     const plainId = id !== undefined && PLAIN_ID.test(id);
-    const tagPart = `<${domContext.tag}${plainId ? `#${shortValue('', 'id', id)}` : ''}`;
+    const tagPart = `<${domContext.tag}${plainId ? `#${shortId(id)}` : ''}`;
     const { shown } = labelClasses(domContext.classes, 3);
     const classPart = shown.length > 0 ? `.${shown.join('.')}` : '';
     const previewPart = domContext.preview && !domContext.text ? ` "${domContext.preview}"` : '';
-    const idPart = id && !plainId ? ` id="${shortValue('', 'id', id)}"` : '';
+    const idPart = id && !plainId ? ` id="${shortId(id)}"` : '';
     return ` ${tagPart}${classPart}${idPart}>${previewPart}`;
   }
 

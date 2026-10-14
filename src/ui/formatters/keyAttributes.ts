@@ -58,11 +58,26 @@ function shortUrl(url: string): string {
  * @param value - Full value
  * @returns Short value on one line
  */
-export function shortValue(tag: string, name: string, value: string): string {
+function shortValue(tag: string, name: string, value: string): string {
   let short = value;
   if (name === 'src') short = tag === 'iframe' ? hostOf(value) : fileName(value);
   else if (name === 'href' || name === 'action') short = shortUrl(value);
   return cutMiddle(escapeControlChars(short.replace(/\s+/g, ' ').trim()), MAX_VALUE_LENGTH);
+}
+
+/**
+ * An id for display inside `id="..."`: line breaks, tabs and other control
+ * characters escaped (`a\nb` is not an id with a space), `"` as `\"`, cut
+ * to {@link MAX_VALUE_LENGTH}. `--json` keeps ids whole.
+ *
+ * @param id - Full id
+ * @returns Id on one line
+ */
+export function shortId(id: string): string {
+  const escaped = escapeControlChars(
+    id.replace(/\r\n/g, '\\n').replace(/\n/g, '\\n').replace(/\t/g, '\\t')
+  ).replace(/"/g, '\\"');
+  return cutMiddle(escaped, MAX_VALUE_LENGTH);
 }
 
 /**

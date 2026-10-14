@@ -242,7 +242,7 @@ void describe('buildContextText id', () => {
   void it('keeps a newline in an id on one line', () => {
     const text = buildContextText(NODE, context('n\nl'));
     assert.equal(text.includes('\n'), false);
-    assert.equal(text, ' <p.a id="n l">');
+    assert.equal(text, ' <p.a id="n\\nl">');
   });
 
   void it('cuts a long id', () => {
@@ -253,7 +253,8 @@ void describe('buildContextText id', () => {
 
   void it('writes an id that is not a plain identifier as id="..."', () => {
     assert.equal(buildContextText(NODE, context('a b')), ' <p.a id="a b">');
-    assert.equal(buildContextText(NODE, context('x"y')), ' <p.a id="x"y">');
+    assert.equal(buildContextText(NODE, context('x"y')), ' <p.a id="x\\"y">');
+    assert.equal(buildContextText(NODE, context('a"b\'c')), ' <p.a id="a\\"b\'c">');
   });
 
   void it('keeps a whitespace-only accessible name off the line (a <br>)', () => {

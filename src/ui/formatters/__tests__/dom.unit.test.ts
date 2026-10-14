@@ -16,7 +16,11 @@ void describe('formatDomQuery ids', () => {
   });
 
   void it('keeps a newline in an id on one line', () => {
-    assert.match(idLine('n\nl'), /\[0\] <p id="n l">$/m);
+    assert.match(idLine('n\nl'), /\[0\] <p id="n\\nl">$/m);
+  });
+
+  void it('escapes a double quote in an id', () => {
+    assert.match(idLine('a"b\'c'), /\[0\] <p id="a\\"b'c">$/m);
   });
 
   void it('cuts a 300-character id', () => {
