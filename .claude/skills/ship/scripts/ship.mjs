@@ -861,8 +861,8 @@ async function freshBaseGate(results, pr, baseRef, forkPoint, prFiles) {
   );
 }
 
-/** Product diff size above which the implementer owes a /simplify pass */
-export const SIMPLIFY_THRESHOLD = 30;
+/** Product diff size above which the orchestrator runs /simplify on the PR */
+export const SIMPLIFY_THRESHOLD = 150;
 
 /**
  * True for a file whose lines count as product code: under `src/`, not a
