@@ -659,7 +659,7 @@ interface ActionTarget {
 
 /**
  * Row naming the element an action hit, e.g.
- * `Element: input.toggle in div.view "Write report"` (just its tag when the
+ * `Element: input.toggle in div.view ("Write report")` (just its tag when the
  * page could not describe it), with the list a numeric index refers to
  * (`(index 0 of the last dom query "h3")`).
  *

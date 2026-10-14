@@ -177,7 +177,60 @@ void describe('ELEMENT_IDENTITY_JS', () => {
   void it('names a unique element without text by its nearest ancestor with text', () => {
     const toggle = node('input', { classes: ['toggle'], text: '' });
     node('li', { text: 'Buy milk' }, [toggle]);
-    assert.equal(identityOf(toggle), 'input.toggle in li "Buy milk"');
+    assert.equal(identityOf(toggle), 'input.toggle in li ("Buy milk")');
+  });
+
+  void it('quotes the own name of the element, not the ancestor text, and marks ancestor text as context (#740)', () => {
+    const named = (
+      tag: string,
+      classes: string[],
+      attributes: Record<string, string>,
+      kids: FakeNode[] = []
+    ): FakeNode => node(tag, { classes, text: '', attributes }, kids);
+    const menu = named('button', ['menu'], { 'aria-label': 'Open menu' });
+    node('div', { classes: ['hdr'], text: 'Register Sign In' }, [menu]);
+    const title = named('button', ['print'], { title: 'Print' });
+    node('div', { classes: ['bar'], text: 'Toolbar' }, [title]);
+    const image = node('img', { text: '', attributes: { alt: 'Download' } });
+    const download = named('button', ['download'], {}, [image]);
+    node('div', { classes: ['tools'], text: 'Tools' }, [download]);
+    const remember = named('input', ['remember'], {});
+    node('p', { classes: ['note'], text: 'Remember me' }, [remember]);
+    const pair = [0, 1].map(() => named('button', ['share'], { 'aria-label': 'Share' }));
+    node('div', { classes: ['pair'], text: '' }, pair);
+    assert.deepEqual([menu, title, download, remember, pair[0] as FakeNode].map(identityOf), [
+      'button.menu in div.hdr "Open menu"',
+      'button.print in div.bar "Print"',
+      'button.download in div.tools "Download"',
+      'input.remember in p.note ("Remember me")',
+      'button.share (1st of 2) "Share"',
+    ]);
+  });
+
+  void it('counts a placeholder as a name; a blank aria-label or a missing labelledby target is no name (#740)', () => {
+    const field = node('input', {
+      classes: ['ph'],
+      text: '',
+      attributes: { placeholder: 'Search here' },
+    });
+    node('div', { classes: ['g'], text: 'Ctx G' }, [field]);
+    const blank = node('button', {
+      classes: ['ws'],
+      text: '',
+      attributes: { 'aria-label': '   ' },
+    });
+    node('div', { classes: ['a'], text: 'Ctx A' }, [blank]);
+    const missing = node('button', {
+      classes: ['gone'],
+      text: '',
+      attributes: { 'aria-labelledby': 'no-such-id' },
+    });
+    node('div', { classes: ['b'], text: 'Ctx B' }, [missing]);
+    assert.deepEqual([field, blank, missing].map(identityOf), [
+      'input.ph in div.g "Search here"',
+      'button.ws in div.a ("Ctx A")',
+      'button.gone in div.b ("Ctx B")',
+    ]);
   });
 
   void it('uses the element text first, without a close button glyph', () => {
@@ -293,7 +346,7 @@ void describe('ELEMENT_IDENTITY_JS', () => {
       node('td', { text: product }, [quantity]);
       return quantity;
     });
-    assert.equal(identityOf(quantities[1] as FakeNode), 'input[name=qty-614] in td "Gadget"');
+    assert.equal(identityOf(quantities[1] as FakeNode), 'input[name=qty-614] in td ("Gadget")');
   });
 });
 
