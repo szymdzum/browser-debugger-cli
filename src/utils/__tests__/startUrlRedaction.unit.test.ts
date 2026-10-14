@@ -10,7 +10,7 @@ import { describe, it } from 'node:test';
 
 import { navigationFailedError } from '@/errors/messages.js';
 import { displayTypedUrl } from '@/utils/displayUrl.js';
-import { normalizeUrl, validateUrl } from '@/utils/url.js';
+import { normalizeUrl, validateChromeWsUrl, validateUrl } from '@/utils/url.js';
 
 /** Any form of the password the inputs carry */
 const SECRET = /SECRETPW|SECRET%40PW/;
@@ -71,6 +71,17 @@ void describe('navigationFailedError (#757)', () => {
       );
       assert.doesNotMatch(`${err.message}\n${err.suggestion}`, SECRET);
       assert.ok(err.message.includes(host), `${err.message} names ${host}`);
+    });
+  }
+});
+
+void describe('validateChromeWsUrl messages (#757 adjacent)', () => {
+  for (const value of ['ws://user:SECRETPW@[bad', 'ws://user:SECRETPW@/devtools/browser/x']) {
+    void it(`echo no secret for ${value}`, () => {
+      const result = validateChromeWsUrl(value);
+      assert.equal(result.valid, false);
+      if (result.valid) return;
+      assert.doesNotMatch(`${result.error}\n${result.suggestion ?? ''}`, SECRET);
     });
   }
 });
