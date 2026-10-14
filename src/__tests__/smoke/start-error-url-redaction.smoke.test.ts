@@ -35,8 +35,8 @@ interface Case {
 /**
  * The case matrix; `PORT` is replaced by a port nothing listens on.
  *
- * Cells whose error never quoted the URL (`Invalid port`, `Unsupported
- * protocol`) name the port or scheme instead of the host.
+ * Cells whose error never quoted the URL (`Invalid port`,
+ * `Unsupported protocol`) name the port or scheme instead of the host.
  */
 const CASES: Case[] = [
   { url: 'http://user:SECRETPW@localhost:PORT', host: /localhost/, launches: true },
