@@ -13,11 +13,19 @@ import { test } from 'node:test';
 
 import {
   appendSnapshotEntries,
+  callTimeout,
   closedIssues,
   EXIT,
   inScope,
   insertLogRow,
   isTransientGhError,
+  mainGateVerdict,
+  MIN_CALL_BUDGET_MS,
+  noRunMessage,
+  repeatDispatch,
+  resolveSha,
+  statusLine,
+  timeoutMessage,
   judgeConclusions,
   overlappingFiles,
   parseArgs,
@@ -295,22 +303,197 @@ test('a timed-out call is transient: retried with backoff, then reported', () =>
   assert.deepEqual(waits, [1, 2]);
 });
 
-test('a waiter deadline caps the call timeout and ends the retries', () => {
-  const started = Date.now();
+test('a waiter deadline ends the retries once the clock passes it', () => {
+  let t = 1000;
   let calls = 0;
   assert.throws(
     () =>
       retryTransient(
         () => {
           calls++;
-          return run('sleep', ['5'], { timeoutMs: 60_000, deadline: Date.now() + 300 });
+          t = 1500;
+          throw Object.assign(new Error('timed out'), { timedOut: true });
         },
-        { backoff: [1, 1], wait: () => {}, deadline: Date.now() + 300 }
+        { backoff: [1, 1], wait: () => {}, deadline: 1200, now: () => t }
       ),
     { timedOut: true }
   );
   assert.equal(calls, 1);
-  assert.ok(Date.now() - started < 3000);
+});
+
+test('callTimeout caps a call at the remaining waiter budget', () => {
+  assert.equal(callTimeout(60_000, 100_000, 40_000), 60_000);
+  assert.equal(callTimeout(60_000, 50_000, 40_000), 10_000);
+  assert.equal(callTimeout(0, 50_000, 40_000), 10_000);
+  assert.equal(callTimeout(5000, null, 40_000), 5000);
+});
+
+test('callTimeout refuses to start a call with less than the minimum budget left', () => {
+  assert.equal(MIN_CALL_BUDGET_MS, 2000);
+  assert.throws(() => callTimeout(60_000, 41_999, 40_000), { budgetExhausted: true });
+  assert.equal(callTimeout(60_000, 42_000, 40_000), 2000);
+});
+
+test('run does not start a command when the waiter budget is nearly spent', () => {
+  assert.throws(() => run('sleep', ['5'], { deadline: Date.now() + 500 }), {
+    budgetExhausted: true,
+    timedOut: true,
+  });
+});
+
+test('a call refused for lack of budget is not retried', () => {
+  let calls = 0;
+  assert.throws(
+    () =>
+      retryTransient(
+        () => {
+          calls++;
+          throw Object.assign(new Error('no budget'), { timedOut: true, budgetExhausted: true });
+        },
+        { backoff: [1, 1], wait: () => assert.fail('waited') }
+      ),
+    { budgetExhausted: true }
+  );
+  assert.equal(calls, 1);
+});
+
+test('resolveSha expands a short SHA with git rev-parse and leaves a full one alone', () => {
+  const full = 'a'.repeat(40);
+  const calls = [];
+  const exec = (cmd, args) => {
+    calls.push([cmd, ...args]);
+    return full;
+  };
+  assert.equal(resolveSha('aaaaaaaaaa', exec), full);
+  assert.equal(calls[0][0], 'git');
+  assert.ok(calls[0].includes('rev-parse'));
+  assert.ok(calls[0].join(' ').includes('aaaaaaaaaa'));
+  calls.length = 0;
+  assert.equal(resolveSha(full, exec), full);
+  assert.equal(calls.length, 0);
+});
+
+test('resolveSha asks GitHub when git does not know the commit, and fails when nobody does', () => {
+  const full = 'b'.repeat(40);
+  const viaGh = (cmd) => {
+    if (cmd === 'git') throw new Error('unknown revision');
+    return full;
+  };
+  assert.equal(resolveSha('bbbbbbb', viaGh), full);
+  assert.throws(
+    () =>
+      resolveSha('bbbbbbb', () => {
+        throw new Error('nope');
+      }),
+    /bbbbbbb/
+  );
+});
+
+test('timeoutMessage: no run seen names the SHA and the minutes', () => {
+  const state = { subject: 'abcdef1234', minutes: 60, failures: 0, last: '', seen: {} };
+  assert.match(timeoutMessage(state, false), /no CI run found for abcdef1234 after 60 min/);
+});
+
+test('timeoutMessage: gh failures are reported with the last error, not a timeout of the call', () => {
+  const state = {
+    subject: 'abcdef1234',
+    minutes: 60,
+    failures: 3,
+    last: 'unexpected EOF',
+    seen: {},
+  };
+  assert.match(timeoutMessage(state, true), /gh failed 3 times: unexpected EOF/);
+  assert.match(timeoutMessage(state, false), /gh failed 3 times: unexpected EOF/);
+});
+
+test('timeoutMessage: runs seen but unfinished list their status', () => {
+  const state = {
+    subject: 'abcdef1234',
+    minutes: 45,
+    failures: 1,
+    last: 'x',
+    seen: { CI: 'in_progress', Security: 'queued' },
+  };
+  assert.equal(timeoutMessage(state, false), 'CI in_progress, Security queued');
+});
+
+test('a budget error before the deadline ends the waiter with the gh failure count', async () => {
+  const lines = [];
+  const log = console.log;
+  console.log = (l) => lines.push(l);
+  try {
+    const code = await withWaiterDeadline(10, async () => {
+      assert.throws(() =>
+        retryTransient(
+          () => {
+            throw Object.assign(new Error('Command failed'), { stderr: 'unexpected EOF' });
+          },
+          { backoff: [1], wait: () => {} }
+        )
+      );
+      throw Object.assign(new Error('no budget'), { timedOut: true, budgetExhausted: true });
+    });
+    assert.equal(code, EXIT.timeout);
+    assert.match(lines[0], /gh failed 2 times: unexpected EOF/);
+  } finally {
+    console.log = log;
+  }
+});
+
+test('noRunMessage names a conflicting PR instead of advising close and reopen', () => {
+  assert.equal(
+    noRunMessage(720, 'CONFLICTING'),
+    'PR #720 conflicts with its base: GitHub runs no pull_request CI; rebase'
+  );
+  assert.match(noRunMessage(720, 'MERGEABLE'), /close and reopen PR #720/);
+});
+
+test('statusLine prints the elapsed whole minutes of a started job', () => {
+  const now = Date.parse('2026-10-14T12:30:00Z');
+  assert.equal(
+    statusLine('Smoke Tests (macOS)', 'in_progress', '2026-10-14T12:07:00Z', now),
+    'Smoke Tests (macOS) in_progress 23 min'
+  );
+  assert.equal(statusLine('CI', 'queued', null, now), 'CI queued');
+});
+
+test('repeatDispatch passes node and space-separated files as workflow inputs', () => {
+  const { args } = repeatDispatch(['a.smoke.test.ts', 'b.smoke.test.ts'], { node: '26' });
+  assert.deepEqual(args.slice(-6), [
+    '-f',
+    'smoke_files=a.smoke.test.ts b.smoke.test.ts',
+    '-f',
+    'repeat=10',
+    '-f',
+    'node=26',
+  ]);
+});
+
+test('repeatDispatch defaults to Node 22 and rejects an unknown Node or brace-expanded files', () => {
+  assert.ok(repeatDispatch(['a.ts'], {}).args.includes('node=22'));
+  assert.match(repeatDispatch(['a.ts'], { node: '20' }).error, /22, 24 or 26/);
+  assert.match(repeatDispatch(['{a,b}.ts'], {}).error, /brace/);
+});
+
+test('mainGateVerdict: green main passes, red main fails, as before', () => {
+  const green = [{ status: 'completed', conclusion: 'success', headSha: 'a'.repeat(40) }];
+  const red = [{ status: 'completed', conclusion: 'failure', headSha: 'b'.repeat(40), databaseId: 9 }];
+  assert.equal(mainGateVerdict(green, false).ok, true);
+  assert.equal(mainGateVerdict(red, false).ok, false);
+});
+
+test('mainGateVerdict --fixes-main skips only a red main and names the run', () => {
+  const red = [{ status: 'completed', conclusion: 'failure', headSha: 'b'.repeat(40), databaseId: 9 }];
+  const verdict = mainGateVerdict(red, true);
+  assert.equal(verdict.ok, true);
+  assert.match(verdict.text, /skipped: this PR fixes main, run 9/);
+});
+
+test('mainGateVerdict --fixes-main is refused when main is green or has no completed run', () => {
+  const green = [{ status: 'completed', conclusion: 'success', headSha: 'a'.repeat(40), databaseId: 8 }];
+  assert.equal(mainGateVerdict(green, true).ok, false);
+  assert.match(mainGateVerdict(green, true).text, /main is green/);
+  assert.equal(mainGateVerdict([], true).ok, false);
 });
 
 test('a waiter ends as timeout (exit 4) on any error at the deadline, and resets the deadline', async () => {

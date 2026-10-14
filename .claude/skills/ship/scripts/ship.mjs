@@ -59,6 +59,84 @@ export function run(cmd, args, opts = {}) {
   }
 }
 
+/** Smallest remaining waiter budget a gh call may start with */
+export const MIN_CALL_BUDGET_MS = 2000;
+
+/**
+ * Expands a (possibly short) commit SHA to the full one.
+ *
+ * @param {string} sha
+ * @param {typeof run} [exec]
+ */
+export function resolveSha(sha, exec = run) {
+  throw new Error('not implemented');
+}
+
+/**
+ * The timeout of one call, capped by the waiter deadline.
+ *
+ * @param {number} timeoutMs
+ * @param {number | null} deadline
+ * @param {number} [now]
+ */
+export function callTimeout(timeoutMs, deadline, now = Date.now()) {
+  throw new Error('not implemented');
+}
+
+/**
+ * What a waiter that ran out of time reports.
+ *
+ * @param {{ subject: string, minutes: number, failures: number, last: string, seen: Record<string, string> }} state
+ * @param {boolean} thrown
+ */
+export function timeoutMessage(state, thrown) {
+  throw new Error('not implemented');
+}
+
+/**
+ * What to say when a PR has no pull_request CI run.
+ *
+ * @param {number} prNumber
+ * @param {string} mergeable
+ */
+export function noRunMessage(prNumber, mergeable) {
+  throw new Error('not implemented');
+}
+
+/**
+ * One status line of a job or workflow run, with its elapsed minutes.
+ *
+ * @param {string} name
+ * @param {string} status
+ * @param {string | null | undefined} startedAt
+ * @param {number} [now]
+ */
+export function statusLine(name, status, startedAt, now = Date.now()) {
+  throw new Error('not implemented');
+}
+
+/**
+ * The `gh workflow run` inputs of a repeat dispatch, or an error.
+ *
+ * @param {string[]} files
+ * @param {Record<string, string>} keys
+ * @returns {{ args: string[] } | { error: string }}
+ */
+export function repeatDispatch(files, keys) {
+  throw new Error('not implemented');
+}
+
+/**
+ * Gate 5 verdict from the latest main CI runs.
+ *
+ * @param {Array<{ status: string, conclusion: string | null, headSha: string, databaseId?: number }>} runs
+ * @param {boolean} fixesMain
+ * @returns {{ ok: boolean, text: string }}
+ */
+export function mainGateVerdict(runs, fixesMain) {
+  throw new Error('not implemented');
+}
+
 const TRANSIENT_GH =
   /unexpected EOF|connection reset|ECONNRESET|i\/o timeout|context deadline exceeded|Client\.Timeout|TLS handshake timeout|HTTP 5\d\d/i;
 const RETRY_BACKOFF_MS = [2000, 5000, 10_000, 20_000];
