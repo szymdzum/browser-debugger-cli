@@ -57,6 +57,17 @@ void describe('mayLoseReply', () => {
   });
 });
 
+void describe('mayLoseReply and await (#729)', () => {
+  void it("is true for a script with 'await' only in a string or comment", () => {
+    assert.equal(mayLoseReply(evaluate({ expression: "big() + 'await'" })), true);
+    assert.equal(mayLoseReply(evaluate({ expression: 'big() // await' })), true);
+  });
+
+  void it('is false for a script with a top-level await', () => {
+    assert.equal(mayLoseReply(evaluate({ expression: 'await big()' })), false);
+  });
+});
+
 void describe('withReplyLossCheck', () => {
   void it('fails with exit 81 when the page answers the check but the reply never comes', async () => {
     const { cdp } = fakeCdp();

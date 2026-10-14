@@ -322,6 +322,40 @@ void describe('Interrupted dom eval', () => {
     });
   }
 
+  void it('stops an interrupted loop at once behind an interrupted eval that awaits a timer (#729)', async () => {
+    const stopAwaiting = new AbortController();
+    const sentBefore = evalsSent();
+    const awaiting = startEval('await new Promise((r) => setTimeout(r, 10000))', stopAwaiting.signal);
+    await untilEvalsSent(sentBefore + 1);
+    stopAwaiting.abort();
+    assert.equal((await awaiting).exitCode, 130);
+    const stopLoop = new AbortController();
+    const loop = startEval(loopScript('after-await-loop'), stopLoop.signal);
+    await untilBeacon('after-await-loop');
+    stopLoop.abort();
+    const interrupted = await loop;
+    assert.equal(interrupted.exitCode, 130, shown(interrupted));
+    await assertAnswersAtOnce();
+  });
+
+  void it("stops a loop with 'await' only in a string while another client's eval waits (#729)", async () => {
+    const stop = new AbortController();
+    const script = loopScript('string-await-loop').replace("return 'finished'", "return 'await'");
+    const loop = startEval(script, stop.signal);
+    await untilBeacon('string-await-loop');
+    const other = (await queueEval()).done;
+    const interruptedAt = Date.now();
+    stop.abort();
+    const [interrupted, answered] = await Promise.all([loop, other]);
+    const answeredAfter = Date.now() - interruptedAt;
+    assert.equal(interrupted.exitCode, 130, shown(interrupted));
+    assert.equal(answered.exitCode, 0, shown(answered));
+    assert.ok(
+      answeredAfter < ANSWER_WITHIN_MS,
+      `the other eval answered ${answeredAfter} ms after the interrupt (limit ${ANSWER_WITHIN_MS} ms)`
+    );
+  });
+
   void it('answers status normally afterwards', async () => {
     const status = await runCommand('status', ['--json'], { timeout: COMMAND_TIMEOUT_MS });
     assert.equal(status.exitCode, 0, shown(status));
