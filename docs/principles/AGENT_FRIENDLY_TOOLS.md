@@ -42,13 +42,13 @@ Exit codes tell the agent what to do next, not just whether it failed. bdg follo
 130/143  Interrupted by Ctrl-C / SIGTERM (shell convention)
 ```
 
-Agent decision logic: 0 proceed; 80-99 do not retry the same call, fix the input or pick another resource (`81` invalid arguments, `83` not found, `87` stale cache: re-run the query); 100-119 usually transient or a bug, retry once with backoff or report. The full list is in `bdg --help --json` under `exitCodes`.
+Agent decision logic: 0 proceed; 80-99 do not retry the same call, fix the input or pick another resource (`81` invalid arguments, `83` not found, `87` stale cache: re-run the query, `91` the page's JavaScript threw during an action or `dom eval`: fix the script or the page, not the call); 100-119 usually transient or a bug, retry once with backoff or report. The full list is in `bdg --help --json` under `exitCodes`.
 
 *Source: Square Engineering, "Command Line Observability with Semantic Exit Codes" (January 2023)*
 
 ### 4. Structured Output with Multiple Formats
 
-Human-readable by default, machine-readable on request. Primary data goes to stdout; errors and hints to stderr.
+Human-readable by default, machine-readable on request. Primary data goes to stdout. Without `--json`, errors and hints go to stderr; with `--json`, the error envelope (`success: false`, `exitCode`, `suggestion`) goes to stdout so a caller parses one stream.
 
 ```console
 $ bdg network list --preset errors            # compact lines for a human or an agent
@@ -78,7 +78,7 @@ Commands reflect the investigation workflow and compose through pipes:
 ```bash
 bdg network list --filter "duration:>1s" --json | jq -r '.data.requests[].requestId'   # slow requests
 bdg details network <id> --json                                                          # one request in full
-bdg network list --preset errors                                                        # failed requests only
+bdg network list --filter "url:/api/" --preset errors                                   # failed requests whose URL contains /api/
 bdg console --level error                                                                # console errors only
 ```
 
@@ -146,8 +146,8 @@ MCP is the better fit for tools that need runtime capability negotiation, comple
 
 ## Checklist
 
-- [ ] Each command answers one question, and every command supports `--json`
-- [ ] Data on stdout, logs and errors on stderr
+- [ ] Each command answers one question, and every leaf command supports `--json` (a group such as `bdg network` without a subcommand only prints help)
+- [ ] Data on stdout; logs on stderr; errors on stderr, or as the `--json` envelope on stdout
 - [ ] `--json` has a stable schema with a version, additive changes only
 - [ ] Exit codes follow the semantic ranges; errors carry a suggestion
 - [ ] No internal retry loops, no prompts
