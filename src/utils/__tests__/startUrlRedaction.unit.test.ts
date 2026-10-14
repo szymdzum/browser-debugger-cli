@@ -1,7 +1,8 @@
 /**
  * Start errors never echo URL credentials (#757): the formatter, the URL
  * validation messages and the "Could not load" error, for every input of
- * the case matrix.
+ * the case matrix (the error only for the URLs validation lets through, as
+ * every start and `page navigate` validates the URL first).
  */
 
 import assert from 'node:assert/strict';
@@ -60,7 +61,7 @@ void describe('validateUrl messages (#757)', () => {
 });
 
 void describe('navigationFailedError (#757)', () => {
-  for (const { url, host } of CASES) {
+  for (const { url, host } of CASES.filter(({ url }) => validateUrl(url).valid)) {
     void it(`echoes no secret for ${url}`, () => {
       const normalized = normalizeUrl(url);
       const err = navigationFailedError(
