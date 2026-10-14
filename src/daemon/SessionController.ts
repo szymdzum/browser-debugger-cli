@@ -50,7 +50,7 @@ import { fetchInterceptionTimeoutCause } from '@/ui/messages/cdpEvents.js';
 import { formatChromeIssue } from '@/ui/messages/chrome.js';
 import { noActiveSessionMessage } from '@/ui/messages/sessionCommand.js';
 import { TimeoutError, withTimeout } from '@/utils/async.js';
-import { displayUrl } from '@/utils/displayUrl.js';
+import { displayTypedUrl, displayUrl } from '@/utils/displayUrl.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
@@ -236,7 +236,7 @@ export class SessionController {
     const base = { type: 'status_response' as const, sessionId: request.sessionId };
     if (!this.session || this.session.stopRequested()) {
       if (this.launching && !this.closing) {
-        data.starting = { url: this.launching.url, since: this.launching.since };
+        data.starting = { url: displayTypedUrl(this.launching.url), since: this.launching.since };
       }
       if (this.session || this.closing) data.ending = true;
       return { ...base, status: 'ok', data };

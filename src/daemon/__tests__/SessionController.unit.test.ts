@@ -147,6 +147,21 @@ void describe('SessionController.startSession', () => {
 void describe('SessionController while a start is in progress', () => {
   afterEach(() => mock.restoreAll());
 
+  void it('reports the starting URL without its credentials (#757)', async () => {
+    const { release } = fakeSession();
+    const controller = new SessionController(Date.now(), '/tmp/test.sock', () => undefined);
+    const start = controller.startSession({
+      ...request,
+      url: 'http://user:SECRETPW@localhost:1/?token=SECRETPW',
+    });
+
+    const status = await controller.status({ type: 'status_request', sessionId: 's' });
+    assert.equal(status.data?.starting?.url, 'http://localhost:1/?token=••••');
+
+    release();
+    await start;
+  });
+
   void it('reports the start in status and refuses commands with 85', async () => {
     const { release } = fakeSession();
     const controller = new SessionController(Date.now(), '/tmp/test.sock', () => undefined);
