@@ -12,6 +12,8 @@ export interface SessionConfig {
   maxBodySize?: number;
   headless?: boolean;
   chromeWsUrl?: string;
+  /** `bdg attach`: tab of the `chromeWsUrl` browser to attach to (pattern or index); never navigated */
+  attachTab?: string;
   /** Custom Chrome flags (e.g., ['--ignore-certificate-errors']) */
   chromeFlags?: string[];
   /** Viewport size to emulate (`--viewport`) */

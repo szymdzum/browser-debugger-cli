@@ -89,10 +89,18 @@ export const SESSION_BEHAVIORS: BehaviorTable = {
     automaticBehavior:
       'A port (9222), host:port or http://host:port is turned into the browser WebSocket URL via /json/version; a browser URL uses the first open tab. Refused with exit 90 when another running bdg session launched that Chrome or drives that tab (sessions of this BDG_SESSION_DIR, and of others that claimed a port). Downloads are not redirected: they go to the download folder of that Chrome (usually ~/Downloads), and only downloads of the session page are reported (not those of tabs or popups it opens)',
   },
+  'attach:--chrome-ws-url': {
+    default: 'Required for now: without it bdg attach exits 81',
+    whenEnabled:
+      'bdg attach lists the page tabs of that Chrome (no tab argument) or starts a session on the tab the argument names, without navigating or reloading it',
+    automaticBehavior:
+      'A port (9222), host:port or http://host:port is turned into the browser WebSocket URL via /json/version once; after that the session uses one WebSocket to the browser endpoint (Target.getTargets, Target.attachToTarget with flatten) and no HTTP. Downloads of that tab and its iframes are reported and saved where the browser saves them (its download settings are kept; events of other tabs are ignored). dom screenshot of a background tab Chrome does not render exits 85 within 2 s (no animation frame came) (Chrome does not render it; bdg never brings it to the front). Not reported: downloads of popups or tabs it opens, events without a frame id, and tabs of a non-default (incognito) browser context. Console messages and errors logged before the attach are replayed; earlier network requests are not available. bdg stop only detaches; --kill-chrome and page switch exit 81',
+  },
   'stop:--kill-chrome': {
     default:
       'Chrome launched by bdg is always closed on stop; an attached Chrome (--chrome-ws-url) is left running',
-    whenEnabled: 'No additional effect; kept for compatibility',
+    whenEnabled:
+      "No additional effect; kept for compatibility. Refused (exit 81) for a session started with bdg attach: that Chrome is the user's",
   },
   'status:--verbose': {
     default: 'Basic session status (daemon running, session active, URL)',

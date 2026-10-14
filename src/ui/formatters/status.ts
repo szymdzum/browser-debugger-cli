@@ -13,7 +13,7 @@ import {
   sessionActiveLine,
 } from '@/ui/messages/commands.js';
 import { networkEvictedNote } from '@/ui/messages/networkMessages.js';
-import { lastSessionEndText } from '@/ui/messages/session.js';
+import { externalChromeText, lastSessionEndText } from '@/ui/messages/session.js';
 import { noActiveSessionMessage, sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { displayUrl } from '@/utils/displayUrl.js';
 import { isProcessAlive } from '@/utils/process.js';
@@ -28,6 +28,8 @@ export interface StatusData {
   chromeAlive?: boolean;
   /** Attached to a Chrome bdg did not launch (`--chrome-ws-url`); it has no known PID */
   externalChrome?: boolean;
+  /** Attached to a tab as it was with `bdg attach` (one browser connection, never navigated) */
+  attached?: boolean;
   startTime?: number;
   duration?: number;
   durationFormatted?: string;
@@ -110,7 +112,7 @@ export function formatSessionStatus(
       18
     );
   } else {
-    fmt.keyValue('Chrome', 'external (not launched by bdg)', 18);
+    fmt.keyValue('Chrome', externalChromeText(metadata.attached), 18);
   }
 
   fmt.keyValue('Port', metadata.port.toString(), 18);
@@ -267,6 +269,7 @@ export function formatStatusAsJson(
     chromePid:
       metadata.chromePid !== undefined && metadata.chromePid > 0 ? metadata.chromePid : null,
     ...(metadata.chromePid ? { chromeAlive } : { externalChrome: true }),
+    ...(metadata.attached && { attached: true }),
     startTime: metadata.startTime,
     duration: duration.durationMs,
     durationFormatted: duration.formatted,

@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 
+import { registerAttachCommand } from '@/commands/attach.js';
 import { registerCdpCommand } from '@/commands/cdp.js';
 import { registerCleanupCommand } from '@/commands/cleanup.js';
 import { registerConsoleCommand } from '@/commands/console.js';
@@ -40,6 +41,7 @@ export const commandRegistry: CommandRegistrar[] = [
   registerStartCommands,
 
   addCommandGroup('Session Management:'),
+  registerAttachCommand,
   registerStatusCommand,
   registerSessionsCommand,
   registerStopCommand,

@@ -153,6 +153,7 @@ export function registerStatusCommand(program: Command): void {
               port: data.sessionMetadata.port,
               targetId: data.sessionMetadata.targetId,
               webSocketDebuggerUrl: data.sessionMetadata.webSocketDebuggerUrl,
+              attached: data.sessionMetadata.attached,
               activeTelemetry: data.sessionMetadata.activeTelemetry,
               autoStopAt: data.sessionMetadata.autoStopAt,
               viewport: data.sessionMetadata.viewport,

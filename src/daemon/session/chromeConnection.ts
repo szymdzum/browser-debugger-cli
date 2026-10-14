@@ -5,6 +5,8 @@
  * Finds the appropriate CDP target for the session.
  */
 
+import { listPageTabs, matchTab } from '@/connection/browserTabs.js';
+import { CDPConnection } from '@/connection/cdp.js';
 import { ChromeLaunchError } from '@/connection/errors.js';
 import { launchChrome } from '@/connection/launcher.js';
 import { HTTP_LOCALHOST } from '@/constants.js';
@@ -199,6 +201,68 @@ async function resolveExternalTarget(
   };
 }
 
+/** Connection attempts to the browser endpoint of a running Chrome */
+const ATTACH_CONNECT_ATTEMPTS = 2;
+
+/**
+ * Attach to a tab of a running Chrome as it is (`bdg attach`): one
+ * connection to the browser endpoint, the tab chosen from
+ * `Target.getTargets` and attached with a flat session that becomes the
+ * connection's default, so collectors and commands use it like a page
+ * socket. Nothing here uses HTTP discovery (Chrome's toggle mode has none).
+ *
+ * @param config - Session configuration (`chromeWsUrl` is the browser URL, `attachTab` the pattern or index)
+ * @param telemetryStore - Store receiving the tab as target info
+ * @param log - Logger
+ * @param onDisconnect - Called with the connection if it is later lost (socket closed or tab closed)
+ * @param signal - The session's stop signal
+ * @returns The connection, routed to the tab
+ * @throws CommandError 83/81 when the tab cannot be chosen, 90 when another session drives it
+ */
+export async function attachToBrowserTab(
+  config: SessionConfig,
+  telemetryStore: TelemetryStore,
+  log: Logger,
+  onDisconnect: (cdp: CDPConnection) => void,
+  signal: AbortSignal | undefined
+): Promise<CDPConnection> {
+  const wsUrl = config.chromeWsUrl ?? '';
+  const cdp = new CDPConnection(log);
+  await cdp.connect(wsUrl, {
+    maxRetries: ATTACH_CONNECT_ATTEMPTS,
+    signal,
+    onDisconnect: () => onDisconnect(cdp),
+  });
+  try {
+    const tabs = await listPageTabs(cdp);
+    const tab = matchTab(tabs, config.attachTab ?? '');
+    const { protocol, host } = new URL(wsUrl);
+    const endpoint = `${protocol === 'wss:' ? 'https' : 'http'}://${host}`;
+    await assertNotOwned(
+      tabs.map((t) => ({ id: t.targetId })),
+      tab.targetId,
+      endpoint
+    );
+    const { sessionId } = (await cdp.sendToBrowser('Target.attachToTarget', {
+      targetId: tab.targetId,
+      flatten: true,
+    })) as { sessionId: string };
+    cdp.useDefaultSession(sessionId);
+    telemetryStore.setTargetInfo({
+      id: tab.targetId,
+      type: 'page',
+      title: tab.title,
+      url: tab.url,
+      webSocketDebuggerUrl: wsUrl,
+    });
+    log.info(`Attached to tab ${displayUrl(tab.url)} over the browser connection`);
+    return cdp;
+  } catch (error) {
+    cdp.close();
+    throw error;
+  }
+}
+
 /**
  * Refuse to attach when another running bdg session launched this Chrome or
  * drives the tab this session would use: taking it over would mix both
@@ -210,7 +274,7 @@ async function resolveExternalTarget(
  * @throws CommandError (90) naming the other session
  */
 async function assertNotOwned(
-  targets: CDPTarget[],
+  targets: readonly Pick<CDPTarget, 'id'>[],
   targetId: string,
   endpoint: string
 ): Promise<void> {

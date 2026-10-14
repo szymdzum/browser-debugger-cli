@@ -445,6 +445,7 @@ async function sendStart(
         maxBodySize: options.maxBodySize,
         headless: options.headless,
         chromeWsUrl: options.chromeWsUrl,
+        attachTab: options.attachTab,
         chromeFlags: options.chromeFlags,
         viewport: options.viewport,
         colorScheme: options.colorScheme,
@@ -604,6 +605,7 @@ function reportStartOutcome(outcome: StartOutcome, options: SessionStartOptions)
       ...(data.loading && { loading: data.loading }),
       ...(data.dialogs && { dialogs: data.dialogs }),
       ...(data.state && { state: data.state }),
+      ...(data.attached && { attached: true }),
       port: data.port,
       ...(data.chromePid > 0 ? { chromePid: data.chromePid } : { externalChrome: true }),
       daemonPid: data.daemonPid,
@@ -617,6 +619,7 @@ function reportStartOutcome(outcome: StartOutcome, options: SessionStartOptions)
       ...(data.loading && { loading: data.loading }),
       ...(data.dialogs && { dialogs: data.dialogs }),
       ...(data.state && { state: data.state }),
+      ...(data.attached && { attached: true }),
       ...(autoStopAt && { autoStopAt }),
       ...(session && { session }),
     };

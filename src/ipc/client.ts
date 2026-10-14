@@ -213,6 +213,7 @@ export async function startSession(
       maxBodySize: options.maxBodySize,
       headless: options.headless,
       chromeWsUrl: options.chromeWsUrl,
+      attachTab: options.attachTab,
       chromeFlags: options.chromeFlags,
       viewport: options.viewport,
       colorScheme: options.colorScheme,

@@ -38,6 +38,16 @@ bdg -q dom query "a"          # -q: minimal output, no "Next:" hints
 
 Sessions run until `bdg stop` (no timeout). With an HMR dev server, start once and keep it running: the page updates itself, then re-run `dom inspect` / `console`.
 
+### Attach to a Tab As It Is
+
+```bash
+bdg attach --chrome-ws-url 9222               # List the page tabs: [0] title — url (0-based), then exit
+bdg attach checkout --chrome-ws-url 9222      # Session on the only tab whose URL/title contains "checkout"
+bdg attach 2 --chrome-ws-url 9222             # ... or by index from the list (a number is always an index)
+```
+
+For a Chrome started with `--remote-debugging-port=9222 --user-data-dir=<dir>`. The tab is never navigated or reloaded: its state stays, console messages and errors it logged earlier are replayed, earlier network requests are not available. No match exits 83 (with the tab list), several 81 (use an index). One connection to the browser; downloads of that tab are listed (saved where your Chrome saves them); `bdg stop` only detaches (tab and Chrome stay; `--kill-chrome` exits 81); `page switch` exits 81 (stop and attach to the other tab).
+
 ### Keep a Login Across Sessions
 
 `bdg stop` drops session cookies (most dev-server logins) and sessionStorage. Save the auth state once logged in, then start with it:

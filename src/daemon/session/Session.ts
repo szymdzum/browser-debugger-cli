@@ -13,6 +13,7 @@ import { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
 import { CaptureGate, TELEMETRY_READS } from '@/daemon/session/captureGate.js';
 import { connectCDP, connectPage, navigateToTarget } from '@/daemon/session/cdpSetup.js';
 import {
+  attachToBrowserTab,
   externalChromePort,
   findPageTarget,
   setupChromeConnection,
@@ -26,12 +27,17 @@ import {
 import { withMatchedStylesReset } from '@/daemon/session/matchedStylesReset.js';
 import { PageSwitcher, type PageHost, type PageStart } from '@/daemon/session/pageSwitcher.js';
 import { telemetryPluginsOf } from '@/daemon/session/plugins.js';
+import { assertTabRendered } from '@/daemon/session/renderedFrame.js';
 import { acquireSessionResources, type StartOperations } from '@/daemon/session/startSequence.js';
 import { TabTracker } from '@/daemon/session/tabs.js';
 import { releaseConnection, terminateChrome } from '@/daemon/session/teardown.js';
 import type { SessionConfig } from '@/daemon/session/types.js';
 import { CommandError } from '@/errors/index.js';
-import { chromeInUseBySessionError, unknownSessionCommandMessage } from '@/errors/messages.js';
+import {
+  attachedTabSwitchError,
+  chromeInUseBySessionError,
+  unknownSessionCommandMessage,
+} from '@/errors/messages.js';
 import type { ChromeNoticeCode, NoticeSink } from '@/errors/notices.js';
 import type { CommandName, CommandSchemas } from '@/ipc/index.js';
 import type { PageLoadingState } from '@/ipc/protocol/commands.js';
@@ -94,6 +100,13 @@ export function lossEndReason(
   if (cause) return 'disconnected';
   return chrome === 'running' ? 'closed' : 'crash';
 }
+
+/**
+ * Commands that wait for Chrome to render a frame: on a background tab of an
+ * attached Chrome they would never be answered (headless Linux Chrome does
+ * not render background tabs), so they fail fast there instead.
+ */
+const NEEDS_RENDERED_FRAME: ReadonlySet<CommandName> = new Set<CommandName>(['dom_screenshot']);
 
 /** How long Chrome gets to exit after the page connection drops, before the end is called a closed tab */
 const CRASH_SETTLE_MS = 500;
@@ -168,6 +181,8 @@ export interface SessionInfo {
   dialogs?: DialogInfo[];
   /** What `--state` restored */
   state?: StateSummary;
+  /** Attached to a tab as it was (`bdg attach`) */
+  attached?: boolean;
 }
 
 /** Session metadata as reported in status responses. */
@@ -207,6 +222,8 @@ export class Session {
   private readonly notify: NoticeSink<ChromeNoticeCode> = (notice) =>
     log.info(formatChromeNotice(notice));
   private chrome: LaunchedChrome | null = null;
+  /** The attached tab closed: the browser no longer lists it (`bdg attach`) */
+  private attachedTabClosed = false;
   /** Releases of what the session acquired, run last first on stop or a failed start */
   private readonly resources = new ResourceStack(log);
   private timeoutTimer: NodeJS.Timeout | null = null;
@@ -238,14 +255,15 @@ export class Session {
    * Synchronous so the caller can register the session (and stop it) before
    * any asynchronous work starts; the CDP port is resolved in {@link launch}.
    *
-   * @param url - Target URL
+   * @param url - Target URL (not checked for `bdg attach`, which never navigates)
    * @param options - Session options from the start request
    * @param onEnded - Called once when a launched session ends for any reason
    * @returns Unlaunched session
    * @throws CommandError for an invalid URL
    */
   static create(url: string, options: SessionOptions, onEnded: SessionEndedCallback): Session {
-    const validation = validateUrl(url);
+    const validation =
+      options.attachTab === undefined ? validateUrl(url) : { valid: true as const };
     if (!validation.valid) {
       throw new CommandError(
         validation.error,
@@ -254,6 +272,16 @@ export class Session {
       );
     }
     return new Session(buildConfig(url, options.port ?? 0, options), onEnded);
+  }
+
+  /**
+   * Whether the session was started with `bdg attach`: one browser
+   * connection, its tab never navigated.
+   *
+   * @returns True for an attached tab
+   */
+  private get attachedTab(): boolean {
+    return this.config.attachTab !== undefined;
   }
 
   /**
@@ -327,6 +355,7 @@ export class Session {
       const cdp = this.pages.connection;
       if (!cdp) throw new Error('No active session');
       if (PAGE_ACTIONS.has(name)) this.tabs.refuseActionAfterMove();
+      if (this.attachedTab && NEEDS_RENDERED_FRAME.has(name)) await assertTabRendered(cdp);
       return withMatchedStylesReset(cdp, name, () => handler(cdp, params, abandoned));
     });
   }
@@ -361,6 +390,7 @@ export class Session {
       ...(this.loading && { loading: this.loading }),
       ...(this.startDialogs.length > 0 && { dialogs: this.startDialogs }),
       ...(this.stateRestored && { state: this.stateRestored }),
+      ...(this.attachedTab && { attached: true }),
     };
   }
 
@@ -381,6 +411,7 @@ export class Session {
         autoStopAt: this.autoStopAt,
         targetId: target?.id,
         webSocketDebuggerUrl: target?.webSocketDebuggerUrl,
+        attached: this.attachedTab || undefined,
         viewport: this.config.viewport,
         colorScheme: this.config.colorScheme,
         dialog: this.config.dialog,
@@ -480,7 +511,18 @@ export class Session {
       findPageTarget: () => findPageTarget(this.config, this.store, log),
       connect: async (signal) => {
         const onLost = (lost: CDPConnection): void => this.pages.onPageDisconnected(lost);
-        const cdp = await connectCDP(this.store, log, onLost, { external, signal });
+        const cdp = !this.attachedTab
+          ? await connectCDP(this.store, log, onLost, { external, signal })
+          : await attachToBrowserTab(
+              this.config,
+              this.store,
+              log,
+              (lost) => {
+                this.attachedTabClosed = lost.pageSessionEnded;
+                onLost(lost);
+              },
+              signal
+            );
         this.pages.adopt(cdp, []);
         return cdp;
       },
@@ -496,6 +538,7 @@ export class Session {
         this.pages.adopt(cdp, await this.startPage(cdp, { kind: 'first' }));
       },
       navigate: async (cdp, chrome, signal) => {
+        if (this.attachedTab) return;
         this.documentRequestId = await navigateToTarget(
           cdp,
           this.config,
@@ -563,6 +606,7 @@ export class Session {
     const { chromeWsUrl } = this.config;
     if (!chromeWsUrl) return this.launchOwnChrome(signal);
     this.config = { ...this.config, port: externalChromePort(chromeWsUrl) };
+    if (this.attachedTab) return Promise.resolve(null);
     return setupChromeConnection(this.config, this.store, log, this.notify, signal);
   }
 
@@ -702,6 +746,14 @@ export class Session {
    * @throws CommandError (90) naming the other session
    */
   private async assertTabFree(targetId: string, pageWsUrl: string): Promise<void> {
+    if (this.attachedTab) {
+      const err = attachedTabSwitchError();
+      throw new CommandError(
+        err.message,
+        { suggestion: err.suggestion },
+        EXIT_CODES.INVALID_ARGUMENTS
+      );
+    }
     if (!this.config.chromeWsUrl) return;
     const ids = this.tabs.list().map((tab) => tab.targetId);
     const owner = await findConflictingOwner(ids, targetId);
@@ -740,7 +792,9 @@ export class Session {
   private async endAfterDisconnect(cause?: ConnectionLossCause): Promise<void> {
     if (this.chrome) await delay(CRASH_SETTLE_MS);
     const chrome: ChromeAfterLoss = !this.chrome
-      ? 'unknown'
+      ? this.attachedTabClosed
+        ? 'running'
+        : 'unknown'
       : isProcessAlive(this.chrome.pid)
         ? 'running'
         : 'exited';
@@ -781,6 +835,7 @@ function buildConfig(url: string, port: number, options: SessionOptions): Sessio
       userDataDir: options.userDataDir,
       maxBodySize: options.maxBodySize,
       chromeWsUrl: options.chromeWsUrl,
+      attachTab: options.attachTab,
       chromeFlags: options.chromeFlags,
       viewport: options.viewport,
       colorScheme: options.colorScheme,

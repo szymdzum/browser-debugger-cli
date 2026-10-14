@@ -41,6 +41,8 @@ export type BrowserConnector = (
  * ask again for each. Following the page's connection, tracking moves with
  * the session to each tab `bdg page switch` makes the session's.
  *
+ * A tab attached with `bdg attach` is followed by {@link followAttachedTab}.
+ *
  * @param context - Plugin context
  * @param connectBrowser - Opens the browser-level connection
  * @returns Cleanup: stops tracking and closes the browser-level connection
@@ -50,6 +52,7 @@ export async function startSessionDownloads(
   connectBrowser: BrowserConnector = openBrowserConnection
 ): Promise<CleanupFunction> {
   const { config, store, logger } = context;
+  if (config.attachTab !== undefined) return followAttachedTab(context);
   const tracker = new DownloadTracker(store, downloadDestination(config, logger));
   let page = context.cdp;
   let onPage = false;
@@ -69,6 +72,105 @@ export async function startSessionDownloads(
     tracker.stop();
     browser?.close();
   };
+}
+
+/** Download behavior that changes nothing: Chrome saves where the user's settings say */
+const USER_BEHAVIOR = { behavior: 'default' };
+
+/**
+ * Follow the downloads of a tab attached with `bdg attach`, on the session's
+ * one connection, without changing where the user's browser saves them:
+ * `behavior: 'default'` with events on, set for the browser (events of an
+ * out-of-process iframe reach no page session; they cover the whole
+ * browser, so only downloads of the tab's frames are recorded), and events
+ * off again when the session ends. Events without a frame id are dropped.
+ *
+ * @param context - Plugin context
+ * @returns Cleanup: stops tracking and turns the events off
+ */
+export async function followAttachedTab(context: TelemetryPluginContext): Promise<CleanupFunction> {
+  const { cdp, store, logger } = context;
+  const frames = await tabFrames(cdp, store.targetInfo?.id ?? '', logger);
+  const tracker = new DownloadTracker(store, { kind: 'browser' }, (frameId) =>
+    frames.has(frameId ?? '')
+  );
+  await tracker.attach(browserLevel(cdp));
+  return async () => {
+    tracker.stop();
+    frames.stop();
+    await cdp
+      .sendToBrowser('Browser.setDownloadBehavior', { ...USER_BEHAVIOR, eventsEnabled: false })
+      .catch((error: unknown) =>
+        logger.debug(`Download events not turned off: ${getErrorMessage(error)}`)
+      );
+  };
+}
+
+/**
+ * The connection with its commands sent to the browser itself: download
+ * events of out-of-process iframes reach only a browser-level session, and
+ * the events are filtered by frame anyway.
+ *
+ * @param cdp - Connection with a default page session
+ * @returns The same connection, commands past the page session
+ */
+function browserLevel(cdp: CDPConnection): CDPConnection {
+  return Object.assign(Object.create(cdp) as CDPConnection, {
+    send: (method: string, params?: Record<string, unknown>) => cdp.sendToBrowser(method, params),
+  });
+}
+
+/**
+ * Frame ids of a tab: its main frame (the target id), the frames in its tree
+ * now, and frames attached later, out-of-process iframes included (their
+ * frame id is their target id, announced when auto-attach attaches them;
+ * frames inside them come as `Page.frameAttached` of their session).
+ *
+ * @param cdp - The tab's connection
+ * @param targetId - The tab
+ * @param logger - Logger
+ * @returns The ids, and `stop` to stop following new frames
+ */
+async function tabFrames(
+  cdp: CDPConnection,
+  targetId: string,
+  logger: Logger
+): Promise<Set<string> & { stop: () => void }> {
+  const ids = new Set<string>([targetId]);
+  const stops = [
+    cdp.on<{ frameId: string }>('Page.frameAttached', ({ frameId }) => ids.add(frameId)),
+    cdp.on<{ targetInfo: { targetId: string; type: string } }>(
+      'Target.attachedToTarget',
+      ({ targetInfo }) => {
+        if (targetInfo.type === 'iframe') ids.add(targetInfo.targetId);
+      }
+    ),
+  ];
+  const stop = (): void => stops.forEach((remove) => remove());
+  try {
+    const { frameTree } = (await cdp.send('Page.getFrameTree')) as { frameTree: FrameTreeNode };
+    collectFrameIds(frameTree, ids);
+  } catch (error) {
+    logger.debug(`Frame tree not read: ${getErrorMessage(error)}`);
+  }
+  return Object.assign(ids, { stop });
+}
+
+/** `Page.getFrameTree` node (the fields read) */
+interface FrameTreeNode {
+  frame: { id: string };
+  childFrames?: FrameTreeNode[];
+}
+
+/**
+ * Add the ids of a frame tree to a set.
+ *
+ * @param node - Tree node
+ * @param ids - Receives the ids
+ */
+function collectFrameIds(node: FrameTreeNode, ids: Set<string>): void {
+  ids.add(node.frame.id);
+  node.childFrames?.forEach((child) => collectFrameIds(child, ids));
 }
 
 /**
