@@ -50,6 +50,11 @@ void describe('unknown command did-you-mean (#741)', () => {
     }
   });
 
+  void it('suggests a command for a transposed word', async () => {
+    const { json } = await run(['dmo']);
+    assert.equal(json.suggestion, 'Did you mean: bdg dom?');
+  });
+
   void it('names the port for a non-numeric port, exit 80', async () => {
     const { exitCode, json } = await run(['localhost:abc']);
     assert.equal(exitCode, 80);

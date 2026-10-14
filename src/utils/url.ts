@@ -92,17 +92,21 @@ export function normalizeUrl(url: string): string {
 }
 
 /**
- * The error for a `host:port` whose port is not a number from 0 to 65535,
- * only for input where bdg prepended `http://` (a scheme would not be a port).
+ * The error for a `host:port` whose port is not a number from 0 to 65535
+ * (an empty port is the default one). Input with another scheme (`about:blank`)
+ * is not a `host:port`.
  *
  * @param url - URL as typed
  * @param normalized - The URL after {@link normalizeUrl}
  * @returns Invalid result naming the port, or undefined
  */
 function invalidPortError(url: string, normalized: string): ValidationResult | undefined {
-  if (normalized !== `http://${url}`) return undefined;
-  const port = /^[^/?#:]+:([^/?#]*)/.exec(url)?.[1];
-  if (port === undefined || (/^\d+$/.test(port) && Number(port) <= 65535)) return undefined;
+  const typedScheme = /^https?:\/\//i.test(url);
+  if (!typedScheme && normalized !== `http://${url}`) return undefined;
+  const port = /^(?:https?:\/\/)?[^/?#:]+:([^/?#]*)/i.exec(url)?.[1];
+  if (port === undefined || port === '' || (/^\d+$/.test(port) && Number(port) <= 65535)) {
+    return undefined;
+  }
   return invalid(
     `Invalid port: '${port}' in '${url}'`,
     'The port must be a number from 0 to 65535, e.g. localhost:3000'

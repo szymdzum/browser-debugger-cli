@@ -227,16 +227,11 @@ export function parseViewport(value: string): ViewportSize {
  * @param value - Option value
  * @returns The scheme
  * @throws CommandError (81) for another value, suggesting the closest one
- *   (within 2 edits: a transposed `drak` still means `dark`)
  */
 export function parseColorScheme(value: string): ColorScheme {
   const scheme = COLOR_SCHEMES.find((candidate) => candidate === value.trim().toLowerCase());
   if (scheme) return scheme;
-  const err = invalidColorSchemeError(
-    value,
-    findSimilar(value, [...COLOR_SCHEMES], { maxDistance: 2 }),
-    COLOR_SCHEMES
-  );
+  const err = invalidColorSchemeError(value, findSimilar(value, [...COLOR_SCHEMES]), COLOR_SCHEMES);
   throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
 }
 

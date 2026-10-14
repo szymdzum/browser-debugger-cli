@@ -28,6 +28,8 @@ void describe('findSimilarCommands', () => {
   void it('still suggests a close typo', () => {
     assert.deepEqual(findSimilarCommands('netwrk', COMMANDS), ['network']);
     assert.deepEqual(findSimilarCommands('stats', COMMANDS), ['status']);
+    assert.deepEqual(findSimilarCommands('dmo', COMMANDS), ['dom']);
+    assert.deepEqual(findSimilarCommands('hello', COMMANDS), []);
   });
 });
 
@@ -35,13 +37,14 @@ void describe('findSimilar', () => {
   void it('scales the default bound with the word length', () => {
     assert.deepEqual(findSimilar('dark', ['light', 'dark', 'auto']), []);
     assert.deepEqual(findSimilar('drk', ['light', 'dark', 'auto']), ['dark']);
+    assert.deepEqual(findSimilar('drak', ['light', 'dark', 'auto']), ['dark']);
     assert.deepEqual(findSimilar('ligt', ['light', 'dark', 'auto']), ['light']);
   });
 });
 
 void describe('start URL errors', () => {
   void it('names the port, not the protocol, for a non-numeric port', () => {
-    for (const url of ['localhost:abc', 'localhost:99999']) {
+    for (const url of ['localhost:abc', 'localhost:99999', 'http://localhost:abc']) {
       const result = validateUrl(url);
       assert.equal(result.valid, false, url);
       assert.match(result.error ?? '', /port/i, url);
@@ -53,6 +56,21 @@ void describe('start URL errors', () => {
     const result = validateUrl('http://');
     assert.equal(result.valid, false);
     assert.match(result.valid ? '' : result.error, /Invalid URL format|hostname/);
+  });
+
+  void it('accepts an empty port and other schemes', () => {
+    for (const url of ['localhost:', 'about:blank', 'localhost:3000', 'http://localhost:3000']) {
+      assert.equal(validateUrl(url).valid, true, url);
+    }
+  });
+
+  void it('shows the added-http:// hint only for errors a scheme can cause', () => {
+    const unsafe = navigationFailedError('http://localhost:1', 'net::ERR_UNSAFE_PORT', true);
+    assert.doesNotMatch(unsafe.suggestion, /added|https:/);
+    for (const text of ['ERR_SSL_PROTOCOL_ERROR', 'ERR_EMPTY_RESPONSE', 'ERR_CONNECTION_RESET']) {
+      const err = navigationFailedError('http://localhost', `net::${text}`, true);
+      assert.match(err.suggestion, /added http:\/\//, text);
+    }
   });
 
   void it('says bdg added http:// and offers https:// when it did', () => {
