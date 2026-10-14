@@ -11,7 +11,7 @@ import { MASKED_VALUE, labelClasses } from '@/runtime/dom/elementInfo.js';
 import { synthesizeA11yNode } from '@/telemetry/roleInference.js';
 import type { A11yNode } from '@/types.js';
 import { keyAttributeItems, shortValue, withWrittenType } from '@/ui/formatters/keyAttributes.js';
-import { joinLines } from '@/ui/formatting.js';
+import { escapeControlChars, joinLines } from '@/ui/formatting.js';
 import { elementTextLine, emptyElementLine } from '@/ui/messages/commands.js';
 
 /**
@@ -77,9 +77,8 @@ const PLAIN_ID = /^[A-Za-z_][\w-]*$/;
  * @returns Text starting with a space, or empty
  */
 export function buildContextText(node: A11yNode, domContext: DomContext | null): string {
-  if (node.name) {
-    return ` "${node.name}"`;
-  }
+  const name = escapeControlChars(node.name?.replace(/\s+/g, ' ').trim() ?? '');
+  if (name) return ` "${name}"`;
 
   if (domContext) {
     const id = domContext.id;

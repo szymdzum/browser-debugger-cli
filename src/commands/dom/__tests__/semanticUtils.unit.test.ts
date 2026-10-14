@@ -254,6 +254,14 @@ void describe('buildContextText id', () => {
     assert.equal(buildContextText(NODE, context('a b')), ' <p.a id="a b">');
     assert.equal(buildContextText(NODE, context('x"y')), ' <p.a id="x"y">');
   });
+
+  void it('keeps a whitespace-only accessible name off the line (a <br>)', () => {
+    const output = formatSemanticNodeWithContext({
+      node: { nodeId: '1', role: 'LineBreak', name: '\n' },
+      domContext: { tag: 'br', classes: [] },
+    });
+    assert.equal(output, '[LineBreak] <br>');
+  });
 });
 
 void describe('empty-element line by tag', () => {
