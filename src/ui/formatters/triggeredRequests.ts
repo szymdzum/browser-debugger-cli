@@ -64,6 +64,16 @@ export function formatTriggeredRequest(request: TriggeredRequest): string {
 }
 
 /**
+ * URL without its query and fragment.
+ *
+ * @param url - Request URL
+ * @returns URL up to the first `?` or `#`
+ */
+function withoutQuery(url: string): string {
+  return url.split(/[?#]/, 1)[0] ?? url;
+}
+
+/**
  * Requests with the same method, scheme, host and path (query and fragment
  * ignored), at the position of the first of them.
  *
@@ -75,7 +85,7 @@ function groupRepeatedRequests(
 ): Array<[TriggeredRequest, ...TriggeredRequest[]]> {
   const groups = new Map<string, [TriggeredRequest, ...TriggeredRequest[]]>();
   for (const request of requests) {
-    const key = `${request.method} ${request.url.split(/[?#]/, 1)[0]}`;
+    const key = `${request.method} ${withoutQuery(request.url)}`;
     const group = groups.get(key);
     if (group) group.push(request);
     else groups.set(key, [request]);
@@ -100,7 +110,7 @@ function formatRequestGroup(group: [TriggeredRequest, ...TriggeredRequest[]]): s
     const status = requestStatusText(request);
     counts.set(status, (counts.get(status) ?? 0) + 1);
   }
-  const target = truncateUrl(first.url.split(/[?#]/, 1)[0] ?? first.url, URL_MAX_LENGTH);
+  const target = truncateUrl(withoutQuery(first.url), URL_MAX_LENGTH);
   if (counts.size === 1)
     return `${first.method} ${target} ×${group.length} → ${[...counts.keys()][0]}`;
   const statuses = [...counts].map(([status, count]) => `${status} ×${count}`).join(', ');
