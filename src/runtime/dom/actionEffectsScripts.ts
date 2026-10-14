@@ -84,6 +84,18 @@ const MAX_TRACKED_NODES = 200;
 /** Longer texts are containers (a page, a form), not messages */
 const MAX_MESSAGE_TEXT = 300;
 
+/** Additions into one parent, of one kind, that make a stream (a timer adding rows) */
+const STREAM_MIN_ADDS = 3;
+
+/** A stream was running when its last addition came this close to the end of the watch (ms) */
+const STREAM_LIVE_MS = 500;
+
+/** A watch started within this long after the previous one ended may inherit its streams (ms) */
+const STREAM_RESUME_MS = 3000;
+
+/** Page-side kind of an added element within one parent: its tag and classes */
+const STREAM_KIND_JS = `(el) => el.localName + '|' + (el.getAttribute('class') || '')`;
+
 /** How long a page keeps watching when no read or stop arrives (ms) */
 const MAX_WATCH_MS = 30000;
 
@@ -211,11 +223,17 @@ const LOADERS_JS = `() => {
  * They are kept by identity in the action's watch, so its read can tell
  * which of them the hover revealed, also through CSS `:hover` rules that
  * change no DOM, and elements moving in the page can't pass for revealed
- * ones. Does nothing without a running watch (another frame).
+ * ones. Does nothing without a running watch (another frame). With `press`
+ * (a click) it is taken only for an element with `aria-expanded`, and also
+ * looks at the elements named by its `aria-controls`; the snapshot then adds
+ * the elements it un-hid to what the click showed, and changes nothing else
+ * about how the click is read.
  */
-export const REVEAL_SNAPSHOT_JS = `(el) => {
+export const REVEAL_SNAPSHOT_JS = `(el, press) => {
   const state = window.__bdgEffects;
   if (!state || state.stopped) return;
+  const toggle = el.closest('[aria-expanded]');
+  if (press && !toggle) return;
   const deadline = performance.now() + ${REVEAL_BUDGET_MS};
   const shown = ${SHOWN_JS};
   const parent = el.parentElement;
@@ -227,13 +245,19 @@ export const REVEAL_SNAPSHOT_JS = `(el) => {
     looked++;
     if (!shown(candidate)) hidden.push(candidate);
   };
+  const root = el.getRootNode();
+  const controlled = press ? (toggle.getAttribute('aria-controls') || '').split(/\\s+/).filter(Boolean) : [];
+  for (const id of controlled) {
+    const candidate = typeof root.getElementById === 'function' ? root.getElementById(id) : null;
+    if (candidate && room()) look(candidate);
+  }
   for (const candidate of document.querySelectorAll(${JSON.stringify(REVEAL_GLOBAL_CANDIDATES)})) {
     if (!room()) break;
     look(candidate);
   }
   const walker = document.createTreeWalker(scope, NodeFilter.SHOW_ELEMENT);
   for (let node = scope; node && room(); node = walker.nextNode()) look(node);
-  state.reveal = { target: el, hidden: hidden };
+  state.reveal = { target: el, hidden: hidden, press: Boolean(press) };
 }`;
 
 /**
@@ -271,7 +295,8 @@ export const SHOWN_ELEMENTS_JS = `(state) => {
   const shown = ${SHOWN_JS};
   const visibleText = ${VISIBLE_TEXT_JS};
   const word = /\\b(${MESSAGE_WORDS.join('|')})\\b/i;
-  const target = state.reveal ? state.reveal.target : state.keyTarget || state.pressTarget;
+  const hover = state.reveal && !state.reveal.press;
+  const target = hover ? state.reveal.target : state.keyTarget || state.pressTarget;
   const secretPart = (node) => /^(textarea|select|option)$/.test(node.localName) ||
     (node.localName === 'input' && node.type === 'password') ||
     /(password|one-time-code)$/i.test(node.getAttribute('autocomplete') || '') ||
@@ -281,8 +306,19 @@ export const SHOWN_ELEMENTS_JS = `(state) => {
     (el.hasAttribute('aria-live') && el.getAttribute('aria-live') !== 'off') ||
     word.test(el.getAttribute('class') || '') || word.test(el.id || '');
   const announced = (el) => ${PRESS_POPUP_ROLES}.test(el.getAttribute('role') || '');
-  const popup = state.reveal ? hoverPopup : announced;
-  const near = (el) => (scope !== null && scope.contains(el)) || popup(el);
+  const popup = hover ? hoverPopup : announced;
+  const within = (root, el) => {
+    for (let node = el; node; node = node.parentNode || node.host) if (node === root) return true;
+    return false;
+  };
+  const kind = ${STREAM_KIND_JS};
+  const streams = state.prior && state.started - state.prior.at < ${STREAM_RESUME_MS} ? state.prior.streams : null;
+  const streamed = (el) => {
+    const stream = streams && el.parentNode && streams.get(el.parentNode);
+    const seen = stream && stream.get(kind(el));
+    return Boolean(seen) && seen.count >= ${STREAM_MIN_ADDS} && seen.last >= state.prior.at - ${STREAM_LIVE_MS};
+  };
+  const near = (el) => ((scope !== null && within(scope, el)) || popup(el)) && !streamed(el);
   const contentOf = (node) => (node.textContent || '').replace(/\\s+/g, ' ').trim();
   const removed = new Set(state.removed.map(contentOf));
   const candidates = new Set(state.added.filter((node) => node.isConnected && near(node)));
@@ -295,7 +331,7 @@ export const SHOWN_ELEMENTS_JS = `(state) => {
     if (text !== '') found.push({ el: el, text: text });
   }
   return found
-    .filter((m) => !found.some((other) => other !== m && other.el.contains(m.el)))
+    .filter((m) => !found.some((other) => other !== m && within(other.el, m.el)))
     .slice(0, ${MAX_SHOWN})
     .map((m) => ({ text: m.text, element: describe(m.el) }));
 }`;
@@ -456,8 +492,11 @@ export const EFFECTS_START_SCRIPT = `(() => {
     pressScroll: null, copied: false, stopped: false, added: [], removed: [], bursts: [],
     keyTarget: null, loaders: new Set((${LOADERS_JS})()),
     pressTarget: null, submits: [], forms: [], control: null, keyClick: null, enterField: null,
-    nodes: 0, expandable: null, inputTarget: null
+    nodes: 0, expandable: null, inputTarget: null, started: performance.now(), streams: new WeakMap(), prior: null
   };
+  const kind = ${STREAM_KIND_JS};
+  state.prior = window.__bdgStreams || null;
+  delete window.__bdgStreams;
   const listen = EventTarget.prototype.addEventListener;
   const unlisten = EventTarget.prototype.removeEventListener;
   const controlLabel = ${CONTROL_LABEL_JS};
@@ -491,6 +530,16 @@ export const EFFECTS_START_SCRIPT = `(() => {
     for (const node of nodes) if (node.nodeType === 1 && list.length < ${MAX_TRACKED_NODES}) list.push(node);
   };
   const elementCount = (nodes) => Array.from(nodes).filter((node) => node.nodeType === 1).length;
+  const noteStreams = (nodes) => {
+    const now = performance.now();
+    for (const node of nodes) {
+      if (node.nodeType !== 1 || !node.parentNode) continue;
+      const kinds = state.streams.get(node.parentNode) || new Map();
+      const seen = kinds.get(kind(node)) || { count: 0, last: 0 };
+      kinds.set(kind(node), { count: seen.count + 1, last: now });
+      state.streams.set(node.parentNode, kinds);
+    }
+  };
   const count = (records) => {
     let burst = false;
     for (const record of records) {
@@ -500,6 +549,7 @@ export const EFFECTS_START_SCRIPT = `(() => {
       if (record.type === 'childList') {
         state.nodes += elementCount(record.addedNodes) + elementCount(record.removedNodes);
         keep(state.added, record.addedNodes);
+        noteStreams(record.addedNodes);
         keep(state.removed, record.removedNodes);
       }
     }
@@ -545,7 +595,9 @@ export const EFFECTS_START_SCRIPT = `(() => {
   state.flush = () => count(observer.takeRecords());
   state.stop = () => {
     if (state.stopped) return;
+    state.flush();
     state.stopped = true;
+    window.__bdgStreams = { at: performance.now(), streams: state.streams };
     clearTimeout(expiry);
     observer.disconnect();
     if (Element.prototype.attachShadow === watchedAttach) Element.prototype.attachShadow = attachShadow;

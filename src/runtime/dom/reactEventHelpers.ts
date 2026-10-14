@@ -993,7 +993,7 @@ export const CLICK_ELEMENT_SCRIPT = `
     obstruction = collapsed ? 'hidden (' + collapsed + ')' : cover ? null : 'covered by another element';
   }
 
-  if (action === 'hover') (${REVEAL_SNAPSHOT_JS})(el);
+  if (action === 'hover' || action === 'click' || action === 'double') (${REVEAL_SNAPSHOT_JS})(el, action !== 'hover');
   const submitProbe = (action === 'click' || action === 'double') && (${SUBMIT_PROBE_JS})(el);
 
   if (hittable && action !== 'hover') {
