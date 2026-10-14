@@ -137,6 +137,11 @@ jobs:
 
       - name: Verify tarball checksum
         run: |
+          set -euo pipefail
+          if [[ -z "$TARBALL" || -z "$EXPECTED_SHA512" ]]; then
+            echo "::error::The build job did not report a tarball name and sha512"
+            exit 1
+          fi
           ACTUAL="$(sha512sum "$RUNNER_TEMP/tarball/$TARBALL" | cut -d' ' -f1)"
           if [[ "$ACTUAL" != "$EXPECTED_SHA512" ]]; then
             echo "::error::sha512 of $TARBALL ($ACTUAL) does not match the build job ($EXPECTED_SHA512)"
