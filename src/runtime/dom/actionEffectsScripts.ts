@@ -84,18 +84,6 @@ const MAX_TRACKED_NODES = 200;
 /** Longer texts are containers (a page, a form), not messages */
 const MAX_MESSAGE_TEXT = 300;
 
-/** Separate DOM change records in which a parent's element is replaced by one of its kind for it to count as a widget re-rendering itself (one record is one user-visible update, such as new search results) */
-const RERENDER_MIN_RECORDS = 3;
-
-/** Added elements a watch looks at for what the page does by itself and for re-renders, at most */
-const MAX_STREAM_NODES = 2000;
-
-/** How long after a watch ended the page is still observed for what it adds by itself, for the next watch (ms) */
-const IDLE_WATCH_MS = 3000;
-
-/** Page-side kind of an added element within one parent: its tag and classes */
-const STREAM_KIND_JS = `(el) => el.localName + '|' + (el.getAttribute('class') || '')`;
-
 /** How long a page keeps watching when no read or stop arrives (ms) */
 const MAX_WATCH_MS = 30000;
 
@@ -290,17 +278,10 @@ const NEAR_SCOPE_JS = `(target) => {
  * elements hidden before it that are shown now ({@link REVEAL_SNAPSHOT_JS}).
  * The container is searched through shadow roots. After a click on an
  * element with `aria-expanded`, the elements it un-hid among those it names
- * with `aria-controls` and its next sibling count too. Background widgets do
- * not count: those elsewhere on the page, elements a widget re-renders
- * (replaced by one of their kind in their parent in
- * {@link RERENDER_MIN_RECORDS} separate DOM change records) and elements of a
- * kind the page was already adding to their parent by itself when the action
- * began: between the previous watch and this one ({@link IDLE_WATCH_MS}) or
- * before the action's first event (an earlier action's timers, a ticker).
- * A read says when it
- * skipped such elements (`skipped`), so the DOM change count can still be
- * reported. A dialog with no text is listed by its name: the `aria-label`, placeholder or
- * title of the first element in it (itself first) that is not a secret's. Only shown ones
+ * with `aria-controls` and its next sibling count too. Background widgets
+ * elsewhere on the page do not count. A dialog with no text is listed by its
+ * name: the `aria-label`, placeholder or title of the first element in it
+ * (itself first) that is not a secret's. Only shown ones
  * with visible text count, the outermost of nested ones, and not those
  * whose text a removed element had (a re-render). At most
  * {@link MAX_SHOWN}, within {@link SHOWN_BUDGET_MS}.
@@ -327,22 +308,7 @@ export const SHOWN_ELEMENTS_JS = `(state) => {
     for (let node = el; node; node = node.parentNode || node.host) if (node === root) return true;
     return false;
   };
-  const kind = ${STREAM_KIND_JS};
-  const kindsIn = (map, parent) => (parent ? map.get(parent) : undefined);
-  const streamed = (el) => {
-    const kinds = kindsIn(state.independent, el.parentNode);
-    return kinds !== undefined && kinds.has(kind(el));
-  };
-  const rerendered = (el) => {
-    const records = kindsIn(state.replaced, el.parentNode);
-    return records !== undefined && (records.get(kind(el)) || 0) >= ${RERENDER_MIN_RECORDS};
-  };
-  const near = (el) => {
-    if (!((scope !== null && within(scope, el)) || popup(el))) return false;
-    if (!streamed(el) && !rerendered(el)) return true;
-    state.skipped = true;
-    return false;
-  };
+  const near = (el) => (scope !== null && within(scope, el)) || popup(el);
   const dialogName = (el) => {
     if (el.localName !== 'dialog' && !/^(dialog|alertdialog)$/.test(el.getAttribute('role') || '')) return '';
     const nameOf = (node) => node.getAttribute('aria-label') || node.getAttribute('placeholder') || node.getAttribute('title') || '';
@@ -524,10 +490,8 @@ export const EFFECTS_START_SCRIPT = `(() => {
     pressScroll: null, copied: false, stopped: false, added: [], removed: [], bursts: [],
     keyTarget: null, loaders: new Set((${LOADERS_JS})()),
     pressTarget: null, submits: [], forms: [], control: null, keyClick: null, enterField: null,
-    nodes: 0, expandable: null, inputTarget: null, independent: new WeakMap(), replaced: new WeakMap(), noted: 0
+    nodes: 0, expandable: null, inputTarget: null
   };
-  const kind = ${STREAM_KIND_JS};
-  if (window.__bdgIdle) state.independent = window.__bdgIdle();
   const listen = EventTarget.prototype.addEventListener;
   const unlisten = EventTarget.prototype.removeEventListener;
   const controlLabel = ${CONTROL_LABEL_JS};
@@ -560,38 +524,16 @@ export const EFFECTS_START_SCRIPT = `(() => {
   const keep = (list, nodes) => {
     for (const node of nodes) if (node.nodeType === 1 && list.length < ${MAX_TRACKED_NODES}) list.push(node);
   };
-  const elements = (nodes) => Array.from(nodes).filter((node) => node.nodeType === 1);
-  const noteAdded = (record) => {
-    const added = elements(record.addedNodes);
-    if (added.length === 0 || state.noted >= ${MAX_STREAM_NODES}) return;
-    state.noted += added.length;
-    const kinds = state.independent.get(record.target) || new Set();
-    added.forEach((node) => kinds.add(kind(node)));
-    state.independent.set(record.target, kinds);
-  };
-  const noteReplaced = (record) => {
-    const removed = new Set(elements(record.removedNodes).map(kind));
-    const replaced = new Set(elements(record.addedNodes).map(kind).filter((one) => removed.has(one)));
-    if (replaced.size === 0) return;
-    const records = state.replaced.get(record.target) || new Map();
-    replaced.forEach((one) => records.set(one, (records.get(one) || 0) + 1));
-    state.replaced.set(record.target, records);
-  };
+  const elementCount = (nodes) => Array.from(nodes).filter((node) => node.nodeType === 1).length;
   const count = (records) => {
-    if (state.stopped) {
-      records.filter((record) => record.type === 'childList').forEach(noteAdded);
-      return;
-    }
     let burst = false;
     for (const record of records) {
       if (churnOnly(record, state.targets)) continue;
       state.changes++;
       burst = burst || structural(record);
       if (record.type === 'childList') {
-        state.nodes += elements(record.addedNodes).length + elements(record.removedNodes).length;
+        state.nodes += elementCount(record.addedNodes) + elementCount(record.removedNodes);
         keep(state.added, record.addedNodes);
-        if (state.targets.size === 0) noteAdded(record);
-        noteReplaced(record);
         keep(state.removed, record.removedNodes);
       }
     }
@@ -637,23 +579,9 @@ export const EFFECTS_START_SCRIPT = `(() => {
   state.flush = () => count(observer.takeRecords());
   state.stop = () => {
     if (state.stopped) return;
-    state.flush();
     state.stopped = true;
     clearTimeout(expiry);
-    const idleTimer = setTimeout(() => {
-      observer.disconnect();
-      delete window.__bdgIdle;
-    }, ${IDLE_WATCH_MS});
-    Object.defineProperty(window, '__bdgIdle', {
-      configurable: true,
-      value: () => {
-        count(observer.takeRecords());
-        observer.disconnect();
-        clearTimeout(idleTimer);
-        delete window.__bdgIdle;
-        return state.independent;
-      }
-    });
+    observer.disconnect();
     if (Element.prototype.attachShadow === watchedAttach) Element.prototype.attachShadow = attachShadow;
     types.forEach((type) => window.removeEventListener(type, record, true));
     state.forms.forEach((form) => unlisten.call(form, 'submit', onSubmit, true));
@@ -707,7 +635,6 @@ export const EFFECTS_READ_SCRIPT = `((stop, shown, focus) => {
     messages: (${MESSAGES_JS})(state.ids),
     settle: (${SETTLE_JS})(state),
     shown: shown ? (${SHOWN_ELEMENTS_JS})(state) : undefined,
-    skipped: state.skipped === true,
     ...(${OUTCOMES_JS})(state, focus)
   };
 })`;
