@@ -36,12 +36,13 @@ Files:
 ```
 #<N> <slug>  tier <1|2|3>
 - [ ] Implementer: ship brief implementer N=<N> BRANCH=<type>/<slug> → fill scope → spawn (background)
-- [ ] Product diff over ~30 lines: the report names the `/simplify` commit or says "nothing to simplify"
+- [ ] Product diff over ~30 lines: a `refactor:` commit from `/simplify`, or "nothing to simplify" in the PR body (`ship gates` checks it)
 - [ ] Report ends with `PR <url> HEAD <sha>`; ship ci-wait <pr> (background, 60-minute timeout)
 - [ ] Reviewer: ship brief reviewer … → findings to the same implementer
 - [ ] Tester (tier 2–3): ship brief tester … → findings routed
 - [ ] Fix rounds ≤ 2; the reviewer re-checks each fix commit (SendMessage to the same reviewer)
-- [ ] Tier 3: fresh second review only of a fix that changes the approach or adds more than ~15 product lines; ship repeat for timing
+- [ ] Tier 3: fresh second review only of a fix that changes the approach or adds more than ~15 product lines
+- [ ] Timing-sensitive change: ship repeat on the first draft, again on the final head
 - [ ] ship gates <pr> --tier=N [--macos] [--timing --repeat=<id>] (timing PRs: always --timing); ship merge-check when it says the base changed the PR's files; ship merge <pr> (same flags)
 - [ ] ship ci-wait <merge sha> --push; ship log <pr> …; issue closed or commented
 ```
@@ -58,20 +59,20 @@ Render the reviewer brief with the claims of the change and its risks (races, fa
 
 - Findings come back as **blocking / should-fix / nit** with file:line and a scenario.
 - Send every finding to the **same implementer** (SendMessage, so it keeps its context): test and fix in one commit, or an argued rejection; you decide disputes. Nits about the change go into the same commit, never pushed alone (every push is a full CI run).
-- **Each fix commit is re-checked by the same reviewer** (SendMessage with the new SHA and the findings it addressed): cheaper than a new review and still not the author. Tier 3 adds a fresh second reviewer only on a fix commit that changes the approach or adds more than ~15 product lines (S6 #606: a large fix, 2 should-fixes found; S5: nothing on a small one); a small targeted fix stays with the same reviewer.
+- **Each fix commit is re-checked by the same reviewer** (SendMessage with the new SHA and the findings it addressed): cheaper than a new review and still not the author. Tier 3 adds a fresh second reviewer only on a fix commit that changes the approach or adds more than ~15 product lines (S6 #606: a large fix, 2 should-fixes found; S5: nothing on a small one); a small targeted fix stays with the same reviewer. A fix commit that touches only tests never gets a fresh reviewer: the same reviewer's re-check and a repeat run cover it (S11 #761: the repeat run found the race).
 - **At most two fix rounds.** Findings left after the second go to the user: a third round needs an explicit yes; the alternative is to file them.
 - Findings about **older code** follow the findings block in `briefs.md`: adjacent ones are fixed in the PR as their own commit; the rest go to the verifier.
 
 ### Fresh-agent test
 
-The highest-yield step: bdg's users are agents, so the tester doesn't play the user, it is one. Run it for every tier 2–3 change with the scenarios of `scenarios.md` that touch the change's area (a fix with no new output or flag: the two closest scenarios, cap 20). Before it, the branch must contain the `main` changes to its files (`ship gates` names them), or the tester reports bugs `main` already fixed. Its findings are routed like the reviewer's.
+The highest-yield step: bdg's users are agents, so the tester doesn't play the user, it is one. Run it for every tier 2–3 change with the scenarios of `scenarios.md` that touch the change's area (a fix with no new output or flag, or a new `--json` field with no new flag or human output: the two closest scenarios, cap 20; S11 #761 and #763 found nothing beyond that). A tier 2 change of only the value of an existing `--json` field gets no fresh-agent test (tier 3, e.g. redaction, keeps it); the reviewer checks the docs define the field (S10 #753 found nothing about the change). Before it, the branch must contain the `main` changes to its files (`ship gates` names them), or the tester reports bugs `main` already fixed. Its findings are routed like the reviewer's.
 
 ### Tiers
 
 | Tier | What | Review | Fresh-agent test | Red commit |
 |---|---|---|---|---|
 | 1 | docs, CI, tooling, refactors under existing tests, a message typo, the polish sweep (nothing parsed, no flag, exit code, default or timing changes) | reviewer | no | no (the PR says why) |
-| 2 | behaviour change: new or changed output, flag, hint, default | reviewer | yes | yes |
+| 2 | behaviour change: new or changed output, flag, hint, default | reviewer | yes, except a changed value of an existing `--json` field alone | yes |
 | 3 | session lifecycle, Chrome launch, files on disk, concurrency, security, contracts, redaction or parsing | reviewer, plus a fresh second reviewer on a fix commit that changes the approach or adds more than ~15 product lines | yes, plus the interrupt scenario (S08) when relevant | yes; timing: `ship repeat` on the final head; redaction or parsing: the brief's case matrix is the red commit's table test |
 
 After a round, **one verifier** reproduces all older-code findings on current `main` in one pass. **Only you file issues**, one umbrella per root cause (cause in the title, symptoms as a checklist with the verifier's command and output, milestone and `priority:` label set); a symptom of an open issue becomes a comment on it. What gets an issue at all: **Fix, file or record** below.
@@ -80,14 +81,14 @@ After a round, **one verifier** reproduces all older-code findings on current `m
 
 Merge only when all hold on the head SHA you merge. `ship gates <pr> --tier=N` checks the mechanical ones (M); you judge the rest (J). `ship merge <pr>` with the same flags runs the gates, merges with `--match-head-commit`, and removes the worktree if nothing is uncommitted and the branch once `main` contains it. For a PR built on another PR's branch, everything is checked against that base branch.
 
-1. **J Review resolved:** every blocking and should-fix finding fixed or rejected with a reason you accept, re-checked on its fix commit.
+1. **M+J Review resolved:** every blocking and should-fix finding fixed or rejected with a reason you accept, re-checked on its fix commit (J); a product diff over 30 lines (`src/`, tests excluded) has a `refactor:` commit or "nothing to simplify" in the PR body (M; S11: #760 and #762 had neither).
 2. **J Fresh-agent test done** (tier 2–3), its findings about the change fixed.
-3. **M+J Red commit:** the first commit is `test: …` (M); the reviewer ran it and it failed on an assertion about the issue (J). Exempt: tier 1.
-4. **M Repeat run** passed on the final head (`--repeat=<id>`; `--timing` makes a missing one fail). Tier 3 timing: Linux and macOS, repeat ≥ 10; concurrency or timing changes also `ship repeat … --node=26` (PR CI smoke runs Node 22 only: #720 broke on Node 24/26 alone); CI or environment changes: the full smoke suite with repeat ≥ 3 on Node 22 only, the full Node matrix only for the Node runtime or `engines`).
+3. **M+J Red commit:** the first commit is `test: …` and type-checks (M; S10 #754's did not build); the reviewer ran it and it failed on an assertion about the issue (J). Exempt: tier 1.
+4. **M Repeat run** passed on the final head (`--repeat=<id>`; `--timing` makes a missing one fail). For a timing-sensitive heuristic the first repeat run goes on the first draft, before review: in S10 #756 three review rounds passed before the repeats showed the failure; in S11 #761 a first-draft repeat found a race four local runs missed. When repeats fail after two approaches, stop and ask the user; no third attempt. Tier 3 timing: Linux and macOS, repeat ≥ 10; concurrency or timing changes also `ship repeat … --node=26` (PR CI smoke runs Node 22 only: #720 broke on Node 24/26 alone); CI or environment changes: the full smoke suite with repeat ≥ 3 on Node 22 only, the full Node matrix only for the Node runtime or `engines`).
 5. **M CI on the head, and `main` green:** the latest decided CI run on `main` succeeded (an in-progress run is named: wait for it only when its merge touched this PR's files, then re-run gate 6); on the head, `CI OK` (it aggregates build, quality, contract tests and Linux smoke); macOS smoke when the PR touches timing-sensitive paths (`--macos`); Security for PRs into `main`. A failing job counts as an accepted exception only with the known flake's issue number and a passing re-run; name both in the merge summary.
 6. **M Mergeable and tested against current `main`:** when `main` changed the PR's files since its base, `ship merge-check <pr> <affected tests>` passed on that `main` and head, or the implementer rebased and re-ran.
 7. **J Docs match** (`docs/CLI_REFERENCE.md`, help, `.claude/skills/bdg/SKILL.md`, option behaviors), **M** `CHANGELOG.md` untouched and the PR body has `Closes #<N>` (`Fixes`/`Resolves` too; `--no-issue` for a PR with no issue, e.g. a retro: #705 once stayed open after its merge); the PR description marks changed defaults, contracts and breaking changes.
-8. **M No leftovers:** nothing new in `~/.bdg` or `~/Downloads` since `ship snapshot` (a user's own file in either directory, e.g. their live session's `daemon.sock`: `ship snapshot --accept <name>` after checking it isn't from bdg), no live process from this PR's PID files, no temporary worktree of it; `ship leftovers` checks the whole session at the end.
+8. **M No leftovers:** nothing new or written to in `~/.bdg` or `~/Downloads` since `ship snapshot` (names, mtime and size: in S11 an implementer ran bdg on `~/.bdg` and only `daemon.log` grew; a user's own file in either directory, e.g. their live session's `daemon.sock` or `daemon.log`, a directory whose mtime moved because a file in it changed: `ship snapshot --accept <name>` after checking it isn't from bdg), no live process from this PR's PID files, no temporary worktree of it; `ship leftovers` checks the whole session at the end.
 
 A red `main` is fixed before any new work; the PR that fixes it merges with `--fixes-main` (skips only gate 5, refused when main is green). **Rerun first:** when a push run on `main` fails in a test file the merged PR did not touch, `gh run rerun <id> --failed` before anything else. Start a verifier only if the re-run fails too, the failing test exercises code the PR changed, or that test failed before (check #529). Comment every one-off failure on #529: run id, test, error line (two one-offs in S6 cost ~30 minutes of verification; both re-runs passed). After a merge, `ship ci-wait <merge sha> --push`; a `cancelled` run there means a later push superseded it: its result is the later commit's.
 
