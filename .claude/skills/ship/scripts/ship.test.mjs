@@ -17,6 +17,7 @@ import {
   closedIssues,
   EXIT,
   inScope,
+  isProductFile,
   insertLogRow,
   isTransientGhError,
   mainGateVerdict,
@@ -30,8 +31,14 @@ import {
   overlappingFiles,
   parseArgs,
   parseBriefs,
+  parseSnapshot,
   parseSnapshotArgs,
+  productLines,
   renderBrief,
+  simplifyVerdict,
+  SIMPLIFY_THRESHOLD,
+  snapshotChanges,
+  snapshotLines,
   retryTransient,
   run,
   withWaiterDeadline,
@@ -727,4 +734,83 @@ test('gh failures that recovered are not blamed when the budget later runs out',
   } finally {
     console.log = log;
   }
+});
+
+test('snapshotLines and parseSnapshot round-trip names with their mtime and size', () => {
+  const entries = [
+    { name: 'daemon.log', mtimeMs: 1760000000123.7, size: 420 },
+    { name: 'a b.txt', mtimeMs: 5, size: 0 },
+  ];
+  const parsed = parseSnapshot(snapshotLines(entries).join('\n'));
+  assert.deepEqual(
+    [...parsed],
+    [
+      ['daemon.log', '1760000000123\t420'],
+      ['a b.txt', '5\t0'],
+    ]
+  );
+});
+
+test('parseSnapshot reads bare names (old snapshots, --accept) as presence-only, later lines win', () => {
+  const parsed = parseSnapshot('old.pdf\ndaemon.log\t10\t20\ndaemon.log\n\n');
+  assert.deepEqual(
+    [...parsed],
+    [
+      ['old.pdf', null],
+      ['daemon.log', null],
+    ]
+  );
+});
+
+test('snapshotChanges reports new entries and entries written to, not untouched or accepted ones', () => {
+  const before = parseSnapshot(
+    snapshotLines([
+      { name: 'daemon.log', mtimeMs: 100, size: 10 },
+      { name: 'session.meta.json', mtimeMs: 100, size: 5 },
+      { name: 'grown', mtimeMs: 100, size: 5 },
+    ]).join('\n') + '\nmine.sock\n'
+  );
+  const current = [
+    { name: 'daemon.log', mtimeMs: 200, size: 10 },
+    { name: 'session.meta.json', mtimeMs: 100.9, size: 5 },
+    { name: 'grown', mtimeMs: 100, size: 6 },
+    { name: 'mine.sock', mtimeMs: 999, size: 0 },
+    { name: 'chrome.pid', mtimeMs: 300, size: 6 },
+  ];
+  assert.deepEqual(snapshotChanges(before, current), {
+    added: ['chrome.pid'],
+    changed: ['daemon.log', 'grown'],
+  });
+});
+
+test('isProductFile counts src/ code, not tests, smoke tests, test utilities or other trees', () => {
+  assert.equal(isProductFile('src/commands/dom/click.ts'), true);
+  assert.equal(isProductFile('src/commands/__tests__/click.test.ts'), false);
+  assert.equal(isProductFile('src/__tests__/smoke/eval.smoke.test.ts'), false);
+  assert.equal(isProductFile('src/__testutils__/fixturePages/effects.ts'), false);
+  assert.equal(isProductFile('src/utils/url.test.ts'), false);
+  assert.equal(isProductFile('docs/CLI_REFERENCE.md'), false);
+  assert.equal(isProductFile('.claude/skills/ship/scripts/ship.mjs'), false);
+});
+
+test('productLines sums added and deleted product lines from numstat, binary files as 0', () => {
+  const numstat = [
+    '20\t5\tsrc/a.ts',
+    '100\t0\tsrc/__tests__/a.test.ts',
+    '-\t-\tsrc/logo.png',
+    '7\t3\tdocs/CLI_REFERENCE.md',
+    '4\t2\tsrc/{old => new}/b.ts',
+  ].join('\n');
+  assert.equal(productLines(numstat), 31);
+});
+
+test('simplifyVerdict: a small diff needs nothing, a large one a refactor commit or the PR body line', () => {
+  assert.equal(simplifyVerdict(SIMPLIFY_THRESHOLD, [], '').ok, true);
+  const large = SIMPLIFY_THRESHOLD + 1;
+  assert.equal(simplifyVerdict(large, ['test: red', 'fix: green'], 'body').ok, false);
+  assert.match(simplifyVerdict(large, ['test: red'], '').text, /no refactor: commit/);
+  assert.equal(simplifyVerdict(large, ['test: red', 'refactor: share helper'], '').ok, true);
+  assert.equal(simplifyVerdict(large, ['refactor(dom): x'], '').ok, true);
+  assert.equal(simplifyVerdict(large, ['fix: x'], 'Simplify: Nothing to simplify.').ok, true);
+  assert.equal(simplifyVerdict(large, ['fix: refactor: x'], '').ok, false);
 });

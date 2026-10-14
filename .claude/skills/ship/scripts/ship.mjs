@@ -8,7 +8,15 @@
  */
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  lstatSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -853,6 +861,79 @@ async function freshBaseGate(results, pr, baseRef, forkPoint, prFiles) {
   );
 }
 
+/** Product diff size above which the implementer owes a /simplify pass */
+export const SIMPLIFY_THRESHOLD = 30;
+
+/**
+ * True for a file whose lines count as product code: under `src/`, not a
+ * test, a smoke test or a test utility.
+ *
+ * @param {string} path
+ */
+export function isProductFile(path) {
+  return (
+    path.startsWith('src/') &&
+    !/(^|\/)(__tests__|__testutils__)\//.test(path) &&
+    !/\.test\.[cm]?[jt]s$/.test(path)
+  );
+}
+
+/**
+ * Added plus deleted product lines in `git diff --numstat` output (binary files count 0).
+ *
+ * @param {string} numstat
+ */
+export function productLines(numstat) {
+  return numstat
+    .split('\n')
+    .filter(Boolean)
+    .reduce((sum, line) => {
+      const [added, deleted, path] = line.split('\t');
+      return isProductFile(path) ? sum + (Number(added) || 0) + (Number(deleted) || 0) : sum;
+    }, 0);
+}
+
+/**
+ * Gate 1, mechanical part: a product diff over the threshold needs a
+ * `refactor:` commit from the /simplify pass, or "nothing to simplify" in
+ * the PR body.
+ *
+ * @param {number} lines product lines of the PR diff
+ * @param {string[]} subjects commit subjects of the PR
+ * @param {string} [body] PR body
+ */
+export function simplifyVerdict(lines, subjects, body) {
+  const label = `1 /simplify pass (${lines} product lines)`;
+  if (lines <= SIMPLIFY_THRESHOLD) return { ok: true, text: `${label}: not needed` };
+  const commit = subjects.find((s) => /^refactor(\([^)]*\))?!?: /.test(s));
+  if (commit) return { ok: true, text: `${label}: "${commit}"` };
+  if (/nothing to simplify/i.test(body ?? ''))
+    return { ok: true, text: `${label}: the PR body says nothing to simplify` };
+  return { ok: false, text: `${label}: no refactor: commit and no "nothing to simplify" in the PR body` };
+}
+
+/**
+ * Gate 3, mechanical part: the red commit type-checks, so its tests fail on
+ * an assertion and not on a missing export. A pass is cached per commit.
+ *
+ * @param {boolean[]} results
+ * @param {number} prNumber
+ * @param {string} red red commit SHA
+ */
+function redBuildGate(results, prNumber, red) {
+  const marker = `/tmp/ship-red-${prNumber}.ok`;
+  const label = `3 red commit ${red.slice(0, 10)} type-checks`;
+  if (existsSync(marker) && readFileSync(marker, 'utf8').trim() === red) {
+    gateLine(results, true, `${label} (checked before)`);
+    return;
+  }
+  const passed = inTempWorktree(red, `/tmp/red-${prNumber}`, (cwd) =>
+    step('npm run type-check on the red commit', 'npm run type-check', cwd)
+  );
+  if (passed) writeFileSync(marker, `${red}\n`);
+  gateLine(results, passed, label);
+}
+
 /**
  * Checks the mechanical gates on the PR's current head and prints one line
  * per gate; the judgment gates are printed as reminders. `--tier` is
@@ -874,10 +955,18 @@ async function gates(argv) {
   const forkPoint = run('git', ['merge-base', baseRef, head]);
   const prFiles = run('git', ['diff', '--name-only', forkPoint, head]).split('\n').filter(Boolean);
 
+  const commits = run('git', ['log', '--reverse', '--format=%H %s', `${forkPoint}..${head}`])
+    .split('\n')
+    .filter(Boolean)
+    .map((l) => ({ sha: l.slice(0, 40), subject: l.slice(41) }));
+  const numstat = run('git', ['diff', '--numstat', forkPoint, head]);
+  const simplify = simplifyVerdict(productLines(numstat), commits.map((c) => c.subject), pr.body);
+  gateLine(results, simplify.ok, simplify.text);
   if (tier > 1) {
-    const first =
-      run('git', ['log', '--reverse', '--format=%s', `${forkPoint}..${head}`]).split('\n')[0] ?? '';
-    gateLine(results, /^test: /.test(first), `3 first commit is the red commit: "${first}"`);
+    const first = commits[0];
+    const isRed = /^test: /.test(first?.subject ?? '');
+    gateLine(results, isRed, `3 first commit is the red commit: "${first?.subject ?? ''}"`);
+    if (isRed) redBuildGate(results, pr.number, first.sha);
   }
   if (keys.repeat) {
     const r = ghJson(['run', 'view', keys.repeat, '--json', 'headSha,conclusion,status']);
@@ -1010,8 +1099,8 @@ function snapshot(argv = []) {
     console.log(`accepted: ${parsed.accept.map(({ key, name }) => `${name} (~/${key === 'bdg' ? '.bdg' : 'Downloads'})`).join(', ')}`);
     return EXIT.ok;
   }
-  writeFileSync(SNAPSHOT.bdg, listDir(dirs.bdg).join('\n'));
-  writeFileSync(SNAPSHOT.downloads, listDir(dirs.downloads).join('\n'));
+  writeFileSync(SNAPSHOT.bdg, snapshotLines(listEntries(dirs.bdg)).join('\n'));
+  writeFileSync(SNAPSHOT.downloads, snapshotLines(listEntries(dirs.downloads)).join('\n'));
   console.log(`snapshot of ~/.bdg and ~/Downloads in ${SNAPSHOT.bdg}, ${SNAPSHOT.downloads}`);
   return EXIT.ok;
 }
@@ -1023,6 +1112,78 @@ function snapshot(argv = []) {
  */
 function listDir(dir) {
   return existsSync(dir) ? readdirSync(dir).sort() : [];
+}
+
+/**
+ * Lists a directory's entries with their modification time and size, or
+ * none when it doesn't exist; an entry removed while listing is skipped.
+ *
+ * @param {string} dir
+ * @returns {{ name: string, mtimeMs: number, size: number }[]}
+ */
+function listEntries(dir) {
+  return listDir(dir).flatMap((name) => {
+    try {
+      const { mtimeMs, size } = lstatSync(join(dir, name));
+      return [{ name, mtimeMs, size }];
+    } catch {
+      return [];
+    }
+  });
+}
+
+/**
+ * The change signature of a directory entry: whole-millisecond mtime and size.
+ *
+ * @param {{ mtimeMs: number, size: number }} entry
+ */
+function entrySignature(entry) {
+  return `${Math.trunc(entry.mtimeMs)}\t${entry.size}`;
+}
+
+/**
+ * Snapshot lines, one `name<TAB>mtime<TAB>size` per entry, so gate 8 sees
+ * an existing file that was written to, not only a new name.
+ *
+ * @param {{ name: string, mtimeMs: number, size: number }[]} entries
+ */
+export function snapshotLines(entries) {
+  return entries.map((e) => `${e.name}\t${entrySignature(e)}`);
+}
+
+/**
+ * Parses a snapshot into name → signature. A bare name (a snapshot from
+ * before signatures, or an `--accept` entry) maps to null: only its
+ * presence is checked. A later line for a name replaces an earlier one.
+ *
+ * @param {string} text
+ * @returns {Map<string, string | null>}
+ */
+export function parseSnapshot(text) {
+  const entries = new Map();
+  for (const line of text.split('\n')) {
+    if (!line) continue;
+    const signed = /^(.*)\t(\d+)\t(\d+)$/.exec(line);
+    entries.set(signed ? signed[1] : line, signed ? `${signed[2]}\t${signed[3]}` : null);
+  }
+  return entries;
+}
+
+/**
+ * Entries added since the snapshot, and entries whose mtime or size changed.
+ *
+ * @param {Map<string, string | null>} before
+ * @param {{ name: string, mtimeMs: number, size: number }[]} current
+ */
+export function snapshotChanges(before, current) {
+  const added = current.filter((e) => !before.has(e.name)).map((e) => e.name);
+  const changed = current
+    .filter((e) => {
+      const signature = before.get(e.name);
+      return signature != null && signature !== entrySignature(e);
+    })
+    .map((e) => e.name);
+  return { added, changed };
 }
 
 /** True when the process with this PID is alive */
@@ -1059,8 +1220,8 @@ export function tempWorktrees(porcelain) {
 }
 
 /**
- * What was left behind: new entries in ~/.bdg and ~/Downloads since the
- * snapshot (a missing snapshot counts as a leftover, so it can't pass
+ * What was left behind: new or written-to entries in ~/.bdg and ~/Downloads
+ * since the snapshot (a missing snapshot counts as a leftover, so it can't pass
  * silently), live processes from PID files, and temporary worktrees. With a
  * scope, only PID files and worktrees of those issue or PR numbers count.
  *
@@ -1076,9 +1237,13 @@ function leftoverLines(scope) {
       lines.push(`no snapshot of ~/${dir} (run ship snapshot at session start)`);
       continue;
     }
-    const before = new Set(readFileSync(SNAPSHOT[key], 'utf8').split('\n'));
-    const added = listDir(join(homedir(), dir)).filter((e) => !before.has(e));
+    const before = parseSnapshot(readFileSync(SNAPSHOT[key], 'utf8'));
+    const { added, changed } = snapshotChanges(before, listEntries(join(homedir(), dir)));
     if (added.length) lines.push(`new in ~/${dir}: ${added.join(', ')}`);
+    if (changed.length)
+      lines.push(
+        `written to in ~/${dir} since the snapshot: ${changed.join(', ')} (a user's own file: ship snapshot --accept <name>)`
+      );
   }
   for (const file of readdirSync('/tmp').filter((f) => /^bdg-.*\.pid$/.test(f))) {
     if (scope && !inScope(file, scope)) continue;
