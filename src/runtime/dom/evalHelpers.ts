@@ -848,6 +848,17 @@ interface PendingEvaluation {
  */
 const pendingEvaluations = new Set<PendingEvaluation>();
 
+/**
+ * Whether a raw `bdg cdp` call runs a page script that the daemon stops
+ * when its client disconnects, like a `dom eval` script.
+ *
+ * @param method - CDP method
+ * @returns True for `Runtime.evaluate` and `Runtime.callFunctionOn`
+ */
+export function stopsScriptWhenAbandoned(method: string): boolean {
+  return method === 'Runtime.evaluate' || method === 'Runtime.callFunctionOn';
+}
+
 /** How long the target gets to answer before an abandoned eval's script counts as running */
 const ABANDONED_CHECK_MS = 500;
 
@@ -958,6 +969,33 @@ function stopWhenAbandoned(
   if (abandoned?.aborted) stop();
   else abandoned?.addEventListener('abort', stop, { once: true });
   return { answered, scriptFinished: () => (scriptDone = true) };
+}
+
+/**
+ * Send a raw `bdg cdp` script call (see {@link stopsScriptWhenAbandoned})
+ * on the page, tracked like a `dom eval`: its script is stopped when its
+ * client disconnects before the call settled, with the same guards
+ * ({@link stopWhenAbandoned}), and later evals wait for it as for an eval.
+ * Its tracking's `scriptFinished` is never called (a raw call's lost reply
+ * fails the call, which ends the tracking): a script that has finished
+ * leaves the target answering the check made before any stop.
+ *
+ * @param cdp - The page's connection
+ * @param send - Sends the call
+ * @param awaits - Whether the call waits for a promise (`awaitPromise`, or `replMode` with a top-level `await`)
+ * @param abandoned - Aborts when the client disconnects
+ * @returns The call's answer
+ */
+export function sendScriptCall<T>(
+  cdp: CDPSender,
+  send: () => Promise<T>,
+  awaits: boolean,
+  abandoned: AbortSignal | undefined
+): Promise<T> {
+  checkAwaitingEvaluations(cdp, '');
+  const call = send();
+  stopWhenAbandoned(cdp, 'page', call, trackEvaluation(awaits, ''), abandoned);
+  return call;
 }
 
 /**

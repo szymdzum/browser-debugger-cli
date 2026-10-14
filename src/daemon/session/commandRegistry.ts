@@ -34,6 +34,8 @@ import { readBlockedSubmit } from '@/runtime/dom/blockedSubmit.js';
 import {
   evaluateScript,
   type LostCheckTiming,
+  sendScriptCall,
+  stopsScriptWhenAbandoned,
   untilAnswerLost,
   withBusyPageRecovery,
 } from '@/runtime/dom/evalHelpers.js';
@@ -606,6 +608,43 @@ async function sendCdpCall(
 }
 
 /**
+ * Whether a script call waits for a promise: `awaitPromise`, or a
+ * `replMode` expression with a top-level `await` (the rule of
+ * {@link mayLoseReply}); later scripts can run while it waits.
+ *
+ * @param params - The call
+ * @returns True when it may wait for a promise
+ */
+function waitsForPromise(params: CommandSchemas['cdp_call']['requestSchema']): boolean {
+  const { expression, awaitPromise, replMode } = params.params ?? {};
+  if (awaitPromise === true) return true;
+  return replMode === true && typeof expression === 'string' && hasTopLevelAwait(expression);
+}
+
+/**
+ * Send a `bdg cdp` call; a script call of `bdg cdp` itself
+ * (`Runtime.evaluate`, `Runtime.callFunctionOn`; not a bdg command's own
+ * page scripts) has its script stopped when its client disconnects before
+ * the call settled, like a `dom eval` (#726).
+ *
+ * @param cdp - CDP connection
+ * @param params - Method, params, and whether it is a bdg page script
+ * @param store - Session state
+ * @param abandoned - Aborts when the client disconnects
+ * @returns The method's result
+ */
+function sendCdpCallStoppable(
+  cdp: CDPConnection,
+  params: CommandSchemas['cdp_call']['requestSchema'],
+  store: TelemetryStore,
+  abandoned: AbortSignal | undefined
+): Promise<unknown> {
+  const send = (): Promise<unknown> => sendCdpCall(cdp, params, store);
+  if (params.raw !== true || !stopsScriptWhenAbandoned(params.method)) return send();
+  return sendScriptCall(cdp, send, waitsForPromise(params), abandoned);
+}
+
+/**
  * The Chrome Issues of the page currently loaded, for a peek.
  *
  * @param store - Telemetry of the session
@@ -831,7 +870,7 @@ export function createCommandRegistry(
 
     cdp_call: async (cdp, params, abandoned) => {
       const call = (): Promise<unknown> =>
-        sendCdpCall(cdp, params, store).then(
+        sendCdpCallStoppable(cdp, params, store, abandoned).then(
           (value) => {
             clientGroups.settled(cdp, params, true);
             return value;

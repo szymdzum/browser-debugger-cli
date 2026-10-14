@@ -366,7 +366,8 @@ export async function getNetworkHeaders(options?: {
  * @param options - `isolated`: a bdg page script, run in bdg's isolated world
  *   (`Runtime.evaluate`, `DOM.resolveNode`), whose object group this process
  *   owns (the daemon releases it if the process exits first); `collect`: events to collect
- *   while the method runs (the request waits for its timeout)
+ *   while the method runs (the request waits for its timeout); `raw`: a `bdg cdp` call,
+ *   whose script call is stopped on the page if this process exits first
  * @returns Response with CDP method result
  * @throws Error if connection fails; CommandError (102) when the page was busy and its scripts were terminated, (107) when the page crashed
  *
@@ -381,7 +382,7 @@ export async function getNetworkHeaders(options?: {
 export async function callCDP(
   method: string,
   params?: Record<string, unknown>,
-  options: { isolated?: boolean; collect?: CdpCollectParams } = {}
+  options: { isolated?: boolean; collect?: CdpCollectParams; raw?: boolean } = {}
 ): Promise<ClientResponse<'cdp_call'>> {
   const response = await sendCommand(
     'cdp_call',
@@ -392,6 +393,7 @@ export async function callCDP(
       ...(options.isolated &&
         typeof params?.['objectGroup'] === 'string' && { owner: process.pid }),
       ...(options.collect && { collect: options.collect }),
+      ...(options.raw && { raw: true }),
     },
     options.collect && waitingTimeoutMs(options.collect.timeoutMs)
   );

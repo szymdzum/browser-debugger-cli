@@ -33,11 +33,12 @@ import {
   missingArgumentError,
   scriptExecutionError,
   type ErrorWithSuggestion,
+  type InterruptedWork,
 } from '@/errors/messages.js';
 import { callCDP } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
 import type { CdpCollectedEvents, CdpCollectParams } from '@/ipc/protocol/cdpEventTypes.js';
-import { describeException } from '@/runtime/dom/evalHelpers.js';
+import { describeException, stopsScriptWhenAbandoned } from '@/runtime/dom/evalHelpers.js';
 import {
   formatCdpDescription,
   formatCdpDomainMethods,
@@ -289,9 +290,12 @@ async function runCdpCommand(
     return runCommand(async () => handleDescribeMethod(method), options, formatCdpDescription);
   }
   if (method) {
-    return runCommand(async () => handleExecuteMethod(method, options), options, formatCdpResult, {
-      sent: 'CDP call',
-    });
+    return runCommand(
+      async () => handleExecuteMethod(method, options),
+      options,
+      formatCdpResult,
+      interruptedCallWork(method)
+    );
   }
   return runCommand(async () => {
     const err = missingArgumentError(CDP_USAGE);
@@ -301,6 +305,20 @@ async function runCdpCommand(
       EXIT_CODES.INVALID_ARGUMENTS
     );
   }, options);
+}
+
+/**
+ * What an interrupted `bdg cdp <method>` may have done: a script call's
+ * script is stopped on the page (#726), any other call may have reached it.
+ *
+ * @param method - Method argument (case-insensitive for bundled methods)
+ * @returns The interrupt message's work
+ */
+function interruptedCallWork(method: string): InterruptedWork {
+  const target = resolveMethodTarget(method);
+  return target.kind === 'known' && stopsScriptWhenAbandoned(target.method)
+    ? { stopped: 'script' }
+    : { sent: 'CDP call' };
 }
 
 /**
@@ -800,7 +818,10 @@ async function sendCall(
   collect?: CdpCollectParams,
   notes = !collect
 ): Promise<CommandResult<CdpExecuteData & Partial<CdpCollectedEvents>>> {
-  const response = await callCDP(call.method, call.params, collect ? { collect } : {});
+  const response = await callCDP(call.method, call.params, {
+    raw: true,
+    ...(collect && { collect }),
+  });
   try {
     validateIPCResponse(response);
   } catch (error) {
