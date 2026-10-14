@@ -10,7 +10,7 @@ import type { DomContext } from '@/commands/dom/helpers/index.js';
 import { MASKED_VALUE, labelClasses } from '@/runtime/dom/elementInfo.js';
 import { synthesizeA11yNode } from '@/telemetry/roleInference.js';
 import type { A11yNode } from '@/types.js';
-import { keyAttributeItems, withWrittenType } from '@/ui/formatters/keyAttributes.js';
+import { keyAttributeItems, shortValue, withWrittenType } from '@/ui/formatters/keyAttributes.js';
 import { joinLines } from '@/ui/formatting.js';
 import { elementTextLine, emptyElementLine } from '@/ui/messages/commands.js';
 
@@ -37,17 +37,59 @@ function buildRoleText(node: A11yNode): string {
   return `[${capitalize(node.role)}]`;
 }
 
-function buildContextText(node: A11yNode, domContext: DomContext | null): string {
+/**
+ * Elements that cannot hold children (void elements) or whose content is a
+ * value shown on the role line (form controls): an empty-element line adds
+ * nothing for them.
+ */
+const NO_CHILDREN_TAGS = new Set([
+  'area',
+  'base',
+  'br',
+  'col',
+  'embed',
+  'hr',
+  'img',
+  'input',
+  'link',
+  'meta',
+  'source',
+  'track',
+  'wbr',
+  'select',
+  'textarea',
+]);
+
+/** An id that reads as a selector fragment, shown as `#id` */
+const PLAIN_ID = /^[A-Za-z_][\w-]*$/;
+
+/**
+ * The text of the role line after the role: the accessible name, or the
+ * element as `<tag#id.class>` with a one-line preview.
+ *
+ * A plain id is `#id`; one with a space, quote or other character a
+ * selector cannot hold is `id="..."` as `dom query` writes it. Ids and
+ * names are shortened to one line (control characters escaped, long ids
+ * cut); `--json` keeps them whole.
+ *
+ * @param node - Accessibility node
+ * @param domContext - DOM context, if read
+ * @returns Text starting with a space, or empty
+ */
+export function buildContextText(node: A11yNode, domContext: DomContext | null): string {
   if (node.name) {
     return ` "${node.name}"`;
   }
 
   if (domContext) {
-    const tagPart = `<${domContext.tag}${domContext.id ? `#${domContext.id}` : ''}`;
+    const id = domContext.id;
+    const plainId = id !== undefined && PLAIN_ID.test(id);
+    const tagPart = `<${domContext.tag}${plainId ? `#${shortValue('', 'id', id)}` : ''}`;
     const { shown } = labelClasses(domContext.classes, 3);
     const classPart = shown.length > 0 ? `.${shown.join('.')}` : '';
     const previewPart = domContext.preview && !domContext.text ? ` "${domContext.preview}"` : '';
-    return ` ${tagPart}${classPart}>${previewPart}`;
+    const idPart = id && !plainId ? ` id="${shortValue('', 'id', id)}"` : '';
+    return ` ${tagPart}${classPart}${idPart}>${previewPart}`;
   }
 
   return '';
@@ -125,29 +167,6 @@ export function formatSemanticNodeWithContext(data: SemanticNodeWithContext): st
   }
   return line;
 }
-
-/**
- * Elements that cannot hold children (void elements) or whose content is a
- * value shown on the role line (form controls): an empty-element line adds
- * nothing for them.
- */
-const NO_CHILDREN_TAGS = new Set([
-  'area',
-  'base',
-  'br',
-  'col',
-  'embed',
-  'hr',
-  'img',
-  'input',
-  'link',
-  'meta',
-  'source',
-  'track',
-  'wbr',
-  'select',
-  'textarea',
-]);
 
 /**
  * The element's text when the role line does not show it: text longer than

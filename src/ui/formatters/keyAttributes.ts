@@ -58,7 +58,7 @@ function shortUrl(url: string): string {
  * @param value - Full value
  * @returns Short value on one line
  */
-function shortValue(tag: string, name: string, value: string): string {
+export function shortValue(tag: string, name: string, value: string): string {
   let short = value;
   if (name === 'src') short = tag === 'iframe' ? hostOf(value) : fileName(value);
   else if (name === 'href' || name === 'action') short = shortUrl(value);
