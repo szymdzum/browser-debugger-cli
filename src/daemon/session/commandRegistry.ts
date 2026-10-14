@@ -608,9 +608,10 @@ async function sendCdpCall(
 }
 
 /**
- * Send a `bdg cdp` call; a raw script call (`Runtime.evaluate`,
- * `Runtime.callFunctionOn`) has its script stopped when its client
- * disconnects before the call settled, like a `dom eval` (#726).
+ * Send a `bdg cdp` call; a script call of `bdg cdp` itself
+ * (`Runtime.evaluate`, `Runtime.callFunctionOn`; not a bdg command's own
+ * page scripts) has its script stopped when its client disconnects before
+ * the call settled, like a `dom eval` (#726).
  *
  * @param cdp - CDP connection
  * @param params - Method, params, and whether it is a bdg page script
@@ -625,7 +626,7 @@ function sendCdpCallStoppable(
   abandoned: AbortSignal | undefined
 ): Promise<unknown> {
   const send = (): Promise<unknown> => sendCdpCall(cdp, params, store);
-  if (params.isolated || !stopsScriptWhenAbandoned(params.method)) return send();
+  if (params.raw !== true || !stopsScriptWhenAbandoned(params.method)) return send();
   return sendScriptCall(cdp, send, params.params?.['awaitPromise'] === true, abandoned);
 }
 

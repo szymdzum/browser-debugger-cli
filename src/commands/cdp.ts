@@ -818,7 +818,10 @@ async function sendCall(
   collect?: CdpCollectParams,
   notes = !collect
 ): Promise<CommandResult<CdpExecuteData & Partial<CdpCollectedEvents>>> {
-  const response = await callCDP(call.method, call.params, collect ? { collect } : {});
+  const response = await callCDP(call.method, call.params, {
+    raw: true,
+    ...(collect && { collect }),
+  });
   try {
     validateIPCResponse(response);
   } catch (error) {

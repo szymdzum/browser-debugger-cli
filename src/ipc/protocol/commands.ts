@@ -175,6 +175,12 @@ export interface CdpCallCommand {
   owner?: number;
   /** Collect these events while the method runs (`bdg cdp --collect`) */
   collect?: CdpCollectParams;
+  /**
+   * A `bdg cdp` call, not one of a bdg command's own: a script call
+   * (`Runtime.evaluate`, `Runtime.callFunctionOn`) has its script stopped
+   * on the page when the CLI disconnects first (#726)
+   */
+  raw?: boolean;
 }
 
 /**
