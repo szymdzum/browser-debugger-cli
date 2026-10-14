@@ -369,23 +369,29 @@ function spacedCommandName(first: string, commandNames: string[]): string | unde
 /**
  * Reject a command typed as one quoted argument (`bdg "page info"`): the
  * words are meant as separate arguments, so the error names them that way
- * instead of suggesting `%20`. Anything with a colon, dot or slash is a URL
- * and keeps the `%20` hint. The suggestion repeats the words only when they
+ * instead of suggesting `%20`. Only the first word decides: one with a dot,
+ * colon or slash is a URL and keeps the `%20` hint. The suggestion repeats the words only when they
  * are short and safe to paste into a shell; otherwise it points to `--help`.
  *
  * @param arg - The URL argument
- * @param commandNames - Registered top-level command names
+ * @param commands - Registered top-level commands
  * @throws CommandError (80) when the first word is, or is close to, a command
  */
-export function assertNotSpacedCommand(arg: string, commandNames: string[]): void {
+export function assertNotSpacedCommand(arg: string, commands: readonly Command[]): void {
   const [first = '', ...rest] = arg.trim().split(/\s+/);
-  if (rest.length === 0 || !/^[a-z][a-z0-9_-]*$/i.test(first) || /[.:/]/.test(arg)) return;
-  const command = spacedCommandName(first, commandNames);
-  if (command === undefined) return;
-  const words = rest.join(' ');
+  if (rest.length === 0 || !/^[a-z][a-z0-9_-]*$/i.test(first)) return;
+  const name = spacedCommandName(
+    first,
+    commands.map((c) => c.name())
+  );
+  if (name === undefined) return;
+  const subcommands = commands.find((c) => c.name() === name)?.commands ?? [];
+  const [second = '', ...others] = rest;
+  const sub = subcommands.find((c) => c.name() === second.toLowerCase());
+  const words = [sub?.name() ?? second, ...others].join(' ');
   const echoable = words.length <= ECHO_LIMIT && rest.every((w) => SHELL_SAFE_WORD.test(w));
   const shown = arg.length > ECHO_LIMIT ? `${arg.slice(0, ECHO_LIMIT)}…` : arg;
-  const err = spacedCommandError(shown, echoable ? `${command} ${words}` : `${command} --help`);
+  const err = spacedCommandError(shown, echoable ? `${name} ${words}` : `${name} --help`);
   throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_URL);
 }
 
@@ -464,7 +470,7 @@ function validateStartInput(
   }
   const commandNames = program.commands.map((command) => command.name());
   assertNotCommandTypo(url, commandNames);
-  assertNotSpacedCommand(url, commandNames);
+  assertNotSpacedCommand(url, program.commands);
   assertValidUrl(url);
   getIPCRequestTimeout();
   assertStateNotAttached(options);

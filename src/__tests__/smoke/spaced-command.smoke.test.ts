@@ -37,7 +37,9 @@ void describe('quoted command as the start URL (#728)', () => {
       ['page   info', 'bdg page info'],
       [' page info', 'bdg page info'],
       ['pagee info', 'bdg page info'],
-      ['Page Info', 'bdg page Info'],
+      ['Page Info', 'bdg page info'],
+      ['Page Nosuch', 'bdg page Nosuch'],
+      ['dom eval document.title', 'bdg dom eval document.title'],
       ['page $(rm -rf x)', 'bdg page --help'],
       ['peek ;', 'bdg peek --help'],
       ["page 'x'", 'bdg page --help'],
@@ -50,7 +52,7 @@ void describe('quoted command as the start URL (#728)', () => {
   });
 
   void it('keeps the %20 hint for URLs with spaces', async () => {
-    for (const input of ['https://example.com/a b', 'example.com/a b', 'zzzzzz yyyy', 'my site', 'a b', 'my page']) {
+    for (const input of ['https://example.com/a b', 'example.com/a b', 'zzzzzz yyyy', 'my site', 'a b', 'my page', 'https://x.test/a b', 'localhost:3000/my page']) {
       const { exitCode, json } = await runStart(input);
       assert.equal(exitCode, 80, input);
       assert.match(json.suggestion ?? '', /%20/, input);
