@@ -201,9 +201,9 @@ function buildFormatOptions(
  * @param lastN - Messages to show at start (0 = all)
  */
 async function runFollowMode(options: ConsoleCommandOptions, lastN: number): Promise<void> {
-  const shown = new Set<string>();
+  const cursor = createFollowCursor(options, lastN);
   const newCrash = newPageCrashes();
-  let navigationId: number | undefined;
+  let streamNavigationId: number | undefined;
   let started = false;
   const showConsole = async (): Promise<FollowPoll> => {
     const result = await fetchConsoleMessages();
@@ -214,14 +214,7 @@ async function runFollowMode(options: ConsoleCommandOptions, lastN: number): Pro
 
     const { messages, currentNavigationId } = result.data;
     const crashedAt = newCrash(result.data.pageCrashedAt);
-    const matching = applyFilters(messages, options, currentNavigationId);
-    const keys = messageKeys(matching);
-    const fresh = matching.filter((_message, i) => !shown.has(keys[i] as string));
-    const backlog = started || lastN === 0 ? fresh : fresh.slice(-lastN);
-    shown.clear();
-    keys.forEach((key) => shown.add(key));
-    const navigated = started && navigationId !== currentNavigationId;
-    navigationId = currentNavigationId;
+    const backlog = cursor.next(messages, currentNavigationId, result.data.dropped);
     if (options.json) {
       if (!started || backlog.length > 0 || crashedAt !== undefined) {
         const data = buildConsoleJsonOutput(backlog, {
@@ -236,13 +229,14 @@ async function runFollowMode(options: ConsoleCommandOptions, lastN: number): Pro
       const text = formatConsoleFollowLines(backlog, {
         header: !started,
         full: options.full,
-        ...(navigated &&
-          currentNavigationId !== undefined && { navigationId: currentNavigationId }),
+        ...(streamNavigationId !== undefined && { streamNavigationId }),
+        ...(currentNavigationId !== undefined && { currentNavigationId }),
       });
       if (text) console.log(text);
       if (crashedAt !== undefined) console.log(pageCrashedNote(crashedAt));
     }
     started = true;
+    streamNavigationId = currentNavigationId;
     return undefined;
   };
 
@@ -254,21 +248,99 @@ async function runFollowMode(options: ConsoleCommandOptions, lastN: number): Pro
 }
 
 /**
- * Identity of each message across polls (its index can shift when an earlier
- * message is inserted late). Identical messages logged in the same
- * millisecond are told apart by their order.
+ * Content identity of a message: messages with the same one are told apart
+ * only by their number.
  *
- * @param messages - Messages in order
- * @returns One key per message
+ * @param message - A console message
+ * @returns Its identity
  */
-export function messageKeys(messages: ConsoleMessage[]): string[] {
-  const seen = new Map<string, number>();
-  return messages.map((message) => {
-    const base = `${message.timestamp}|${message.type}|${message.navigationId ?? ''}|${message.text}`;
-    const occurrence = (seen.get(base) ?? 0) + 1;
-    seen.set(base, occurrence);
-    return `${base}#${occurrence}`;
-  });
+function messageIdentity(message: ConsoleMessage): string {
+  return `${message.timestamp}|${message.type}|${message.navigationId ?? ''}|${message.text}`;
+}
+
+/**
+ * How many messages of each identity are in a list.
+ *
+ * @param identities - Identities in order
+ * @returns Counts
+ */
+function countIdentities(identities: string[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const identity of identities) counts.set(identity, (counts.get(identity) ?? 0) + 1);
+  return counts;
+}
+
+/** Decides which messages a follow poll prints */
+export interface FollowCursor {
+  /**
+   * The messages not printed yet, in order.
+   *
+   * @param messages - All messages the session kept
+   * @param currentNavigationId - Navigation id of the current page, if known
+   * @param dropped - Oldest messages the session has dropped at its limit so far
+   * @returns Messages to print now
+   */
+  next(
+    messages: ConsoleMessage[],
+    currentNavigationId?: number,
+    dropped?: number
+  ): ConsoleMessage[];
+}
+
+/**
+ * Track what `console --follow` printed. Between two polls the session only
+ * drops its oldest messages (`dropped` says how many) and appends new ones,
+ * so the previous list minus the dropped ones is what was printed and is
+ * still held: per message identity (time, level, page, text), the newest
+ * surplus over that count is new. Identical messages are therefore each
+ * printed once, also when some of them were dropped. A message of a page left
+ * since the last poll is printed like any other. The first poll prints the
+ * page loaded (every page with `--history`), the last `lastN` messages of it;
+ * later polls print what is new on any page. `--level` applies to all of them.
+ * Limit: a message inserted late (by its time) before older ones counts as
+ * new, and a late message the session drops at once makes the next poll
+ * reprint one message identical to the oldest kept.
+ *
+ * @param options - `--history` and `--level`
+ * @param lastN - Messages to show at start (0 = all)
+ * @returns The cursor
+ */
+export function createFollowCursor(
+  options: Pick<ConsoleCommandOptions, 'history' | 'level'>,
+  lastN: number
+): FollowCursor {
+  let previous: string[] = [];
+  let previousDropped: number | undefined;
+  let started = false;
+  return {
+    next(messages, currentNavigationId, dropped = 0) {
+      const identities = messages.map(messageIdentity);
+      const held = countIdentities(
+        previous.slice(Math.max(0, dropped - (previousDropped ?? dropped)))
+      );
+      const surplus = new Map(
+        [...countIdentities(identities)].map(([identity, count]) => [
+          identity,
+          count - (held.get(identity) ?? 0),
+        ])
+      );
+      const isNew = identities.map(() => false);
+      for (let i = identities.length - 1; i >= 0; i--) {
+        const identity = identities[i] as string;
+        const left = surplus.get(identity) ?? 0;
+        if (left <= 0) continue;
+        isNew[i] = true;
+        surplus.set(identity, left - 1);
+      }
+      previous = identities;
+      previousDropped = dropped;
+      const fresh = messages.filter((_message, i) => isNew[i]);
+      if (started) return options.level ? filterByLevel(fresh, options.level) : fresh;
+      started = true;
+      const backlog = applyFilters(fresh, options, currentNavigationId);
+      return lastN === 0 ? backlog : backlog.slice(-lastN);
+    },
+  };
 }
 
 /** Chrome Issues of the page currently loaded */

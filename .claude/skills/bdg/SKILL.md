@@ -185,7 +185,7 @@ bdg network list --filter "has-blocked-cookies:*"   # "Logged out after this req
 bdg network getCookies
 bdg console --level error                     # Errors on the current page
 bdg console                                   # Summary + Issues block: quirks mode, broken labels/duplicate ids, failed @import, eval blocked by CSP
-bdg console --follow                          # Streams (blocks; agents re-run bdg console instead)
+bdg console --follow                          # Streams (blocks; agents re-run bdg console instead); a page left is printed in full, then the separator
 bdg network har /tmp/session.har              # Export HAR 1.2 (credentials redacted, also secret form-control values in HTML bodies; inline-script tokens kept; --include-sensitive keeps all)
 ```
 

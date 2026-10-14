@@ -13,31 +13,47 @@ import { formatSourceLocation, formatTimestamp } from './shared.js';
 /**
  * Lines of the console stream: the new messages since the last poll, with
  * a rule the first time (the stream banner is on stderr) and a separator
- * after a navigation. Texts are cut like `console --list` cuts them.
+ * wherever the stream moves on to a newer page: before the first message of
+ * that page, or at the end when the new page has logged nothing yet. Texts
+ * are cut like `console --list` cuts them.
  *
  * @param messages - New messages
- * @param options - `header` the first time; `navigationId` when the page
- *   changed; `full` to print the texts whole
+ * @param options - `header` the first time; `streamNavigationId` the page
+ *   the stream was on at the last poll (no separators without it);
+ *   `currentNavigationId` the page loaded now; `full` to print the texts whole
  * @returns Text to print (empty when there is nothing new)
  */
 export function formatConsoleFollowLines(
   messages: ConsoleMessage[],
-  options: { header?: boolean; navigationId?: number; full?: boolean | undefined } = {}
+  options: {
+    header?: boolean;
+    streamNavigationId?: number;
+    currentNavigationId?: number;
+    full?: boolean | undefined;
+  } = {}
 ): string {
   const fmt = new OutputFormatter();
   if (options.header) {
     fmt.separator('━', 40);
     if (messages.length === 0) fmt.text('Waiting for messages...');
   }
-  if (options.navigationId !== undefined) {
-    fmt.text(`── Next page (navigation #${options.navigationId}) ──`);
-  }
+  let onPage = options.streamNavigationId;
+  const moveTo = (navigationId: number): void => {
+    fmt.text(`── Next page (navigation #${navigationId}) ──`);
+    onPage = navigationId;
+  };
   for (const msg of messages) {
+    const navigationId = msg.navigationId ?? 0;
+    if (onPage !== undefined && navigationId > onPage) moveTo(navigationId);
     const time = formatTimestamp(msg.timestamp);
     const level = msg.type.padEnd(7);
     fmt.text(`${time} ${level} ${capForDisplay(msg.text, MAX_CONSOLE_TEXT_LENGTH, options.full)}`);
     const source = formatSourceLocation(msg.stackTrace);
     if (source) fmt.text(`                → ${source}`);
+  }
+  const { currentNavigationId } = options;
+  if (onPage !== undefined && currentNavigationId !== undefined && currentNavigationId !== onPage) {
+    moveTo(currentNavigationId);
   }
   return fmt.build();
 }

@@ -38,7 +38,8 @@ export const CONSOLE_BEHAVIORS: BehaviorTable = {
   },
   'console:--follow': {
     default: 'Prints the messages logged so far and exits',
-    whenEnabled: 'Streams new messages as they come (the last --last at start)',
+    whenEnabled:
+      "Streams new messages as they come (the last --last at start); a page logged on before it was left is printed in full, then the navigation separator, then the new page's messages (--level applies to all)",
     automaticBehavior: FOLLOW_BEHAVIOR,
   },
 };
