@@ -352,7 +352,7 @@ export function validateChromeWsUrl(url: string): ValidationResult {
     parsed = new URL(trimmed);
   } catch {
     return invalid(
-      `--chrome-ws-url is not a valid URL: '${url}'`,
+      `--chrome-ws-url is not a valid URL: '${displayTypedUrl(url)}'`,
       'Expected: the DevTools port (9222), host:port, or ws://host:port/devtools/browser/<uuid>'
     );
   }
@@ -366,7 +366,7 @@ export function validateChromeWsUrl(url: string): ValidationResult {
 
   if (!parsed.hostname) {
     return invalid(
-      `--chrome-ws-url is missing a hostname: '${url}'`,
+      `--chrome-ws-url is missing a hostname: '${displayTypedUrl(url)}'`,
       'Expected: the DevTools port (9222), host:port, or ws://host:port/devtools/browser/<uuid>'
     );
   }
