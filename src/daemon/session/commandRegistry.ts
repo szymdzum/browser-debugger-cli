@@ -608,6 +608,20 @@ async function sendCdpCall(
 }
 
 /**
+ * Whether a script call waits for a promise: `awaitPromise`, or a
+ * `replMode` expression with a top-level `await` (the rule of
+ * {@link mayLoseReply}); later scripts can run while it waits.
+ *
+ * @param params - The call
+ * @returns True when it may wait for a promise
+ */
+function waitsForPromise(params: CommandSchemas['cdp_call']['requestSchema']): boolean {
+  const { expression, awaitPromise, replMode } = params.params ?? {};
+  if (awaitPromise === true) return true;
+  return replMode === true && typeof expression === 'string' && hasTopLevelAwait(expression);
+}
+
+/**
  * Send a `bdg cdp` call; a script call of `bdg cdp` itself
  * (`Runtime.evaluate`, `Runtime.callFunctionOn`; not a bdg command's own
  * page scripts) has its script stopped when its client disconnects before
@@ -627,7 +641,7 @@ function sendCdpCallStoppable(
 ): Promise<unknown> {
   const send = (): Promise<unknown> => sendCdpCall(cdp, params, store);
   if (params.raw !== true || !stopsScriptWhenAbandoned(params.method)) return send();
-  return sendScriptCall(cdp, send, params.params?.['awaitPromise'] === true, abandoned);
+  return sendScriptCall(cdp, send, waitsForPromise(params), abandoned);
 }
 
 /**

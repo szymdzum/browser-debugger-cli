@@ -250,4 +250,27 @@ void describe('Interrupted bdg cdp script call', () => {
     assert.equal(survivor.exitCode, 0, shown(survivor));
     assert.match(survivor.stdout, /"value":"finished"/, shown(survivor));
   });
+
+  void it('stops an interrupted dom eval behind a replMode call that awaits forever', async () => {
+    const sentBefore = callsSent();
+    const stopAwaiting = new AbortController();
+    const awaiting = cdpCall(
+      'Runtime.evaluate',
+      { expression: 'await new Promise(() => {})', replMode: true },
+      stopAwaiting.signal
+    );
+    await untilCallsSent(sentBefore + 1);
+    const stopLoop = new AbortController();
+    const loop = runCommand('dom', ['eval', `(() => { ${loopBody('repl-loop', LOOP_MS)} })()`], {
+      timeout: COMMAND_TIMEOUT_MS,
+      interrupt: stopLoop.signal,
+    });
+    await untilBeacon('repl-loop');
+    stopLoop.abort();
+    const interrupted = await loop;
+    assert.equal(interrupted.exitCode, 130, shown(interrupted));
+    await assertAnswersAtOnce();
+    stopAwaiting.abort();
+    await awaiting;
+  });
 });
