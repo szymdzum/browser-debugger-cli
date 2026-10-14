@@ -19,6 +19,7 @@ import { callCDP } from '@/ipc/client.js';
 import { getSessionFilePath } from '@/session/paths.js';
 import { applyFilters, parseFilterString } from '@/telemetry/filterDsl.js';
 import { buildHAR } from '@/telemetry/har/builder.js';
+import { redactUrl } from '@/telemetry/har/sanitize.js';
 import type { HAR } from '@/telemetry/har/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import {
@@ -138,7 +139,9 @@ export function registerHarCommand(networkCmd: Command): void {
             validateFilterOption(options.filter);
             const filters = parseFilterString(options.filter);
             const originalCount = requests.length;
-            requests = applyFilters(requests, filters);
+            requests = applyFilters(requests, filters, {
+              urlOf: options.includeSensitive ? undefined : (request) => redactUrl(request.url),
+            });
             filtered = requests.length !== originalCount;
           }
 

@@ -25,9 +25,19 @@ const MASKED_OUTPUT_AUTOMATIC =
 /** Behaviors by registry key */
 export const NETWORK_BEHAVIORS: BehaviorTable = {
   'list:--include-sensitive': {
-    default: `${MASKED_URL_DEFAULT}. --filter matches the shown (masked) URL, so url~token=abc does not match`,
-    whenEnabled: `${MASKED_URL_ENABLED}; --filter matches the raw URL again; with --follow the warning is printed once on stderr`,
+    default: `${MASKED_URL_DEFAULT}. --filter matches the shown (masked) URL, so url:token=abc does not match`,
+    whenEnabled: `${MASKED_URL_ENABLED}; --filter (url:) matches the raw query and fragment again; with --follow the warning is printed once on stderr`,
     automaticBehavior: MASKED_URL_AUTOMATIC,
+  },
+  'list:--filter': {
+    default:
+      'DevTools-style DSL, space = AND, ! negates. url:<text> matches a case-insensitive part of the URL as shown (scheme, host, path, query; masked values and user:pass@ are not in it, so they never match); with a * the whole URL must match the pattern, as domain: matches a host (url:*api*v2*)',
+    whenEnabled:
+      'An invalid filter exits 81; a word without type: (access_token) suggests url:access_token',
+  },
+  'har:--filter': {
+    default:
+      'Same DSL as network list. url:<text> matches the URL as the HAR writes it: credentials replaced by [REDACTED] unless --include-sensitive, so a redacted value never matches',
   },
   'list:--follow': {
     default: 'Lists the requests captured so far and exits',

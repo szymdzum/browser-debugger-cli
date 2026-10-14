@@ -7,6 +7,7 @@
  */
 
 import { RESOURCE_TYPE_ABBREVIATIONS, resourceTypeFromName } from '@/constants.js';
+import { untypedFilterWordSuggestion } from '@/errors/messages.js';
 import { summarizeBlockedCookies } from '@/telemetry/blockedCookies.js';
 import { matchesWildcard } from '@/telemetry/filters.js';
 import { currentNavigationOf, isPreviousPage } from '@/telemetry/pageScope.js';
@@ -19,6 +20,7 @@ const log = createLogger('network');
 
 export type FilterType =
   | 'domain'
+  | 'url'
   | 'status-code'
   | 'method'
   | 'mime-type'
@@ -54,6 +56,7 @@ const SIZE_UNITS: Record<string, number> = {
 
 const VALID_FILTER_TYPES: FilterType[] = [
   'domain',
+  'url',
   'status-code',
   'method',
   'mime-type',
@@ -189,6 +192,20 @@ function matchesDomain(url: string, value: string): boolean {
   if (!parsed) return false;
   const effective = parsed.port ? Number(parsed.port) : DEFAULT_PORTS[extractScheme(url)];
   return effective === split.port;
+}
+
+/**
+ * Check a request URL against a `url:` value.
+ *
+ * @param url - The URL as shown (masked unless `--include-sensitive`)
+ * @param value - `url:` value
+ * @returns With a `*`: the whole URL matches the pattern, as `domain:` matches a host;
+ *   without one: the URL contains the text. Case-insensitive.
+ */
+function matchesUrlText(url: string, value: string): boolean {
+  return value.includes('*')
+    ? matchesWildcard(url, value)
+    : url.toLowerCase().includes(value.toLowerCase());
 }
 
 /**
@@ -352,6 +369,20 @@ function keyOnlySuggestion(type: string): string | undefined {
   return any === undefined ? undefined : `Did you mean: ${type.toLowerCase()}:${any}?`;
 }
 
+/**
+ * Suggestion for a filter word without a colon: `url:` for a word that is no
+ * filter type, the format otherwise.
+ *
+ * @param word - The word without its `!` or `-` prefix
+ * @param negated - Whether it had one
+ * @returns The suggestion
+ */
+function untypedWordSuggestion(word: string, negated: boolean): string {
+  return VALID_FILTER_TYPES.includes(word.toLowerCase() as FilterType)
+    ? 'Use format like "status-code:404" or "domain:api.*"'
+    : untypedFilterWordSuggestion(word, negated);
+}
+
 function parseFilterToken(token: string): FilterTokenResult {
   const trimmed = token.trim();
   if (!trimmed) return createError('Empty filter token');
@@ -363,7 +394,7 @@ function parseFilterToken(token: string): FilterTokenResult {
   if (colonIndex === -1) {
     return createError(
       `Invalid filter format: "${token}". Expected "type:value" format`,
-      keyOnlySuggestion(withoutPrefix) ?? 'Use format like "status-code:404" or "domain:api.*"'
+      keyOnlySuggestion(withoutPrefix) ?? untypedWordSuggestion(withoutPrefix, negated)
     );
   }
 
@@ -475,6 +506,8 @@ function matchesCacheHeaders(headers: Record<string, string> | undefined): boole
 export interface FilterContext {
   /** Navigation id of the page currently loaded (`page:`); default: the latest among the requests */
   currentNavigationId?: number | undefined;
+  /** The URL of a request as the output shows it (`url:`); default: as captured */
+  urlOf?: ((request: NetworkRequest) => string) | undefined;
 }
 
 function matchesFilter(
@@ -485,6 +518,9 @@ function matchesFilter(
   switch (filter.type) {
     case 'domain':
       return matchesDomain(request.url, filter.value);
+
+    case 'url':
+      return matchesUrlText(context.urlOf?.(request) ?? request.url, filter.value);
 
     case 'status-code':
       if (!request.status) return false;
@@ -569,6 +605,7 @@ export function applyFilters(
   if (filters.length === 0) return requests;
   const resolved: FilterContext = {
     currentNavigationId: currentNavigationOf(requests, context.currentNavigationId),
+    urlOf: context.urlOf,
   };
 
   return requests.filter((request) =>
@@ -589,6 +626,9 @@ Filter syntax:
   domain:api.*            Domain with wildcards (any port)
   domain:localhost:3000   Domain and port (no port in the URL: 80 for http, 443 for https)
                           IPv6 in brackets: domain:[::1]:8080
+  url:access_token        Text in the URL as shown (scheme and query included, case-insensitive;
+                          masked values do not match, --include-sensitive shows them);
+                          with *, the whole URL must match: url:*api*v2*
   method:POST             HTTP method
   mime-type:application/json
   resource-type:XHR,Fetch CDP resource types (comma-separated)

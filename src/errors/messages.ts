@@ -1867,6 +1867,22 @@ function shellQuote(value: string): string {
   return `'${value.split("'").join(`'\\''`)}'`;
 }
 
+/** Characters a shell passes through unquoted */
+const SHELL_SAFE_WORD = /^[\w@%+=:,./-]+$/;
+
+/**
+ * Suggestion for a `--filter` word written without a `type:`.
+ *
+ * @param word - The word as typed, without any `!` or `-` prefix
+ * @param negated - Whether the word was negated
+ * @returns e.g. `Did you mean: url:access_token? (url: matches a part of the URL as shown)`
+ */
+export function untypedFilterWordSuggestion(word: string, negated: boolean): string {
+  const filter = `${negated ? '!' : ''}url:${word}`;
+  const written = SHELL_SAFE_WORD.test(filter) ? filter : shellQuote(filter);
+  return `Did you mean: ${written}? (url: matches a part of the URL as shown)`;
+}
+
 /** Why a page scroll moved nothing */
 export interface ScrollNoEffect {
   /** Direction asked for */

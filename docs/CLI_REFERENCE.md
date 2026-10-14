@@ -1178,6 +1178,7 @@ bdg network list --filter "domain:api.*"           # API subdomain
 bdg network list --filter "domain:*.example.com"   # All subdomains
 bdg network list --filter "!domain:cdn.*"          # Exclude CDN
 bdg network list --filter "domain:localhost:3000"  # One host and port
+bdg network list --filter "url:access_token"       # Part of the URL (query included)
 
 # Filter by HTTP method
 bdg network list --filter "method:POST"
@@ -1288,6 +1289,7 @@ A request on which Chrome blocked a cookie ends with `⚠ cookie blocked` (`bdg 
 |--------|-------------|----------|
 | `status-code:<op><n>` | HTTP status code | `status-code:404`, `status-code:>=400` |
 | `domain:<pattern>[:<port>]` | Domain with wildcards; with a port only that port matches (a URL without one counts as 80 for http, 443 for https); IPv6 in brackets; a port outside 1-65535 exits 81 | `domain:api.*`, `domain:*.example.com`, `domain:localhost:3000`, `domain:[::1]:8080` |
+| `url:<text>` | Case-insensitive part of the URL as shown (scheme, host, path, query, fragment). With `*`, the whole URL must match the pattern, as `domain:` matches a host: `url:*api*v2*`, not `url:api*v2`. Masked values and `user:pass@` are not in the shown URL, so they never match; `--include-sensitive` shows the query and fragment values (`network har` matches the URL as the HAR writes it, `[REDACTED]` unless `--include-sensitive`). A word without `type:` (`--filter access_token`) exits 81 and suggests `url:access_token` | `url:access_token`, `url:/api/v2/`, `!url:cdn`, `url:*api*v2*` |
 | `method:<method>` | HTTP method | `method:POST`, `method:DELETE` |
 | `mime-type:<type>` | Response MIME type | `mime-type:application/json` |
 | `resource-type:<types>` | CDP resource type(s) | `resource-type:XHR,Fetch` |
