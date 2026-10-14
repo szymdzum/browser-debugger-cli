@@ -191,7 +191,7 @@ export interface ActionEffects {
    * Elements added plus elements removed during the action (top-level nodes,
    * so a replaced row counts twice), only when that is at least 3, the page
    * was not changing on its own and nothing else is reported: no other
-   * effect, request, dialog, new window or console message (absent otherwise)
+   * effect, request, dialog, new window or console error (absent otherwise)
    */
   domChanges?: number;
   /** "none" when the action had no visible effect: no DOM change, request or navigation */
