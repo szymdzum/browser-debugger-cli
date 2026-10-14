@@ -50,8 +50,9 @@ const HANDSHAKE_TIMED_OUT = /handshake has timed out/i;
  * @param options - Options
  * @returns The connection
  * @throws CommandError 82 when the prompt was declined, 102 when it was not
- *   answered in time, 83 when nothing listens at a URL a `DevToolsActivePort`
- *   file named; other failures (an abort included) as they are
+ *   answered in time, 83 for any other failure at a URL a `DevToolsActivePort`
+ *   file named (a stale file: nothing listens there, or something else that
+ *   is not Chrome's browser endpoint); other failures (an abort included) as they are
  */
 export async function connectToBrowser(
   wsUrl: string,
@@ -100,7 +101,7 @@ function describeFailure(
     const seconds = Math.round(timeoutMs / 1000);
     return commandError(remoteDebuggingUnansweredError(seconds), EXIT_CODES.CDP_TIMEOUT);
   }
-  if (activePortFile !== undefined && cause?.code === 'ECONNREFUSED') {
+  if (activePortFile !== undefined) {
     const err = staleDevToolsActivePortError(activePortFile, new URL(wsUrl).host);
     return commandError(err, EXIT_CODES.RESOURCE_NOT_FOUND);
   }

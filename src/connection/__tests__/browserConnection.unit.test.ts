@@ -31,7 +31,9 @@ interface FakeBrowser {
  * @param answer - What the "user" does with the prompt
  * @returns The endpoint
  */
-async function fakeBrowser(answer: 'allow' | 'deny' | 'never'): Promise<FakeBrowser> {
+async function fakeBrowser(
+  answer: 'allow' | 'deny' | 'never' | 'not-found' | 'hang-up'
+): Promise<FakeBrowser> {
   let upgrades = 0;
   const sockets = new Set<net.Socket>();
   const server = http.createServer();
@@ -43,6 +45,10 @@ async function fakeBrowser(answer: 'allow' | 'deny' | 'never'): Promise<FakeBrow
       socket.end(
         'HTTP/1.1 403 Forbidden\r\nContent-Type: text/html\r\nContent-Length: 19\r\n\r\nConnection rejected'
       );
+    } else if (answer === 'not-found') {
+      socket.end('HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n');
+    } else if (answer === 'hang-up') {
+      socket.destroy();
     } else if (answer === 'allow') {
       wss.handleUpgrade(request, socket, head, () => undefined);
     }
@@ -160,4 +166,25 @@ void describe('connectToBrowser', () => {
       })
     );
   });
+
+  for (const answer of ['not-found', 'hang-up'] as const) {
+    void it(`exits 83 for a stale DevToolsActivePort whose port another server now owns (${answer})`, async () => {
+      const browser = await fakeBrowser(answer);
+      try {
+        await assert.rejects(
+          connectToBrowser(browser.wsUrl, { activePortFile: '/tmp/x/DevToolsActivePort' }),
+          commandError(83, (error) => {
+            assert.match(error.message, /\/tmp\/x\/DevToolsActivePort/);
+            assert.match(
+              String(error.metadata.suggestion),
+              /chrome:\/\/inspect\/#remote-debugging/
+            );
+          })
+        );
+        assert.equal(browser.upgrades(), 1);
+      } finally {
+        await browser.close();
+      }
+    });
+  }
 });

@@ -15,6 +15,7 @@ import { after, describe, it } from 'node:test';
 import {
   defaultChromeUserDataDir,
   discoverBrowser,
+  expandHome,
   parseDevToolsActivePort,
 } from '@/connection/devToolsActivePort.js';
 import { CommandError } from '@/errors/index.js';
@@ -95,6 +96,15 @@ void describe('defaultChromeUserDataDir', () => {
   });
 });
 
+void describe('expandHome', () => {
+  void it('expands a leading ~ the shell left (--user-data-dir=~/x)', () => {
+    assert.equal(expandHome('~', '/home/me'), '/home/me');
+    assert.equal(expandHome('~/Library/x', '/home/me'), path.join('/home/me', 'Library/x'));
+    assert.equal(expandHome('/abs/~/x', '/home/me'), '/abs/~/x');
+    assert.equal(expandHome('~other/x', '/home/me'), '~other/x');
+  });
+});
+
 void describe('parseDevToolsActivePort', () => {
   void it('reads the port and the browser path', () => {
     assert.deepEqual(parseDevToolsActivePort('9222\n/devtools/browser/abc-123\n'), {
@@ -140,7 +150,14 @@ void describe('discoverBrowser', () => {
   });
 
   void it('exits 83 naming a garbled file', () => {
-    assertNotFound(profile('not a port file'), /could not be read/);
+    assertNotFound(profile('not a port file'), /could not be read.*: line 1 is not a port/);
+    assertNotFound(profile(''), /could not be read.*: the file is empty/);
+    assertNotFound(
+      profile('9222\n'),
+      /could not be read.*: line 2 \(the browser path\) is missing/
+    );
+    assertNotFound(profile('70000\n/devtools/browser/x'), /: line 1 is not a port/);
+    assertNotFound(profile('9222\n/devtools/page/x'), /: line 2 is not \/devtools\/browser\/<id>/);
   });
 
   void it('exits 83 naming a file that cannot be read', () => {

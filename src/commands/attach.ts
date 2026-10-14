@@ -18,7 +18,11 @@ import { positiveIntRule } from '@/commands/shared/validation.js';
 import { assertValidChromeWsUrl, resolveChromeWsUrl } from '@/commands/start.js';
 import { connectToBrowser } from '@/connection/browserConnection.js';
 import { listPageTabs, type PageTab } from '@/connection/browserTabs.js';
-import { defaultChromeUserDataDir, discoverBrowser } from '@/connection/devToolsActivePort.js';
+import {
+  defaultChromeUserDataDir,
+  discoverBrowser,
+  expandHome,
+} from '@/connection/devToolsActivePort.js';
 import { CommandError } from '@/errors/index.js';
 import { attachEndpointConflictError } from '@/errors/messages.js';
 import { formatTabList } from '@/ui/formatters/attach.js';
@@ -58,7 +62,9 @@ async function browserEndpoint(options: AttachOptions): Promise<BrowserEndpoint>
     );
   }
   if (chromeWsUrl === undefined) {
-    const { wsUrl, file } = discoverBrowser(userDataDir ?? defaultChromeUserDataDir());
+    const { wsUrl, file } = discoverBrowser(
+      userDataDir === undefined ? defaultChromeUserDataDir() : expandHome(userDataDir)
+    );
     return { wsUrl, activePortFile: file };
   }
   assertValidChromeWsUrl(chromeWsUrl);

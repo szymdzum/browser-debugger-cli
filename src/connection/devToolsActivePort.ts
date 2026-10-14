@@ -83,6 +83,36 @@ export function parseDevToolsActivePort(text: string): { port: number; path: str
 }
 
 /**
+ * Why a `DevToolsActivePort` text did not parse (never quoting its content).
+ *
+ * @param text - File content
+ * @returns The reason
+ */
+function garbledReason(text: string): string {
+  const [portLine = '', pathLine = ''] = text.split(/\r?\n/).map((line) => line.trim());
+  if (text.trim() === '') return 'the file is empty';
+  if (parseDevToolsActivePort(`${portLine}\n/devtools/browser/x`) === null) {
+    return 'line 1 is not a port (1-65535)';
+  }
+  return pathLine === ''
+    ? 'line 2 (the browser path) is missing'
+    : 'line 2 is not /devtools/browser/<id>';
+}
+
+/**
+ * A directory given on the command line with a leading `~` (not expanded
+ * by the shell in `--user-data-dir=~/x`) resolved against the home dir.
+ *
+ * @param dir - The directory
+ * @param home - Home dir (default: this user's)
+ * @returns The directory with `~` expanded
+ */
+export function expandHome(dir: string, home: string = os.homedir()): string {
+  if (dir === '~') return home;
+  return /^~[/\\]/.test(dir) ? path.join(home, dir.slice(2)) : dir;
+}
+
+/**
  * The browser endpoint the `DevToolsActivePort` file of a user data dir names.
  *
  * @param userDataDir - Chrome's user data dir
@@ -99,7 +129,7 @@ export function discoverBrowser(userDataDir: string): DiscoveredBrowser {
     fail(missing ? devToolsActivePortMissingError(file) : unreadable(file, error));
   }
   const parsed = parseDevToolsActivePort(text);
-  if (!parsed) fail(devToolsActivePortUnreadableError(file));
+  if (!parsed) fail(unreadable(file, garbledReason(text)));
   return { wsUrl: `ws://127.0.0.1:${parsed.port}${parsed.path}`, file };
 }
 
@@ -107,12 +137,13 @@ export function discoverBrowser(userDataDir: string): DiscoveredBrowser {
  * The unreadable-file error, with the reason it could not be read.
  *
  * @param file - The file
- * @param error - The read error
+ * @param reason - The read error, or why the content did not parse
  * @returns Message and suggestion
  */
-function unreadable(file: string, error: unknown): { message: string; suggestion: string } {
+function unreadable(file: string, reason: unknown): { message: string; suggestion: string } {
   const err = devToolsActivePortUnreadableError(file);
-  return { ...err, message: `${err.message}: ${getErrorMessage(error)}` };
+  const detail = typeof reason === 'string' ? reason : getErrorMessage(reason);
+  return { ...err, message: `${err.message}: ${detail}` };
 }
 
 /**

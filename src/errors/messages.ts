@@ -3501,15 +3501,16 @@ export function devToolsActivePortUnreadableError(file: string): ErrorWithSugges
 }
 
 /**
- * Nothing listens on the port a `DevToolsActivePort` file names (remote
- * debugging turned off, or Chrome closed, after it wrote the file).
+ * No Chrome answers on the port a `DevToolsActivePort` file names (remote
+ * debugging turned off, or Chrome closed, after it wrote the file; the port
+ * may be free or another program's now).
  *
  * @param file - The file
  * @param endpoint - host:port it names
  */
 export function staleDevToolsActivePortError(file: string, endpoint: string): ErrorWithSuggestion {
   return {
-    message: `Nothing is listening at ${endpoint}, the port ${file} names: remote debugging was turned off or Chrome closed`,
+    message: `No Chrome answers at ${endpoint}, the port ${file} names (a stale file): remote debugging was turned off or Chrome closed`,
     suggestion: REMOTE_DEBUGGING_SUGGESTION,
   };
 }
