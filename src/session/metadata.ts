@@ -28,6 +28,8 @@ export interface SessionMetadata {
   port: number;
   targetId?: string | undefined;
   webSocketDebuggerUrl?: string | undefined;
+  /** Attached to a tab of a running Chrome with `bdg attach` */
+  attached?: boolean | undefined;
   activeTelemetry?: TelemetryType[] | undefined;
   /** When `--timeout` stops the session (epoch ms) */
   autoStopAt?: number | undefined;

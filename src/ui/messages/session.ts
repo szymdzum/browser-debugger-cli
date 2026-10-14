@@ -19,6 +19,8 @@ import { startStateLine } from '@/ui/messages/stateMessages.js';
 export interface LandingPageOptions {
   /** Target URL being monitored */
   url: string;
+  /** Attached to a tab as it was (`bdg attach`) */
+  attached?: boolean;
   /** HTTP status of the main document (a warning is shown for 4xx/5xx) */
   documentStatus?: number;
   /** The page had not finished loading (a warning names what it waits on) */
@@ -33,6 +35,22 @@ export interface LandingPageOptions {
   state?: StateSummary;
 }
 
+/** Start notice of `bdg attach`: what a late attach recovers and what it cannot */
+export const ATTACHED_NOTICE =
+  'Attached without reloading: console messages and errors logged earlier were replayed; earlier network requests are not available';
+
+/**
+ * How `bdg status` describes a Chrome bdg did not launch.
+ *
+ * @param attached - The session was started with `bdg attach`
+ * @returns The description
+ */
+export function externalChromeText(attached: boolean | undefined): string {
+  return attached
+    ? 'external, attached to one tab (bdg stop detaches only)'
+    : 'external (not launched by bdg)';
+}
+
 /**
  * Lines shown under the target in both the full and the quiet start output:
  * what `--state` restored, the session name, an HTTP error of the page, a
@@ -43,8 +61,9 @@ export interface LandingPageOptions {
  * @returns Lines (empty when there is nothing to say)
  */
 export function startNotices(options: LandingPageOptions): string[] {
-  const { documentStatus, loading, autoStopAt, session, dialogs = [], state } = options;
+  const { documentStatus, loading, autoStopAt, session, dialogs = [], state, attached } = options;
   return [
+    ...(attached ? [ATTACHED_NOTICE] : []),
     ...(state ? [startStateLine(state)] : []),
     ...(session
       ? [

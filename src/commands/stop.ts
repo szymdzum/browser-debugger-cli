@@ -5,10 +5,12 @@ import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type { StopCommandOptions } from '@/commands/shared/optionTypes.js';
 import type { StopResult } from '@/commands/types.js';
 import { CommandError } from '@/errors/index.js';
+import { killAttachedChromeError } from '@/errors/messages.js';
 import { stopSession } from '@/ipc/client.js';
 import { IPCErrorCode } from '@/ipc/index.js';
 import { IPCTimeoutError } from '@/ipc/transport/index.js';
 import { readLiveDaemonPid } from '@/session/cleanup/staleSession.js';
+import { readSessionMetadata } from '@/session/metadata.js';
 import { joinLines } from '@/ui/formatting.js';
 import {
   chromeClosedMessage,
@@ -74,6 +76,19 @@ function formatStop(data: StopResult): string {
 }
 
 /**
+ * Refuse `--kill-chrome` for a session `bdg attach` started: its Chrome is
+ * the user's, and stop only detaches.
+ *
+ * @param options - Stop options
+ * @throws CommandError (81) for an attached session
+ */
+function assertKillChromeAllowed(options: StopCommandOptions): void {
+  if (!options.killChrome || !readSessionMetadata()?.attached) return;
+  const err = killAttachedChromeError();
+  throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
+}
+
+/**
  * Register stop command
  *
  * @param program - Commander.js Command instance to register commands on
@@ -91,6 +106,7 @@ export function registerStopCommand(program: Command): void {
     .action(async (options: StopCommandOptions) => {
       await runCommand<StopCommandOptions, StopResult>(
         async () => {
+          assertKillChromeAllowed(options);
           try {
             const daemonPid = readLiveDaemonPid();
             const response = await stopSession();

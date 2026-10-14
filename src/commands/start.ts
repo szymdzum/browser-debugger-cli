@@ -527,7 +527,7 @@ export function registerStartCommands(program: Command): void {
  * @returns WebSocket URL, or undefined without the option
  * @throws CommandError (101) when the endpoint does not answer or is not DevTools
  */
-async function resolveChromeWsUrl(value: string | undefined): Promise<string | undefined> {
+export async function resolveChromeWsUrl(value: string | undefined): Promise<string | undefined> {
   const endpoint = value === undefined ? null : devToolsHttpEndpoint(value);
   if (endpoint === null) return value;
   const { hostname, port, protocol } = new URL(endpoint);
@@ -698,7 +698,7 @@ function assertValidUrl(url: string): void {
   );
 }
 
-function assertValidChromeWsUrl(url: string): void {
+export function assertValidChromeWsUrl(url: string): void {
   const result = validateChromeWsUrl(url);
   if (result.valid) return;
   throw new CommandError(

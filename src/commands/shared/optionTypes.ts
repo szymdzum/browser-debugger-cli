@@ -414,6 +414,8 @@ export interface SessionStartOptions {
   headless: boolean;
   /** Connect to existing Chrome instance via WebSocket URL */
   chromeWsUrl: string | undefined;
+  /** `bdg attach`: the tab to attach to (pattern or index), without navigating */
+  attachTab?: string | undefined;
   /** Quiet mode - minimal output for AI agents */
   quiet: boolean;
   /** Print the result as a JSON envelope */

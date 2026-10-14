@@ -40,6 +40,8 @@ export interface StatusResponseData {
     port: number;
     targetId?: string;
     webSocketDebuggerUrl?: string;
+    /** Attached to a tab of a running Chrome with `bdg attach` (one browser connection) */
+    attached?: boolean;
     activeTelemetry?: TelemetryType[];
     /** When `--timeout` stops the session (epoch ms) */
     autoStopAt?: number;

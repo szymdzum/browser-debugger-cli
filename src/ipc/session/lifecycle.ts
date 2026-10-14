@@ -75,6 +75,8 @@ export interface SessionOptions {
   headless?: boolean;
   /** Connect to existing Chrome instance. */
   chromeWsUrl?: string;
+  /** `bdg attach`: the tab of the `chromeWsUrl` browser to attach to (pattern or index), without navigating. */
+  attachTab?: string;
   /** Custom Chrome flags (e.g., ['--ignore-certificate-errors']). */
   chromeFlags?: string[];
   /** Viewport size the page is emulated at (`--viewport`). */
@@ -121,6 +123,8 @@ export interface StartSessionResponseData {
   dialogs?: DialogInfo[];
   /** What `--state` restored (counts only). */
   state?: StateSummary;
+  /** Attached to a tab as it was (`bdg attach`): not navigated, earlier network requests unknown. */
+  attached?: boolean;
   /** True if a stale session was auto-recovered before this one started. */
   recovered?: boolean;
   /** Target URL or ws URL of the stale session that was recovered, if recorded. */

@@ -13,6 +13,7 @@ import { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
 import { CaptureGate, TELEMETRY_READS } from '@/daemon/session/captureGate.js';
 import { connectCDP, connectPage, navigateToTarget } from '@/daemon/session/cdpSetup.js';
 import {
+  attachToBrowserTab,
   externalChromePort,
   findPageTarget,
   setupChromeConnection,
@@ -31,7 +32,11 @@ import { TabTracker } from '@/daemon/session/tabs.js';
 import { releaseConnection, terminateChrome } from '@/daemon/session/teardown.js';
 import type { SessionConfig } from '@/daemon/session/types.js';
 import { CommandError } from '@/errors/index.js';
-import { chromeInUseBySessionError, unknownSessionCommandMessage } from '@/errors/messages.js';
+import {
+  attachedTabSwitchError,
+  chromeInUseBySessionError,
+  unknownSessionCommandMessage,
+} from '@/errors/messages.js';
 import type { ChromeNoticeCode, NoticeSink } from '@/errors/notices.js';
 import type { CommandName, CommandSchemas } from '@/ipc/index.js';
 import type { PageLoadingState } from '@/ipc/protocol/commands.js';
@@ -168,6 +173,8 @@ export interface SessionInfo {
   dialogs?: DialogInfo[];
   /** What `--state` restored */
   state?: StateSummary;
+  /** Attached to a tab as it was (`bdg attach`) */
+  attached?: boolean;
 }
 
 /** Session metadata as reported in status responses. */
@@ -238,14 +245,14 @@ export class Session {
    * Synchronous so the caller can register the session (and stop it) before
    * any asynchronous work starts; the CDP port is resolved in {@link launch}.
    *
-   * @param url - Target URL
+   * @param url - Target URL (not checked for `bdg attach`, which never navigates)
    * @param options - Session options from the start request
    * @param onEnded - Called once when a launched session ends for any reason
    * @returns Unlaunched session
    * @throws CommandError for an invalid URL
    */
   static create(url: string, options: SessionOptions, onEnded: SessionEndedCallback): Session {
-    const validation = validateUrl(url);
+    const validation = options.attachTab === undefined ? validateUrl(url) : { valid: true as const };
     if (!validation.valid) {
       throw new CommandError(
         validation.error,
@@ -361,6 +368,7 @@ export class Session {
       ...(this.loading && { loading: this.loading }),
       ...(this.startDialogs.length > 0 && { dialogs: this.startDialogs }),
       ...(this.stateRestored && { state: this.stateRestored }),
+      ...(this.config.attachTab !== undefined && { attached: true }),
     };
   }
 
@@ -381,6 +389,7 @@ export class Session {
         autoStopAt: this.autoStopAt,
         targetId: target?.id,
         webSocketDebuggerUrl: target?.webSocketDebuggerUrl,
+        attached: this.config.attachTab !== undefined || undefined,
         viewport: this.config.viewport,
         colorScheme: this.config.colorScheme,
         dialog: this.config.dialog,
@@ -480,7 +489,10 @@ export class Session {
       findPageTarget: () => findPageTarget(this.config, this.store, log),
       connect: async (signal) => {
         const onLost = (lost: CDPConnection): void => this.pages.onPageDisconnected(lost);
-        const cdp = await connectCDP(this.store, log, onLost, { external, signal });
+        const cdp =
+          this.config.attachTab === undefined
+            ? await connectCDP(this.store, log, onLost, { external, signal })
+            : await attachToBrowserTab(this.config, this.store, log, onLost, signal);
         this.pages.adopt(cdp, []);
         return cdp;
       },
@@ -496,6 +508,7 @@ export class Session {
         this.pages.adopt(cdp, await this.startPage(cdp, { kind: 'first' }));
       },
       navigate: async (cdp, chrome, signal) => {
+        if (this.config.attachTab !== undefined) return;
         this.documentRequestId = await navigateToTarget(
           cdp,
           this.config,
@@ -563,6 +576,7 @@ export class Session {
     const { chromeWsUrl } = this.config;
     if (!chromeWsUrl) return this.launchOwnChrome(signal);
     this.config = { ...this.config, port: externalChromePort(chromeWsUrl) };
+    if (this.config.attachTab !== undefined) return Promise.resolve(null);
     return setupChromeConnection(this.config, this.store, log, this.notify, signal);
   }
 
@@ -702,6 +716,14 @@ export class Session {
    * @throws CommandError (90) naming the other session
    */
   private async assertTabFree(targetId: string, pageWsUrl: string): Promise<void> {
+    if (this.config.attachTab !== undefined) {
+      const err = attachedTabSwitchError();
+      throw new CommandError(
+        err.message,
+        { suggestion: err.suggestion },
+        EXIT_CODES.INVALID_ARGUMENTS
+      );
+    }
     if (!this.config.chromeWsUrl) return;
     const ids = this.tabs.list().map((tab) => tab.targetId);
     const owner = await findConflictingOwner(ids, targetId);
@@ -781,6 +803,7 @@ function buildConfig(url: string, port: number, options: SessionOptions): Sessio
       userDataDir: options.userDataDir,
       maxBodySize: options.maxBodySize,
       chromeWsUrl: options.chromeWsUrl,
+      attachTab: options.attachTab,
       chromeFlags: options.chromeFlags,
       viewport: options.viewport,
       colorScheme: options.colorScheme,
