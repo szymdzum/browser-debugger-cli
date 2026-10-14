@@ -3542,3 +3542,15 @@ export function attachedTabSwitchError(): ErrorWithSuggestion {
     suggestion: 'Stop it (bdg stop) and attach to the other tab: bdg attach <pattern|index>',
   };
 }
+
+/**
+ * An empty `bdg attach` pattern: it would match every tab.
+ *
+ * @param tabList - The tabs, one `[i] title — url` line each
+ */
+export function emptyTabPatternError(tabList: string): ErrorWithSuggestion {
+  return {
+    message: 'The tab pattern is empty',
+    suggestion: `Give an index or part of the URL or title:\n${tabList}`,
+  };
+}

@@ -264,6 +264,9 @@ export class Session {
     return new Session(buildConfig(url, options.port ?? 0, options), onEnded);
   }
 
+  /** The attached tab closed: its page session detached while the browser stayed */
+  private attachedTabClosed = false;
+
   /**
    * Whether the session was started with `bdg attach`: one browser
    * connection, its tab never navigated.
@@ -502,7 +505,16 @@ export class Session {
         const onLost = (lost: CDPConnection): void => this.pages.onPageDisconnected(lost);
         const cdp = !this.attachedTab
           ? await connectCDP(this.store, log, onLost, { external, signal })
-          : await attachToBrowserTab(this.config, this.store, log, onLost, signal);
+          : await attachToBrowserTab(
+              this.config,
+              this.store,
+              log,
+              (lost) => {
+                this.attachedTabClosed = lost.pageSessionEnded;
+                onLost(lost);
+              },
+              signal
+            );
         this.pages.adopt(cdp, []);
         return cdp;
       },
@@ -772,7 +784,9 @@ export class Session {
   private async endAfterDisconnect(cause?: ConnectionLossCause): Promise<void> {
     if (this.chrome) await delay(CRASH_SETTLE_MS);
     const chrome: ChromeAfterLoss = !this.chrome
-      ? 'unknown'
+      ? this.attachedTabClosed
+        ? 'running'
+        : 'unknown'
       : isProcessAlive(this.chrome.pid)
         ? 'running'
         : 'exited';

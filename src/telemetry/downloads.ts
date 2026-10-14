@@ -33,6 +33,8 @@ export type DownloadDestination =
 /** `Browser.downloadWillBegin` parameters bdg reads */
 interface DownloadWillBegin {
   guid: string;
+  /** Frame that started the download */
+  frameId?: string;
   url: string;
   suggestedFilename: string;
 }
@@ -87,10 +89,12 @@ export class DownloadTracker {
   /**
    * @param record - Session record receiving downloads and the warning
    * @param destination - Where downloads should go
+   * @param ownsFrame - Downloads of frames it rejects are ignored (another tab's, for `bdg attach`)
    */
   constructor(
     private readonly record: DownloadRecord,
-    private readonly destination: DownloadDestination
+    private readonly destination: DownloadDestination,
+    private readonly ownsFrame: (frameId: string | undefined) => boolean = () => true
   ) {
     if (destination.kind === 'refused') record.downloadsWarning = destination.reason;
   }
@@ -167,7 +171,8 @@ export class DownloadTracker {
    *
    * @param event - `Browser.downloadWillBegin` parameters
    */
-  private begin({ guid, url, suggestedFilename }: DownloadWillBegin): void {
+  private begin({ guid, url, suggestedFilename, frameId }: DownloadWillBegin): void {
+    if (!this.ownsFrame(frameId)) return;
     const dir = this.applied.kind === 'directory' ? this.applied.dir : undefined;
     const target = dir && reserveDownloadPath(dir, suggestedFilename, this.reserved);
     this.record.downloads.push({

@@ -75,7 +75,10 @@ export function registerAttachCommand(program: Command): void {
   program
     .command('attach')
     .description('List the tabs of a running Chrome, or attach to one without reloading it')
-    .argument('[tab]', 'Index from the list, or a case-insensitive substring of URL or title')
+    .argument(
+      '[tab]',
+      'Index from the list (a number is always an index), or a case-insensitive substring of URL or title'
+    )
     .option(
       '--chrome-ws-url <url>',
       'Chrome to attach to: debugging port, http://host:port or ws://…/devtools/browser/<id>'

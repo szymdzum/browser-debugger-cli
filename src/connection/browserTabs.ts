@@ -10,6 +10,7 @@ import {
   noTabMatchesError,
   severalTabsMatchError,
   attachIndexOutOfRangeError,
+  emptyTabPatternError,
 } from '@/errors/messages.js';
 import { formatTabList } from '@/ui/formatters/attach.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -69,6 +70,7 @@ export async function listPageTabs(cdp: CDPConnection): Promise<PageTab[]> {
  * @throws CommandError 83 when nothing matches, 81 for several matches or an index out of range
  */
 export function matchTab(tabs: readonly PageTab[], query: string): PageTab {
+  if (query.trim() === '') fail(emptyTabPatternError(formatTabList(tabs)));
   if (INDEX_PATTERN.test(query)) {
     const tab = tabs[Number(query)];
     if (tab) return tab;

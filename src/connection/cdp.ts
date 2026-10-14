@@ -105,6 +105,7 @@ export class CDPConnection implements CDPEventSource {
   private wsUrl = '';
   /** Page session that commands and events without a session id belong to (`bdg attach`) */
   private defaultSessionId: string | undefined;
+  private detachedPageSession = false;
   private isIntentionallyClosed = false;
   private lostBecause: ConnectionLossCause | undefined;
   private onDisconnect?: ((code: number, reason: string) => void | Promise<void>) | undefined;
@@ -488,6 +489,7 @@ export class CDPConnection implements CDPEventSource {
    */
   private pageSessionDetached(): void {
     this.logger.info('Page session detached; closing the browser connection');
+    this.detachedPageSession = true;
     this.isIntentionallyClosed = true;
     this.stopKeepalive();
     this.clearPendingMessages(new CDPConnectionError(WEBSOCKET_CONNECTION_CLOSED_ERROR));
@@ -841,6 +843,16 @@ export class CDPConnection implements CDPEventSource {
    */
   get lossCause(): ConnectionLossCause | undefined {
     return this.lostBecause;
+  }
+
+  /**
+   * Whether the connection ended because its default page session detached
+   * (the attached tab closed), not because the socket closed.
+   *
+   * @returns True after the page session detached
+   */
+  get pageSessionEnded(): boolean {
+    return this.detachedPageSession;
   }
 
   /**

@@ -5,6 +5,11 @@
  * it (its `window.__marker` stays, the error it logged before the attach is
  * in `bdg console`), runs commands on it, and `bdg stop` leaves both tabs.
  *
+ * A download the tab starts is recorded, one started by another tab is not;
+ * both are saved into the throwaway profile's download folder. Closing the
+ * attached tab ends the session as `closed`; `bdg cleanup` (plain and
+ * `--force`) leaves Chrome and its tabs alone.
+ *
  * bdg reaches Chrome through a TCP proxy that counts the WebSocket upgrades
  * it forwards.
  */
@@ -184,23 +189,43 @@ async function run(command: string, args: string[]): Promise<{ exitCode: number;
   return { exitCode: result.exitCode, output: result.stdout + result.stderr };
 }
 
+/**
+ * Wait for a condition on files (the daemon's socket, a download).
+ *
+ * @param condition - The condition
+ */
+async function until(condition: () => boolean): Promise<void> {
+  const deadline = Date.now() + 20000;
+  while (!condition()) {
+    assert.ok(Date.now() < deadline, 'condition not met within 20 s');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
 void describe('bdg attach', () => {
   let fixture: FixtureServer;
   let chrome: LaunchedChrome;
   let proxy: CountingProxy;
   let tabA: CDPTarget;
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-attach-profile-'));
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-attach-downloads-'));
+  let tabB: CDPTarget;
 
   before(async () => {
     fixture = await startFixtureServer();
+    fs.mkdirSync(path.join(profile, 'Default'), { recursive: true });
+    fs.writeFileSync(
+      path.join(profile, 'Default', 'Preferences'),
+      JSON.stringify({ download: { default_directory: downloadDir, prompt_for_download: false } })
+    );
     chrome = await launchChrome({
       port: await freePort(),
       userDataDir: profile,
       headless: true,
-      sessionDir,
+      sessionDir: profile,
     });
     tabA = await openTab(chrome.port, `${fixture.url}attach-a`);
-    const tabB = await openTab(chrome.port, `${fixture.url}attach-b`);
+    tabB = await openTab(chrome.port, `${fixture.url}attach-b`);
     assert.equal(await evaluateInTab(tabA, 'window.__marker'), 'kept');
     assert.equal(await evaluateInTab(tabB, 'document.title'), 'Attach B');
     proxy = await startCountingProxy(chrome.port);
@@ -213,6 +238,7 @@ void describe('bdg attach', () => {
     await fixture.close();
     fs.rmSync(sessionDir, { recursive: true, force: true });
     fs.rmSync(profile, { recursive: true, force: true });
+    fs.rmSync(downloadDir, { recursive: true, force: true });
   });
 
   void it('requires --chrome-ws-url (exit 81 naming the flag)', async () => {
@@ -281,6 +307,26 @@ void describe('bdg attach', () => {
     assert.equal(screenshot.exitCode, 0, screenshot.output);
     assert.ok(fs.statSync(shot).size > 0);
 
+    const click = await runJson<{ downloads?: { suggestedFilename: string }[] }>('dom', [
+      'click',
+      '#attach-download',
+    ]);
+    assert.equal(click.exitCode, 0, JSON.stringify(click.envelope));
+    assert.deepEqual(
+      click.envelope.data?.downloads?.map((d) => d.suggestedFilename),
+      ['note.html']
+    );
+    await evaluateInTab(
+      tabB,
+      "Object.assign(document.createElement('a'), { href: '/attach-a', download: 'other.html' }).click()"
+    );
+    await until(() => fs.readdirSync(downloadDir).includes('other.html'));
+    const peek = await runJson<{ downloads?: { suggestedFilename: string }[] }>('peek', []);
+    assert.deepEqual(
+      peek.envelope.data?.downloads?.map((d) => d.suggestedFilename),
+      ['note.html']
+    );
+
     const status = await runJson<{ attached?: boolean }>('status', []);
     assert.equal(status.envelope.data?.attached, true);
 
@@ -294,6 +340,29 @@ void describe('bdg attach', () => {
     const pages = await chromePages(chrome.port);
     assert.ok(pages.some((page) => page.url.endsWith('/attach-a')));
     assert.ok(pages.some((page) => page.url.endsWith('/attach-b')));
+    assert.equal(await evaluateInTab(tabA, 'window.__marker'), 'kept');
+  });
+
+  void it('ends the session as closed when the attached tab closes', async () => {
+    const start = await runJson('attach', ['attach-b', '--chrome-ws-url', String(proxy.port)]);
+    assert.equal(start.exitCode, 0, JSON.stringify(start.envelope));
+    await fetch(`http://127.0.0.1:${chrome.port}/json/close/${tabB.id}`);
+    await until(() => !fs.existsSync(path.join(sessionDir, 'daemon.sock')));
+    const status = await runJson<{ lastSession?: { reason?: string } }>('status', []);
+    assert.equal(status.envelope.data?.lastSession?.reason, 'closed');
+    assert.ok((await chromePages(chrome.port)).some((page) => page.url.endsWith('/attach-a')));
+  });
+
+  void it('bdg cleanup and cleanup --force leave Chrome and the tab alone', async () => {
+    const start = await runJson('attach', ['attach-a', '--chrome-ws-url', String(proxy.port)]);
+    assert.equal(start.exitCode, 0, JSON.stringify(start.envelope));
+    await run('cleanup', []);
+    assert.equal(await evaluateInTab(tabA, 'window.__marker'), 'kept');
+    const forced = await run('cleanup', ['--force']);
+    assert.equal(forced.exitCode, 0, forced.output);
+    assert.equal(fs.existsSync(path.join(sessionDir, 'daemon.sock')), false);
+    assert.equal(await evaluateInTab(tabA, 'window.__marker'), 'kept');
+    await run('cleanup', []);
     assert.equal(await evaluateInTab(tabA, 'window.__marker'), 'kept');
   });
 });

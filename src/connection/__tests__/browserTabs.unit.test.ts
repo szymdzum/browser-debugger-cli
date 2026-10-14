@@ -81,6 +81,22 @@ void describe('matchTab', () => {
     assert.match(suggestion, /use an index/i);
   });
 
+  void it('exits 81 for an empty or blank pattern instead of matching every tab', () => {
+    for (const blank of ['', '   ']) {
+      const err = commandErrorOf(() => matchTab(tabs.slice(0, 1), blank));
+      assert.equal(err.exitCode, 81);
+      assert.match(err.message, /empty/);
+    }
+  });
+
+  void it('takes a number as an index even when a title contains it', () => {
+    const numbered = pageTabs([
+      ...TARGETS,
+      { targetId: 'Y', type: 'page', title: 'Report 1', url: 'https://r.test/' },
+    ]);
+    assert.equal(matchTab(numbered, '1').targetId, 'B');
+  });
+
   void it('exits 81 for an index out of range', () => {
     const err = commandErrorOf(() => matchTab(tabs, '3'));
     assert.equal(err.exitCode, 81);
@@ -97,6 +113,22 @@ void describe('formatTabList', () => {
         '[1] Inbox (3) — https://mail.test/inbox',
         '[2] Mail settings — https://mail.test/settings',
       ].join('\n')
+    );
+  });
+
+  void it('cuts titles and URLs over 80 characters', () => {
+    const [tab] = pageTabs([
+      {
+        targetId: 'L',
+        type: 'page',
+        title: 'T'.repeat(200),
+        url: `https://x.test/${'p'.repeat(200)}`,
+      },
+    ]);
+    assert.ok(tab);
+    assert.equal(
+      formatTabList([tab]),
+      `[0] ${'T'.repeat(79)}… — https://x.test/${'p'.repeat(64)}…`
     );
   });
 

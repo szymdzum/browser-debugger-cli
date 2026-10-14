@@ -41,6 +41,8 @@ export type BrowserConnector = (
  * ask again for each. Following the page's connection, tracking moves with
  * the session to each tab `bdg page switch` makes the session's.
  *
+ * A tab attached with `bdg attach` is followed by {@link followAttachedTab}.
+ *
  * @param context - Plugin context
  * @param connectBrowser - Opens the browser-level connection
  * @returns Cleanup: stops tracking and closes the browser-level connection
@@ -50,6 +52,7 @@ export async function startSessionDownloads(
   connectBrowser: BrowserConnector = openBrowserConnection
 ): Promise<CleanupFunction> {
   const { config, store, logger } = context;
+  if (config.attachTab !== undefined) return followAttachedTab(context);
   const tracker = new DownloadTracker(store, downloadDestination(config, logger));
   let page = context.cdp;
   let onPage = false;
@@ -69,6 +72,79 @@ export async function startSessionDownloads(
     tracker.stop();
     browser?.close();
   };
+}
+
+/** Download behavior that changes nothing: Chrome saves where the user's settings say */
+const USER_BEHAVIOR = { behavior: 'default' };
+
+/**
+ * Follow the downloads of a tab attached with `bdg attach`, on the session's
+ * one connection, without changing where the user's browser saves them:
+ * `behavior: 'default'` with events on (they cover the whole browser, so
+ * only downloads of the tab's frames are recorded), and events off again
+ * when the session ends.
+ *
+ * @param context - Plugin context
+ * @returns Cleanup: stops tracking and turns the events off
+ */
+export async function followAttachedTab(context: TelemetryPluginContext): Promise<CleanupFunction> {
+  const { cdp, store, logger } = context;
+  const frames = await tabFrames(cdp, store.targetInfo?.id ?? '', logger);
+  const tracker = new DownloadTracker(store, { kind: 'browser' }, (frameId) =>
+    frames.has(frameId ?? '')
+  );
+  await tracker.attach(cdp);
+  return async () => {
+    tracker.stop();
+    frames.stop();
+    await cdp
+      .send('Browser.setDownloadBehavior', { ...USER_BEHAVIOR, eventsEnabled: false })
+      .catch((error: unknown) =>
+        logger.debug(`Download events not turned off: ${getErrorMessage(error)}`)
+      );
+  };
+}
+
+/**
+ * Frame ids of a tab: its main frame (the target id), the frames in its tree
+ * now, and frames attached later.
+ *
+ * @param cdp - The tab's connection
+ * @param targetId - The tab
+ * @param logger - Logger
+ * @returns The ids, and `stop` to stop following new frames
+ */
+async function tabFrames(
+  cdp: CDPConnection,
+  targetId: string,
+  logger: Logger
+): Promise<Set<string> & { stop: () => void }> {
+  const ids = new Set<string>([targetId]);
+  const stop = cdp.on<{ frameId: string }>('Page.frameAttached', ({ frameId }) => ids.add(frameId));
+  try {
+    const { frameTree } = (await cdp.send('Page.getFrameTree')) as { frameTree: FrameTreeNode };
+    collectFrameIds(frameTree, ids);
+  } catch (error) {
+    logger.debug(`Frame tree not read: ${getErrorMessage(error)}`);
+  }
+  return Object.assign(ids, { stop });
+}
+
+/** `Page.getFrameTree` node (the fields read) */
+interface FrameTreeNode {
+  frame: { id: string };
+  childFrames?: FrameTreeNode[];
+}
+
+/**
+ * Add the ids of a frame tree to a set.
+ *
+ * @param node - Tree node
+ * @param ids - Receives the ids
+ */
+function collectFrameIds(node: FrameTreeNode, ids: Set<string>): void {
+  ids.add(node.frame.id);
+  node.childFrames?.forEach((child) => collectFrameIds(child, ids));
 }
 
 /**
