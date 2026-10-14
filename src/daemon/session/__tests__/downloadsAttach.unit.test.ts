@@ -9,9 +9,9 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
 import { followAttachedTab } from '@/daemon/session/downloads.js';
 import type { TelemetryPluginContext } from '@/daemon/session/plugins.js';
-import { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
 import { createLogger } from '@/ui/logging/index.js';
 
 /** A fake page connection: records commands, lets the test fire events */
@@ -22,7 +22,16 @@ function fakeConnection(): {
 } {
   const sent: { method: string; params: unknown }[] = [];
   const handlers = new Map<string, ((params: unknown) => void)[]>();
+  const record = (method: string, params: unknown = {}): Promise<unknown> => {
+    sent.push({ method, params });
+    return Promise.resolve(
+      method === 'Page.getFrameTree'
+        ? { frameTree: { frame: { id: 'MAIN' }, childFrames: [{ frame: { id: 'CHILD' } }] } }
+        : {}
+    );
+  };
   const cdp = {
+    sendToBrowser: (method: string, params: unknown = {}) => record(`browser:${method}`, params),
     send: (method: string, params: unknown = {}) => {
       sent.push({ method, params });
       return Promise.resolve(
@@ -58,11 +67,17 @@ void describe('followAttachedTab', () => {
 
     const cleanup = await followAttachedTab(context);
     const behaviors = (): unknown[] =>
-      sent.filter((c) => c.method === 'Browser.setDownloadBehavior').map((c) => c.params);
+      sent.filter((c) => c.method.endsWith('Browser.setDownloadBehavior')).map((c) => c.params);
     assert.deepEqual(behaviors(), [{ behavior: 'default', eventsEnabled: true }]);
+    assert.ok(
+      sent.every((c) => c.method !== 'Browser.setDownloadBehavior'),
+      'set for the browser, not the page session'
+    );
 
     fire('Page.frameAttached', { frameId: 'LATE' });
-    for (const frameId of ['MAIN', 'CHILD', 'LATE', 'OTHER-TAB']) {
+    fire('Target.attachedToTarget', { targetInfo: { targetId: 'OOPIF', type: 'iframe' } });
+    fire('Target.attachedToTarget', { targetInfo: { targetId: 'WORKER', type: 'worker' } });
+    for (const frameId of ['MAIN', 'CHILD', 'LATE', 'OOPIF', 'WORKER', 'OTHER-TAB']) {
       fire('Browser.downloadWillBegin', {
         guid: frameId,
         frameId,
@@ -72,7 +87,7 @@ void describe('followAttachedTab', () => {
     }
     assert.deepEqual(
       store.downloads.map((d) => d.guid),
-      ['MAIN', 'CHILD', 'LATE']
+      ['MAIN', 'CHILD', 'LATE', 'OOPIF']
     );
 
     await cleanup();

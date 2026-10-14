@@ -117,7 +117,8 @@ async function chromePages(port: number): Promise<CDPTarget[]> {
 }
 
 /**
- * Evaluate an expression in a tab over a connection of the test's own.
+ * Evaluate an expression in a tab over a connection of the test's own, as
+ * a user gesture (Chrome blocks downloads a cross-site iframe starts without one).
  *
  * @param target - The tab
  * @param expression - Expression
@@ -129,6 +130,7 @@ async function evaluateInTab(target: CDPTarget, expression: string): Promise<unk
     const { result } = (await cdp.send('Runtime.evaluate', {
       expression,
       returnByValue: true,
+      userGesture: true,
     })) as { result: { value?: unknown } };
     return result.value;
   } finally {
@@ -223,6 +225,10 @@ void describe('bdg attach', () => {
       userDataDir: profile,
       headless: true,
       sessionDir: profile,
+      chromeFlags: [
+        '--host-resolver-rules=MAP inner.test 127.0.0.1',
+        `--unsafely-treat-insecure-origin-as-secure=http://inner.test:${new URL(fixture.url).port}`,
+      ],
     });
     tabA = await openTab(chrome.port, `${fixture.url}attach-a`);
     tabB = await openTab(chrome.port, `${fixture.url}attach-b`);
@@ -234,7 +240,7 @@ void describe('bdg attach', () => {
   after(async () => {
     await runCommand('stop', [], { timeout: 15000, env });
     await proxy.close();
-    await chrome.kill();
+    await chrome.kill().catch(() => undefined);
     await fixture.close();
     fs.rmSync(sessionDir, { recursive: true, force: true });
     fs.rmSync(profile, { recursive: true, force: true });
@@ -364,5 +370,39 @@ void describe('bdg attach', () => {
     assert.equal(await evaluateInTab(tabA, 'window.__marker'), 'kept');
     await run('cleanup', []);
     assert.equal(await evaluateInTab(tabA, 'window.__marker'), 'kept');
+  });
+
+  void it('records a download from a cross-site (out-of-process) iframe of the tab', async () => {
+    await openTab(chrome.port, `${fixture.url}attach-frame`);
+    const start = await runJson('attach', ['attach-frame', '--chrome-ws-url', String(proxy.port)]);
+    assert.equal(start.exitCode, 0, JSON.stringify(start.envelope));
+    try {
+      const targets = (await (
+        await fetch(`http://127.0.0.1:${chrome.port}/json/list`)
+      ).json()) as CDPTarget[];
+      const frame = targets.find(
+        (t) => t.type === 'iframe' && t.url.includes('attach-frame-inner')
+      );
+      assert.ok(frame, 'the inner page runs out of process');
+      await evaluateInTab(frame, "document.getElementById('inner-download').click()");
+      await until(() => fs.readdirSync(downloadDir).includes('inner.html'));
+      const peek = await runJson<{ downloads?: { suggestedFilename: string }[] }>('peek', []);
+      assert.ok(
+        peek.envelope.data?.downloads?.some((d) => d.suggestedFilename === 'inner.html'),
+        JSON.stringify(peek.envelope.data?.downloads)
+      );
+    } finally {
+      await run('stop', []);
+    }
+  });
+
+  void it('does not call it a closed tab when the whole Chrome goes away', async () => {
+    const start = await runJson('attach', ['attach-a', '--chrome-ws-url', String(proxy.port)]);
+    assert.equal(start.exitCode, 0, JSON.stringify(start.envelope));
+    await chrome.kill();
+    await until(() => !fs.existsSync(path.join(sessionDir, 'daemon.sock')));
+    const status = await runJson<{ lastSession?: { reason?: string } }>('status', []);
+    assert.ok(status.envelope.data?.lastSession?.reason, JSON.stringify(status.envelope));
+    assert.notEqual(status.envelope.data?.lastSession?.reason, 'closed');
   });
 });

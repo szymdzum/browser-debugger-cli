@@ -29,6 +29,10 @@ const MESSAGE_TOO_LARGE_CODE = 'WS_ERR_UNSUPPORTED_MESSAGE_LENGTH';
 const CONNECTION_ATTEMPT_FAILED_MESSAGE = (attempt: number, delay: number): string =>
   `Connection attempt ${attempt + 1} failed, retrying in ${delay}ms...`;
 const CONNECTION_ABORTED_ERROR = 'Connection attempts aborted';
+/** Prefix of the browser's download events, the only browser-level events handlers get with a default page session */
+const BROWSER_DOWNLOAD_EVENT = 'Browser.download';
+/** How long a detached page session waits for the browser to say whether its tab still exists */
+const TAB_CHECK_TIMEOUT_MS = 2000;
 
 const FAILED_CONNECT_ATTEMPTS_ERROR = (maxRetries: number, lastErrorMessage?: string): string =>
   `Failed to connect after ${maxRetries} attempts: ${lastErrorMessage}`;
@@ -460,7 +464,8 @@ export class CDPConnection implements CDPEventSource {
   /**
    * With a default page session: make its events page events (no session
    * id) and keep the browser's own events from handlers, which would take
-   * them for the page's. The page session detaching (its tab closed) is
+   * them for the page's, except download events (`Browser.download*`,
+   * filtered by frame by their handler). The page session detaching (its tab closed) is
    * handled like a closed page socket.
    *
    * @param message - Event (its session id is removed for the page session)
@@ -472,24 +477,33 @@ export class CDPConnection implements CDPEventSource {
       return true;
     }
     if (message.sessionId !== undefined) return true;
-    const detached = message.params as { sessionId?: string } | undefined;
+    if (message.method?.startsWith(BROWSER_DOWNLOAD_EVENT)) return true;
+    const detached = message.params as { sessionId?: string; targetId?: string } | undefined;
     if (
       message.method === 'Target.detachedFromTarget' &&
       detached?.sessionId === this.defaultSessionId
     ) {
-      this.pageSessionDetached();
+      void this.pageSessionDetached(detached?.targetId);
     }
     return false;
   }
 
   /**
-   * The default page session ended (tab closed or detached by Chrome): the
-   * connection is of no use to the session any more, so it is closed and
-   * reported lost like a page socket Chrome closed.
+   * The default page session ended: the connection is of no use to the
+   * session any more, so it is closed and reported lost like a page socket
+   * Chrome closed. It counts as the tab closing ({@link pageSessionEnded})
+   * only when the browser, still answering, no longer lists the tab; a
+   * browser shutting down (the socket closes meanwhile, or no answer) is
+   * left to the socket's own loss.
+   *
+   * @param targetId - The tab the session was attached to
    */
-  private pageSessionDetached(): void {
-    this.logger.info('Page session detached; closing the browser connection');
-    this.detachedPageSession = true;
+  private async pageSessionDetached(targetId: string | undefined): Promise<void> {
+    this.logger.info('Page session detached; checking whether the tab still exists');
+    const tabGone = await this.tabGone(targetId);
+    if (this.ws?.readyState !== WebSocket.OPEN) return;
+    this.logger.info(`Page session detached (tab ${tabGone ? 'closed' : 'still listed'})`);
+    this.detachedPageSession = tabGone;
     this.isIntentionallyClosed = true;
     this.stopKeepalive();
     this.clearPendingMessages(new CDPConnectionError(WEBSOCKET_CONNECTION_CLOSED_ERROR));
@@ -846,8 +860,34 @@ export class CDPConnection implements CDPEventSource {
   }
 
   /**
+   * Whether the browser, asked over this connection, no longer lists a tab.
+   *
+   * @param targetId - The tab
+   * @returns False when it is listed, or the browser does not answer within 2 s
+   */
+  private async tabGone(targetId: string | undefined): Promise<boolean> {
+    let timer: NodeJS.Timeout | undefined;
+    const noAnswer = new Promise<false>((resolve) => {
+      timer = setTimeout(() => resolve(false), TAB_CHECK_TIMEOUT_MS);
+    });
+    const listed = this.sendToBrowser('Target.getTargets').then(
+      (reply) =>
+        !(reply as { targetInfos: { targetId: string }[] }).targetInfos.some(
+          (target) => target.targetId === targetId
+        ),
+      () => false
+    );
+    try {
+      return await Promise.race([listed, noAnswer]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
    * Whether the connection ended because its default page session detached
-   * (the attached tab closed), not because the socket closed.
+   * because its tab closed (the browser no longer lists it), not because
+   * the socket closed or the browser went away.
    *
    * @returns True after the page session detached
    */

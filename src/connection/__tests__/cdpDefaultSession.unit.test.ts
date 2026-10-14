@@ -99,12 +99,18 @@ void describe('CDPConnection default page session', () => {
       socket.simulateMessage(JSON.stringify({ ...event, sessionId: 'CHILD' }));
       socket.simulateMessage(JSON.stringify(event));
       assert.deepEqual(seen, ['page', 'CHILD']);
+      const downloads: (string | undefined)[] = [];
+      cdp.on('Browser.downloadWillBegin', (_params, sessionId) =>
+        downloads.push(sessionId ?? 'browser')
+      );
+      socket.simulateMessage(JSON.stringify({ method: 'Browser.downloadWillBegin', params: {} }));
+      assert.deepEqual(downloads, ['browser']);
     } finally {
       cdp.close();
     }
   });
 
-  void it('reports a disconnect when the page session detaches (tab closed)', async () => {
+  void it('reports a closed tab when the page session detaches and the tab is gone', async () => {
     let disconnected = 0;
     const { cdp, socket } = await openAttached(() => void disconnected++);
     try {
@@ -114,17 +120,60 @@ void describe('CDPConnection default page session', () => {
           params: { sessionId: 'OTHER', targetId: 'T2' },
         })
       );
-      assert.equal(disconnected, 0);
-      socket.simulateMessage(
-        JSON.stringify({
-          method: 'Target.detachedFromTarget',
-          params: { sessionId: PAGE_SESSION, targetId: 'T1' },
-        })
-      );
+      assert.equal(socket.getSentMessages().length, 0);
+      await detach(socket, []);
       assert.equal(disconnected, 1);
+      assert.equal(cdp.pageSessionEnded, true);
       await assert.rejects(cdp.send('Runtime.evaluate'), /Not connected/);
     } finally {
       cdp.close();
     }
   });
+
+  void it('does not report a closed tab when the browser still lists it', async () => {
+    let disconnected = 0;
+    const { cdp, socket } = await openAttached(() => void disconnected++);
+    try {
+      await detach(socket, [{ targetId: 'T1' }]);
+      assert.equal(disconnected, 1);
+      assert.equal(cdp.pageSessionEnded, false);
+    } finally {
+      cdp.close();
+    }
+  });
+
+  void it('leaves a browser that goes away to the socket loss (not a closed tab)', async () => {
+    let disconnected = 0;
+    const { cdp, socket } = await openAttached(() => void disconnected++);
+    socket.simulateMessage(
+      JSON.stringify({
+        method: 'Target.detachedFromTarget',
+        params: { sessionId: PAGE_SESSION, targetId: 'T1' },
+      })
+    );
+    socket.simulateClose(1006, 'gone');
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(disconnected, 1);
+    assert.equal(cdp.pageSessionEnded, false);
+  });
 });
+
+/**
+ * Detach the page session and answer the tab check.
+ *
+ * @param socket - The fake socket
+ * @param targetInfos - What `Target.getTargets` lists
+ */
+async function detach(socket: FakeWebSocket, targetInfos: { targetId: string }[]): Promise<void> {
+  socket.simulateMessage(
+    JSON.stringify({
+      method: 'Target.detachedFromTarget',
+      params: { sessionId: PAGE_SESSION, targetId: 'T1' },
+    })
+  );
+  const check = lastSent(socket);
+  assert.equal(check.method, 'Target.getTargets');
+  assert.equal(check.sessionId, undefined);
+  socket.simulateMessage(JSON.stringify({ id: check.id, result: { targetInfos } }));
+  await new Promise((resolve) => setImmediate(resolve));
+}

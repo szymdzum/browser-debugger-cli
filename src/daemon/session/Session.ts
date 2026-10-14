@@ -214,6 +214,8 @@ export class Session {
   private readonly notify: NoticeSink<ChromeNoticeCode> = (notice) =>
     log.info(formatChromeNotice(notice));
   private chrome: LaunchedChrome | null = null;
+  /** The attached tab closed: the browser no longer lists it (`bdg attach`) */
+  private attachedTabClosed = false;
   /** Releases of what the session acquired, run last first on stop or a failed start */
   private readonly resources = new ResourceStack(log);
   private timeoutTimer: NodeJS.Timeout | null = null;
@@ -263,9 +265,6 @@ export class Session {
     }
     return new Session(buildConfig(url, options.port ?? 0, options), onEnded);
   }
-
-  /** The attached tab closed: its page session detached while the browser stayed */
-  private attachedTabClosed = false;
 
   /**
    * Whether the session was started with `bdg attach`: one browser

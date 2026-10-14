@@ -80,9 +80,10 @@ const USER_BEHAVIOR = { behavior: 'default' };
 /**
  * Follow the downloads of a tab attached with `bdg attach`, on the session's
  * one connection, without changing where the user's browser saves them:
- * `behavior: 'default'` with events on (they cover the whole browser, so
- * only downloads of the tab's frames are recorded), and events off again
- * when the session ends.
+ * `behavior: 'default'` with events on, set for the browser (events of an
+ * out-of-process iframe reach no page session; they cover the whole
+ * browser, so only downloads of the tab's frames are recorded), and events
+ * off again when the session ends. Events without a frame id are dropped.
  *
  * @param context - Plugin context
  * @returns Cleanup: stops tracking and turns the events off
@@ -93,12 +94,12 @@ export async function followAttachedTab(context: TelemetryPluginContext): Promis
   const tracker = new DownloadTracker(store, { kind: 'browser' }, (frameId) =>
     frames.has(frameId ?? '')
   );
-  await tracker.attach(cdp);
+  await tracker.attach(browserLevel(cdp));
   return async () => {
     tracker.stop();
     frames.stop();
     await cdp
-      .send('Browser.setDownloadBehavior', { ...USER_BEHAVIOR, eventsEnabled: false })
+      .sendToBrowser('Browser.setDownloadBehavior', { ...USER_BEHAVIOR, eventsEnabled: false })
       .catch((error: unknown) =>
         logger.debug(`Download events not turned off: ${getErrorMessage(error)}`)
       );
@@ -106,8 +107,24 @@ export async function followAttachedTab(context: TelemetryPluginContext): Promis
 }
 
 /**
+ * The connection with its commands sent to the browser itself: download
+ * events of out-of-process iframes reach only a browser-level session, and
+ * the events are filtered by frame anyway.
+ *
+ * @param cdp - Connection with a default page session
+ * @returns The same connection, commands past the page session
+ */
+function browserLevel(cdp: CDPConnection): CDPConnection {
+  return Object.assign(Object.create(cdp) as CDPConnection, {
+    send: (method: string, params?: Record<string, unknown>) => cdp.sendToBrowser(method, params),
+  });
+}
+
+/**
  * Frame ids of a tab: its main frame (the target id), the frames in its tree
- * now, and frames attached later.
+ * now, and frames attached later, out-of-process iframes included (their
+ * frame id is their target id, announced when auto-attach attaches them;
+ * frames inside them come as `Page.frameAttached` of their session).
  *
  * @param cdp - The tab's connection
  * @param targetId - The tab
@@ -120,7 +137,16 @@ async function tabFrames(
   logger: Logger
 ): Promise<Set<string> & { stop: () => void }> {
   const ids = new Set<string>([targetId]);
-  const stop = cdp.on<{ frameId: string }>('Page.frameAttached', ({ frameId }) => ids.add(frameId));
+  const stops = [
+    cdp.on<{ frameId: string }>('Page.frameAttached', ({ frameId }) => ids.add(frameId)),
+    cdp.on<{ targetInfo: { targetId: string; type: string } }>(
+      'Target.attachedToTarget',
+      ({ targetInfo }) => {
+        if (targetInfo.type === 'iframe') ids.add(targetInfo.targetId);
+      }
+    ),
+  ];
+  const stop = (): void => stops.forEach((remove) => remove());
   try {
     const { frameTree } = (await cdp.send('Page.getFrameTree')) as { frameTree: FrameTreeNode };
     collectFrameIds(frameTree, ids);
