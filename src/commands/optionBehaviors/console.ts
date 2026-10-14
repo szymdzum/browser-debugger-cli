@@ -34,7 +34,7 @@ export const CONSOLE_BEHAVIORS: BehaviorTable = {
   'console:--level': {
     default: 'Shows all log levels (error, warning, log, info, debug)',
     whenEnabled:
-      'Filters to specific level: error, warning, log, info, or debug; the Issues block (Chrome Issues of the page) is left out',
+      'Filters to specific level: error, warning, log, info, or debug; the Issues block (Chrome Issues of the page) is left out; messages of the page it hides are counted per level (3 messages hidden by --level error (3 info); JSON hiddenByLevel { info: 3 }, absent when none; summary.total counts the listed ones only)',
   },
   'console:--follow': {
     default: 'Prints the messages logged so far and exits',

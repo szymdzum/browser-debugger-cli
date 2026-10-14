@@ -382,6 +382,16 @@ export function moreMessagesText(count: number): string {
 }
 
 /**
+ * Last `Shown:` row when more elements qualified than are listed.
+ *
+ * @param count - Elements not listed
+ * @returns e.g. `(+1 more)`
+ */
+export function moreShownText(count: number): string {
+  return `(+${count} more)`;
+}
+
+/**
  * An error's text with its source shortened ({@link shortUrlName}), without
  * its count.
  *

@@ -71,6 +71,7 @@ import {
   tabClosedText,
   moreErrorsText,
   moreMessagesText,
+  moreShownText,
   formSubmittedText,
   hiddenTrackerErrorsText,
   newMessageText,
@@ -608,7 +609,15 @@ function formatActionOutput(
     ],
     keyWidth
   );
-  listRows(fmt, 'Shown', (result.shown ?? []).map(shownElementText), keyWidth);
+  listRows(
+    fmt,
+    'Shown',
+    [
+      ...(result.shown ?? []).map(shownElementText),
+      ...(result.moreShown ? [moreShownText(result.moreShown)] : []),
+    ],
+    keyWidth
+  );
   listRows(
     fmt,
     'Errors',

@@ -140,10 +140,16 @@ export function hiddenByLevel(
   options: Pick<ConsoleCommandOptions, 'history' | 'level'>,
   currentNavigationId?: number
 ): HiddenByLevel {
-  void messages;
-  void options;
-  void currentNavigationId;
-  throw new Error('not implemented');
+  const hidden: HiddenByLevel = {};
+  if (!options.level) return hidden;
+  const inView = options.history
+    ? messages
+    : filterByCurrentNavigation(messages, currentNavigationId);
+  for (const { type } of inView) {
+    const level = LEVEL_MAP[type];
+    if (level !== options.level) hidden[level] = (hidden[level] ?? 0) + 1;
+  }
+  return hidden;
 }
 
 /**
@@ -186,6 +192,7 @@ export function skippedMessages(
  * @param pageCrashedAt - When the page crashed, while it is not loaded again
  * @param page - Chrome Issues of the page and how many were not kept, and
  *   the session's latest move to another tab
+ * @param hidden - Messages `--level` hid, per level
  * @returns Formatting options
  */
 function buildFormatOptions(
@@ -194,9 +201,11 @@ function buildFormatOptions(
   skipped?: ConsoleSkipped,
   dropped?: number,
   pageCrashedAt?: number,
-  page?: PageNotes
+  page?: PageNotes,
+  hidden: HiddenByLevel = {}
 ): ConsoleFormatOptions {
   return {
+    ...(Object.keys(hidden).length > 0 && { hiddenByLevel: hidden }),
     ...(options.last !== undefined && { groupLimit: lastN }),
     ...(dropped && { dropped }),
     ...(pageCrashedAt !== undefined && { pageCrashedAt }),
@@ -379,6 +388,8 @@ interface PageNotes extends PageIssues {
 interface ConsoleResult extends PageNotes {
   messages: ConsoleMessage[];
   filtered: ConsoleMessage[];
+  /** Messages `--level` hid, per level */
+  hidden: HiddenByLevel;
   /** Dropped messages that could have been in the view (see {@link droppedInView}) */
   dropped: number;
   pageCrashedAt: number | undefined;
@@ -445,16 +456,25 @@ export function registerConsoleCommand(program: Command): void {
             issuesDropped,
           } = result.data;
           const filtered = applyFilters(messages, options, currentNavigationId);
+          const hidden = hiddenByLevel(messages, options, currentNavigationId);
           if (options.json) {
             return {
               success: true,
               data: buildConsoleJsonOutput(
                 filtered,
-                buildFormatOptions(options, lastN, undefined, dropped, pageCrashedAt, {
-                  issues,
-                  issuesDropped,
-                  tabSwitch,
-                })
+                buildFormatOptions(
+                  options,
+                  lastN,
+                  undefined,
+                  dropped,
+                  pageCrashedAt,
+                  {
+                    issues,
+                    issuesDropped,
+                    tabSwitch,
+                  },
+                  hidden
+                )
               ),
             };
           }
@@ -464,6 +484,7 @@ export function registerConsoleCommand(program: Command): void {
             data: {
               messages,
               filtered,
+              hidden,
               dropped: droppedShown,
               pageCrashedAt,
               tabSwitch,
@@ -474,8 +495,16 @@ export function registerConsoleCommand(program: Command): void {
         },
         options,
         (data) => {
-          const { messages, filtered, dropped, pageCrashedAt, tabSwitch, issues, issuesDropped } =
-            data as ConsoleResult;
+          const {
+            messages,
+            filtered,
+            hidden,
+            dropped,
+            pageCrashedAt,
+            tabSwitch,
+            issues,
+            issuesDropped,
+          } = data as ConsoleResult;
           const skipped = skippedMessages(
             messages,
             lastMessages(filtered, lastN),
@@ -483,11 +512,19 @@ export function registerConsoleCommand(program: Command): void {
           );
           return formatConsole(
             filtered,
-            buildFormatOptions(options, lastN, skipped, dropped, pageCrashedAt, {
-              issues,
-              issuesDropped,
-              tabSwitch,
-            })
+            buildFormatOptions(
+              options,
+              lastN,
+              skipped,
+              dropped,
+              pageCrashedAt,
+              {
+                issues,
+                issuesDropped,
+                tabSwitch,
+              },
+              hidden
+            )
           );
         }
       );

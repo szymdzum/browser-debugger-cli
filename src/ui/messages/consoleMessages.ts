@@ -5,7 +5,8 @@
  */
 
 import { MAX_CONSOLE_MESSAGES } from '@/constants.js';
-import type { ConsoleSkipped } from '@/ui/formatters/console/shared.js';
+import type { ConsoleLevel } from '@/types.js';
+import type { ConsoleSkipped, HiddenByLevel } from '@/ui/formatters/console/shared.js';
 import { pluralize } from '@/ui/formatting.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 
@@ -42,6 +43,20 @@ export function consoleIndexGapNote(skipped: ConsoleSkipped): string {
       `${pluralize(skipped.otherPages, 'message')} from another page load (-H lists all)`,
   ].filter(Boolean);
   return `[n] are positions in the session's message list; not listed in between: ${reasons.join(', ')}`;
+}
+
+/**
+ * Note under the header of a `--level` list: how many messages the filter hid.
+ *
+ * @param level - The `--level` value
+ * @param hidden - Hidden messages per level
+ * @returns e.g. `3 messages hidden by --level error (2 info, 1 warning)`
+ */
+export function consoleHiddenByLevelNote(level: ConsoleLevel, hidden: HiddenByLevel): string {
+  const counts = Object.entries(hidden).map(([name, count]) => ({ name, count }));
+  const total = counts.reduce((sum, { count }) => sum + count, 0);
+  const detail = counts.map(({ name, count }) => `${count} ${name}`).join(', ');
+  return `${pluralize(total, 'message')} hidden by --level ${level} (${detail})`;
 }
 
 /**

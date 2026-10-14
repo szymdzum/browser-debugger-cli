@@ -295,11 +295,21 @@ export function cutText(text: string): string {
  * @returns Elements to report
  */
 export function shownElements(shown: ShownElement[], messages: NewMessage[]): ShownElement[] {
-  const reported = new Set(messages.map((message) => message.text));
-  return shown
-    .filter((element) => !reported.has(cutText(element.text)))
+  return unreportedShown(shown, messages)
     .slice(0, MAX_SHOWN_ELEMENTS)
     .map((element) => ({ ...element, text: cutText(element.text) }));
+}
+
+/**
+ * Elements whose text is not already reported as a new message.
+ *
+ * @param shown - Elements the page found shown by the action
+ * @param messages - New messages being reported
+ * @returns The elements that qualify as shown
+ */
+function unreportedShown(shown: ShownElement[], messages: NewMessage[]): ShownElement[] {
+  const reported = new Set(messages.map((message) => message.text));
+  return shown.filter((element) => !reported.has(cutText(element.text)));
 }
 
 /**
@@ -310,9 +320,7 @@ export function shownElements(shown: ShownElement[], messages: NewMessage[]): Sh
  * @returns Elements beyond {@link MAX_SHOWN_ELEMENTS}
  */
 export function shownLeftOut(shown: ShownElement[], messages: NewMessage[]): number {
-  void shown;
-  void messages;
-  throw new Error('not implemented');
+  return Math.max(0, unreportedShown(shown, messages).length - MAX_SHOWN_ELEMENTS);
 }
 
 /**
@@ -762,11 +770,13 @@ function effectsOf(
         ? newMessages(start.messages, snapshot.messages, snapshot.fresh)
         : { messages: [], more: 0 };
     const shown = shownElements(snapshot?.shown ?? [], messages);
+    const moreShown = shownLeftOut(snapshot?.shown ?? [], messages);
     return {
       ...(navigation && { navigation }),
       ...(messages.length > 0 && { messages }),
       ...(more > 0 && { moreMessages: more }),
       ...(shown.length > 0 && { shown }),
+      ...(moreShown > 0 && { moreShown }),
       ...pressOutcomes(snapshot),
     };
   } catch (error) {
