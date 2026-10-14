@@ -340,11 +340,38 @@ function assertNotCommandTypo(arg: string, commandNames: string[]): void {
   throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
 }
 
+/** Most characters of a quoted argument echoed back in an error */
+const ECHO_LIMIT = 100;
+
+/** Characters that are safe to paste unquoted into a shell */
+const SHELL_SAFE_WORD = /^[A-Za-z0-9_./:=@%+,-]+$/;
+
+/**
+ * The command a quoted first word means: an exact command name, or a close
+ * typo. A typo must be at least 3 characters and within 1 edit (up to 5
+ * characters) or 2 edits (longer), so ordinary text (`my site`, `a b`) is
+ * not matched to an unrelated command.
+ *
+ * @param first - First word of the argument
+ * @param commandNames - Registered top-level command names
+ * @returns The command name, or undefined
+ */
+function spacedCommandName(first: string, commandNames: string[]): string | undefined {
+  const word = first.toLowerCase();
+  if (commandNames.includes(word)) return word;
+  if (word.length < 3) return undefined;
+  return findSimilar(word, commandNames, {
+    maxDistance: word.length <= 5 ? 1 : 2,
+    maxSuggestions: 1,
+  })[0];
+}
+
 /**
  * Reject a command typed as one quoted argument (`bdg "page info"`): the
  * words are meant as separate arguments, so the error names them that way
- * instead of suggesting `%20`. Anything with a scheme, colon, dot or slash
- * is a URL and keeps the `%20` hint.
+ * instead of suggesting `%20`. Anything with a colon, dot or slash is a URL
+ * and keeps the `%20` hint. The suggestion repeats the words only when they
+ * are short and safe to paste into a shell; otherwise it points to `--help`.
  *
  * @param arg - The URL argument
  * @param commandNames - Registered top-level command names
@@ -353,9 +380,12 @@ function assertNotCommandTypo(arg: string, commandNames: string[]): void {
 export function assertNotSpacedCommand(arg: string, commandNames: string[]): void {
   const [first = '', ...rest] = arg.trim().split(/\s+/);
   if (rest.length === 0 || !/^[a-z][a-z0-9_-]*$/i.test(first) || /[.:/]/.test(arg)) return;
-  const command = commandNames.includes(first) ? first : findSimilar(first, commandNames)[0];
+  const command = spacedCommandName(first, commandNames);
   if (command === undefined) return;
-  const err = spacedCommandError(arg, [command, ...rest].join(' '));
+  const words = rest.join(' ');
+  const echoable = words.length <= ECHO_LIMIT && rest.every((w) => SHELL_SAFE_WORD.test(w));
+  const shown = arg.length > ECHO_LIMIT ? `${arg.slice(0, ECHO_LIMIT)}…` : arg;
+  const err = spacedCommandError(shown, echoable ? `${command} ${words}` : `${command} --help`);
   throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_URL);
 }
 
@@ -432,14 +462,9 @@ function validateStartInput(
       EXIT_CODES.INVALID_ARGUMENTS
     );
   }
-  assertNotCommandTypo(
-    url,
-    program.commands.map((command) => command.name())
-  );
-  assertNotSpacedCommand(
-    url,
-    program.commands.map((command) => command.name())
-  );
+  const commandNames = program.commands.map((command) => command.name());
+  assertNotCommandTypo(url, commandNames);
+  assertNotSpacedCommand(url, commandNames);
   assertValidUrl(url);
   getIPCRequestTimeout();
   assertStateNotAttached(options);

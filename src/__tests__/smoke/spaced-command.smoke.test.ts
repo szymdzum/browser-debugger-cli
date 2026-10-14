@@ -36,7 +36,11 @@ void describe('quoted command as the start URL (#728)', () => {
       ['page info', 'bdg page info'],
       ['page   info', 'bdg page info'],
       [' page info', 'bdg page info'],
-      ['pgae info', 'bdg page info'],
+      ['pagee info', 'bdg page info'],
+      ['Page Info', 'bdg page Info'],
+      ['page $(rm -rf x)', 'bdg page --help'],
+      ['peek ;', 'bdg peek --help'],
+      ["page 'x'", 'bdg page --help'],
     ] as const) {
       const { exitCode, json } = await runStart(input);
       assert.equal(exitCode, 80, input);
@@ -46,10 +50,18 @@ void describe('quoted command as the start URL (#728)', () => {
   });
 
   void it('keeps the %20 hint for URLs with spaces', async () => {
-    for (const input of ['https://example.com/a b', 'example.com/a b', 'zzzzzz yyyy']) {
+    for (const input of ['https://example.com/a b', 'example.com/a b', 'zzzzzz yyyy', 'my site', 'a b', 'my page']) {
       const { exitCode, json } = await runStart(input);
       assert.equal(exitCode, 80, input);
       assert.match(json.suggestion ?? '', /%20/, input);
     }
+  });
+});
+
+void describe('long quoted input (#728)', () => {
+  void it('echoes at most 100 characters of it', async () => {
+    const { json } = await runStart(`page ${'x'.repeat(2000)}`);
+    assert.ok((json.error ?? '').length < 200, 'error');
+    assert.ok((json.suggestion ?? '').length < 200, 'suggestion');
   });
 });
