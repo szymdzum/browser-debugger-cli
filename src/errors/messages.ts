@@ -1335,16 +1335,30 @@ export function spacedCommandError(url: string, command: string): ErrorWithSugge
   };
 }
 
+/** Network errors a wrong scheme can cause (an HTTPS server spoken to in HTTP, or the reverse) */
+const SCHEME_MISMATCH_ERRORS =
+  /ERR_CONNECTION_REFUSED|ERR_SSL_|ERR_EMPTY_RESPONSE|ERR_CONNECTION_RESET/;
+
 /**
  * The browser could not load the start URL at all.
  *
  * @param url - URL that failed
  * @param errorText - Chrome network error (e.g. net::ERR_NAME_NOT_RESOLVED)
+ * @param addedScheme - Whether bdg prepended `http://` to the URL as typed
+ *   (the hint is shown for errors a wrong scheme can cause)
  */
-export function navigationFailedError(url: string, errorText: string): ErrorWithSuggestion {
+export function navigationFailedError(
+  url: string,
+  errorText: string,
+  addedScheme = false
+): ErrorWithSuggestion {
+  const check = 'Check the URL and that the server is running and reachable from this machine';
   return {
     message: `Could not load ${url}: ${errorText}`,
-    suggestion: 'Check the URL and that the server is running and reachable from this machine',
+    suggestion:
+      addedScheme && SCHEME_MISMATCH_ERRORS.test(errorText)
+        ? `bdg added http:// to what you typed. ${check}; for an HTTPS server use: bdg ${url.replace(/^http:/, 'https:')}`
+        : check,
   };
 }
 

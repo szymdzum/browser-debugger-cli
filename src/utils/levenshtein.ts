@@ -2,7 +2,8 @@
  * Levenshtein distance algorithm for fuzzy string matching.
  *
  * Calculates the minimum number of single-character edits (insertions,
- * deletions, or substitutions) required to change one string into another.
+ * deletions, substitutions) or swap of two adjacent characters (`dmo` is one edit
+ * from `dom`: optimal string alignment distance) required to change one string into another.
  *
  * Used for providing helpful suggestions when users mistype command names,
  * method names, or other identifiers.
@@ -49,7 +50,12 @@ export function levenshteinDistance(str1: string, str2: string): number {
       const deletion = (matrix[i - 1]?.[j] ?? 0) + 1;
       const insertion = (currentRow[j - 1] ?? 0) + 1;
       const substitution = (matrix[i - 1]?.[j - 1] ?? 0) + cost;
-      currentRow[j] = Math.min(deletion, insertion, substitution);
+      const best = Math.min(deletion, insertion, substitution);
+      const swapped =
+        i > 1 && j > 1 && str1[i - 1] === str2[j - 2] && str1[i - 2] === str2[j - 1]
+          ? (matrix[i - 2]?.[j - 2] ?? 0) + 1
+          : Infinity;
+      currentRow[j] = Math.min(best, swapped);
     }
   }
 

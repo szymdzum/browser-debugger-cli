@@ -36,7 +36,7 @@ import { directoryProblem } from '@/utils/directories.js';
 import { hasDisplay } from '@/utils/display.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { probeDevToolsEndpoint } from '@/utils/http.js';
-import { findSimilar } from '@/utils/suggestions.js';
+import { findSimilar, findSimilarCommands } from '@/utils/suggestions.js';
 import { devToolsHttpEndpoint, validateChromeWsUrl, validateUrl } from '@/utils/url.js';
 
 /**
@@ -336,7 +336,7 @@ const FLAG_WORDS: Record<string, string> = { version: '--version', help: '--help
 function assertNotCommandTypo(arg: string, commandNames: string[]): void {
   if (!isBareWord(arg)) return;
   const flag = FLAG_WORDS[arg.toLowerCase()];
-  const err = unknownCommandError(arg, flag ? [flag] : findSimilar(arg, commandNames));
+  const err = unknownCommandError(arg, flag ? [flag] : findSimilarCommands(arg, commandNames));
   throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
 }
 
@@ -359,11 +359,7 @@ const SHELL_SAFE_WORD = /^[A-Za-z0-9_./:=@%+,-]+$/;
 function spacedCommandName(first: string, commandNames: string[]): string | undefined {
   const word = first.toLowerCase();
   if (commandNames.includes(word)) return word;
-  if (word.length < 3) return undefined;
-  return findSimilar(word, commandNames, {
-    maxDistance: word.length <= 5 ? 1 : 2,
-    maxSuggestions: 1,
-  })[0];
+  return findSimilarCommands(word, commandNames)[0];
 }
 
 /**
@@ -438,7 +434,7 @@ export function assertNotMistypedCommand(program: Command, argv: string[]): void
   const similar = group
     ? [`${group.name()} ${first}`]
     : rest.length > 0 && BARE_WORD.test(first)
-      ? findSimilar(first, commandNames)
+      ? findSimilarCommands(first, commandNames)
       : [];
   if (similar.length === 0) return;
   const err = unknownCommandError(first, similar);

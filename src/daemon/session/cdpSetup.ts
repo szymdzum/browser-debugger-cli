@@ -119,7 +119,11 @@ export async function navigateToTarget(
     errorText?: string;
   };
   if (navigation.errorText && UNREACHABLE_ERRORS.test(navigation.errorText)) {
-    const err = navigationFailedError(normalizedUrl, navigation.errorText);
+    const err = navigationFailedError(
+      normalizedUrl,
+      navigation.errorText,
+      normalizedUrl === `http://${config.url}`
+    );
     throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_URL);
   }
   if (navigation.errorText) log.info(`Navigation reported ${navigation.errorText}`);
