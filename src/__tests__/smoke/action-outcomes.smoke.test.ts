@@ -204,7 +204,8 @@ void describe('Action outcomes', () => {
       const data = await act(['click', '#toast']);
       assert.deepEqual(
         (data.shown ?? []).map((item) => item.text),
-        ['Saved']
+        [],
+        'the toast is New text; the steps of the first click are not shown'
       );
     });
 
