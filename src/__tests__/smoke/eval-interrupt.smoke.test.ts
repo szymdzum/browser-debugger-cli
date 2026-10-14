@@ -359,6 +359,21 @@ void describe('Interrupted dom eval', () => {
     );
   });
 
+  void it('stops an interrupted loop that ends in await while another eval waits (#729)', async () => {
+    const sentBefore = evalsSent();
+    const awaiting = startEval('await new Promise((r) => setTimeout(r, 6000))');
+    await untilEvalsSent(sentBefore + 1);
+    const stop = new AbortController();
+    const script = `const r = new XMLHttpRequest(); r.open('GET', '/beacon?loop-then-await', false); r.send(); const end = Date.now() + ${OTHER_LOOP_MS}; while (Date.now() < end); await 1`;
+    const loop = startEval(script, stop.signal);
+    await untilBeacon('loop-then-await');
+    stop.abort();
+    const interrupted = await loop;
+    assert.equal(interrupted.exitCode, 130, shown(interrupted));
+    await assertAnswersAtOnce();
+    assert.equal((await awaiting).exitCode, 0);
+  });
+
   void it('answers status normally afterwards', async () => {
     const status = await runCommand('status', ['--json'], { timeout: COMMAND_TIMEOUT_MS });
     assert.equal(status.exitCode, 0, shown(status));

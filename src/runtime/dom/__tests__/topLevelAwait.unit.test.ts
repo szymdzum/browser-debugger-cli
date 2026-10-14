@@ -35,3 +35,12 @@ void describe('hasTopLevelAwait', () => {
     });
   }
 });
+
+void describe('hasTopLevelAwait on a huge script', () => {
+  void it('falls back to the text search instead of compiling megabytes', () => {
+    const script = `'await' + '${'x'.repeat(2_000_000)}'`;
+    const startedAt = performance.now();
+    assert.equal(hasTopLevelAwait(script), true);
+    assert.ok(performance.now() - startedAt < 50, 'compiled the huge script');
+  });
+});

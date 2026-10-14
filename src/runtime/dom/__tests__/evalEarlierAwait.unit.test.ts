@@ -75,6 +75,11 @@ class MainThreadPage {
     this.end(undefined);
   }
 
+  /** The running script ends on its own and answers */
+  finishScript(): void {
+    this.end(DONE);
+  }
+
   /**
    * Answer an awaiting script.
    *
@@ -201,6 +206,42 @@ void describe('evaluateScript interrupted behind an earlier eval', () => {
     assert.ok(ms < STOPPED_WITHIN_MS, `the loop was stopped after ${ms} ms`);
     page.settle(LOOP_THEN_AWAIT);
     assert.deepEqual(await earlier.done, { value: 1, type: 'number' });
+  });
+
+  void it('stops an interrupted script still in its synchronous part before its await while another eval waits', async () => {
+    const page = new MainThreadPage();
+    const awaiting = startEval(page, AWAIT_TIMER);
+    await nextTurn();
+    const loop = startEval(page, LOOP_THEN_AWAIT);
+    await nextTurn();
+    assert.ok(page.busy);
+    loop.client.abort();
+    const ms = await msUntilSettled(loop.done);
+    assert.ok(ms < STOPPED_WITHIN_MS, `the loop was stopped after ${ms} ms`);
+    page.settle(AWAIT_TIMER);
+    assert.deepEqual(await awaiting.done, { value: 1, type: 'number' });
+  });
+
+  void it("leaves a later client's loop alone when an interrupted script already waits at its await", async () => {
+    const page = new MainThreadPage();
+    const waiting = startEval(page, LOOP_THEN_AWAIT);
+    await nextTurn();
+    const later = startEval(page, LOOP);
+    await nextTurn();
+    page.finishSyncPart();
+    await nextTurn();
+    assert.ok(page.busy);
+    const sentBeforeInterrupt = page.sent.length;
+    waiting.client.abort();
+    await nextTurn();
+    assert.ok(
+      !page.sent.slice(sentBeforeInterrupt).includes('Runtime.terminateExecution'),
+      page.sent.join(', ')
+    );
+    page.finishScript();
+    assert.deepEqual(await later.done, { value: 1, type: 'number' });
+    page.settle(LOOP_THEN_AWAIT);
+    await waiting.done.catch(() => undefined);
   });
 
   void it("stops a busy script with 'await' only in a string while another client's eval waits", async () => {
