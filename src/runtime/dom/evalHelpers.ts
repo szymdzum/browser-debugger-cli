@@ -848,6 +848,17 @@ interface PendingEvaluation {
  */
 const pendingEvaluations = new Set<PendingEvaluation>();
 
+/**
+ * Whether a raw `bdg cdp` call runs a page script that the daemon stops
+ * when its client disconnects, like a `dom eval` script.
+ *
+ * @param method - CDP method
+ * @returns True for `Runtime.evaluate` and `Runtime.callFunctionOn`
+ */
+export function stopsScriptWhenAbandoned(method: string): boolean {
+  throw new Error(`not implemented: ${method}`);
+}
+
 /** How long the target gets to answer before an abandoned eval's script counts as running */
 const ABANDONED_CHECK_MS = 500;
 
