@@ -28,6 +28,7 @@ export const EXIT = { ok: 0, failed: 1, usage: 2, superseded: 3, timeout: 4 };
 const CALL_TIMEOUT_MS = 60_000;
 const WRITE_TIMEOUT_MS = 180_000;
 let waiterDeadline = null;
+let waiterState = null;
 
 /**
  * Runs a command and returns its trimmed stdout; throws with stderr on failure.
@@ -42,9 +43,13 @@ let waiterDeadline = null;
  */
 export function run(cmd, args, opts = {}) {
   const { timeoutMs = CALL_TIMEOUT_MS, deadline = waiterDeadline, ...execOpts } = opts;
-  let timeout = timeoutMs;
-  if (deadline && timeout) timeout = Math.min(timeout, Math.max(deadline - Date.now(), 1));
-  else if (deadline) timeout = Math.max(deadline - Date.now(), 1);
+  let timeout;
+  try {
+    timeout = callTimeout(timeoutMs, deadline);
+  } catch (err) {
+    const message = `${err.message}; not starting \`${cmd} ${args.join(' ')}\``;
+    throw Object.assign(err, { message, stderr: message });
+  }
   try {
     return execFileSync(cmd, args, {
       encoding: 'utf8',
@@ -57,6 +62,139 @@ export function run(cmd, args, opts = {}) {
     const message = `\`${cmd} ${args.join(' ')}\` timed out after ${timeout / 1000}s`;
     throw Object.assign(new Error(message), { timedOut: true, stderr: message });
   }
+}
+
+/** Smallest remaining waiter budget a gh call may start with */
+export const MIN_CALL_BUDGET_MS = 2000;
+
+/**
+ * Expands a (possibly short) commit SHA to the full one.
+ *
+ * @param {string} sha
+ * @param {typeof run} [exec]
+ */
+export function resolveSha(sha, exec = run) {
+  if (/^[0-9a-f]{40}$/i.test(sha)) return sha;
+  if (sha.startsWith('-')) throw new Error(`refusing "${sha}": a commit SHA cannot start with "-"`);
+  try {
+    return exec('git', ['rev-parse', '--verify', '--quiet', `${sha}^{commit}`], { deadline: null });
+  } catch (err) {
+    try {
+      return retryTransient(() =>
+        exec('gh', ['api', `repos/${REPO}/commits/${sha}`, '--jq', '.sha'])
+      );
+    } catch (ghErr) {
+      if (ghErr.budgetExhausted) throw ghErr;
+      throw new Error(
+        `cannot resolve ${sha} to a commit (git: ${err.message.split('\n')[0]}; gh: ${ghErr.message.split('\n')[0]})`
+      );
+    }
+  }
+}
+
+/**
+ * The timeout of one call, capped by the waiter deadline.
+ *
+ * @param {number} timeoutMs
+ * @param {number | null} deadline
+ * @param {number} [now]
+ */
+export function callTimeout(timeoutMs, deadline, now = Date.now()) {
+  if (!deadline) return timeoutMs;
+  const left = deadline - now;
+  if (left < MIN_CALL_BUDGET_MS)
+    throw Object.assign(
+      new Error(`less than ${MIN_CALL_BUDGET_MS / 1000}s of the wait budget left`),
+      { timedOut: true, budgetExhausted: true }
+    );
+  return timeoutMs ? Math.min(timeoutMs, left) : left;
+}
+
+/**
+ * What a waiter that ran out of time reports.
+ *
+ * @param {{ subject: string, minutes: number, failures: number, last: string, seen: Record<string, string> }} state
+ * @param {boolean} thrown
+ */
+export function timeoutMessage(state, thrown) {
+  const seen = Object.entries(state.seen);
+  if (state.failures > 0 && (thrown || seen.length === 0))
+    return `gh failed ${state.failures} times: ${state.last}`;
+  if (seen.length === 0) return `no CI run found for ${state.subject} after ${state.minutes} min`;
+  return `${seen.map(([name, status]) => `${name} still ${status}`).join(', ')} after ${state.minutes} min`;
+}
+
+/**
+ * What to say when a PR has no pull_request CI run.
+ *
+ * @param {number} prNumber
+ * @param {string} mergeable
+ */
+export function noRunMessage(prNumber, mergeable) {
+  if (mergeable === 'CONFLICTING')
+    return `PR #${prNumber} conflicts with its base: GitHub runs no pull_request CI; rebase`;
+  return `no pull_request CI run 3 minutes after the push: close and reopen PR #${prNumber} (not a dispatch: CI OK must come from a pull_request run)`;
+}
+
+/**
+ * One status line of a job or workflow run, with its elapsed minutes.
+ *
+ * @param {string} name
+ * @param {string} status
+ * @param {string | null | undefined} startedAt
+ * @param {number} [now]
+ */
+export function statusLine(name, status, startedAt, now = Date.now()) {
+  const started = startedAt ? Date.parse(startedAt) : NaN;
+  if (!Number.isFinite(started) || new Date(started).getUTCFullYear() < 1970)
+    return `${name} ${status}`;
+  return `${name} ${status} ${Math.max(0, Math.floor((now - started) / 60_000))} min`;
+}
+
+/**
+ * The `gh workflow run` inputs of a repeat dispatch, or an error.
+ *
+ * @param {string[]} files
+ * @param {Record<string, string>} keys
+ * @returns {{ args: string[] } | { error: string }}
+ */
+export function repeatDispatch(files, keys) {
+  const node = String(keys.node ?? 22);
+  if (!['22', '24', '26'].includes(node)) return { error: `--node must be 22, 24 or 26, got ${node}` };
+  const braced = files.find((f) => /[{}]/.test(f));
+  if (braced)
+    return { error: `brace expansion is not supported (${braced}): pass the files space-separated` };
+  return {
+    args: [
+      '-f',
+      `smoke_files=${files.join(' ')}`,
+      '-f',
+      `repeat=${keys.repeat ?? 10}`,
+      '-f',
+      `node=${node}`,
+    ],
+  };
+}
+
+/**
+ * Gate 5 verdict from the latest main CI runs.
+ *
+ * @param {Array<{ status: string, conclusion: string | null, headSha: string, databaseId?: number }>} runs
+ * @param {boolean} fixesMain
+ * @returns {{ ok: boolean, text: string }}
+ */
+export function mainGateVerdict(runs, fixesMain) {
+  const decided = runs.find((r) => r.status === 'completed' && r.conclusion !== 'cancelled');
+  const pending = runs.find((r) => r.status !== 'completed');
+  const note = pending
+    ? ` (a run on ${pending.headSha.slice(0, 10)} is in progress: wait for it if that merge touched this PR's files)`
+    : '';
+  const where = decided ? `${decided.conclusion} on ${decided.headSha.slice(0, 10)}` : 'no completed run';
+  const green = decided?.conclusion === 'success';
+  if (!fixesMain) return { ok: green, text: `5 main is green: ${where}${note}` };
+  if (decided && !green)
+    return { ok: true, text: `5 skipped: this PR fixes main, run ${decided.databaseId} (${where})` };
+  return { ok: false, text: `5 --fixes-main refused: main is ${green ? 'green' : 'not red'} (${where})` };
 }
 
 const TRANSIENT_GH =
@@ -80,22 +218,28 @@ export function isTransientGhError(err) {
  * retry); a non-transient failure, or the last transient one, is thrown.
  *
  * @param {() => unknown} fn
- * @param {{ backoff?: number[], wait?: (ms: number) => void, deadline?: number | null }} [opts]
+ * @param {{ backoff?: number[], wait?: (ms: number) => void, deadline?: number | null, now?: () => number }} [opts]
  */
 export function retryTransient(fn, opts = {}) {
   const backoff = opts.backoff ?? RETRY_BACKOFF_MS;
   const wait =
     opts.wait ?? ((ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms));
   const deadline = opts.deadline ?? waiterDeadline;
+  const now = opts.now ?? Date.now;
   for (let attempt = 0; ; attempt++) {
     try {
-      return fn();
+      const result = fn();
+      if (waiterState) Object.assign(waiterState, { failures: 0, last: '' });
+      return result;
     } catch (err) {
-      if (attempt >= backoff.length || !isTransientGhError(err)) throw err;
-      if (deadline && Date.now() >= deadline) throw err;
+      if (err?.budgetExhausted) throw err;
       const firstLine = String(err.stderr || err.message)
         .trim()
         .split('\n')[0];
+      if (waiterState)
+        Object.assign(waiterState, { failures: waiterState.failures + 1, last: firstLine });
+      if (attempt >= backoff.length || !isTransientGhError(err)) throw err;
+      if (deadline && now() >= deadline) throw err;
       console.error(
         `gh failed (${firstLine}); retry ${attempt + 1}/${backoff.length} in ${backoff[attempt] / 1000}s`
       );
@@ -193,7 +337,7 @@ function latestRun(sha, workflow, event) {
     '--event',
     event,
     '--json',
-    'databaseId,status,conclusion',
+    'databaseId,status,conclusion,startedAt',
     '--limit',
     '1',
   ]);
@@ -239,7 +383,8 @@ async function ciWait(argv) {
 /**
  * Runs a waiter with an overall deadline that caps every gh call and its
  * retries. Any error caught at or past the deadline (a killed call, a 502
- * rethrown after the last retry) ends the wait as `timeout`, exit 4. A
+ * rethrown after the last retry), or a call refused for lack of budget, ends
+ * the wait as `timeout`, exit 4, naming the gh failures when there were any. A
  * timeout that is not a positive number is a usage error, exit 2.
  *
  * @param {number | string} minutes
@@ -250,14 +395,20 @@ export async function withWaiterDeadline(minutes, wait) {
     return usage('--timeout=<minutes> must be a positive number');
   const deadline = Date.now() + Number(minutes) * 60_000;
   waiterDeadline = deadline;
+  waiterState = { subject: '', minutes: Number(minutes), failures: 0, last: '', seen: {} };
   try {
     return await wait();
   } catch (err) {
-    if (Date.now() < deadline) throw err;
-    console.log(`timeout: ${err.stderr || err.message}`);
+    if (!err.budgetExhausted && Date.now() < deadline) throw err;
+    const reason =
+      err.budgetExhausted || waiterState.failures > 0
+        ? timeoutMessage(waiterState, true)
+        : err.stderr || err.message;
+    console.log(`timeout: ${reason}`);
     return EXIT.timeout;
   } finally {
     waiterDeadline = null;
+    waiterState = null;
   }
 }
 
@@ -293,7 +444,8 @@ async function ciWaitLoop(argv) {
   const deadline = waiterDeadline;
   const push = flags.has('push');
   let pr = null;
-  let sha = target;
+  waiterState.subject = target.slice(0, 10);
+  let sha = push ? resolveSha(target) : target;
   let workflows = ['CI', 'Security'];
   if (!push) {
     pr = prInfo(target);
@@ -301,6 +453,7 @@ async function ciWaitLoop(argv) {
     if (pr.baseRefName !== 'main') workflows = ['CI'];
   }
   const event = push ? 'push' : 'pull_request';
+  waiterState.subject = sha.slice(0, 10);
   const noRunDeadline = Date.now() + 3 * 60_000;
   console.log(
     `waiting for ${workflows.join(' + ')} (${event}) on ${sha.slice(0, 10)}${pr ? ` (PR #${pr.number})` : ''}`
@@ -316,6 +469,9 @@ async function ciWaitLoop(argv) {
       }
     }
     const runs = Object.fromEntries(workflows.map((wf) => [wf, latestRun(sha, wf, event)]));
+    waiterState.seen = Object.fromEntries(
+      workflows.filter((wf) => runs[wf]).map((wf) => [wf, runs[wf].status])
+    );
     if (workflows.every((wf) => runs[wf]?.status === 'completed')) {
       const { code, summary } = judgeConclusions(
         Object.fromEntries(workflows.map((wf) => [wf, runs[wf].conclusion])),
@@ -329,17 +485,15 @@ async function ciWaitLoop(argv) {
       return code;
     }
     if (pr && !runs.CI && Date.now() > noRunDeadline) {
-      console.log(
-        `no pull_request CI run 3 minutes after the push: close and reopen PR #${pr.number} (not a dispatch: CI OK must come from a pull_request run)`
-      );
+      console.log(noRunMessage(pr.number, prInfo(pr.number).mergeable));
       return EXIT.timeout;
     }
     if (Date.now() > deadline) {
-      console.log(
-        `timeout: ${workflows.map((wf) => `${wf} ${runs[wf]?.status ?? 'not started'}`).join(', ')}`
-      );
+      console.log(`timeout: ${timeoutMessage(waiterState, false)}`);
       return EXIT.timeout;
     }
+    for (const wf of workflows)
+      console.log(statusLine(wf, runs[wf]?.status ?? 'not started', runs[wf]?.startedAt));
     await sleep(POLL_MS);
   }
 }
@@ -362,17 +516,21 @@ async function runWait(argv) {
  */
 async function runWaitLoop(id) {
   const deadline = waiterDeadline;
+  waiterState.subject = `run ${id}`;
   for (;;) {
     const r = ghJson(['run', 'view', id, '--json', 'status,conclusion,headSha,jobs']);
+    waiterState.seen = { [`run ${id}`]: r.status };
     if (r.status === 'completed') {
       for (const j of r.jobs) console.log(`${j.conclusion.padEnd(9)} ${j.name}`);
       console.log(`run ${id} on ${r.headSha.slice(0, 10)}: ${r.conclusion}`);
       return r.conclusion === 'success' ? EXIT.ok : EXIT.failed;
     }
     if (Date.now() > deadline) {
-      console.log(`timeout: run ${id} ${r.status}`);
+      console.log(`timeout: ${timeoutMessage(waiterState, false)}`);
       return EXIT.timeout;
     }
+    for (const j of r.jobs.filter((job) => job.status !== 'completed'))
+      console.log(statusLine(j.name, j.status, j.startedAt));
     await sleep(POLL_MS);
   }
 }
@@ -380,13 +538,15 @@ async function runWaitLoop(id) {
 /**
  * Dispatches the CI repeat run for smoke files on a PR's branch and prints its id.
  *
- * @param {string[]} argv `<pr> <smoke files...>`, optional `repeat=10 node=22`
+ * @param {string[]} argv `<pr> <smoke files...>`, optional `--repeat=10 --node=22|24|26` (files space-separated; no brace expansion)
  */
 async function repeat(argv) {
   const { positional, keys } = parseArgs(argv);
   const [prNumber, ...files] = positional;
   if (!prNumber || files.length === 0)
-    return usage('repeat <pr> <smoke files...> [repeat=10] [node=22]');
+    return usage('repeat <pr> <smoke files...> [--repeat=10] [--node=22|24|26]');
+  const dispatch = repeatDispatch(files, keys);
+  if (dispatch.error) return usage(dispatch.error);
   const pr = prInfo(prNumber);
   const dispatchRuns = () =>
     ghJson([
@@ -412,12 +572,7 @@ async function repeat(argv) {
       REPO,
       '--ref',
       pr.headRefName,
-      '-f',
-      `smoke_files=${files.join(' ')}`,
-      '-f',
-      `repeat=${keys.repeat ?? 10}`,
-      '-f',
-      `node=${keys.node ?? 22}`,
+      ...dispatch.args,
     ],
     { timeoutMs: WRITE_TIMEOUT_MS }
   );
@@ -644,8 +799,9 @@ function ciGates(results, pr, macos) {
  * green before anything merges.
  *
  * @param {boolean[]} results
+ * @param {boolean} fixesMain skip the green check for the PR that fixes a red main
  */
-function mainGate(results) {
+function mainGate(results, fixesMain) {
   const runs =
     ghJson([
       'run',
@@ -657,20 +813,12 @@ function mainGate(results) {
       '--event',
       'push',
       '--json',
-      'status,conclusion,headSha',
+      'status,conclusion,headSha,databaseId',
       '--limit',
       '10',
     ]) ?? [];
-  const decided = runs.find((r) => r.status === 'completed' && r.conclusion !== 'cancelled');
-  const pending = runs.find((r) => r.status !== 'completed');
-  const note = pending
-    ? ` (a run on ${pending.headSha.slice(0, 10)} is in progress: wait for it if that merge touched this PR's files)`
-    : '';
-  gateLine(
-    results,
-    decided?.conclusion === 'success',
-    `5 main is green: ${decided ? `${decided.conclusion} on ${decided.headSha.slice(0, 10)}` : 'no completed run'}${note}`
-  );
+  const { ok, text } = mainGateVerdict(runs, fixesMain);
+  gateLine(results, ok, text);
 }
 
 /**
@@ -710,13 +858,13 @@ async function freshBaseGate(results, pr, baseRef, forkPoint, prFiles) {
  * per gate; the judgment gates are printed as reminders. `--tier` is
  * required, so a tier-1 PR isn't held to the red-commit rule by default.
  *
- * @param {string[]} argv `<pr> --tier=1|2|3`, optional `--macos`, `--no-issue` (a PR with no issue to close), `--repeat=<run id>` (or `--timing` to demand one)
+ * @param {string[]} argv `<pr> --tier=1|2|3`, optional `--macos`, `--no-issue` (a PR with no issue to close), `--repeat=<run id>` (or `--timing` to demand one), `--fixes-main` (skip gate 5 for the PR that fixes a red main; refused when main is green)
  */
 async function gates(argv) {
   const { positional, keys, flags } = parseArgs(argv);
   const tier = Number(keys.tier);
   if (!positional[0] || ![1, 2, 3].includes(tier))
-    return usage('gates <pr> --tier=1|2|3 [--macos] [--timing] [--repeat=<run id>] [--no-issue]');
+    return usage('gates <pr> --tier=1|2|3 [--macos] [--timing] [--repeat=<run id>] [--no-issue] [--fixes-main]');
   const pr = prInfo(positional[0]);
   const head = pr.headRefOid;
   const results = [];
@@ -746,7 +894,7 @@ async function gates(argv) {
     );
   }
   ciGates(results, pr, flags.has('macos'));
-  mainGate(results);
+  mainGate(results, flags.has('fixes-main'));
   await freshBaseGate(results, pr, baseRef, forkPoint, prFiles);
   gateLine(results, !prFiles.includes('CHANGELOG.md'), '7 CHANGELOG.md untouched');
   if (flags.has('no-issue')) console.log('ok   7 PR body closes an issue: skipped (--no-issue)');
@@ -970,7 +1118,7 @@ function leftovers(argv) {
  */
 async function merge(argv) {
   const prNumber = argv[0];
-  if (!prNumber) return usage('merge <pr> --tier=1|2|3 [--macos] [--timing] [--repeat=<run id>] [--no-issue]');
+  if (!prNumber) return usage('merge <pr> --tier=1|2|3 [--macos] [--timing] [--repeat=<run id>] [--no-issue] [--fixes-main]');
   const pr = prInfo(prNumber);
   if ((await gates(argv)) !== EXIT.ok) {
     console.log('not merged: a gate failed');
@@ -1184,13 +1332,13 @@ const COMMANDS = {
   worktree: [worktree, '<N> <branch>: agent worktree from origin/main, node_modules linked'],
   brief: [brief, '<role> N=<n> KEY=value…: render a brief with the shared blocks'],
   'ci-wait': [ciWait, '<pr> | <sha> --push: wait for CI (+ Security); exit 3 when superseded'],
-  repeat: [repeat, '<pr> <smoke files…>: dispatch the repeat=10 run on the PR head'],
+  repeat: [repeat, '<pr> <smoke files…> [--node=22|24|26]: dispatch the repeat=10 run on the PR head'],
   'run-wait': [
     runWait,
     '<run id> [--timeout=<min>]: wait for a dispatched run, print its jobs; exit 4 on timeout',
   ],
   'merge-check': [mergeCheck, '<pr> [test files…]: gate 6 on current main, in a temp worktree'],
-  gates: [gates, '<pr> --tier=N [--macos] [--timing] [--repeat=<id>] [--no-issue]: mechanical gates'],
+  gates: [gates, '<pr> --tier=N [--macos] [--timing] [--repeat=<id>] [--no-issue] [--fixes-main]: mechanical gates'],
   merge: [merge, '<pr> --tier=N [gate flags]: gates, merge on that head, clean up'],
   leftovers: [leftovers, '[--clean]: gate 8; --clean drops PID files of dead processes'],
   log: [log, '<pr> tier= review= tester= rounds= model= tokens= note=: append to log.md'],
