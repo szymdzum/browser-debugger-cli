@@ -116,6 +116,9 @@ function invalidPortError(url: string, normalized: string): ValidationResult | u
   );
 }
 
+/** `user:password@` typed without a scheme (`user:pw@localhost:3000`) */
+const SCHEMELESS_USER_INFO = /^[^:@]+:[^@]*@/;
+
 /**
  * Validate that a URL is valid and usable for Chrome navigation.
  *
@@ -193,7 +196,9 @@ export function validateUrl(url: string): ValidationResult {
     if (/[!@#$%^&*()=+[\]{}\\|;'",<>?]/.test(beforePath)) {
       return invalid(
         `Invalid URL format: '${shown}' (contains invalid characters)`,
-        'URLs cannot contain special characters like !, @, #, etc. in hostname or protocol'
+        SCHEMELESS_USER_INFO.test(beforePath)
+          ? 'Credentials (user:password@) need a scheme, e.g. http://user:password@localhost:3000'
+          : 'URLs cannot contain special characters like !, @, #, etc. in hostname or protocol'
       );
     }
   }

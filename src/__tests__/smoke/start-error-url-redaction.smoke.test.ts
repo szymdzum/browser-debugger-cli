@@ -53,6 +53,10 @@ const CASES: Case[] = [
   { url: 'htp://user:SECRETPW@localhost', host: /htp:/, launches: false },
   { url: 'http://user:SECRETPW@local host/', host: /local host/, launches: false },
   { url: 'http://user:SECRETPW@localhost/?', host: /localhost/, launches: false },
+  { url: '//u:SECRETPW@localhost:1', host: /localhost/, launches: true },
+  { url: 'http:////u:SECRETPW@localhost:1', host: /localhost/, launches: true },
+  { url: 'https:/u:SECRETPW@localhost:1', host: /localhost/, launches: true },
+  { url: 'x?next=u:SECRETPW@localhost', host: /'x/, launches: false },
 ];
 
 /**

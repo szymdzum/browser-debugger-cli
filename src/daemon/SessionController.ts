@@ -578,7 +578,7 @@ export class SessionController {
       const current =
         mismatch.current === LAUNCHED_CHROME_DESCRIPTION ? undefined : mismatch.current;
       return {
-        message: `Active session is attached to ${mismatch.current}, not ${mismatch.requested}`,
+        message: `Active session is attached to ${displayTypedUrl(String(mismatch.current))}, not ${displayTypedUrl(String(mismatch.requested))}`,
         errorCode: IPCErrorCode.SESSION_TARGET_MISMATCH,
         existingSession: {
           ...existingSession,

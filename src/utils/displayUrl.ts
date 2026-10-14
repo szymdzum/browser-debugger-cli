@@ -24,8 +24,21 @@ import { redactUrl, removeUrlUserInfo } from '@/telemetry/har/sanitize.js';
 export function displayUrl(url: string, includeSensitive = false): string {
   if (BLOB_URL.test(url)) return `blob:${displayUrl(url.slice('blob:'.length), includeSensitive)}`;
   const shown = includeSensitive ? removeUrlUserInfo(url) : redactUrl(url, MASKED_VALUE);
-  return withoutNestedUserInfo(shown);
+  const scrubbed = withoutNestedUserInfo(shown);
+  return CONTENT_SCHEME.test(scrubbed) ? scrubbed : scrubbed.replace(USER_INFO_SEGMENT, '$1');
 }
+
+/** Schemes whose URLs carry content (a script, a document), not an address */
+const CONTENT_SCHEME = /^(?:about|data|javascript|mailto|vbscript):/i;
+
+/**
+ * A `user:password@` anywhere in a URL that is not its authority (#757):
+ * after `//`, `///` or a scheme without slashes (`http:///u:p@h`,
+ * `https:/u:p@h`, which the URL parser reads as a path) or in a query
+ * value (`?next=u:p@h`), raw or percent-encoded (`%3A`, `%40`). A segment
+ * (between `/`, `?`, `#`, `&`, `=` or `;`) holding a `:` up to its last `@`.
+ */
+const USER_INFO_SEGMENT = /(^|[/?#&=;])[^/?#&=;\s]*?(?::|%3A)[^/?#&=;\s]*(?:@|%40)/gi;
 
 /** A `blob:` URL, which wraps the URL of the page that made it */
 const BLOB_URL = /^blob:/i;

@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { navigationFailedError } from '@/errors/messages.js';
-import { displayTypedUrl } from '@/utils/displayUrl.js';
+import { displayTypedUrl, displayUrl } from '@/utils/displayUrl.js';
 import { normalizeUrl, validateChromeWsUrl, validateUrl } from '@/utils/url.js';
 
 /** Any form of the password the inputs carry */
@@ -32,6 +32,14 @@ const CASES: ReadonlyArray<{ url: string; host: string }> = [
   { url: 'http://user:SECRETPW@local host/', host: 'local host' },
   { url: 'http://user:SECRETPW@localhost/?', host: 'localhost' },
   { url: 'user:SECRETPW@localhost', host: 'localhost' },
+  { url: '//u:SECRETPW@localhost:1', host: 'localhost' },
+  { url: '///u:SECRETPW@localhost:1', host: 'localhost' },
+  { url: 'http:///u:SECRETPW@localhost:1', host: 'localhost' },
+  { url: 'http:////u:SECRETPW@localhost:1', host: 'localhost' },
+  { url: 'https:/u:SECRETPW@localhost:1', host: 'localhost' },
+  { url: 'http:u:SECRETPW@localhost:1', host: 'localhost' },
+  { url: 'x?next=u:SECRETPW@localhost', host: 'localhost' },
+  { url: 'localhost:1/?next=u%3ASECRETPW%40localhost', host: 'localhost' },
 ];
 
 void describe('displayTypedUrl (#757)', () => {
@@ -84,4 +92,22 @@ void describe('validateChromeWsUrl messages (#757 adjacent)', () => {
       assert.doesNotMatch(`${result.error}\n${result.suggestion ?? ''}`, SECRET);
     });
   }
+});
+
+void describe('displayUrl of a normalized start URL (#757)', () => {
+  for (const { url } of CASES) {
+    void it(`hides the secret of ${url} as the daemon logs it`, () => {
+      assert.doesNotMatch(displayUrl(normalizeUrl(url)), SECRET);
+    });
+  }
+});
+
+void describe('validateUrl for scheme-less credentials (#757)', () => {
+  void it('names the cause without echoing the credentials', () => {
+    const result = validateUrl('user:SECRETPW@localhost:3000');
+    assert.equal(result.valid, false);
+    if (result.valid) return;
+    assert.match(result.suggestion ?? '', /credentials.*need a scheme/i);
+    assert.doesNotMatch(`${result.error}\n${result.suggestion ?? ''}`, SECRET);
+  });
 });
