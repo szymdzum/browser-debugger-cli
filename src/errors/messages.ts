@@ -3514,11 +3514,15 @@ export function staleDevToolsActivePortError(file: string, endpoint: string): Er
   };
 }
 
+/** How to get past Chrome's "Allow remote debugging?" prompt */
+const ALLOW_PROMPT_SUGGESTION =
+  "Run the command again and click Allow in Chrome's remote debugging prompt";
+
 /** The user declined Chrome's "Allow remote debugging?" prompt for `bdg attach`. */
 export function remoteDebuggingDeclinedError(): ErrorWithSuggestion {
   return {
     message: 'Chrome refused the connection: the remote debugging prompt was declined',
-    suggestion: "Run the command again and click Allow in Chrome's remote debugging prompt",
+    suggestion: ALLOW_PROMPT_SUGGESTION,
   };
 }
 
@@ -3530,7 +3534,7 @@ export function remoteDebuggingDeclinedError(): ErrorWithSuggestion {
 export function remoteDebuggingUnansweredError(seconds: number): ErrorWithSuggestion {
   return {
     message: `Chrome's remote debugging prompt was not answered within ${seconds}s`,
-    suggestion: "Run the command again and click Allow in Chrome's remote debugging prompt",
+    suggestion: ALLOW_PROMPT_SUGGESTION,
   };
 }
 
