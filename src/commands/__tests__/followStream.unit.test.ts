@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { createFollowCursor, droppedInView, messageKeys } from '@/commands/console.js';
+import { createFollowCursor, droppedInView } from '@/commands/console.js';
 import { newPageCrashes } from '@/commands/shared/followMode.js';
 import type { ConsoleMessage, NetworkRequest } from '@/types.js';
 import {
@@ -15,15 +15,6 @@ import {
 } from '@/ui/formatters/console.js';
 import { formatNetworkFollowRows } from '@/ui/formatters/networkList.js';
 import { failureReason } from '@/ui/formatters/requestStatus.js';
-
-void describe('console follow keys', () => {
-  void it('tells apart identical messages logged in the same millisecond', () => {
-    const message: ConsoleMessage = { type: 'log', text: 'x', timestamp: 1000 };
-    const keys = messageKeys([message, { ...message }, { ...message, text: 'y' }]);
-    assert.equal(new Set(keys).size, 3);
-    assert.deepEqual(messageKeys([message]), keys.slice(0, 1));
-  });
-});
 
 void describe('network follow rows', () => {
   const request: NetworkRequest = {
@@ -131,6 +122,24 @@ void describe('console follow cursor', () => {
     cursor.next(all, 1);
     const kept = [...all.slice(2), message('e', 1, 5), message('f', 1, 6)];
     assert.deepEqual(texts(cursor.next(kept, 1)), ['e', 'f']);
+  });
+
+  void it('prints identical same-millisecond messages once each', () => {
+    const cursor = createFollowCursor({}, 0);
+    const same = (): ConsoleMessage => message('x', 1, 100);
+    assert.equal(cursor.next([same(), same()], 1, 0).length, 2);
+    assert.equal(cursor.next([same(), same(), same()], 1, 0).length, 1);
+    assert.equal(cursor.next([same(), same(), same()], 1, 0).length, 0);
+  });
+
+  void it('counts new duplicates when the oldest identical messages were dropped', () => {
+    const cursor = createFollowCursor({}, 0);
+    const same = (): ConsoleMessage => message('x', 1, 100);
+    const first = Array.from({ length: 30 }, same);
+    assert.equal(cursor.next(first, 1, 0).length, 30);
+    const kept = [...first.slice(10), ...Array.from({ length: 10 }, same)];
+    assert.equal(cursor.next(kept, 1, 10).length, 10);
+    assert.equal(cursor.next(kept, 1, 10).length, 0);
   });
 
   void it('prints a separator between the left page and the new page', () => {
