@@ -264,7 +264,7 @@ If a command is interrupted, Ctrl-C (exit 130, once Node has started: tens of mi
 | 84 | Session already running | `bdg page navigate <url>` to reuse it, `bdg stop`, or `--session <name>` |
 | 85 | Session busy (starting/stopping) | Retry shortly |
 | 87 | Index out of range, or stale (page changed since the query) | Re-run the query |
-| 91 | `eval` script threw | Fix the JavaScript |
+| 91 | Page JavaScript threw: `eval` script, or the page's own code during `dom click`/`fill`/`press` | Fix the script; for an action, check the page's listeners (`bdg dom listeners`) and `bdg console` |
 | 100 | Chrome failed to launch | `bdg cleanup --force`, retry |
 | 101 | CDP connection failure | `bdg cleanup --force`, then restart |
 | 102 | Timeout (CDP, `dom wait`) or no response | Check page load, raise `--timeout` |

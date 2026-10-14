@@ -753,7 +753,7 @@ export async function onScriptTarget<
 /**
  * The error for an action script that threw: on a page that replaced
  * built-ins the scripts use, that the page broke it (90, naming them);
- * otherwise what it threw (110), with the user's selector.
+ * otherwise what it threw (91), with the user's selector.
  *
  * @param error - What the action reported
  * @param replaced - Built-ins the page replaced
@@ -776,7 +776,7 @@ function actionScriptFailure(
     );
   }
   const err = actionScriptFailedError(error.action, error.exception, selector, listIndex);
-  return new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SOFTWARE_ERROR);
+  return new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SCRIPT_ERROR);
 }
 
 /**
