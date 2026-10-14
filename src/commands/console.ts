@@ -201,9 +201,9 @@ function buildFormatOptions(
  * @param lastN - Messages to show at start (0 = all)
  */
 async function runFollowMode(options: ConsoleCommandOptions, lastN: number): Promise<void> {
-  const shown = new Set<string>();
+  const cursor = createFollowCursor(options, lastN);
   const newCrash = newPageCrashes();
-  let navigationId: number | undefined;
+  let streamNavigationId: number | undefined;
   let started = false;
   const showConsole = async (): Promise<FollowPoll> => {
     const result = await fetchConsoleMessages();
@@ -214,14 +214,7 @@ async function runFollowMode(options: ConsoleCommandOptions, lastN: number): Pro
 
     const { messages, currentNavigationId } = result.data;
     const crashedAt = newCrash(result.data.pageCrashedAt);
-    const matching = applyFilters(messages, options, currentNavigationId);
-    const keys = messageKeys(matching);
-    const fresh = matching.filter((_message, i) => !shown.has(keys[i] as string));
-    const backlog = started || lastN === 0 ? fresh : fresh.slice(-lastN);
-    shown.clear();
-    keys.forEach((key) => shown.add(key));
-    const navigated = started && navigationId !== currentNavigationId;
-    navigationId = currentNavigationId;
+    const backlog = cursor.next(messages, currentNavigationId);
     if (options.json) {
       if (!started || backlog.length > 0 || crashedAt !== undefined) {
         const data = buildConsoleJsonOutput(backlog, {
@@ -236,13 +229,14 @@ async function runFollowMode(options: ConsoleCommandOptions, lastN: number): Pro
       const text = formatConsoleFollowLines(backlog, {
         header: !started,
         full: options.full,
-        ...(navigated &&
-          currentNavigationId !== undefined && { navigationId: currentNavigationId }),
+        ...(streamNavigationId !== undefined && { streamNavigationId }),
+        ...(currentNavigationId !== undefined && { currentNavigationId }),
       });
       if (text) console.log(text);
       if (crashedAt !== undefined) console.log(pageCrashedNote(crashedAt));
     }
     started = true;
+    streamNavigationId = currentNavigationId;
     return undefined;
   };
 
@@ -284,17 +278,35 @@ export interface FollowCursor {
 }
 
 /**
- * Track what `console --follow` printed.
+ * Track what `console --follow` printed. A message is told from the ones
+ * printed by {@link messageKeys}, kept only for the messages the session
+ * still holds: eviction at the session's limit cannot skip or repeat one,
+ * and a message of a page left since the last poll is printed like any other.
+ * The first poll prints the page loaded (every page with `--history`), the
+ * last `lastN` messages of it; later polls print what is new on any page.
+ * `--level` applies to all of them.
  *
- * @param _options - `--history` and `--level`
- * @param _lastN - Messages to show at start (0 = all)
+ * @param options - `--history` and `--level`
+ * @param lastN - Messages to show at start (0 = all)
  * @returns The cursor
  */
 export function createFollowCursor(
-  _options: Pick<ConsoleCommandOptions, 'history' | 'level'>,
-  _lastN: number
+  options: Pick<ConsoleCommandOptions, 'history' | 'level'>,
+  lastN: number
 ): FollowCursor {
-  throw new Error('not implemented');
+  let printed = new Set<string>();
+  let started = false;
+  return {
+    next(messages, currentNavigationId) {
+      const keys = messageKeys(messages);
+      const fresh = messages.filter((_message, i) => !printed.has(keys[i] as string));
+      printed = new Set(keys);
+      if (started) return options.level ? filterByLevel(fresh, options.level) : fresh;
+      started = true;
+      const backlog = applyFilters(fresh, options, currentNavigationId);
+      return lastN === 0 ? backlog : backlog.slice(-lastN);
+    },
+  };
 }
 
 /** Chrome Issues of the page currently loaded */

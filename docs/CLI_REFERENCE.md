@@ -195,6 +195,7 @@ Follow modes (`peek --follow`, `console --follow`, `network list --follow`, `dom
 - Ctrl-C exits 130 and SIGTERM 143, as shells expect, after the mode's stop line on stderr (`Stopped following preview`, `Captured 4 frames`). No `Interrupted` envelope is printed, with `--json` either: each NDJSON line is already a whole envelope.
 - With `--json` they print one whole `BdgResponse` envelope per update, one per line (NDJSON), so a script can parse each line as it comes.
 - `peek --json --follow` prints a line every refresh; `console` and `network list` only when something new arrived. Their first line carries the backlog (`--last`; default 10 for `peek`, 100 for `console` and `network list`). `dom screenshot --follow` prints one envelope per frame and has no backlog.
+- `console --follow` prints what a page logged before a navigation took it away (the four errors a click logged and the reload that followed), then a `── Next page (navigation #N) ──` separator, then the new page's lines, each message once, also when the session drops old messages meanwhile; `--level` applies to all of them. The backlog at start is the current page's (`--history`: every page's).
 - They stop with exit 83 when the session they follow ends (`The session ended; stopped following`), so a follower running in the background finds out.
 - Other failures (a busy page, a timeout) are retried: reported once in text, and as one error line per refresh with `--json`.
 

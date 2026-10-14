@@ -39,6 +39,6 @@ export const CONSOLE_BEHAVIORS: BehaviorTable = {
   'console:--follow': {
     default: 'Prints the messages logged so far and exits',
     whenEnabled: 'Streams new messages as they come (the last --last at start)',
-    automaticBehavior: FOLLOW_BEHAVIOR,
+    automaticBehavior: `${FOLLOW_BEHAVIOR}. After the first poll messages of any page are streamed: those a page logged before it was left are printed, then the navigation separator, then the new page's (--level applies to all)`,
   },
 };
