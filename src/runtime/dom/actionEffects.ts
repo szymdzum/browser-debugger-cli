@@ -82,6 +82,13 @@ const STILL_CHANGING_RECHECK_MS = 250;
 /** Resource types of pending requests that mean more content is coming */
 const CONTENT_REQUEST_TYPES = new Set(['Document', 'XHR', 'Fetch', 'Script']);
 
+/**
+ * Elements an action must have added or removed for `domChanges`: fewer are
+ * a label or counter re-rendered, an item added, a toggle, which the page
+ * does all the time
+ */
+const MIN_REPORTED_DOM_NODES = 3;
+
 /** Longest message text reported */
 const MAX_MESSAGE_LENGTH = 120;
 
@@ -180,6 +187,12 @@ export interface ReadSnapshot {
   activated?: string;
   /** The key was Enter in a form's input */
   enterField?: boolean;
+  /** `aria-expanded` of the press's target after it, when it flipped */
+  expanded?: boolean;
+  /** Where focus is after a fill whose handler moved it off the field (when asked for) */
+  focusMoved?: string;
+  /** Elements added or removed since the start (same document only) */
+  nodes?: number;
 }
 
 /** What collecting saw of the page's work, for {@link pendingChanges} */
@@ -460,6 +473,8 @@ export function hadNoEffect(
     (effects.shown ?? []).length === 0 &&
     effects.submitted === undefined &&
     effects.controlChange === undefined &&
+    effects.expanded === undefined &&
+    effects.focusMoved === undefined &&
     activity.requests === 0 &&
     activity.dialogs === 0 &&
     !activity.opened &&
@@ -477,6 +492,8 @@ export interface CollectOptions {
   detectNoEffect: boolean;
   /** List the elements the action showed */
   reportShown?: boolean;
+  /** Say where focus went when a handler moved it off the filled field */
+  reportFocusMove?: boolean;
   /** Take a second look when the DOM looks busy, to tell whether it is still changing */
   detectUnsettled?: boolean;
 }
@@ -547,8 +564,11 @@ async function collectEffects(watch: Watch, options: CollectOptions): Promise<Co
   if (!start) {
     return { ...effectsOf(undefined, undefined, watch.listener.events), work: pageWork(watch) };
   }
-  const reportShown = options.reportShown === true;
-  let snapshot = await readPage(watch, { stop: false, reportShown });
+  const read = {
+    reportShown: options.reportShown === true,
+    focus: options.reportFocusMove === true,
+  };
+  let snapshot = await readPage(watch, { ...read, stop: false });
   let effects = effectsOf(start, snapshot, watch.listener.events);
   const quiet = (): boolean =>
     hadNoEffect(snapshot, effects, {
@@ -558,7 +578,7 @@ async function collectEffects(watch: Watch, options: CollectOptions): Promise<Co
     });
   if (options.detectNoEffect && quiet()) {
     await delay(NO_EFFECT_RECHECK_MS);
-    snapshot = await readPage(watch, { stop: true, reportShown });
+    snapshot = await readPage(watch, { ...read, stop: true });
     effects = effectsOf(start, snapshot, watch.listener.events);
     if (quiet()) effects = { ...effects, effect: 'none' };
   }
@@ -646,8 +666,9 @@ async function stillChanging(watch: Watch, snapshot: ReadSnapshot | undefined): 
   if (!domLooksBusy(first)) return false;
   const firstRead = Date.now();
   await delay(STILL_CHANGING_RECHECK_MS);
-  const recheck = (await readPage(watch, { stop: false, reportShown: false, stalls: true }))
-    ?.settle;
+  const recheck = (
+    await readPage(watch, { stop: false, reportShown: false, focus: false, stalls: true })
+  )?.settle;
   const sinceMs =
     first?.at !== undefined && recheck?.at !== undefined
       ? Math.round(recheck.at - first.at)
@@ -713,13 +734,15 @@ function effectsOf(
         ? newMessages(start.messages, snapshot.messages, snapshot.fresh)
         : { messages: [], more: 0 };
     const shown = shownElements(snapshot?.shown ?? [], messages);
-    return {
+    const reported: ActionEffects = {
       ...(navigation && { navigation }),
       ...(messages.length > 0 && { messages }),
       ...(more > 0 && { moreMessages: more }),
       ...(shown.length > 0 && { shown }),
       ...pressOutcomes(snapshot),
     };
+    const domChanges = reportedDomChanges(snapshot, reported);
+    return domChanges === undefined ? reported : { ...reported, domChanges };
   } catch (error) {
     log.debug(
       `Page effects not readable (the page replaced built-ins?): ${getErrorMessage(error)}`
@@ -730,15 +753,15 @@ function effectsOf(
 
 /**
  * The press's outcomes a same-document read found: the form submit, the
- * pressed button's change (its label cut to {@link MAX_MESSAGE_LENGTH}) and
- * the element a key press clicked.
+ * pressed button's change (its label cut to {@link MAX_MESSAGE_LENGTH}), the
+ * element a key press clicked, an `aria-expanded` flip and a focus move.
  *
  * @param snapshot - Read after the action, if taken
  * @returns Outcomes, without empty parts
  */
 function pressOutcomes(
   snapshot: ReadSnapshot | undefined
-): Pick<ActionEffects, 'submitted' | 'controlChange' | 'activated'> {
+): Pick<ActionEffects, 'submitted' | 'controlChange' | 'activated' | 'expanded' | 'focusMoved'> {
   if (!snapshot || snapshot.fresh) return {};
   const change = snapshot.controlChange;
   return {
@@ -750,7 +773,36 @@ function pressOutcomes(
       },
     }),
     ...(snapshot.activated && { activated: snapshot.activated }),
+    ...(snapshot.expanded !== undefined && { expanded: snapshot.expanded }),
+    ...(snapshot.focusMoved && { focusMoved: snapshot.focusMoved }),
   };
+}
+
+/**
+ * Elements the action added or removed, as a last resort when nothing else
+ * says what it changed: at least {@link MIN_REPORTED_DOM_NODES} of them, no
+ * other effect in `reported` (a navigation, messages, shown elements, a form
+ * submit, the button's change, a key's click, an expansion, a focus move)
+ * and no recent bursts of DOM changes that make the DOM look busy
+ * ({@link recentBursts}): a page that re-renders on a timer is not the
+ * action's doing.
+ *
+ * @param snapshot - Read after the action, if taken
+ * @param reported - What the action is reported to have changed
+ * @returns Elements added or removed, or undefined
+ */
+export function reportedDomChanges(
+  snapshot: ReadSnapshot | undefined,
+  reported: ActionEffects
+): number | undefined {
+  const nodes = snapshot?.nodes;
+  if (!snapshot || snapshot.fresh || nodes === undefined || nodes < MIN_REPORTED_DOM_NODES) {
+    return undefined;
+  }
+  if (Object.keys(reported).length > 0 || recentBursts(snapshot.settle).length >= BUSY_BURSTS) {
+    return undefined;
+  }
+  return nodes;
 }
 
 /**
@@ -764,15 +816,15 @@ function pressOutcomes(
  * not. A page that did not answer in time is marked unresponsive.
  *
  * @param watch - The action's watch
- * @param options - Also stop the page's watch; list shown elements; always read stalls
+ * @param options - Also stop the page's watch; list shown elements; report a focus move; always read stalls
  * @returns The read, or undefined
  */
 async function readPage(
   watch: Watch,
-  options: { stop: boolean; reportShown: boolean; stalls?: boolean }
+  options: { stop: boolean; reportShown: boolean; focus: boolean; stalls?: boolean }
 ): Promise<ReadSnapshot | undefined> {
   if (watch.listener.navigationPending()) return undefined;
-  const expression = `(${EFFECTS_READ_SCRIPT})(${options.stop}, ${options.reportShown})`;
+  const expression = `(${EFFECTS_READ_SCRIPT})(${options.stop}, ${options.reportShown}, ${options.focus})`;
   const answered = await letDueTimersRun(watch);
   const answer = answered
     ? await pageAnswer(

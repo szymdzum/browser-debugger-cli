@@ -421,6 +421,48 @@ export function actionErrorRows(errors: ActionError[]): string[] {
 }
 
 /**
+ * Line of the elements an action added or removed when nothing else says what
+ * it changed.
+ *
+ * @param nodes - Elements added or removed
+ * @returns e.g. `DOM changed (200 nodes)`
+ */
+export function domChangedText(nodes: number): string {
+  return `DOM changed (${nodes} nodes)`;
+}
+
+/**
+ * Line of an `aria-expanded` flip.
+ *
+ * @param expanded - Value after the press
+ * @returns e.g. `Expanded: true`
+ */
+export function expandedText(expanded: boolean): string {
+  return `Expanded: ${expanded}`;
+}
+
+/**
+ * Line of a fill whose `input` handler moved focus away from the field.
+ *
+ * @param element - Element focus is on now
+ * @returns e.g. `Focus moved to: input#other`
+ */
+export function focusMovedText(element: string): string {
+  return `Focus moved to: ${element}`;
+}
+
+/**
+ * Warning shown when the mouse was released on another element than the one
+ * pressed (the page moved or replaced it while the mouse was down).
+ *
+ * @param releasedOn - Element that received the release, e.g. `button#next`
+ * @returns Warning text
+ */
+export function releasedElsewhereWarning(releasedOn: string): string {
+  return `The mouse was released on ${releasedOn}, not on the clicked element: the page changed under the pointer while it was pressed; check what the page did`;
+}
+
+/**
  * Last `Errors:` row when console errors from filtered tracker hosts were
  * left out (a session started with `--all` lists them).
  *

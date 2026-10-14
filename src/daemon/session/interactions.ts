@@ -65,6 +65,11 @@ export interface InteractionOptions {
    */
   reportShown?: boolean;
   /**
+   * Say where focus went when a handler moved it off the field
+   * (`focusMoved`): for fill
+   */
+  reportFocusMove?: boolean;
+  /**
    * Say when the page was still changing as it returned (`settled: false`
    * with `pending`): for actions that start app transitions (click, key
    * press) and waited for the network
@@ -278,6 +283,7 @@ export function createInteractionRunner(
           consoleMessages: () => consoleMessagesLogged(store) - firstConsoleMessage,
           detectNoEffect: options.detectNoEffect === true,
           reportShown: options.reportShown === true,
+          reportFocusMove: options.reportFocusMove === true,
           detectUnsettled: options.detectUnsettled === true,
         });
         const { work, ...changes } = collected ?? {};

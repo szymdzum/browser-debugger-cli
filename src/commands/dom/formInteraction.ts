@@ -60,6 +60,10 @@ import {
   actionErrorRows,
   activatedText,
   controlChangeText,
+  domChangedText,
+  expandedText,
+  focusMovedText,
+  releasedElsewhereWarning,
   actionStatusLine,
   dialogResultText,
   downloadText,
@@ -526,6 +530,7 @@ type ActionOutput<T> = Omit<T, 'success'> & { indexSource?: IndexSource | undefi
 /** What every action result may report besides its own details */
 interface ActionNotices extends ActionEffects {
   warning?: string | undefined;
+  releasedOn?: string | undefined;
   dialogs?: DialogInfo[] | undefined;
   triggeredRequests?: TriggeredRequest[] | undefined;
   triggeredRequestsOmitted?: number | undefined;
@@ -565,7 +570,7 @@ function formatActionOutput(
   const stillChanging = result.settled === false && result.pending !== undefined;
   fmt.text(
     actionStatusLine(done, {
-      warned: result.warning !== undefined,
+      warned: result.warning !== undefined || result.releasedOn !== undefined,
       noEffect: result.effect === 'none',
       stillChanging,
       submitBlocked: result.submitBlocked !== undefined,
@@ -575,6 +580,7 @@ function formatActionOutput(
     fmt.text(`⚠ ${submitBlockedNote(result.submitBlocked, result.submitBlockedOmitted)}`);
   }
   if (result.warning) fmt.text(`⚠ Warning: ${result.warning}`);
+  if (result.releasedOn) fmt.text(`⚠ ${releasedElsewhereWarning(result.releasedOn)}`);
   const pausedNoted = stillChanging && result.pending?.requests !== undefined;
   if (stillChanging && result.pending) {
     const note = stillChangingNote(
@@ -590,6 +596,9 @@ function formatActionOutput(
   if (result.submitted) fmt.text(formSubmittedText(result.submitted));
   if (result.controlChange) fmt.text(controlChangeText(result.controlChange));
   if (result.activated) fmt.keyValue('Activated', activatedText(result.activated), keyWidth);
+  if (result.expanded !== undefined) fmt.text(expandedText(result.expanded));
+  if (result.focusMoved) fmt.text(focusMovedText(result.focusMoved));
+  if (result.domChanges) fmt.text(domChangedText(result.domChanges));
   listRows(
     fmt,
     'New text',
