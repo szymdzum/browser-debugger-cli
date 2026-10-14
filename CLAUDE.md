@@ -247,7 +247,7 @@ Location: `~/.bdg/` (override with `BDG_SESSION_DIR`)
 - `chrome.pid` - Launched Chrome, kept until Chrome is confirmed dead (crash recovery)
 - `daemon.log` - Daemon output
 
-The daemon hosts exactly one session and exits when it ends. Only `bdg <url>` spawns it.
+The daemon hosts exactly one session and exits when it ends. Only `bdg <url>` and `bdg attach <tab>` spawn it (`bdg attach` without a tab only lists tabs).
 
 ---
 
