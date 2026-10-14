@@ -210,4 +210,59 @@ void describe('formatTriggeredRequestLines with repeated requests', () => {
     assert.equal(lines[0], 'POST 127.0.0.1:8080/event ×8 → 501');
     assert.equal(lines.at(-1), '... and 4 more (--json lists up to 50)');
   });
+
+  void it('groups the same host and path across schemes, not across hosts or ports', () => {
+    const at = (url: string): TriggeredRequest => ({
+      requestId: url,
+      method: 'POST',
+      url,
+      resourceType: 'Other',
+      status: 200,
+    });
+    assert.deepEqual(formatTriggeredRequestLines([at('http://h/e'), at('https://h/e')]), [
+      'POST h/e ×2 → 200',
+    ]);
+    assert.equal(
+      formatTriggeredRequestLines([at('http://h/e'), at('http://g/e'), at('http://h:81/e')]).length,
+      3
+    );
+  });
+
+  void it('ignores a fragment, and groups URLs without a host by their text', () => {
+    const at = (url: string): TriggeredRequest => ({
+      requestId: url,
+      method: 'GET',
+      url,
+      resourceType: 'Fetch',
+      status: 200,
+    });
+    assert.deepEqual(formatTriggeredRequestLines([at('http://h/e#a'), at('http://h/e#b')]), [
+      'GET h/e ×2 → 200',
+    ]);
+    assert.deepEqual(
+      formatTriggeredRequestLines([at('data:text/plain,a'), at('data:text/plain,a')]),
+      ['GET data:text/plain,a ×2 → 200']
+    );
+  });
+
+  void it('keeps the loading signal of streaming requests in a group', () => {
+    assert.deepEqual(formatTriggeredRequestLines(beacons(3, { loading: true, status: 200 })), [
+      'POST 127.0.0.1:8080/event ×3 → 200 (loading)',
+    ]);
+    assert.deepEqual(
+      formatTriggeredRequestLines([
+        beacon(0, { status: 200 }),
+        beacon(1, { status: 200, loading: true }),
+      ]),
+      ['POST 127.0.0.1:8080/event → 200 ×1, 200 (loading) ×1']
+    );
+  });
+
+  void it('shows a group whose requests are all pending', () => {
+    const pending = (i: number): TriggeredRequest =>
+      triggered(`event?s=${i}`, { method: 'POST', resourceType: 'Other', pending: true });
+    assert.deepEqual(formatTriggeredRequestLines([pending(0), pending(1), pending(2)]), [
+      'POST 127.0.0.1:8080/event ×3 → pending',
+    ]);
+  });
 });

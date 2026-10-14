@@ -63,6 +63,9 @@ export function formatTriggeredRequest(request: TriggeredRequest): string {
   return `${request.method} ${truncateUrl(request.url, URL_MAX_LENGTH)} → ${status}${duration}`;
 }
 
+/** Scheme and `//` at the start of a URL */
+const SCHEME = /^[a-z][a-z\d+.-]*:\/\//i;
+
 /**
  * URL without its query and fragment.
  *
@@ -74,7 +77,7 @@ function withoutQuery(url: string): string {
 }
 
 /**
- * Requests with the same method, scheme, host and path (query and fragment
+ * Requests with the same method, host and path (query and fragment
  * ignored), at the position of the first of them.
  *
  * @param requests - Triggered requests, in start order
@@ -85,7 +88,7 @@ function groupRepeatedRequests(
 ): Array<[TriggeredRequest, ...TriggeredRequest[]]> {
   const groups = new Map<string, [TriggeredRequest, ...TriggeredRequest[]]>();
   for (const request of requests) {
-    const key = `${request.method} ${withoutQuery(request.url)}`;
+    const key = `${request.method} ${withoutQuery(request.url).replace(SCHEME, '')}`;
     const group = groups.get(key);
     if (group) group.push(request);
     else groups.set(key, [request]);
@@ -107,7 +110,7 @@ function formatRequestGroup(group: [TriggeredRequest, ...TriggeredRequest[]]): s
   if (group.length === 1) return formatTriggeredRequest(first);
   const counts = new Map<string, number>();
   for (const request of group) {
-    const status = requestStatusText(request);
+    const status = requestStatusText(request) + (request.loading ? ' (loading)' : '');
     counts.set(status, (counts.get(status) ?? 0) + 1);
   }
   const target = truncateUrl(withoutQuery(first.url), URL_MAX_LENGTH);
