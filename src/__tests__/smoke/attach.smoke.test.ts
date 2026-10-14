@@ -112,8 +112,7 @@ async function chromePages(port: number): Promise<CDPTarget[]> {
 }
 
 /**
- * Evaluate an expression in a tab over a connection of the test's own,
- * after the tab finished loading.
+ * Evaluate an expression in a tab over a connection of the test's own.
  *
  * @param target - The tab
  * @param expression - Expression
@@ -122,11 +121,6 @@ async function chromePages(port: number): Promise<CDPTarget[]> {
 async function evaluateInTab(target: CDPTarget, expression: string): Promise<unknown> {
   const cdp = await CDPConnection.create(target.webSocketDebuggerUrl);
   try {
-    await cdp.send('Runtime.evaluate', {
-      expression:
-        "new Promise((r) => document.readyState === 'complete' ? r() : addEventListener('load', () => r()))",
-      awaitPromise: true,
-    });
     const { result } = (await cdp.send('Runtime.evaluate', {
       expression,
       returnByValue: true,
@@ -138,15 +132,26 @@ async function evaluateInTab(target: CDPTarget, expression: string): Promise<unk
 }
 
 /**
- * Open a tab at a URL.
+ * Open a tab and load a URL in it, over a connection of the test's own
+ * (closed once the page fired its load event).
  *
  * @param port - Chrome's debugging port
  * @param url - URL
  * @returns The tab
  */
 async function openTab(port: number, url: string): Promise<CDPTarget> {
-  const response = await fetch(`http://127.0.0.1:${port}/json/new?${url}`, { method: 'PUT' });
-  return (await response.json()) as CDPTarget;
+  const response = await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' });
+  const target = (await response.json()) as CDPTarget;
+  const cdp = await CDPConnection.create(target.webSocketDebuggerUrl);
+  try {
+    await cdp.send('Page.enable');
+    const loaded = new Promise<void>((resolve) => cdp.on('Page.loadEventFired', () => resolve()));
+    await cdp.send('Page.navigate', { url });
+    await loaded;
+  } finally {
+    cdp.close();
+  }
+  return target;
 }
 
 /**
