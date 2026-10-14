@@ -1114,15 +1114,20 @@ function listDir(dir) {
   return existsSync(dir) ? readdirSync(dir).sort() : [];
 }
 
+/** Entries the OS writes on its own (Finder), never a leftover */
+const OS_ENTRIES = new Set(['.DS_Store']);
+
 /**
  * Lists a directory's entries with their modification time and size, or
- * none when it doesn't exist; an entry removed while listing is skipped.
+ * none when it doesn't exist; an entry removed while listing, and an entry
+ * the OS writes on its own, are skipped.
  *
  * @param {string} dir
  * @returns {{ name: string, mtimeMs: number, size: number }[]}
  */
-function listEntries(dir) {
+export function listEntries(dir) {
   return listDir(dir).flatMap((name) => {
+    if (OS_ENTRIES.has(name)) return [];
     try {
       const { mtimeMs, size } = lstatSync(join(dir, name));
       return [{ name, mtimeMs, size }];

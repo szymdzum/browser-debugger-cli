@@ -20,6 +20,7 @@ import {
   isProductFile,
   insertLogRow,
   isTransientGhError,
+  listEntries,
   mainGateVerdict,
   MIN_CALL_BUDGET_MS,
   noRunMessage,
@@ -813,4 +814,15 @@ test('simplifyVerdict: a small diff needs nothing, a large one a refactor commit
   assert.equal(simplifyVerdict(large, ['refactor(dom): x'], '').ok, true);
   assert.equal(simplifyVerdict(large, ['fix: x'], 'Simplify: Nothing to simplify.').ok, true);
   assert.equal(simplifyVerdict(large, ['fix: refactor: x'], '').ok, false);
+});
+
+test('listEntries skips .DS_Store, so Finder never fails gate 8', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ship-dl-'));
+  writeFileSync(join(dir, '.DS_Store'), 'x');
+  writeFileSync(join(dir, 'report.pdf'), 'abc');
+  assert.deepEqual(
+    listEntries(dir).map((e) => [e.name, e.size]),
+    [['report.pdf', 3]]
+  );
+  assert.deepEqual(listEntries(join(dir, 'missing')), []);
 });
