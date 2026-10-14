@@ -1,3 +1,5 @@
+import * as path from 'node:path';
+
 import { Option, type Command } from 'commander';
 
 import { resolveMethodTarget } from '@/cdp/methodTarget.js';
@@ -275,7 +277,8 @@ async function runCdpCommand(
     return runCommand(
       async () => handleEventCommand(method, options),
       options,
-      formatCdpEventCommand
+      formatCdpEventCommand,
+      interruptedEventWork(method, options)
     );
   }
   if (options.search !== undefined) {
@@ -319,6 +322,25 @@ function interruptedCallWork(method: string): InterruptedWork {
   return target.kind === 'known' && stopsScriptWhenAbandoned(target.method)
     ? { stopped: 'script' }
     : { sent: 'CDP call' };
+}
+
+/**
+ * What an interrupted `bdg cdp` with event flags may have done: the call it
+ * sends (as {@link interruptedCallWork}), and the `--out` file, which the
+ * daemon writes when the collection ends, also after the client is gone.
+ *
+ * @param method - Method argument, if any
+ * @param options - Command options
+ * @returns The interrupt message's work, absent for a read that writes nothing
+ */
+function interruptedEventWork(
+  method: string | undefined,
+  options: CdpCommandOptions
+): InterruptedWork | undefined {
+  const writing = options.out === undefined ? undefined : path.resolve(options.out);
+  if (method === undefined) return writing ? { file: 'events file', writing } : undefined;
+  const call = interruptedCallWork(method);
+  return 'sent' in call && writing ? { ...call, writing } : call;
 }
 
 /**
