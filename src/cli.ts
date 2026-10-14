@@ -9,11 +9,13 @@ import { CommanderError, type Command } from 'commander';
 import {
   generateCommandHelp,
   generateCompactHelp,
+  commandLineWords,
+  commandPath,
   generateMachineReadableHelp,
   resolveCommand,
 } from '@/commands/helpJson.js';
 import { assertKnownHelpTopic, helpTopicPath, usageErrorDetails } from '@/commands/helpTopic.js';
-import { assertNotMistypedCommand } from '@/commands/start.js';
+import { assertNotMistypedCommand, isBareWord } from '@/commands/start.js';
 import { CommandError } from '@/errors/index.js';
 import { genericError, jsonTakenAsValueError, noCommandOrUrlError } from '@/errors/messages.js';
 import { buildProgram } from '@/program.js';
@@ -30,13 +32,14 @@ import { VERSION } from '@/utils/version.js';
 const FULL_HELP_FLAG = '--full';
 
 /**
- * The words of the command line that are not options (command names,
- * arguments, option values), for finding the command addressed.
+ * The words of the command line that are command names or arguments (not
+ * options or their values), for finding the command addressed.
  *
- * @returns Non-option arguments before a literal `--`
+ * @param program - Root command with all commands registered
+ * @returns Non-option words before a literal `--`
  */
-function commandWords(): string[] {
-  return flagArgs().filter((arg) => !arg.startsWith('-'));
+function commandWords(program: Command): string[] {
+  return commandLineWords(program, flagArgs());
 }
 
 /**
@@ -170,6 +173,7 @@ async function main(): Promise<void> {
   assertNotMistypedCommand(program, process.argv);
 
   if (jsonMode && wantsHelp()) {
+    assertKnownHelpCommand(program);
     selectSession(sessionFromArgv(process.argv));
     console.log(JSON.stringify(helpJson(program)));
     process.exit(0);
@@ -181,16 +185,30 @@ async function main(): Promise<void> {
     process.exit(exitCode);
   }
 
-  assertJsonNotTakenAsValue(resolveCommand(program, commandWords()));
+  assertJsonNotTakenAsValue(resolveCommand(program, commandWords(program)));
 
   try {
     await program.parseAsync();
   } catch (error) {
     if (error instanceof CommanderError) {
-      handleUsageError(error, resolveCommand(program, commandWords()), jsonMode);
+      handleUsageError(error, program, jsonMode);
     }
     throw error;
   }
+}
+
+/**
+ * Reject `--help --json` for a command that does not exist, as `bdg nosuch --json`
+ * is rejected. A first word that cannot be a command name is a start URL
+ * (`bdg example.com --help --json`) and gets the root help.
+ *
+ * @param program - Root command with all commands registered
+ * @throws CommandError (81) naming the unknown command
+ */
+function assertKnownHelpCommand(program: Command): void {
+  const words = commandWords(program);
+  if (words[0] !== undefined && !isBareWord(words[0])) return;
+  assertKnownHelpTopic(program, words, false);
 }
 
 /**
@@ -202,7 +220,7 @@ async function main(): Promise<void> {
  * @returns Help to print
  */
 function helpJson(program: Command): object {
-  const command = resolveCommand(program, commandWords());
+  const command = resolveCommand(program, commandWords(program));
   if (command !== program) return generateCommandHelp(program, command);
   return flagArgs().includes(FULL_HELP_FLAG)
     ? generateMachineReadableHelp(program)
@@ -273,10 +291,10 @@ function applyGlobalOptions(program: Command, actionCommand: Command): void {
  * `--version --json` prints `{ data: { version } }`.
  *
  * @param error - Commander error
- * @param command - Command the error came from
+ * @param program - Root command (the command the error came from is found on the command line)
  * @param jsonMode - Whether `--json` was requested
  */
-function handleUsageError(error: CommanderError, command: Command, jsonMode: boolean): never {
+function handleUsageError(error: CommanderError, program: Command, jsonMode: boolean): never {
   if (error.code === 'commander.version') {
     if (jsonMode) console.log(stringifyEnvelope(buildSuccessResponse({ version: VERSION })));
     process.exit(EXIT_CODES.SUCCESS);
@@ -288,7 +306,11 @@ function handleUsageError(error: CommanderError, command: Command, jsonMode: boo
     process.exit(EXIT_CODES.SUCCESS);
   }
   const exitCode = EXIT_CODES.INVALID_ARGUMENTS;
-  const { message, suggestion } = usageErrorDetails(error, command);
+  const words = commandWords(program);
+  const command = resolveCommand(program, words);
+  const bareGroup =
+    command.commands.length > 0 && words.length === commandPath(command).split(' ').length - 1;
+  const { message, suggestion } = usageErrorDetails(error, command, process.argv, bareGroup);
   if (jsonMode) {
     console.log(stringifyEnvelope(OutputBuilder.buildJsonError(message, { exitCode, suggestion })));
   } else if (error.code !== 'commander.help') {

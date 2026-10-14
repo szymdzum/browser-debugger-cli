@@ -2,9 +2,8 @@
  * Machine-readable help generation using Commander.js introspection API.
  */
 
-import type { EventEmitter } from 'node:events';
-
 import type { Command, Option, Argument } from 'commander';
+import type { EventEmitter } from 'node:events';
 
 import { getAllDomainSummaries } from '@/cdp/schema.js';
 import { getOptionBehavior } from '@/commands/optionBehaviors.js';
@@ -97,6 +96,12 @@ export interface CommandMetadata {
   subcommands: CommandMetadata[];
 }
 
+/** An option in the compact help: what a script needs to build a command line */
+export type CompactOption = Pick<
+  OptionMetadata,
+  'flags' | 'description' | 'required' | 'takesValue'
+>;
+
 /**
  * Command summary for the compact root help: one-line description, arguments
  * and flags with their descriptions (behaviors, defaults and choices are in
@@ -111,8 +116,8 @@ export interface CompactCommand {
   description: string;
   /** Arguments as in usage, e.g. "<selector> [index]" (only when it takes some) */
   arguments?: string;
-  /** Visible options: flags to description */
-  options?: Record<string, string>;
+  /** Visible options, in the shape of the full help's `options` without the rich fields */
+  options?: CompactOption[];
   /** Subcommands (only for command groups) */
   subcommands?: CompactCommand[];
 }
@@ -380,7 +385,14 @@ function convertCompactCommand(command: Command): CompactCommand {
     description: command.summary() || (command.description().split('\n')[0] ?? ''),
     ...(args && { arguments: args }),
     ...(options.length > 0 && {
-      options: Object.fromEntries(options.map((option) => [option.flags, option.description])),
+      options: options.map(
+        ({ flags, description, mandatory, required, optional }): CompactOption => ({
+          flags,
+          description,
+          required: mandatory,
+          takesValue: required || optional,
+        })
+      ),
     }),
     ...(command.commands.length > 0 && {
       subcommands: command.commands.map(convertCompactCommand),
@@ -528,6 +540,55 @@ export function resolveCommand(program: Command, words: string[]): Command {
     if (found) current = found;
   }
   return current;
+}
+
+/**
+ * The words of a command line that are command names or arguments: option
+ * values (`--session a`, `-p 9222`) are left out, so `a` is not read as a
+ * command. Options are looked up on the command reached so far and its parents.
+ *
+ * @param program - Root Commander program instance
+ * @param args - Command-line words before a literal `--`
+ * @returns Non-option words, in order
+ *
+ * @example
+ * ```typescript
+ * commandLineWords(program, ['--session', 'a', 'dom', '--help']); // ['dom']
+ * ```
+ */
+export function commandLineWords(program: Command, args: string[]): string[] {
+  const words: string[] = [];
+  let current = program;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] ?? '';
+    if (!arg.startsWith('-')) {
+      words.push(arg);
+      current =
+        current.commands.find((c) => c.name() === arg || c.aliases().includes(arg)) ?? current;
+      continue;
+    }
+    const option = optionNamed(current, arg);
+    const next = args[i + 1];
+    const takesNext =
+      option?.required === true || (option?.optional === true && next?.startsWith('-') === false);
+    if (takesNext && !arg.includes('=')) i++;
+  }
+  return words;
+}
+
+/**
+ * The option a flag names on a command or one of its parents.
+ *
+ * @param command - Command the flag was typed after
+ * @param flag - Flag as typed, e.g. "--session" or "-p"
+ * @returns The option, if any level has it
+ */
+function optionNamed(command: Command, flag: string): Option | undefined {
+  for (let level: Command | null = command; level; level = level.parent) {
+    const found = level.options.find((o) => o.long === flag || o.short === flag);
+    if (found) return found;
+  }
+  return undefined;
 }
 
 /**

@@ -307,6 +307,17 @@ const SESSION_TELEMETRY: TelemetryType[] = ['dom', 'network', 'console'];
 /** A word that cannot be a URL: no dot, colon or slash */
 const BARE_WORD = /^[a-z][a-z0-9_-]*$/i;
 
+/**
+ * Whether a word has no dot, colon or slash, so it can only be a command name
+ * (or a dotless host, which needs a full URL).
+ *
+ * @param word - Command-line word
+ * @returns True for a word that cannot be a URL
+ */
+export function isBareWord(word: string): boolean {
+  return BARE_WORD.test(word);
+}
+
 /** Flags users type as commands (`bdg version`). */
 const FLAG_WORDS: Record<string, string> = { version: '--version', help: '--help' };
 

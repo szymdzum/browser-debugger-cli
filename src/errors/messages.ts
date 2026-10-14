@@ -705,13 +705,18 @@ export function invalidSelectorFilterError(selector: string, filter: string): Er
  *
  * @param topic - Command path as typed, e.g. "dom quer"
  * @param closest - Most similar existing command path, if any
+ * @param viaHelp - Whether it was asked through `bdg help` (else `--help`)
  */
-export function unknownHelpTopicError(topic: string, closest?: string): ErrorWithSuggestion {
+export function unknownHelpTopicError(
+  topic: string,
+  closest?: string,
+  viaHelp = true
+): ErrorWithSuggestion {
   const parent = topic.split(' ').slice(0, -1).join(' ');
   return {
     message: `Unknown command: "${topic}"`,
     suggestion: closest
-      ? `Did you mean: bdg help ${closest}?`
+      ? `Did you mean: bdg ${viaHelp ? 'help ' : ''}${closest}?`
       : `Run "bdg ${parent ? `${parent} ` : ''}--help" for commands`,
   };
 }
@@ -740,9 +745,12 @@ export function usageHelpSuggestion(path: string): string {
 
 /**
  * A command group was run without one of its subcommands.
+ *
+ * @param group - Group name, e.g. "page"
+ * @param subcommands - Names of its subcommands
  */
-export function missingSubcommandMessage(): string {
-  return 'Missing subcommand';
+export function missingSubcommandMessage(group: string, subcommands: string[]): string {
+  return `${group} needs a subcommand: ${subcommands.join(', ')}`;
 }
 
 /**
