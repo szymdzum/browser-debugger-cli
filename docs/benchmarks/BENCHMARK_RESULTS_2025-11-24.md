@@ -1,5 +1,7 @@
 # Benchmark v3.1 Results
 
+> Historical: run on v0.6.x, 2025-11; commands and numbers predate later releases.
+
 **Date:** 2025-11-24  
 **Test Order:** Alternating per benchmark specification
 

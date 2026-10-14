@@ -45,6 +45,7 @@ bdg attach                                    # List the page tabs of your Chrom
 bdg attach checkout                           # Session on the only tab whose URL/title contains "checkout"
 bdg attach 2                                  # ... or by index from the list (a number is always an index)
 bdg attach --user-data-dir <dir>              # Another Chromium profile (Canary, Edge, Brave)
+bdg attach checkout --timeout 600             # End the session by itself after 600 s
 bdg attach checkout --chrome-ws-url 9222      # A Chrome started with --remote-debugging-port=9222 --user-data-dir=<dir>
 ```
 

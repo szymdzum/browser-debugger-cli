@@ -219,5 +219,4 @@ jq -s '{
 ## 📚 References
 
 - [README.md](./README.md) - Full documentation
-- [M1 Implementation Guide](../../docs/roadmap/M1_IMPLEMENTATION_GUIDE.md)
-- [Roadmap](../../docs/roadmap/ROADMAP.md)
+- [Roadmap](https://github.com/szymdzum/browser-debugger-cli/issues/466)
