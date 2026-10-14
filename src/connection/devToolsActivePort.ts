@@ -16,8 +16,8 @@ import {
   devToolsActivePortMissingError,
   devToolsActivePortUnreadableError,
 } from '@/errors/messages.js';
-import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { getErrorMessage } from '@/utils/errors.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /** The file Chrome writes into its user data dir */
 const ACTIVE_PORT_FILE = 'DevToolsActivePort';
@@ -54,16 +54,18 @@ export interface DiscoveredBrowser {
 export function defaultChromeUserDataDir(
   context: ChromeDirContext = { platform: process.platform, home: os.homedir(), env: process.env }
 ): string {
-  const { platform, home, env } = context;
+  const { platform, home } = context;
+  const env = (name: string): string | undefined =>
+    context.env[name] === '' ? undefined : context.env[name];
   if (platform === 'win32') {
-    const localAppData = env['LOCALAPPDATA'] || path.win32.join(home, 'AppData', 'Local');
+    const localAppData = env('LOCALAPPDATA') ?? path.win32.join(home, 'AppData', 'Local');
     return path.win32.join(localAppData, 'Google', 'Chrome', 'User Data');
   }
   if (platform === 'darwin') {
     return path.posix.join(home, 'Library', 'Application Support', 'Google', 'Chrome');
   }
   const configHome =
-    env['CHROME_CONFIG_HOME'] || env['XDG_CONFIG_HOME'] || path.posix.join(home, '.config');
+    env('CHROME_CONFIG_HOME') ?? env('XDG_CONFIG_HOME') ?? path.posix.join(home, '.config');
   return path.posix.join(configHome, 'google-chrome');
 }
 

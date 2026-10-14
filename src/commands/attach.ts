@@ -88,7 +88,9 @@ async function readTabs({ wsUrl, activePortFile }: BrowserEndpoint): Promise<Pag
 export function registerAttachCommand(program: Command): void {
   program
     .command('attach')
-    .description('List the tabs of a running Chrome, or attach to one without reloading it')
+    .description(
+      'List the tabs of a running Chrome, or attach to one without reloading it (finds your Chrome through DevToolsActivePort once remote debugging is enabled at chrome://inspect/#remote-debugging)'
+    )
     .argument(
       '[tab]',
       'Index from the list (a number is always an index), or a case-insensitive substring of URL or title'

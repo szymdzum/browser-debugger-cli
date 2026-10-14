@@ -7,7 +7,7 @@
 
 import { connectToBrowser } from '@/connection/browserConnection.js';
 import { listPageTabs, matchTab } from '@/connection/browserTabs.js';
-import { CDPConnection } from '@/connection/cdp.js';
+import type { CDPConnection } from '@/connection/cdp.js';
 import { ChromeLaunchError } from '@/connection/errors.js';
 import { launchChrome } from '@/connection/launcher.js';
 import { HTTP_LOCALHOST } from '@/constants.js';
