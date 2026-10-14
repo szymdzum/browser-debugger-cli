@@ -356,3 +356,77 @@ void describe('SessionController: a move no command reported yet', () => {
     assert.deepEqual((told as { tabMoved?: unknown }).tabMoved, moved);
   });
 });
+
+void describe('SessionController.peek timestamp (#727)', () => {
+  const sessionStart = Date.now() - 60000;
+
+  afterEach(() => {
+    mock.restoreAll();
+  });
+
+  /**
+   * Wait until the clock has moved past a given instant.
+   *
+   * @param instant - Epoch ms to pass
+   */
+  async function passTime(instant: number): Promise<void> {
+    while (Date.now() <= instant) await new Promise((resolve) => setImmediate(resolve));
+  }
+
+  /**
+   * Start a fake session started a minute ago and peek once.
+   *
+   * @param controller - Controller to peek through
+   * @returns The preview timestamp as epoch ms, and the window of the call
+   */
+  async function peekTimestamp(
+    controller: SessionController
+  ): Promise<{ at: number; before: number; after: number }> {
+    const before = Date.now();
+    const response = await controller.peek({ type: 'peek_request', sessionId: 's' });
+    const after = Date.now();
+    const preview = (response.data as { preview: { timestamp: string } }).preview;
+    return { at: Date.parse(preview.timestamp), before, after };
+  }
+
+  void it('is the time of the snapshot, not the start of the session', async () => {
+    const session = {
+      launch: () => Promise.resolve(),
+      stop: () => Promise.resolve(),
+      stopRequested: () => false,
+      info: () => ({ chromePid: 1234, port: 9222, targetUrl: request.url }),
+      metadata: () => ({ startTime: sessionStart, bdgPid: process.pid, port: 9222 }),
+      execute: () =>
+        Promise.resolve({
+          version: '0',
+          startTime: sessionStart,
+          duration: Date.now() - sessionStart,
+          target: { url: 'http://a/', title: '' },
+          activeTelemetry: [],
+          currentNavigationId: 0,
+          network: [],
+          console: [],
+          totalNetwork: 0,
+          totalConsole: 0,
+          hasMoreNetwork: false,
+          hasMoreConsole: false,
+          activity: {},
+          navigationId: 0,
+        }),
+      fetchInterceptionEnabled: () => false,
+      takeTabMoveNotice: () => undefined,
+    };
+    mock.method(Session, 'create', () => session as unknown as Session);
+    const controller = new SessionController(Date.now(), '/tmp/test.sock', () => undefined);
+    await controller.startSession(request);
+
+    const first = await peekTimestamp(controller);
+    await passTime(first.after);
+    const second = await peekTimestamp(controller);
+
+    assert.notEqual(first.at, sessionStart);
+    assert.ok(first.at >= first.before && first.at <= first.after, 'first within its call');
+    assert.ok(second.at >= second.before && second.at <= second.after, 'second within its call');
+    assert.ok(second.at > first.at, 'the second peek is later than the first');
+  });
+});

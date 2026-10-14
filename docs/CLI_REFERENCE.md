@@ -177,6 +177,8 @@ bdg peek --type XHR,Fetch --follow
 bdg peek --type Script --last 100
 ```
 
+**Timestamp:** `data.timestamp` in `peek --json` (and in every `peek --follow --json` line, so in `tail --json` too, its deprecated alias) is when the snapshot was taken, an ISO time, the same instant as the human `Updated:` line. It used to be the session start (changed meaning of an existing field); the session's age is `data.duration` (ms), so the start is exactly `timestamp` minus `duration`.
+
 **Pages:** `peek` shows the session's latest requests and console messages across page loads (unlike `bdg console`, which shows the current page). Those of an earlier page load, or of another tab before a `bdg page switch`, are marked: `ERROR (previous page) Failed to load resource: …` and `[12] [CSS] 404 GET …/old.css (previous page)`; in JSON they have `previousPage: true`, and `data.currentNavigationId` is the current page's `navigationId`. While Fetch interception is on (`bdg cdp Fetch.enable` without `Fetch.disable` since), pending requests get `⚠ Pending requests possibly paused by Fetch interception: bdg cdp --events Fetch.requestPaused` (JSON `fetchInterception: true`).
 
 **Note:** `peek` shows network and console data. For the page structure use `bdg dom a11y tree` (accessibility tree) or `bdg dom query`.

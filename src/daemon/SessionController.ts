@@ -295,6 +295,7 @@ export class SessionController {
         QUERY_TIMEOUT_MS,
         'Peek'
       );
+      const snapshotAt = new Date(data.startTime + data.duration);
       return {
         ...base,
         status: 'ok',
@@ -303,7 +304,7 @@ export class SessionController {
           preview: {
             version: data.version,
             success: true,
-            timestamp: new Date(data.startTime).toISOString(),
+            timestamp: snapshotAt.toISOString(),
             duration: data.duration,
             target: data.target,
             data: {
