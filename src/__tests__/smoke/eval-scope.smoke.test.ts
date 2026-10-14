@@ -130,7 +130,8 @@ async function typeOfGlobal(name: string, frame?: string): Promise<unknown> {
   }
   const params = JSON.stringify({ expression: `typeof ${name}`, returnByValue: true });
   const result = await runJson(['cdp', 'Runtime.evaluate', '--params', params]);
-  return (result.data as { result?: { value?: unknown } } | undefined)?.result?.value;
+  return (result.data as { result?: { result?: { value?: unknown } } } | undefined)?.result?.result
+    ?.value;
 }
 
 void describe('dom eval scope', () => {
