@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { navigationFailedError } from '@/errors/messages.js';
-import { displayTypedUrl, displayUrl } from '@/utils/displayUrl.js';
+import { displayRejectedUrl, displayTypedUrl, displayUrl } from '@/utils/displayUrl.js';
 import { normalizeUrl, validateChromeWsUrl, validateUrl } from '@/utils/url.js';
 
 /** Any form of the password the inputs carry */
@@ -39,13 +39,30 @@ const CASES: ReadonlyArray<{ url: string; host: string }> = [
   { url: 'https:/u:SECRETPW@localhost:1', host: 'localhost' },
   { url: 'http:u:SECRETPW@localhost:1', host: 'localhost' },
   { url: 'x?next=u:SECRETPW@localhost', host: 'localhost' },
-  { url: 'localhost:1/?next=u%3ASECRETPW%40localhost', host: 'localhost' },
+  { url: 'localhost:1/?next=https%3A%2F%2Fu%3ASECRETPW%40evil.test', host: 'localhost' },
+  { url: 'http://localhost:1/?redirect=https://u:SECRETPW@evil.test', host: 'localhost' },
+  { url: 'http://localhost:1/?next=//u:SECRETPW@evil.test', host: 'localhost' },
+  { url: 'x y?next=u%3ASECRETPW%40localhost', host: 'localhost' },
 ];
 
-void describe('displayTypedUrl (#757)', () => {
+/** The URLs validation lets through, which reach Chrome and the daemon */
+const VALID_CASES = CASES.filter(({ url }) => validateUrl(url).valid);
+
+/**
+ * A typed URL as bdg shows it: rejected input as its error does, the rest as
+ * status and the daemon do.
+ *
+ * @param url - URL as typed
+ * @returns The URL to show
+ */
+function shownTyped(url: string): string {
+  return validateUrl(url).valid ? displayTypedUrl(url) : displayRejectedUrl(url);
+}
+
+void describe('displayTypedUrl and displayRejectedUrl (#757)', () => {
   for (const { url, host } of CASES) {
     void it(`hides the secret of ${url}`, () => {
-      const shown = displayTypedUrl(url);
+      const shown = shownTyped(url);
       assert.doesNotMatch(shown, SECRET);
       assert.ok(shown.includes(host), `${shown} names ${host}`);
     });
@@ -54,6 +71,7 @@ void describe('displayTypedUrl (#757)', () => {
   void it('keeps a URL without credentials byte for byte', () => {
     for (const url of ['localhost:3000/a?q=1', 'http://example.com/', 'about:blank', 'data:,a@b']) {
       assert.equal(displayTypedUrl(url), url);
+      assert.equal(displayRejectedUrl(url), url);
     }
   });
 });
@@ -69,7 +87,7 @@ void describe('validateUrl messages (#757)', () => {
 });
 
 void describe('navigationFailedError (#757)', () => {
-  for (const { url, host } of CASES.filter(({ url }) => validateUrl(url).valid)) {
+  for (const { url, host } of VALID_CASES) {
     void it(`echoes no secret for ${url}`, () => {
       const normalized = normalizeUrl(url);
       const err = navigationFailedError(
@@ -95,7 +113,7 @@ void describe('validateChromeWsUrl messages (#757 adjacent)', () => {
 });
 
 void describe('displayUrl of a normalized start URL (#757)', () => {
-  for (const { url } of CASES) {
+  for (const { url } of VALID_CASES) {
     void it(`hides the secret of ${url} as the daemon logs it`, () => {
       assert.doesNotMatch(displayUrl(normalizeUrl(url)), SECRET);
     });
@@ -110,4 +128,63 @@ void describe('validateUrl for scheme-less credentials (#757)', () => {
     assert.match(result.suggestion ?? '', /credentials.*need a scheme/i);
     assert.doesNotMatch(`${result.error}\n${result.suggestion ?? ''}`, SECRET);
   });
+});
+
+void describe('scheme-less credentials hint (#757)', () => {
+  void it('is not shown for userinfo in a query value only', () => {
+    const result = validateUrl('x?next=u:SECRETPW@localhost');
+    assert.equal(result.valid, false);
+    if (result.valid) return;
+    assert.doesNotMatch(result.suggestion ?? '', /credentials/i);
+  });
+});
+
+/** URLs with `:` and `@` outside a user info, which every surface keeps as they are */
+const LEGIT_URLS = [
+  'https://www.google.com/maps/place/A:B@52.1,21.0,15z/data=x',
+  'https://www.google.com/maps/@52.1,21.0,15z',
+  'https://cdn.example.com/img/a:b@2x.png',
+  'https://example.com/?q=a:b@c',
+  'https://example.com/?t=12:30@home',
+  'https://example.com/app;jsessionid=a:b@c',
+  'https://ipfs.io/ipfs/Qm:x@y',
+  'https://example.com/?email=a:b@c.com',
+  'https://mastodon.social/@user',
+  'https://unpkg.com/@scope/pkg@1.2.3/dist/index.js',
+  'https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js',
+  'ws://127.0.0.1:9222/devtools/browser/abc',
+  'http://[::1]:8080/a@b',
+  'file:///C:/Users/a@b/x.html',
+];
+
+void describe('URLs without credentials stay as they are (#757 review)', () => {
+  for (const url of LEGIT_URLS) {
+    void it(url, () => {
+      assert.equal(displayUrl(url), url);
+      assert.equal(displayTypedUrl(url), url);
+    });
+  }
+});
+
+/** Inputs that make a backtracking pattern quadratic */
+const ADVERSARIAL = [
+  ':'.repeat(100_000),
+  `http://x/${':'.repeat(100_000)}`,
+  `x${'a:'.repeat(50_000)}`,
+  '%3A'.repeat(35_000),
+  `http://${'a:/'.repeat(35_000)}`,
+  `http://x/?${'a=b:c&'.repeat(17_000)}`,
+];
+
+void describe('URL display is linear (#757 review)', () => {
+  for (const input of ADVERSARIAL) {
+    void it(`shows ${input.slice(0, 12)}… (${input.length} chars) within 50 ms`, () => {
+      for (const show of [displayUrl, displayTypedUrl, displayRejectedUrl]) {
+        const started = performance.now();
+        show(input);
+        const took = performance.now() - started;
+        assert.ok(took < 50, `${show.name} took ${took.toFixed(0)} ms`);
+      }
+    });
+  }
 });

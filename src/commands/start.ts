@@ -34,7 +34,7 @@ import {
 import { parseChromeFlags } from '@/utils/chromeFlags.js';
 import { directoryProblem } from '@/utils/directories.js';
 import { hasDisplay } from '@/utils/display.js';
-import { displayTypedUrl } from '@/utils/displayUrl.js';
+import { displayRejectedUrl } from '@/utils/displayUrl.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { probeDevToolsEndpoint } from '@/utils/http.js';
 import { findSimilar, findSimilarCommands } from '@/utils/suggestions.js';
@@ -387,7 +387,7 @@ export function assertNotSpacedCommand(arg: string, commands: readonly Command[]
   const sub = subcommands.find((c) => c.name() === second.toLowerCase());
   const words = [sub?.name() ?? second, ...others].join(' ');
   const echoable = words.length <= ECHO_LIMIT && rest.every((w) => SHELL_SAFE_WORD.test(w));
-  const typed = displayTypedUrl(arg);
+  const typed = displayRejectedUrl(arg);
   const shown = typed.length > ECHO_LIMIT ? `${typed.slice(0, ECHO_LIMIT)}…` : typed;
   const err = spacedCommandError(shown, echoable ? `${name} ${words}` : `${name} --help`);
   throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_URL);

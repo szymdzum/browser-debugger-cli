@@ -3,7 +3,7 @@
  */
 
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
-import { displayTypedUrl } from '@/utils/displayUrl.js';
+import { displayRejectedUrl } from '@/utils/displayUrl.js';
 import { invalid, valid, type ValidationResult } from '@/utils/validation.js';
 
 /**
@@ -117,7 +117,7 @@ function invalidPortError(url: string, normalized: string): ValidationResult | u
 }
 
 /** `user:password@` typed without a scheme (`user:pw@localhost:3000`) */
-const SCHEMELESS_USER_INFO = /^[^:@]+:[^@]*@/;
+const SCHEMELESS_USER_INFO = /^[^:@?#]+:[^@?#]*@/;
 
 /**
  * Validate that a URL is valid and usable for Chrome navigation.
@@ -145,7 +145,7 @@ export function validateUrl(url: string): ValidationResult {
   if (!url || url.trim().length === 0) {
     return invalid('URL cannot be empty', 'Provide a valid URL, e.g.: http://localhost:3000');
   }
-  const shown = displayTypedUrl(url);
+  const shown = displayRejectedUrl(url);
 
   if (url.includes(' ')) {
     return invalid(
@@ -357,7 +357,7 @@ export function validateChromeWsUrl(url: string): ValidationResult {
     parsed = new URL(trimmed);
   } catch {
     return invalid(
-      `--chrome-ws-url is not a valid URL: '${displayTypedUrl(url)}'`,
+      `--chrome-ws-url is not a valid URL: '${displayRejectedUrl(url)}'`,
       'Expected: the DevTools port (9222), host:port, or ws://host:port/devtools/browser/<uuid>'
     );
   }
@@ -371,7 +371,7 @@ export function validateChromeWsUrl(url: string): ValidationResult {
 
   if (!parsed.hostname) {
     return invalid(
-      `--chrome-ws-url is missing a hostname: '${displayTypedUrl(url)}'`,
+      `--chrome-ws-url is missing a hostname: '${displayRejectedUrl(url)}'`,
       'Expected: the DevTools port (9222), host:port, or ws://host:port/devtools/browser/<uuid>'
     );
   }
