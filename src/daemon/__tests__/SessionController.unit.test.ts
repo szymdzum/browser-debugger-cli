@@ -20,9 +20,13 @@ const request: StartSessionRequest = {
  * Replace `Session.create` with a session whose launch waits for `release`.
  *
  * @param outcome - Whether the launch then succeeds or fails
+ * @param metadata - Extra session metadata fields
  * @returns Controls of the fake session
  */
-function fakeSession(outcome: 'ok' | 'fail' = 'ok'): {
+function fakeSession(
+  outcome: 'ok' | 'fail' = 'ok',
+  metadata: Record<string, unknown> = {}
+): {
   stop: ReturnType<typeof mock.fn>;
   release: () => void;
 } {
@@ -43,7 +47,7 @@ function fakeSession(outcome: 'ok' | 'fail' = 'ok'): {
     stop,
     stopRequested: () => stopped,
     info: () => ({ chromePid: 1234, port: 9222, targetUrl: request.url }),
-    metadata: () => ({ startTime: Date.now(), bdgPid: process.pid, port: 9222 }),
+    metadata: () => ({ startTime: Date.now(), bdgPid: process.pid, port: 9222, ...metadata }),
   };
   mock.method(Session, 'create', () => session as unknown as Session);
   return { stop, release };
@@ -146,6 +150,21 @@ void describe('SessionController.startSession', () => {
 
 void describe('SessionController while a start is in progress', () => {
   afterEach(() => mock.restoreAll());
+
+  void it('reports the starting URL without its credentials (#757)', async () => {
+    const { release } = fakeSession();
+    const controller = new SessionController(Date.now(), '/tmp/test.sock', () => undefined);
+    const start = controller.startSession({
+      ...request,
+      url: 'http://user:SECRETPW@localhost:1/?token=SECRETPW',
+    });
+
+    const status = await controller.status({ type: 'status_request', sessionId: 's' });
+    assert.equal(status.data?.starting?.url, 'http://localhost:1/?token=••••');
+
+    release();
+    await start;
+  });
 
   void it('reports the start in status and refuses commands with 85', async () => {
     const { release } = fakeSession();
@@ -428,5 +447,32 @@ void describe('SessionController.peek timestamp (#727)', () => {
     assert.ok(first.at >= first.before && first.at <= first.after, 'first within its call');
     assert.ok(second.at >= second.before && second.at <= second.after, 'second within its call');
     assert.ok(second.at > first.at, 'the second peek is later than the first');
+  });
+});
+
+void describe('SessionController target mismatch (#757)', () => {
+  afterEach(() => mock.restoreAll());
+
+  void it('names both Chrome endpoints without their credentials', async () => {
+    const { release } = fakeSession('ok', {
+      webSocketDebuggerUrl: 'ws://u:Zq7SECRETxx@127.0.0.1:9222/devtools/page/a',
+    });
+    const controller = new SessionController(Date.now(), '/tmp/test.sock', () => undefined);
+    const first = controller.startSession({
+      ...request,
+      chromeWsUrl: 'ws://127.0.0.1:9222/devtools/browser/a',
+    });
+    release();
+    await first;
+
+    const second = await controller.startSession({
+      ...request,
+      sessionId: 'request-2',
+      chromeWsUrl: 'ws://u:Zq7SECRETxx@127.0.0.2:9222/devtools/browser/b',
+    });
+
+    assert.equal(second.errorCode, IPCErrorCode.SESSION_TARGET_MISMATCH);
+    assert.doesNotMatch(JSON.stringify(second), /Zq7SECRETxx/);
+    assert.match(second.message ?? '', /127\.0\.0\.1:9222.*127\.0\.0\.2:9222/);
   });
 });

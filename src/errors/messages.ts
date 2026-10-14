@@ -36,6 +36,7 @@ import {
   sessionCommand,
   startSessionSuggestion,
 } from '@/ui/messages/sessionCommand.js';
+import { displayUrl } from '@/utils/displayUrl.js';
 import {
   detectSelectorQuoteDamage,
   detectScriptQuoteDamage,
@@ -1354,7 +1355,7 @@ const SCHEME_MISMATCH_ERRORS =
 /**
  * The browser could not load the start URL at all.
  *
- * @param url - URL that failed
+ * @param url - URL that failed, shown as {@link displayUrl} shows it (#757)
  * @param errorText - Chrome network error (e.g. net::ERR_NAME_NOT_RESOLVED)
  * @param addedScheme - Whether bdg prepended `http://` to the URL as typed
  *   (the hint is shown for errors a wrong scheme can cause)
@@ -1365,11 +1366,12 @@ export function navigationFailedError(
   addedScheme = false
 ): ErrorWithSuggestion {
   const check = 'Check the URL and that the server is running and reachable from this machine';
+  const shown = displayUrl(url);
   return {
-    message: `Could not load ${url}: ${errorText}`,
+    message: `Could not load ${shown}: ${errorText}`,
     suggestion:
       addedScheme && SCHEME_MISMATCH_ERRORS.test(errorText)
-        ? `bdg added http:// to what you typed. ${check}; for an HTTPS server use: bdg ${url.replace(/^http:/, 'https:')}`
+        ? `bdg added http:// to what you typed. ${check}; for an HTTPS server use: bdg ${shown.replace(/^http:/, 'https:')}`
         : check,
   };
 }

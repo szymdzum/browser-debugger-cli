@@ -3,6 +3,7 @@
  */
 
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
+import { displayRejectedUrl } from '@/utils/displayUrl.js';
 import { invalid, valid, type ValidationResult } from '@/utils/validation.js';
 
 /**
@@ -115,6 +116,9 @@ function invalidPortError(url: string, normalized: string): ValidationResult | u
   );
 }
 
+/** `user:password@` typed without a scheme (`user:pw@localhost:3000`) */
+const SCHEMELESS_USER_INFO = /^[^:@?#]+:[^@?#]*@/;
+
 /**
  * Validate that a URL is valid and usable for Chrome navigation.
  *
@@ -141,10 +145,11 @@ export function validateUrl(url: string): ValidationResult {
   if (!url || url.trim().length === 0) {
     return invalid('URL cannot be empty', 'Provide a valid URL, e.g.: http://localhost:3000');
   }
+  const shown = displayRejectedUrl(url);
 
   if (url.includes(' ')) {
     return invalid(
-      `Invalid URL format: '${url}' (contains spaces)`,
+      `Invalid URL format: '${shown}' (contains spaces)`,
       'Encode spaces as %20, e.g. bdg "https://example.com/search?q=a%20b"'
     );
   }
@@ -152,7 +157,7 @@ export function validateUrl(url: string): ValidationResult {
   // Detect if URL looks truncated (common when shell expands ? as glob)
   if (url.endsWith('?') || url.endsWith('&')) {
     return invalid(
-      `URL appears truncated: '${url}'`,
+      `URL appears truncated: '${shown}'`,
       'URLs with query parameters (? or &) must be quoted: bdg "https://example.com/search?q=test"'
     );
   }
@@ -190,8 +195,10 @@ export function validateUrl(url: string): ValidationResult {
     const beforePath = url.split('/')[0] ?? '';
     if (/[!@#$%^&*()=+[\]{}\\|;'",<>?]/.test(beforePath)) {
       return invalid(
-        `Invalid URL format: '${url}' (contains invalid characters)`,
-        'URLs cannot contain special characters like !, @, #, etc. in hostname or protocol'
+        `Invalid URL format: '${shown}' (contains invalid characters)`,
+        SCHEMELESS_USER_INFO.test(beforePath)
+          ? 'Credentials (user:password@) need a scheme, e.g. http://user:password@localhost:3000'
+          : 'URLs cannot contain special characters like !, @, #, etc. in hostname or protocol'
       );
     }
   }
@@ -220,7 +227,7 @@ export function validateUrl(url: string): ValidationResult {
     const isWeb = parsed.protocol === 'http:' || parsed.protocol === 'https:';
     if (isWeb && !/[a-z0-9]/i.test(parsed.hostname)) {
       return invalid(
-        `Invalid URL format: '${url}' (missing hostname)`,
+        `Invalid URL format: '${shown}' (missing hostname)`,
         'URLs must include a valid hostname, e.g.: http://example.com'
       );
     }
@@ -228,7 +235,7 @@ export function validateUrl(url: string): ValidationResult {
     return valid();
   } catch {
     return invalid(
-      `Invalid URL format: '${url}'`,
+      `Invalid URL format: '${shown}'`,
       'URLs must include a valid protocol (http:// or https://). If URL has query parameters, quote it: bdg "https://example.com?q=test"'
     );
   }
@@ -350,7 +357,7 @@ export function validateChromeWsUrl(url: string): ValidationResult {
     parsed = new URL(trimmed);
   } catch {
     return invalid(
-      `--chrome-ws-url is not a valid URL: '${url}'`,
+      `--chrome-ws-url is not a valid URL: '${displayRejectedUrl(url)}'`,
       'Expected: the DevTools port (9222), host:port, or ws://host:port/devtools/browser/<uuid>'
     );
   }
@@ -364,7 +371,7 @@ export function validateChromeWsUrl(url: string): ValidationResult {
 
   if (!parsed.hostname) {
     return invalid(
-      `--chrome-ws-url is missing a hostname: '${url}'`,
+      `--chrome-ws-url is missing a hostname: '${displayRejectedUrl(url)}'`,
       'Expected: the DevTools port (9222), host:port, or ws://host:port/devtools/browser/<uuid>'
     );
   }
