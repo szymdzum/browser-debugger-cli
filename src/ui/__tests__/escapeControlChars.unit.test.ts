@@ -25,3 +25,13 @@ void describe('escapeControlChars', () => {
     assert.equal(escapeControlChars('a\u2066b'), 'a\\u2066b');
   });
 });
+
+void describe('escapeControlChars on a large text', () => {
+  void it('escapes every character class and leaves the rest of 20 million characters alone', () => {
+    const text = `${'x'.repeat(20_000_000)}\u0000\u007f\u0085‮⁩\r\n`;
+    assert.equal(
+      escapeControlChars(text),
+      `${'x'.repeat(20_000_000)}\\u0000\\u007f\\u0085\\u202e\\u2069\n`
+    );
+  });
+});

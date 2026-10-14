@@ -20,7 +20,8 @@ import {
   type IPCMessageType,
   isCommandRequest,
 } from '@/ipc/index.js';
-import { JSONLBuffer, toJSONLFrame } from '@/ipc/transport/jsonl.js';
+import { errorFrame, replyFrame } from '@/daemon/replyFrame.js';
+import { JSONLBuffer } from '@/ipc/transport/jsonl.js';
 import { ensureSessionDir, getSessionFilePath } from '@/session/paths.js';
 import { readDaemonPid } from '@/session/pid.js';
 import { createLogger } from '@/ui/logging/index.js';
@@ -56,35 +57,6 @@ function isValidIPCMessage(obj: unknown): obj is IPCMessageType | ClientRequestU
     return false;
   }
   return 'type' in obj && typeof obj.type === 'string' && 'sessionId' in obj;
-}
-
-/**
- * Error reply to a frame that cannot be routed.
- *
- * @param frame - The parsed frame, if it parsed (its `sessionId` is echoed when it is a string)
- * @param error - What is wrong with it
- * @param suggestion - How to recover, if there is a way
- * @param exitCode - Exit code the client ends with
- * @returns Error frame the client matches by session id
- */
-function errorFrame(
-  frame: unknown,
-  error: string,
-  suggestion?: string,
-  exitCode: number = EXIT_CODES.SOFTWARE_ERROR
-): IPCErrorFrame {
-  const id =
-    typeof frame === 'object' && frame !== null
-      ? (frame as { sessionId?: unknown }).sessionId
-      : undefined;
-  return {
-    type: 'error_response',
-    sessionId: typeof id === 'string' ? id : 'unknown',
-    status: 'error',
-    error,
-    ...(suggestion !== undefined && { suggestion }),
-    exitCode,
-  };
 }
 
 /**
@@ -277,7 +249,7 @@ export class IPCServer {
     this.inFlightRequests++;
     try {
       const response = await this.route(message, disconnected);
-      if (response !== null) this.reply(socket, response);
+      if (response !== null) this.reply(socket, response, message.type);
     } finally {
       this.inFlightRequests--;
     }
@@ -288,9 +260,10 @@ export class IPCServer {
    *
    * @param socket - Client socket
    * @param response - Response to send
+   * @param request - Type of the request it answers (names the hint of an oversized reply)
    */
-  private reply(socket: Socket, response: unknown): void {
-    if (!socket.destroyed) socket.write(toJSONLFrame(response));
+  private reply(socket: Socket, response: unknown, request = ''): void {
+    if (!socket.destroyed) socket.write(replyFrame(response, request));
   }
 
   /**

@@ -3383,3 +3383,58 @@ export function optionNotFoundError(notFound: OptionNotFound): ErrorWithSuggesti
     suggestion: `Available options: ${options.join(', ')}`,
   };
 }
+
+/** How to get a smaller reply from `bdg cdp` */
+const SMALLER_CDP_REPLY_SUGGESTION =
+  "Return less: slice the value in the expression (a string: 'x'.slice(0, 10000000)), or pass returnByValue:false and read a smaller property of the object";
+
+/** How to get a smaller reply from any other command */
+const SMALLER_REPLY_SUGGESTION =
+  'Ask for less: narrow the command with a filter, fewer items or a smaller range';
+
+/**
+ * How to ask for a smaller reply.
+ *
+ * @param request - Type of the request the reply answers
+ * @returns The suggestion for a `bdg cdp` call or for any other command
+ */
+function smallerReplySuggestion(request: string): string {
+  return request.startsWith('cdp_call') ? SMALLER_CDP_REPLY_SUGGESTION : SMALLER_REPLY_SUGGESTION;
+}
+
+/**
+ * A reply of the daemon over the longest line the client reads.
+ *
+ * @param size - Characters of the reply, or read so far
+ * @param cap - The longest line
+ * @param request - Type of the request it answers
+ * @param exact - Whether `size` is the whole reply (false: reading stopped at it)
+ * @returns Error naming the size and the limit, and how to ask for less
+ */
+export function replyTooLargeError(
+  size: number,
+  cap: number,
+  request: string,
+  exact = true
+): ErrorWithSuggestion {
+  const limit = formatMiB(cap, 0);
+  return {
+    message: exact
+      ? `The reply is ${formatMiB(size)}, over the ${limit} limit`
+      : `The reply is over the ${limit} limit (reading stopped at ${formatMiB(size)})`,
+    suggestion: smallerReplySuggestion(request),
+  };
+}
+
+/**
+ * A `bdg cdp` call whose reply Chrome could not send (about 256 MiB and more).
+ *
+ * @param cap - The longest reply
+ * @returns Error naming the limit and how to ask for less
+ */
+export function chromeReplyLostError(cap: number): ErrorWithSuggestion {
+  return {
+    message: `Chrome could not send the reply: it is over Chrome's message limit (about ${formatMiB(cap, 0)} of UTF-8 bytes; non-ASCII text reaches it with fewer characters)`,
+    suggestion: SMALLER_CDP_REPLY_SUGGESTION,
+  };
+}

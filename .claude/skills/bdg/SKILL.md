@@ -197,6 +197,7 @@ For methods without a bdg command. Output is text; add `--json` before piping to
 bdg cdp Page.getLayoutMetrics --json | jq '.data.result.cssVisualViewport'
 bdg cdp Emulation.setCPUThrottlingRate --params '{"rate": 4}'   # rate: 1 resets
 bdg cdp --search cookie                 # Discover: --list, Network --list, <Method> --describe
+# A `bdg cdp` reply over 256 MiB is refused (exit 81, hint): slice in the expression or use returnByValue:false
 ```
 
 Some methods are blocked in favour of a command (exit 81, the suggestion names it).

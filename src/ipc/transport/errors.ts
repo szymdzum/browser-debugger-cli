@@ -4,7 +4,12 @@
  * Formats transport-layer errors with context using structured error classes.
  */
 
+import type { JSONLBufferOverflowError } from './jsonl.js';
+
+import { CommandError } from '@/errors/index.js';
+import { replyTooLargeError } from '@/errors/messages.js';
 import { getErrorMessage } from '@/utils/errors.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 import {
   IPCCancelledError,
@@ -44,4 +49,24 @@ export function formatEarlyCloseError(requestName: string): IPCEarlyCloseError {
 
 export function formatCancelledError(requestName: string): IPCCancelledError {
   return new IPCCancelledError(requestName);
+}
+
+/**
+ * The error a command ends with when the daemon's reply is longer than the
+ * client reads.
+ *
+ * @param error - The overflow the line buffer reported
+ * @param request - Type of the request it answers
+ * @returns Command error (81) naming the size and how to ask for less
+ */
+export function formatReplyOverflowError(
+  error: JSONLBufferOverflowError,
+  request: string
+): CommandError {
+  const err = replyTooLargeError(error.bufferSize, error.maxSize, request, false);
+  return new CommandError(
+    err.message,
+    { suggestion: err.suggestion },
+    EXIT_CODES.INVALID_ARGUMENTS
+  );
 }

@@ -3,6 +3,7 @@ import type { TelemetryStore } from './TelemetryStore.js';
 import { missingMethodCause } from '@/cdp/methodTarget.js';
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPConnectionError, CDPProtocolError } from '@/connection/errors.js';
+import { MAX_JSONL_BUFFER_SIZE } from '@/constants.js';
 import { PatternDetector } from '@/daemon/patternDetector.js';
 import { CdpEventListener, collectEvents } from '@/daemon/session/cdpEvents.js';
 import { ClientObjectGroups } from '@/daemon/session/clientObjectGroups.js';
@@ -13,6 +14,7 @@ import { CommandError } from '@/errors/index.js';
 import {
   cdpCallError,
   cdpMethodNotImplementedError,
+  chromeReplyLostError,
   formDiscoveryFailedError,
 } from '@/errors/messages.js';
 import type { HintDetails } from '@/errors/notices.js';
@@ -29,7 +31,13 @@ import type { PageCloseData, PageSwitchData, PageTabsData } from '@/ipc/protocol
 import { searchStyleSheets } from '@/runtime/css/search.js';
 import { auditPage } from '@/runtime/dom/audit.js';
 import { readBlockedSubmit } from '@/runtime/dom/blockedSubmit.js';
-import { evaluateScript, withBusyPageRecovery } from '@/runtime/dom/evalHelpers.js';
+import {
+  evaluateScript,
+  type LostCheckTiming,
+  mentionsAwait,
+  untilAnswerLost,
+  withBusyPageRecovery,
+} from '@/runtime/dom/evalHelpers.js';
 import { inspectEventListeners } from '@/runtime/dom/eventListeners.js';
 import {
   evaluateFormDiscovery,
@@ -509,6 +517,68 @@ const FETCH_INTERCEPTION_SWITCH: Record<string, boolean> = {
 };
 
 /**
+ * Whether Chrome may fail to send the reply of a call: a script run by
+ * `Runtime.evaluate` that does not wait for a promise has finished once the
+ * page answers a trivial evaluation, so a reply still missing after a grace
+ * period was too large to send (about 256 MiB and more). Other methods, and
+ * an evaluation in another execution context (an out-of-process frame answers
+ * the check while its script still runs), are not told from slow ones.
+ *
+ * @param params - The call
+ * @returns True for a synchronous `Runtime.evaluate`
+ */
+export function mayLoseReply(params: CommandSchemas['cdp_call']['requestSchema']): boolean {
+  if (params.method !== 'Runtime.evaluate' || params.isolated) return false;
+  const { expression, awaitPromise, contextId, uniqueContextId } = params.params ?? {};
+  if (contextId !== undefined || uniqueContextId !== undefined) return false;
+  return awaitPromise !== true && typeof expression === 'string' && !mentionsAwait(expression);
+}
+
+/**
+ * The error for a reply Chrome could not send, unless the page is paused on a
+ * breakpoint or `debugger;` (it answers the check while the script is held).
+ *
+ * @param paused - Whether the page paused during the call
+ * @returns Command error (81) naming the limit and how to return less, or undefined when paused
+ */
+function replyLostError(paused: boolean): CommandError | undefined {
+  if (paused) return undefined;
+  const err = chromeReplyLostError(MAX_JSONL_BUFFER_SIZE);
+  return new CommandError(
+    err.message,
+    { suggestion: err.suggestion },
+    EXIT_CODES.INVALID_ARGUMENTS
+  );
+}
+
+/**
+ * A call's answer, failing early when Chrome could not send it (see {@link mayLoseReply}).
+ *
+ * @param cdp - CDP connection
+ * @param params - The call
+ * @param answer - The call's answer
+ * @param timing - Delays of the check (default: 1 s, then 12 s)
+ * @returns The answer
+ */
+export async function withReplyLossCheck<T>(
+  cdp: Pick<CDPConnection, 'send' | 'on'>,
+  params: CommandSchemas['cdp_call']['requestSchema'],
+  answer: Promise<T>,
+  timing?: LostCheckTiming
+): Promise<T> {
+  if (!mayLoseReply(params)) return answer;
+  let paused = false;
+  const stopWatching = cdp.on('Debugger.paused', () => {
+    paused = true;
+  });
+  try {
+    return await untilAnswerLost(cdp, answer, () => replyLostError(paused), undefined, timing);
+  } finally {
+    stopWatching();
+  }
+}
+
+/**
  * Send a `bdg cdp` (or bdg page script) call, recovering a busy page and
  * explaining Chrome's errors; notes whether Fetch interception is on, so a
  * command that times out meanwhile can name it.
@@ -526,12 +596,10 @@ async function sendCdpCall(
   const send = params.isolated
     ? sendForBdgScript(cdp, params.method, params.params ?? {})
     : cdp.send(params.method, params.params ?? {});
-  const result = await withBusyPageRecovery(
-    cdp,
-    send.catch((error: unknown) => {
-      throw callerError(params.method, error) ?? error;
-    })
-  );
+  const answer = send.catch((error: unknown) => {
+    throw callerError(params.method, error) ?? error;
+  });
+  const result = await withBusyPageRecovery(cdp, withReplyLossCheck(cdp, params, answer));
   const interception = FETCH_INTERCEPTION_SWITCH[params.method];
   if (interception !== undefined) store.fetchInterceptionEnabled = interception;
   return result;
