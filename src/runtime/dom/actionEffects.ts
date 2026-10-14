@@ -796,14 +796,14 @@ function pressOutcomes(
  * twice), as a last resort when nothing else says what it changed: at least
  * {@link MIN_REPORTED_DOM_NODES} of them, no other effect in `reported` (a
  * navigation, messages, shown elements, a form submit, the button's change, a
- * key's click, an expansion, a focus move), no request, dialog, new window
- * or console message (`activity`) and no recent bursts of DOM changes that make the DOM look busy
+ * key's click, an expansion, a focus move), no request, dialog or new window
+ * (`activity`; console errors are checked where they are collected) and no recent bursts of DOM changes that make the DOM look busy
  * ({@link recentBursts}): a page that re-renders on a timer is not the
  * action's doing.
  *
  * @param snapshot - Read after the action, if taken
  * @param reported - What the action is reported to have changed
- * @param activity - Requests, dialogs, windows and console messages during the action
+ * @param activity - Requests, dialogs and windows during the action
  * @returns Elements added plus removed, or undefined
  */
 export function reportedDomChanges(
@@ -815,7 +815,7 @@ export function reportedDomChanges(
   if (!snapshot || snapshot.fresh || nodes === undefined || nodes < MIN_REPORTED_DOM_NODES) {
     return undefined;
   }
-  if (activity.requests + activity.dialogs + activity.consoleMessages > 0 || activity.opened) {
+  if (activity.requests + activity.dialogs > 0 || activity.opened) {
     return undefined;
   }
   if (Object.keys(reported).length > 0 || recentBursts(snapshot.settle).length >= BUSY_BURSTS) {

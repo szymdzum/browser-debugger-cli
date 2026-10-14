@@ -295,11 +295,14 @@ export function createInteractionRunner(
           options.detectUnsettled && work
             ? pendingChanges(work, requests?.triggeredRequests)
             : undefined;
+        const errors = collectErrors?.();
+        const { domChanges, ...otherChanges } = changes;
         return {
           ...result,
           ...(dialogs.length > 0 && { dialogs }),
-          ...changes,
-          ...collectErrors?.(),
+          ...otherChanges,
+          ...(domChanges !== undefined && !errors?.errors?.length && { domChanges }),
+          ...errors,
           ...(pending && { settled: false as const, pending }),
           ...blocked,
           ...(store.fetchInterceptionEnabled &&

@@ -255,12 +255,11 @@ void describe('reportedDomChanges', () => {
     }
   });
 
-  void it('stays silent after a request, dialog, new window or console message', () => {
+  void it('stays silent after a request, dialog or new window', () => {
     for (const activity of [
       { ...NOTHING_ELSE, requests: 1 },
       { ...NOTHING_ELSE, dialogs: 1 },
       { ...NOTHING_ELSE, opened: true },
-      { ...NOTHING_ELSE, consoleMessages: 1 },
     ]) {
       assert.equal(reportedDomChanges(read({ nodes: 200 }), {}, activity), undefined);
     }
