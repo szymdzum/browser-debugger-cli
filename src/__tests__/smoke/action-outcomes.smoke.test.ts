@@ -229,6 +229,61 @@ void describe('Action outcomes', () => {
     });
   });
 
+  void describe('content a user action adds again and again', () => {
+    before(() => open(`${fixture.url}shown-repeat`));
+
+    /**
+     * Texts a click listed as shown or new.
+     *
+     * @param selector - Button to click
+     * @returns Texts joined by `|`
+     */
+    async function listed(selector: string): Promise<string> {
+      const data = (await act(['click', selector])) as ActionData & {
+        messages?: Array<{ text: string }>;
+      };
+      return [...(data.shown ?? []), ...(data.messages ?? [])].map((item) => item.text).join('|');
+    }
+
+    void it('shows each Load more of 4 rows added at once', async () => {
+      for (let click = 1; click <= 3; click++) {
+        assert.match(await listed('#more'), new RegExp(`Row ${click * 4 - 3}`), `click ${click}`);
+      }
+    });
+
+    void it('shows each staggered Load more', async () => {
+      const first = await listed('#more-slow');
+      assert.match(first, /Slow/);
+      await bdg(['dom', 'wait', 'li.slow:nth-child(4)']);
+      assert.match(await listed('#more-slow'), /Slow/);
+    });
+
+    void it('shows replaced search results back to back and 4 s apart', async () => {
+      for (let click = 1; click <= 3; click++) {
+        assert.match(await listed('#search'), new RegExp(`Result ${click}\\.`), `click ${click}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 4000));
+      assert.match(await listed('#search'), /Result 4\./);
+    });
+
+    void it('shows each todo added', async () => {
+      for (let click = 1; click <= 3; click++) {
+        assert.match(await listed('#add'), new RegExp(`Todo ${click}`), `click ${click}`);
+      }
+    });
+  });
+
+  void describe('pages changing by themselves', () => {
+    before(() => open(`${fixture.url}shown-quiet`));
+
+    for (const button of ['#car-btn', '#clock-btn', '#ticker-btn']) {
+      void it(`${button} stays quiet`, async () => {
+        const data = await act(['click', button]);
+        assert.equal(data.shown, undefined);
+      });
+    }
+  });
+
   void describe('console errors on /tracker-errors', () => {
     before(() => open(`${fixture.url}tracker-errors`));
 

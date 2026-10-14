@@ -84,20 +84,14 @@ const MAX_TRACKED_NODES = 200;
 /** Longer texts are containers (a page, a form), not messages */
 const MAX_MESSAGE_TEXT = 300;
 
-/** Additions into one parent, of one kind, that make a stream (a timer adding rows) */
-const STREAM_MIN_ADDS = 3;
+/** Separate DOM change records in which a parent's element is replaced by one of its kind for it to count as a widget re-rendering itself (one record is one user-visible update, such as new search results) */
+const RERENDER_MIN_RECORDS = 3;
 
-/** Times an element is replaced by one of its kind in its parent for it to count as a widget re-rendering itself */
-const RERENDER_MIN_REPLACEMENTS = 2;
-
-/** Added elements a watch looks at for streams and re-renders, at most */
+/** Added elements a watch looks at for what the page does by itself and for re-renders, at most */
 const MAX_STREAM_NODES = 2000;
 
-/** A stream was running when its last addition came this close to the end of the watch (ms) */
-const STREAM_LIVE_MS = 500;
-
-/** A watch started within this long after the previous one ended may inherit its streams (ms) */
-const STREAM_RESUME_MS = 3000;
+/** How long after a watch ended the page is still observed for what it adds by itself, for the next watch (ms) */
+const IDLE_WATCH_MS = 3000;
 
 /** Page-side kind of an added element within one parent: its tag and classes */
 const STREAM_KIND_JS = `(el) => el.localName + '|' + (el.getAttribute('class') || '')`;
@@ -298,11 +292,12 @@ const NEAR_SCOPE_JS = `(target) => {
  * element with `aria-expanded`, the elements it un-hid among those it names
  * with `aria-controls` and its next sibling count too. Background widgets do
  * not count: those elsewhere on the page, elements a widget re-renders
- * ({@link RERENDER_MIN_REPLACEMENTS} replacements by one of their kind in
- * their parent) and elements joining a stream the previous action's watch saw
- * running ({@link STREAM_MIN_ADDS} additions of their kind to their parent,
- * the last within {@link STREAM_LIVE_MS} of its end, this watch starting
- * within {@link STREAM_RESUME_MS} of it). Only shown ones
+ * (replaced by one of their kind in their parent in
+ * {@link RERENDER_MIN_RECORDS} separate DOM change records) and elements of a
+ * kind the page was already adding to their parent by itself when the action
+ * began: between the previous watch and this one ({@link IDLE_WATCH_MS}) or
+ * before the action's first event (an earlier action's timers, a ticker).
+ * Only shown ones
  * with visible text count, the outermost of nested ones, and not those
  * whose text a removed element had (a re-render). At most
  * {@link MAX_SHOWN}, within {@link SHOWN_BUDGET_MS}.
@@ -330,16 +325,14 @@ export const SHOWN_ELEMENTS_JS = `(state) => {
     return false;
   };
   const kind = ${STREAM_KIND_JS};
-  const streams = state.prior && state.started - state.prior.at < ${STREAM_RESUME_MS} ? state.prior.streams : null;
+  const kindsIn = (map, parent) => (parent ? map.get(parent) : undefined);
   const streamed = (el) => {
-    const stream = streams && el.parentNode && streams.get(el.parentNode);
-    const seen = stream && stream.get(kind(el));
-    return Boolean(seen) && seen.count >= ${STREAM_MIN_ADDS} && seen.last >= state.prior.at - ${STREAM_LIVE_MS};
+    const kinds = kindsIn(state.independent, el.parentNode);
+    return kinds !== undefined && kinds.has(kind(el));
   };
   const rerendered = (el) => {
-    const seen = el.parentNode && state.streams.get(el.parentNode);
-    const entry = seen && seen.get(kind(el));
-    return Boolean(entry) && entry.replaced >= ${RERENDER_MIN_REPLACEMENTS};
+    const records = kindsIn(state.replaced, el.parentNode);
+    return records !== undefined && (records.get(kind(el)) || 0) >= ${RERENDER_MIN_RECORDS};
   };
   const near = (el) => ((scope !== null && within(scope, el)) || popup(el)) && !streamed(el) && !rerendered(el);
   const contentOf = (node) => (node.textContent || '').replace(/\\s+/g, ' ').trim();
@@ -515,11 +508,10 @@ export const EFFECTS_START_SCRIPT = `(() => {
     pressScroll: null, copied: false, stopped: false, added: [], removed: [], bursts: [],
     keyTarget: null, loaders: new Set((${LOADERS_JS})()),
     pressTarget: null, submits: [], forms: [], control: null, keyClick: null, enterField: null,
-    nodes: 0, expandable: null, inputTarget: null, started: performance.now(), streams: new WeakMap(), noted: 0, prior: null
+    nodes: 0, expandable: null, inputTarget: null, independent: new WeakMap(), replaced: new WeakMap(), noted: 0
   };
   const kind = ${STREAM_KIND_JS};
-  state.prior = window.__bdgStreams || null;
-  delete window.__bdgStreams;
+  if (window.__bdgIdle) state.independent = window.__bdgIdle();
   const listen = EventTarget.prototype.addEventListener;
   const unlisten = EventTarget.prototype.removeEventListener;
   const controlLabel = ${CONTROL_LABEL_JS};
@@ -552,29 +544,38 @@ export const EFFECTS_START_SCRIPT = `(() => {
   const keep = (list, nodes) => {
     for (const node of nodes) if (node.nodeType === 1 && list.length < ${MAX_TRACKED_NODES}) list.push(node);
   };
-  const elementCount = (nodes) => Array.from(nodes).filter((node) => node.nodeType === 1).length;
-  const noteStreams = (record) => {
-    const now = performance.now();
-    const replaces = new Set(Array.from(record.removedNodes).filter((node) => node.nodeType === 1).map(kind));
-    for (const node of record.addedNodes) {
-      if (node.nodeType !== 1 || !node.parentNode || state.noted >= ${MAX_STREAM_NODES}) continue;
-      state.noted++;
-      const kinds = state.streams.get(node.parentNode) || new Map();
-      const seen = kinds.get(kind(node)) || { count: 0, last: 0, replaced: 0 };
-      kinds.set(kind(node), { count: seen.count + 1, last: now, replaced: seen.replaced + (replaces.has(kind(node)) ? 1 : 0) });
-      state.streams.set(node.parentNode, kinds);
-    }
+  const elements = (nodes) => Array.from(nodes).filter((node) => node.nodeType === 1);
+  const noteAdded = (record) => {
+    const added = elements(record.addedNodes);
+    if (added.length === 0 || state.noted >= ${MAX_STREAM_NODES}) return;
+    state.noted += added.length;
+    const kinds = state.independent.get(record.target) || new Set();
+    added.forEach((node) => kinds.add(kind(node)));
+    state.independent.set(record.target, kinds);
+  };
+  const noteReplaced = (record) => {
+    const removed = new Set(elements(record.removedNodes).map(kind));
+    const replaced = new Set(elements(record.addedNodes).map(kind).filter((one) => removed.has(one)));
+    if (replaced.size === 0) return;
+    const records = state.replaced.get(record.target) || new Map();
+    replaced.forEach((one) => records.set(one, (records.get(one) || 0) + 1));
+    state.replaced.set(record.target, records);
   };
   const count = (records) => {
+    if (state.stopped) {
+      records.filter((record) => record.type === 'childList').forEach(noteAdded);
+      return;
+    }
     let burst = false;
     for (const record of records) {
       if (churnOnly(record, state.targets)) continue;
       state.changes++;
       burst = burst || structural(record);
       if (record.type === 'childList') {
-        state.nodes += elementCount(record.addedNodes) + elementCount(record.removedNodes);
+        state.nodes += elements(record.addedNodes).length + elements(record.removedNodes).length;
         keep(state.added, record.addedNodes);
-        noteStreams(record);
+        if (state.targets.size === 0) noteAdded(record);
+        noteReplaced(record);
         keep(state.removed, record.removedNodes);
       }
     }
@@ -622,9 +623,21 @@ export const EFFECTS_START_SCRIPT = `(() => {
     if (state.stopped) return;
     state.flush();
     state.stopped = true;
-    window.__bdgStreams = { at: performance.now(), streams: state.streams };
     clearTimeout(expiry);
-    observer.disconnect();
+    const idleTimer = setTimeout(() => {
+      observer.disconnect();
+      delete window.__bdgIdle;
+    }, ${IDLE_WATCH_MS});
+    Object.defineProperty(window, '__bdgIdle', {
+      configurable: true,
+      value: () => {
+        count(observer.takeRecords());
+        observer.disconnect();
+        clearTimeout(idleTimer);
+        delete window.__bdgIdle;
+        return state.independent;
+      }
+    });
     if (Element.prototype.attachShadow === watchedAttach) Element.prototype.attachShadow = attachShadow;
     types.forEach((type) => window.removeEventListener(type, record, true));
     state.forms.forEach((form) => unlisten.call(form, 'submit', onSubmit, true));
