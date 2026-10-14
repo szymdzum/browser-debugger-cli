@@ -265,6 +265,16 @@ export class Session {
   }
 
   /**
+   * Whether the session was started with `bdg attach`: one browser
+   * connection, its tab never navigated.
+   *
+   * @returns True for an attached tab
+   */
+  private get attachedTab(): boolean {
+    return this.config.attachTab !== undefined;
+  }
+
+  /**
    * Launch: start Chrome (or attach), connect CDP, start collectors, navigate.
    *
    * Every resource is owned by the session as soon as it is acquired, so a
@@ -369,7 +379,7 @@ export class Session {
       ...(this.loading && { loading: this.loading }),
       ...(this.startDialogs.length > 0 && { dialogs: this.startDialogs }),
       ...(this.stateRestored && { state: this.stateRestored }),
-      ...(this.config.attachTab !== undefined && { attached: true }),
+      ...(this.attachedTab && { attached: true }),
     };
   }
 
@@ -390,7 +400,7 @@ export class Session {
         autoStopAt: this.autoStopAt,
         targetId: target?.id,
         webSocketDebuggerUrl: target?.webSocketDebuggerUrl,
-        attached: this.config.attachTab !== undefined || undefined,
+        attached: this.attachedTab || undefined,
         viewport: this.config.viewport,
         colorScheme: this.config.colorScheme,
         dialog: this.config.dialog,
@@ -490,10 +500,9 @@ export class Session {
       findPageTarget: () => findPageTarget(this.config, this.store, log),
       connect: async (signal) => {
         const onLost = (lost: CDPConnection): void => this.pages.onPageDisconnected(lost);
-        const cdp =
-          this.config.attachTab === undefined
-            ? await connectCDP(this.store, log, onLost, { external, signal })
-            : await attachToBrowserTab(this.config, this.store, log, onLost, signal);
+        const cdp = !this.attachedTab
+          ? await connectCDP(this.store, log, onLost, { external, signal })
+          : await attachToBrowserTab(this.config, this.store, log, onLost, signal);
         this.pages.adopt(cdp, []);
         return cdp;
       },
@@ -509,7 +518,7 @@ export class Session {
         this.pages.adopt(cdp, await this.startPage(cdp, { kind: 'first' }));
       },
       navigate: async (cdp, chrome, signal) => {
-        if (this.config.attachTab !== undefined) return;
+        if (this.attachedTab) return;
         this.documentRequestId = await navigateToTarget(
           cdp,
           this.config,
@@ -577,7 +586,7 @@ export class Session {
     const { chromeWsUrl } = this.config;
     if (!chromeWsUrl) return this.launchOwnChrome(signal);
     this.config = { ...this.config, port: externalChromePort(chromeWsUrl) };
-    if (this.config.attachTab !== undefined) return Promise.resolve(null);
+    if (this.attachedTab) return Promise.resolve(null);
     return setupChromeConnection(this.config, this.store, log, this.notify, signal);
   }
 
@@ -717,7 +726,7 @@ export class Session {
    * @throws CommandError (90) naming the other session
    */
   private async assertTabFree(targetId: string, pageWsUrl: string): Promise<void> {
-    if (this.config.attachTab !== undefined) {
+    if (this.attachedTab) {
       const err = attachedTabSwitchError();
       throw new CommandError(
         err.message,
