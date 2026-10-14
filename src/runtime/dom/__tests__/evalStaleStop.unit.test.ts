@@ -51,6 +51,10 @@ void describe('evaluateScript after its answer', () => {
     client.abort();
     await new Promise((resolve) => setImmediate(resolve));
     const afterDisconnect = page.sent.slice(sentBeforeDisconnect);
-    assert.deepEqual(afterDisconnect, [], 'a stop begins with a busy probe, then terminateExecution');
+    assert.deepEqual(
+      afterDisconnect,
+      [],
+      'a stop begins with a busy probe, then terminateExecution'
+    );
   });
 });

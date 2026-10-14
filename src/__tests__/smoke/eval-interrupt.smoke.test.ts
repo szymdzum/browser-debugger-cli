@@ -325,7 +325,10 @@ void describe('Interrupted dom eval', () => {
   void it('stops an interrupted loop at once behind an interrupted eval that awaits a timer (#729)', async () => {
     const stopAwaiting = new AbortController();
     const sentBefore = evalsSent();
-    const awaiting = startEval('await new Promise((r) => setTimeout(r, 10000))', stopAwaiting.signal);
+    const awaiting = startEval(
+      'await new Promise((r) => setTimeout(r, 10000))',
+      stopAwaiting.signal
+    );
     await untilEvalsSent(sentBefore + 1);
     stopAwaiting.abort();
     assert.equal((await awaiting).exitCode, 130);
