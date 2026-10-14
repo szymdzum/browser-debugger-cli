@@ -19,6 +19,7 @@ import {
   invalidUserDataDirError,
   invalidViewportError,
   missingStartUrlError,
+  spacedCommandError,
   unknownCommandError,
 } from '@/errors/messages.js';
 import type { DialogAnswer } from '@/ipc/protocol/domTypes.js';
@@ -340,6 +341,25 @@ function assertNotCommandTypo(arg: string, commandNames: string[]): void {
 }
 
 /**
+ * Reject a command typed as one quoted argument (`bdg "page info"`): the
+ * words are meant as separate arguments, so the error names them that way
+ * instead of suggesting `%20`. Anything with a scheme, colon, dot or slash
+ * is a URL and keeps the `%20` hint.
+ *
+ * @param arg - The URL argument
+ * @param commandNames - Registered top-level command names
+ * @throws CommandError (80) when the first word is, or is close to, a command
+ */
+export function assertNotSpacedCommand(arg: string, commandNames: string[]): void {
+  const [first = '', ...rest] = arg.trim().split(/\s+/);
+  if (rest.length === 0 || !/^[a-z][a-z0-9_-]*$/i.test(first) || /[.:/]/.test(arg)) return;
+  const command = commandNames.includes(first) ? first : findSimilar(first, commandNames)[0];
+  if (command === undefined) return;
+  const err = spacedCommandError(arg, [command, ...rest].join(' '));
+  throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_URL);
+}
+
+/**
  * The words of the command line that are not options or option values of
  * the root command (`bdg --session a netwrk list` gives `netwrk`, `list`).
  *
@@ -413,6 +433,10 @@ function validateStartInput(
     );
   }
   assertNotCommandTypo(
+    url,
+    program.commands.map((command) => command.name())
+  );
+  assertNotSpacedCommand(
     url,
     program.commands.map((command) => command.name())
   );
