@@ -197,6 +197,37 @@ void describe('Action outcomes', () => {
     });
   });
 
+  void describe('what Shown lists (#750)', () => {
+    void it("leaves out an earlier click's timers", async () => {
+      await open(`${fixture.url}effects`);
+      await act(['click', '#steps']);
+      const data = await act(['click', '#toast']);
+      assert.deepEqual(
+        (data.shown ?? []).map((item) => item.text),
+        ['Saved']
+      );
+    });
+
+    void it('lists a dialog rendered inside an open shadow root', async () => {
+      await open(`${fixture.url}shown-shadow`);
+      const data = await act(['click', '#open-dialog']);
+      assert.match((data.shown ?? []).map((item) => item.text).join('|'), /Search the site/);
+    });
+
+    void it('lists what an aria-expanded button un-hid', async () => {
+      await open(`${fixture.url}shown-disclosure`);
+      const near = await act(['click', '#near-toggle']);
+      assert.match((near.shown ?? []).map((item) => item.text).join('|'), /Pricing/);
+      const far = await act(['click', '#far-toggle']);
+      assert.match((far.shown ?? []).map((item) => item.text).join('|'), /Ships within 3 days/);
+    });
+
+    void it('keeps a click without aria-expanded quiet about un-hidden elements', async () => {
+      const data = await act(['click', '#plain']);
+      assert.equal(data.shown, undefined);
+    });
+  });
+
   void describe('console errors on /tracker-errors', () => {
     before(() => open(`${fixture.url}tracker-errors`));
 
