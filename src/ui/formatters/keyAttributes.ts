@@ -65,6 +65,52 @@ function shortValue(tag: string, name: string, value: string): string {
   return cutMiddle(escapeControlChars(short.replace(/\s+/g, ' ').trim()), MAX_VALUE_LENGTH);
 }
 
+/** Escapes for the characters of an id that would read as something else */
+const ID_ESCAPES: Record<string, string> = {
+  '\\': '\\\\',
+  '"': '\\"',
+  '\n': '\\n',
+  '\r': '\\r',
+  '\t': '\\t',
+};
+
+/**
+ * An id for display inside `id="..."`: each character written so it cannot
+ * be mistaken for another (`\\` as `\\\\`, `"` as `\\"`, line breaks as `\\n`,
+ * other control characters as `\uXXXX`), cut to about
+ * {@link MAX_VALUE_LENGTH} characters. Characters are escaped one by one
+ * and the cut falls between whole escapes, so none is split; the result
+ * can be a few characters under the cap. `--json` keeps ids whole.
+ *
+ * @param id - Full id
+ * @returns Id on one line
+ */
+export function shortId(id: string): string {
+  const pieces = Array.from(id, (char) => ID_ESCAPES[char] ?? escapeControlChars(char));
+  if (pieces.join('').length <= MAX_VALUE_LENGTH) return pieces.join('');
+  const head = takeWithin(pieces, Math.ceil((MAX_VALUE_LENGTH - 1) / 2));
+  const tail = takeWithin([...pieces].reverse(), Math.floor((MAX_VALUE_LENGTH - 1) / 2));
+  return `${head.join('')}…${tail.reverse().join('')}`;
+}
+
+/**
+ * The leading pieces whose total length fits a budget.
+ *
+ * @param pieces - Escaped characters
+ * @param budget - Most characters to keep
+ * @returns The pieces kept
+ */
+function takeWithin(pieces: string[], budget: number): string[] {
+  const kept: string[] = [];
+  let used = 0;
+  for (const piece of pieces) {
+    used += piece.length;
+    if (used > budget) break;
+    kept.push(piece);
+  }
+  return kept;
+}
+
 /**
  * Key attributes as `name="value"` items, values shortened: an image's
  * file name, an iframe's host, links without their scheme, the rest cut in

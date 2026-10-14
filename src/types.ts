@@ -482,6 +482,8 @@ export interface A11yQueryResult {
  */
 export interface DomContext {
   tag: string;
+  /** Its `id` attribute; absent when it has none (or an empty one) */
+  id?: string;
   /** Every class of the element, `[]` when it has none */
   classes: string[];
   preview?: string;

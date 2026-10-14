@@ -385,7 +385,7 @@ bdg dom get "#searchInput"                    # [Searchbox] "Search" (focusable)
 bdg dom get ".nav-link"                       # First matching element
 bdg dom get ".nav-link" --index 2             # Third match (0-based; --nth is an alias)
 bdg dom get                                   # The body (default selector)
-bdg dom get "#content"                        # [Generic] <div> + a Text: line (up to 500 characters)
+bdg dom get "#content"                        # [Generic] <div#content> + a Text: line (up to 500 characters; #id shown when it has one, JSON domContext.id)
 bdg dom get "#content" --full                 # All of its text
 bdg dom get "#tinymce"                        # [Generic] "Rich Text Area…" + Text: Your content… (name differs from the text)
 

@@ -131,7 +131,7 @@ Selectors search open shadow roots and same-origin iframes, and accept `:has-tex
 ## Look Without a Screenshot
 
 ```bash
-bdg dom get "h1"                     # Semantic a11y summary (--raw for HTML)
+bdg dom get "h1"                     # Semantic a11y summary, tag#id.class (--json domContext.id, absent without an id; --raw for HTML)
 bdg dom a11y query role=button       # By accessibility role/name
 bdg dom inspect ".card" --why color  # Which CSS rule set a property, and what it overrode
 bdg dom layout ".card"               # Every match: position, size, above/below the fold, hidden, covered

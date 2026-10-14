@@ -8,11 +8,13 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  buildContextText,
   formatSemanticNodeWithContext,
   resolveNodeWithFallback,
   withSecretMasked,
 } from '@/commands/dom/semanticUtils.js';
 import { MASKED_VALUE, textPreview } from '@/runtime/dom/elementInfo.js';
+import type { DomContext } from '@/types.js';
 
 const NODE = { nodeId: '1', role: 'generic' };
 
@@ -218,5 +220,68 @@ void describe('withSecretMasked', () => {
       domContext: { tag: 'div', classes: [], sensitive: true, preview: 'hunter2' },
     });
     assert.doesNotMatch(output, /hunter2/);
+  });
+});
+
+void describe('buildContextText id', () => {
+  const context = (id?: string): DomContext => ({
+    tag: 'p',
+    classes: ['a'],
+    ...(id !== undefined && { id }),
+  });
+
+  void it('shows a plain id as #id before the classes', () => {
+    assert.equal(buildContextText(NODE, context('x')), ' <p#x.a>');
+  });
+
+  void it('shows nothing for no id and for an empty one', () => {
+    assert.equal(buildContextText(NODE, context()), ' <p.a>');
+    assert.equal(buildContextText(NODE, context('')), ' <p.a>');
+  });
+
+  void it('keeps a newline in an id on one line', () => {
+    const text = buildContextText(NODE, context('n\nl'));
+    assert.equal(text.includes('\n'), false);
+    assert.equal(text, ' <p.a id="n\\nl">');
+  });
+
+  void it('cuts a long id', () => {
+    const text = buildContextText(NODE, context('a'.repeat(300)));
+    assert.ok(text.length < 80, text);
+    assert.match(text, /^ <p#a+….*>$/u);
+  });
+
+  void it('writes an id that is not a plain identifier as id="..."', () => {
+    assert.equal(buildContextText(NODE, context('a b')), ' <p.a id="a b">');
+    assert.equal(buildContextText(NODE, context('x"y')), ' <p.a id="x\\"y">');
+    assert.equal(buildContextText(NODE, context('a"b\'c')), ' <p.a id="a\\"b\'c">');
+  });
+
+  void it('keeps a whitespace-only accessible name off the line (a <br>)', () => {
+    const output = formatSemanticNodeWithContext({
+      node: { nodeId: '1', role: 'LineBreak', name: '\n' },
+      domContext: { tag: 'br', classes: [] },
+    });
+    assert.equal(output, '[LineBreak] <br>');
+  });
+});
+
+void describe('empty-element line by tag', () => {
+  const line = (tag: string): string =>
+    formatSemanticNodeWithContext({
+      node: NODE,
+      domContext: { tag, classes: [], children: [], childCount: 0 },
+    });
+
+  void it('is skipped for void elements, select and textarea', () => {
+    for (const tag of ['input', 'img', 'br', 'hr', 'select', 'textarea']) {
+      assert.doesNotMatch(line(tag), /No text/, tag);
+    }
+  });
+
+  void it('stays for an empty div, a button and a span', () => {
+    for (const tag of ['div', 'button', 'span']) {
+      assert.match(line(tag), /No text and no child elements/, tag);
+    }
   });
 });

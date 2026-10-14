@@ -7,6 +7,32 @@ import { describe, it } from 'node:test';
 
 import { formatDomEval, formatDomGet, formatDomQuery } from '@/ui/formatters/dom.js';
 
+void describe('formatDomQuery ids', () => {
+  const idLine = (id: string): string =>
+    formatDomQuery({ selector: 'p', count: 1, nodes: [{ index: 0, nodeId: 1, tag: 'p', id }] });
+
+  void it('keeps a plain id as written', () => {
+    assert.match(idLine('x'), /\[0\] <p id="x">$/m);
+  });
+
+  void it('keeps a newline in an id on one line', () => {
+    assert.match(idLine('n\nl'), /\[0\] <p id="n\\nl">$/m);
+  });
+
+  void it('escapes a double quote in an id', () => {
+    assert.match(idLine('a"b\'c'), /\[0\] <p id="a\\"b'c">$/m);
+  });
+
+  void it('cuts a 300-character id', () => {
+    const line =
+      idLine('a'.repeat(300))
+        .split('\n')
+        .find((l) => l.includes('<p')) ?? '';
+    assert.ok(line.length < 70, line);
+    assert.match(line, /id="a+…a+"/u);
+  });
+});
+
 void describe('formatDomQuery', () => {
   void it('shows the text preview, and nothing for elements without text', () => {
     const output = formatDomQuery({
