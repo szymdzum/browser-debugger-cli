@@ -1341,7 +1341,11 @@ export function spacedCommandError(url: string, command: string): ErrorWithSugge
  * @param url - URL that failed
  * @param errorText - Chrome network error (e.g. net::ERR_NAME_NOT_RESOLVED)
  */
-export function navigationFailedError(url: string, errorText: string): ErrorWithSuggestion {
+export function navigationFailedError(
+  url: string,
+  errorText: string,
+  _addedScheme = false
+): ErrorWithSuggestion {
   return {
     message: `Could not load ${url}: ${errorText}`,
     suggestion: 'Check the URL and that the server is running and reachable from this machine',

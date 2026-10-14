@@ -156,3 +156,14 @@ export function parseSingleNameSelector(selector: string): SingleNameSelector | 
   if (!match) return null;
   return { kind: match[1] === '#' ? 'id' : 'class', name: match[2] as string };
 }
+
+/**
+ * Command names close to a mistyped word.
+ *
+ * @param _word - Word as typed
+ * @param _commandNames - Command names to compare with
+ * @returns Close command names, best first
+ */
+export function findSimilarCommands(_word: string, _commandNames: readonly string[]): string[] {
+  throw new Error('not implemented');
+}
