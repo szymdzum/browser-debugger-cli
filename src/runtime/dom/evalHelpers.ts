@@ -822,6 +822,8 @@ interface PendingEvaluation {
   markIdle: () => void;
   /** Whether the script has a top-level `await` */
   awaits: boolean;
+  /** The page answered a check sent after it: its synchronous part is over */
+  waiting: boolean;
   /** Session the script runs on (empty for the page's own) */
   sessionId: string;
 }
@@ -860,7 +862,11 @@ function checkAwaitingEvaluations(cdp: CDPSender, sessionId: string): void {
   );
   if (awaiting.length === 0) return;
   cdp.send('Runtime.evaluate', { expression: '1', returnByValue: true }).then(
-    () => awaiting.forEach((evaluation) => evaluation.markIdle()),
+    () =>
+      awaiting.forEach((evaluation) => {
+        evaluation.waiting = true;
+        evaluation.markIdle();
+      }),
     (error: unknown) => log.debug(`Could not check awaiting evals: ${getErrorMessage(error)}`)
   );
 }
@@ -883,7 +889,7 @@ function trackEvaluation(awaits: boolean, sessionId: string): TrackedEvaluation 
   const earlier = [...pendingEvaluations];
   let markIdle = (): void => undefined;
   const idle = new Promise<void>((resolve) => (markIdle = resolve));
-  const entry: PendingEvaluation = { idle, markIdle, awaits, sessionId };
+  const entry: PendingEvaluation = { idle, markIdle, awaits, waiting: false, sessionId };
   pendingEvaluations.add(entry);
   return { entry, earlier };
 }
@@ -896,9 +902,10 @@ function trackEvaluation(awaits: boolean, sessionId: string): TrackedEvaluation 
  * answered, every eval sent before it idle (answered, or waiting at a
  * top-level `await` after its synchronous part: a script queued behind
  * another client's busy one must not stop that one), not known to have
- * finished (a result Chrome could not send), not awaiting while an eval
- * sent after it is pending (that one's script may be the busy one; a
- * script without `await` keeps later ones queued behind it), and the
+ * finished (a result Chrome could not send), not known to wait at its
+ * top-level `await` (a later eval's check answered: that eval's script may
+ * be the busy one; a script still in its synchronous part, like one
+ * without `await`, keeps later ones queued behind it), and the
  * target not answering a check (a script awaiting a promise, or whose
  * result is on its way, leaves it idle). The conditions are checked again
  * right before the stop. A client gone before the evaluation was sent
@@ -922,9 +929,7 @@ function stopWhenAbandoned(
   const { entry, earlier } = tracked;
   let scriptDone = false;
   const mayStop = (): boolean =>
-    pendingEvaluations.has(entry) &&
-    !scriptDone &&
-    (!entry.awaits || pendingEvaluations.size === 1);
+    pendingEvaluations.has(entry) && !scriptDone && !(entry.awaits && entry.waiting);
   const stop = (): void => {
     void stopAbandonedScript(cdp, scope, earlier, mayStop).catch((error: unknown) => {
       log.debug(`Could not stop an abandoned eval: ${getErrorMessage(error)}`);
