@@ -41,13 +41,10 @@ void describe('assertTabRendered', () => {
     await assert.rejects(assertTabRendered(cdp, 50), (error: unknown) => {
       assert.ok(error instanceof CommandError);
       assert.equal(error.exitCode, 85);
-      assert.equal(
-        error.message,
-        "The attached tab is in the background, so Chrome doesn't render it"
-      );
+      assert.equal(error.message, 'The attached tab is not rendering (in the background, or busy)');
       assert.equal(
         error.metadata.suggestion,
-        'Bring the tab to the front in Chrome, then run the command again'
+        'Bring the tab to the front in Chrome, or wait until the page is idle, then run the command again'
       );
       return true;
     });

@@ -498,4 +498,19 @@ void describe('attemptStart interrupted at the edges (#522)', () => {
     assert.equal(stopRequests, 0);
     assert.equal('spawned' in outcome, false);
   });
+
+  void it("shows the running session's real duration, also under a second (#473)", async () => {
+    const running: StartSessionResponse = {
+      type: 'start_session_response',
+      sessionId: 's',
+      status: 'error',
+      message: 'Session already running (PID 7). Stop it first with: bdg stop',
+      errorCode: IPCErrorCode.SESSION_ALREADY_RUNNING,
+      existingSession: { pid: 7, startTime: Date.now() - 800, duration: 0 },
+    };
+    const { outcome } = await timedStart(deps(undefined, () => Promise.resolve(running)));
+    assert.equal(outcome.ok, false);
+    if (outcome.ok) return;
+    assert.match(outcome.human, /Duration: \d{3}ms/);
+  });
 });
