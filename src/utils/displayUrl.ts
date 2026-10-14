@@ -116,3 +116,14 @@ export function displayTabSwitch<T extends { tab: { url: string } }>(
     tab: { ...tabSwitch.tab, url: displayUrl(tabSwitch.tab.url, includeSensitive) },
   };
 }
+
+/**
+ * A URL as the user typed it, as bdg shows it in errors: {@link displayUrl}
+ * also for input that does not parse.
+ *
+ * @param url - URL as typed
+ * @returns The URL to show
+ */
+export function displayTypedUrl(url: string): string {
+  throw new Error(`not implemented: ${url.length}`);
+}
