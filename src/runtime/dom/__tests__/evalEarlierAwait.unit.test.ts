@@ -31,7 +31,7 @@ const DONE = { result: { type: 'number', value: 1 } };
 
 /** A command waiting for the page's thread */
 /** What the eval sends before and after a script */
-const [WRAPPER_START = '', WRAPPER_END = ''] = wrapEvalScript('\0').split('\0');
+const [WRAPPER_START = '', WRAPPER_END = ''] = wrapEvalScript('SCRIPT').split('SCRIPT');
 
 /**
  * The user's script in the expression an eval sent.

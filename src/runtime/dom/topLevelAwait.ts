@@ -12,7 +12,7 @@ import { createLogger } from '@/ui/logging/index.js';
 const log = createLogger('dom');
 
 /** Longest script compiled to find its `await` (longer ones get the text search: compiling 10 MB takes about 0.7 s) */
-const MAX_COMPILED_LENGTH = 1_000_000;
+export const MAX_COMPILED_LENGTH = 1_000_000;
 
 /**
  * Whether V8 compiles a source (it is not run).
@@ -21,7 +21,7 @@ const MAX_COMPILED_LENGTH = 1_000_000;
  * @param label - What the source is compiled as, for the debug log (never the script)
  * @returns False on a SyntaxError
  */
-function compiles(source: string, label: string): boolean {
+export function compiles(source: string, label: string): boolean {
   try {
     new Script(source);
     return true;

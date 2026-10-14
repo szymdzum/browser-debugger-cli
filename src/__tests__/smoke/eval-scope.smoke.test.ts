@@ -114,6 +114,25 @@ const CASES: ScopeCase[] = [
     error: /^ReferenceError: sc10 is not defined\n {4}at bdg-eval:1:20$/,
     globals: { sc10: 'undefined' },
   },
+  {
+    script: '// hi\n"use strict"; sc11 = 1',
+    exitCode: 91,
+    error: /^ReferenceError: sc11 is not defined/,
+  },
+  { script: '"use strict".length; sc12 = 1; 3', exitCode: 0, result: 3, printed: '3' },
+  { script: '#!/usr/bin/env node\n1', exitCode: 0, result: 1, printed: '1' },
+  { script: '} {', exitCode: 91, error: /^SyntaxError: Unexpected token '\}'/ },
+  {
+    script: '}; window.sc13 = 1; {',
+    exitCode: 91,
+    error: /^SyntaxError/,
+    globals: { sc13: 'undefined' },
+  },
+  {
+    script: 'throw new Error("see bdg-eval:5:1")',
+    exitCode: 91,
+    error: /^Error: see bdg-eval:5:1\n {4}at bdg-eval:1:7$/,
+  },
   { script: 'return 1', exitCode: 91, error: /^SyntaxError: Illegal return statement/ },
 ];
 
