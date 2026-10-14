@@ -16,6 +16,26 @@ import {
 import type { NetworkRequest } from '@/types.js';
 
 void describe('filters - matchesWildcard', () => {
+  void it('matches in linear time (#652)', () => {
+    const url = 'http://x/' + 'a'.repeat(10000);
+    const started = Date.now();
+    assert.equal(matchesWildcard(url, '*a*a*a*a*a*a*b'), false);
+    assert.equal(matchesWildcard(url, '*a*a*a*a*a*a*'), true);
+    assert.ok(Date.now() - started < 500, 'took too long');
+  });
+
+  void it('keeps anchors, order and case', () => {
+    assert.equal(matchesWildcard('ab', 'a*b'), true);
+    assert.equal(matchesWildcard('a', 'a*a'), false);
+    assert.equal(matchesWildcard('aXb', 'A*B'), true);
+    assert.equal(matchesWildcard('xaby', 'a*b'), false);
+    assert.equal(matchesWildcard('abc', '*b*b*'), false);
+    assert.equal(matchesWildcard('abcb', '*b*b'), true);
+    assert.equal(matchesWildcard('a.b', 'a.b'), true);
+    assert.equal(matchesWildcard('axb', 'a.b'), false);
+    assert.equal(matchesWildcard('', '*'), true);
+  });
+
   void it('should match exact strings', () => {
     assert.equal(matchesWildcard('api.example.com', 'api.example.com'), true);
     assert.equal(matchesWildcard('api.example.com/users', 'api.example.com/users'), true);
