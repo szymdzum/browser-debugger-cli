@@ -18,6 +18,7 @@ import {
   pageNavigation,
   pendingChanges,
   quietMs,
+  reportedDomChanges,
   shownElements,
   type NavigationEvents,
   type PageWork,
@@ -220,6 +221,41 @@ void describe('hadNoEffect', () => {
     const { changes: _changes, ...uncounted } = read();
     assert.equal(hadNoEffect(uncounted, {}, NOTHING_ELSE), false);
     assert.equal(hadNoEffect(undefined, {}, NOTHING_ELSE), false);
+  });
+});
+
+void describe('reportedDomChanges', () => {
+  void it('reports elements added or removed when nothing else is reported', () => {
+    assert.equal(reportedDomChanges(read({ nodes: 200 }), {}), 200);
+    assert.equal(reportedDomChanges(read({ nodes: 3 }), {}), 3);
+  });
+
+  void it('stays silent below 3 elements, without a count and after a new document', () => {
+    assert.equal(reportedDomChanges(read({ nodes: 2 }), {}), undefined);
+    assert.equal(reportedDomChanges(read(), {}), undefined);
+    assert.equal(reportedDomChanges(read({ nodes: 200, fresh: true }), {}), undefined);
+    assert.equal(reportedDomChanges(undefined, {}), undefined);
+  });
+
+  void it('stays silent when another effect is reported', () => {
+    for (const reported of [
+      { navigation: { url: 'x', sameDocument: true } },
+      { messages: [{ text: 'Saved', element: 'div' }] },
+      { shown: [{ text: 'Tip', element: 'div' }] },
+      { submitted: { form: 'form', cancelled: false } },
+      { controlChange: { element: 'button', disabled: true } },
+      { expanded: false },
+      { focusMoved: 'input#other' },
+    ]) {
+      assert.equal(reportedDomChanges(read({ nodes: 200 }), reported), undefined);
+    }
+  });
+
+  void it('stays silent on a page that keeps changing on its own', () => {
+    const busy = { burstAges: [300, 120], loading: null };
+    assert.equal(reportedDomChanges(read({ nodes: 200, settle: busy }), {}), undefined);
+    const once = { burstAges: [120], loading: null };
+    assert.equal(reportedDomChanges(read({ nodes: 200, settle: once }), {}), 200);
   });
 });
 

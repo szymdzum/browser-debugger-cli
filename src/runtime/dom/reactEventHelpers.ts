@@ -813,7 +813,8 @@ export const FILL_READ_BACK_SCRIPT = `(() => {
  * press point (a re-render on `pointerdown`). An element that merely unmounts
  * on press, a sibling that slides under the mouse, and a replacement with a
  * different label are not reported, since the handler may have acted. Where the
- * mouse is released when that is not the element (`releasedOn`) is reported. The probe
+ * mouse is released when that is not the element (`releasedOn`) is reported, unless it
+ * is an element the page rendered since (a replacement, as for a label change). The probe
  * listens on the window and on each shadow root around the element, since
  * an event path seen from outside a closed root stops at its host (#582);
  * the deepest listener the press got to decides. A press seen last at a
@@ -1015,6 +1016,8 @@ export const CLICK_ELEMENT_SCRIPT = `
     const markReleased = (event) => {
       const path = event.composedPath();
       if (!probe.reached || probe.releasedOn || path.indexOf(el) !== -1 || closedHosts.indexOf(path[0]) !== -1) return;
+      const rendered = window.__bdgEffects ? window.__bdgEffects.added : [];
+      if (path.some((node) => rendered.indexOf(node) !== -1)) return;
       if (path[0] && path[0].nodeType === 1) probe.releasedOn = describe(path[0]);
     };
     const markClicked = (event) => {

@@ -163,6 +163,22 @@ void describe('Silent action effects', () => {
     });
   });
 
+  void describe('click on /press-check elements the page renders anew', () => {
+    before(() => open(`${fixture.url}press-check`));
+
+    for (const id of ['follow', 'option', 'gone-pointerup']) {
+      void it(`stays silent for #${id}, whose release lands on its own element or its replacement`, async () => {
+        const data = await act(['click', `#${id}`]);
+        assertQuiet(data);
+      });
+    }
+
+    void it('reports the sibling that slid under the mouse when #item-1 unmounted', async () => {
+      const data = await act(['click', '#item-1']);
+      assert.match(data.releasedOn ?? '', /^button#item-10/, JSON.stringify(data));
+    });
+  });
+
   void describe('a page re-rendering a list on a timer', () => {
     before(() => open(`${fixture.url}silent-effects-busy`));
 
