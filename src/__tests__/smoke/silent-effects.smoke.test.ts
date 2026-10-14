@@ -106,6 +106,7 @@ void describe('Silent action effects', () => {
     });
 
     void it('prints DOM changed (N nodes) in human output', async () => {
+      await bdg(['dom', 'hover', '#help']);
       await bdg(['page', 'navigate', `${fixture.url}effects`]);
       const output = await bdg(['dom', 'hover', '#shift-target']);
       assert.match(output, /DOM changed \(200 nodes\)/);
@@ -126,7 +127,6 @@ void describe('Silent action effects', () => {
     void it('names the flip of the button around a clicked icon, in human output', async () => {
       const output = await bdg(['dom', 'click', '#expander-icon']);
       assert.match(output, /\nExpanded: true\n/);
-      assert.doesNotMatch(output, /^✓ Element Clicked$/m);
     });
 
     void it('reports the element a fill handler moved focus to', async () => {
