@@ -71,7 +71,6 @@ import {
   tabClosedText,
   moreErrorsText,
   moreMessagesText,
-  moreShownText,
   formSubmittedText,
   hiddenTrackerErrorsText,
   newMessageText,
@@ -614,7 +613,7 @@ function formatActionOutput(
     'Shown',
     [
       ...(result.shown ?? []).map(shownElementText),
-      ...(result.moreShown ? [moreShownText(result.moreShown)] : []),
+      ...(result.moreShown ? [moreMessagesText(result.moreShown)] : []),
     ],
     keyWidth
   );

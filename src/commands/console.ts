@@ -192,7 +192,6 @@ export function skippedMessages(
  * @param pageCrashedAt - When the page crashed, while it is not loaded again
  * @param page - Chrome Issues of the page and how many were not kept, and
  *   the session's latest move to another tab
- * @param hidden - Messages `--level` hid, per level
  * @returns Formatting options
  */
 function buildFormatOptions(
@@ -201,11 +200,10 @@ function buildFormatOptions(
   skipped?: ConsoleSkipped,
   dropped?: number,
   pageCrashedAt?: number,
-  page?: PageNotes,
-  hidden: HiddenByLevel = {}
+  page?: PageNotes
 ): ConsoleFormatOptions {
   return {
-    ...(Object.keys(hidden).length > 0 && { hiddenByLevel: hidden }),
+    ...(page?.hidden && Object.keys(page.hidden).length > 0 && { hiddenByLevel: page.hidden }),
     ...(options.last !== undefined && { groupLimit: lastN }),
     ...(dropped && { dropped }),
     ...(pageCrashedAt !== undefined && { pageCrashedAt }),
@@ -383,13 +381,13 @@ interface PageIssues {
 interface PageNotes extends PageIssues {
   /** The session's latest move to another tab */
   tabSwitch?: TabSwitchInfo | undefined;
+  /** Messages `--level` hid, per level */
+  hidden?: HiddenByLevel | undefined;
 }
 
 interface ConsoleResult extends PageNotes {
   messages: ConsoleMessage[];
   filtered: ConsoleMessage[];
-  /** Messages `--level` hid, per level */
-  hidden: HiddenByLevel;
   /** Dropped messages that could have been in the view (see {@link droppedInView}) */
   dropped: number;
   pageCrashedAt: number | undefined;
@@ -462,19 +460,12 @@ export function registerConsoleCommand(program: Command): void {
               success: true,
               data: buildConsoleJsonOutput(
                 filtered,
-                buildFormatOptions(
-                  options,
-                  lastN,
-                  undefined,
-                  dropped,
-                  pageCrashedAt,
-                  {
-                    issues,
-                    issuesDropped,
-                    tabSwitch,
-                  },
-                  hidden
-                )
+                buildFormatOptions(options, lastN, undefined, dropped, pageCrashedAt, {
+                  issues,
+                  issuesDropped,
+                  tabSwitch,
+                  hidden,
+                })
               ),
             };
           }
@@ -512,19 +503,12 @@ export function registerConsoleCommand(program: Command): void {
           );
           return formatConsole(
             filtered,
-            buildFormatOptions(
-              options,
-              lastN,
-              skipped,
-              dropped,
-              pageCrashedAt,
-              {
-                issues,
-                issuesDropped,
-                tabSwitch,
-              },
-              hidden
-            )
+            buildFormatOptions(options, lastN, skipped, dropped, pageCrashedAt, {
+              issues,
+              issuesDropped,
+              tabSwitch,
+              hidden,
+            })
           );
         }
       );

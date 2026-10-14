@@ -372,22 +372,12 @@ export function downloadsDirUnavailableReason(detail: string): string {
 }
 
 /**
- * Last `New text:` row when an action made more messages appear than are listed.
+ * Last `New text:` or `Shown:` row when an action made more messages or elements appear than are listed.
  *
- * @param count - Messages not listed
+ * @param count - Messages or elements not listed
  * @returns e.g. `(+4 more)`
  */
 export function moreMessagesText(count: number): string {
-  return `(+${count} more)`;
-}
-
-/**
- * Last `Shown:` row when more elements qualified than are listed.
- *
- * @param count - Elements not listed
- * @returns e.g. `(+1 more)`
- */
-export function moreShownText(count: number): string {
   return `(+${count} more)`;
 }
 
