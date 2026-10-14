@@ -207,6 +207,32 @@ void describe('ELEMENT_IDENTITY_JS', () => {
     ]);
   });
 
+  void it('counts a placeholder as a name; a blank aria-label or a missing labelledby target is no name (#740)', () => {
+    const field = node('input', {
+      classes: ['ph'],
+      text: '',
+      attributes: { placeholder: 'Search here' },
+    });
+    node('div', { classes: ['g'], text: 'Ctx G' }, [field]);
+    const blank = node('button', {
+      classes: ['ws'],
+      text: '',
+      attributes: { 'aria-label': '   ' },
+    });
+    node('div', { classes: ['a'], text: 'Ctx A' }, [blank]);
+    const missing = node('button', {
+      classes: ['gone'],
+      text: '',
+      attributes: { 'aria-labelledby': 'no-such-id' },
+    });
+    node('div', { classes: ['b'], text: 'Ctx B' }, [missing]);
+    assert.deepEqual([field, blank, missing].map(identityOf), [
+      'input.ph in div.g "Search here"',
+      'button.ws in div.a ("Ctx A")',
+      'button.gone in div.b ("Ctx B")',
+    ]);
+  });
+
   void it('uses the element text first, without a close button glyph', () => {
     const buttons = [node('button', { text: 'Add' }), node('button', { text: 'Add' })];
     node('div', {}, buttons);

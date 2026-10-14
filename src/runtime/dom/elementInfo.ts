@@ -577,7 +577,8 @@ export const SIBLING_POSITION_JS = `(el) => {
  * kind is placed by the nearest of three ancestors that has text, e.g.
  * `input.toggle in div.view ("Write report")`: text borrowed from the
  * ancestor is in parentheses, as context, and an element with a name of its
- * own keeps it quoted (`button in div.hdr "Open menu"`). The ancestor
+ * own (aria-label, label, placeholder, title or image alt) keeps it quoted
+ * (`button in div.hdr "Open menu"`). The ancestor
  * text leaves out the options
  * of `<select>`s in it (read like `innerText`: CSS-hidden text is left out of
  * a rendered ancestor; at most 500 text nodes; selects in shadow roots are
