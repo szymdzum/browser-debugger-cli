@@ -459,6 +459,9 @@ export function focusMovedText(element: string): string {
  * @returns Warning text
  */
 export function releasedElsewhereWarning(releasedOn: string): string {
+  if (/^(body|html)$/.test(releasedOn)) {
+    return `The mouse was released outside any element (on the ${releasedOn}), not on the clicked element: the page changed under the pointer while it was pressed; check what the page did`;
+  }
   return `The mouse was released on ${releasedOn}, not on the clicked element: the page changed under the pointer while it was pressed; check what the page did`;
 }
 

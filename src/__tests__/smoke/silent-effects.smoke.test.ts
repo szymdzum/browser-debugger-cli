@@ -145,6 +145,11 @@ void describe('Silent action effects', () => {
       assertQuiet(await act(['click', '#disclosure']));
     });
 
+    void it('stays silent for DOM changes next to a request the click started', async () => {
+      const data = await act(['click', '#fetch-append']);
+      assert.equal(data.domChanges, undefined, JSON.stringify(data));
+    });
+
     void it('stays silent for a hover with a CSS-only style', async () => {
       assertQuiet(await act(['hover', '#plain-hover']));
     });

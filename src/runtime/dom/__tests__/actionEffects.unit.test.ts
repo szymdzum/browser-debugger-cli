@@ -31,6 +31,7 @@ import {
   actionStatusLine,
   newMessageText,
   pageNavigationText,
+  releasedElsewhereWarning,
   shownElementText,
   stillChangingNote,
   submitBlockedNote,
@@ -226,15 +227,18 @@ void describe('hadNoEffect', () => {
 
 void describe('reportedDomChanges', () => {
   void it('reports elements added or removed when nothing else is reported', () => {
-    assert.equal(reportedDomChanges(read({ nodes: 200 }), {}), 200);
-    assert.equal(reportedDomChanges(read({ nodes: 3 }), {}), 3);
+    assert.equal(reportedDomChanges(read({ nodes: 200 }), {}, NOTHING_ELSE), 200);
+    assert.equal(reportedDomChanges(read({ nodes: 3 }), {}, NOTHING_ELSE), 3);
   });
 
   void it('stays silent below 3 elements, without a count and after a new document', () => {
-    assert.equal(reportedDomChanges(read({ nodes: 2 }), {}), undefined);
-    assert.equal(reportedDomChanges(read(), {}), undefined);
-    assert.equal(reportedDomChanges(read({ nodes: 200, fresh: true }), {}), undefined);
-    assert.equal(reportedDomChanges(undefined, {}), undefined);
+    assert.equal(reportedDomChanges(read({ nodes: 2 }), {}, NOTHING_ELSE), undefined);
+    assert.equal(reportedDomChanges(read(), {}, NOTHING_ELSE), undefined);
+    assert.equal(
+      reportedDomChanges(read({ nodes: 200, fresh: true }), {}, NOTHING_ELSE),
+      undefined
+    );
+    assert.equal(reportedDomChanges(undefined, {}, NOTHING_ELSE), undefined);
   });
 
   void it('stays silent when another effect is reported', () => {
@@ -247,15 +251,38 @@ void describe('reportedDomChanges', () => {
       { expanded: false },
       { focusMoved: 'input#other' },
     ]) {
-      assert.equal(reportedDomChanges(read({ nodes: 200 }), reported), undefined);
+      assert.equal(reportedDomChanges(read({ nodes: 200 }), reported, NOTHING_ELSE), undefined);
     }
+  });
+
+  void it('stays silent after a request, dialog, new window or console message', () => {
+    for (const activity of [
+      { ...NOTHING_ELSE, requests: 1 },
+      { ...NOTHING_ELSE, dialogs: 1 },
+      { ...NOTHING_ELSE, opened: true },
+      { ...NOTHING_ELSE, consoleMessages: 1 },
+    ]) {
+      assert.equal(reportedDomChanges(read({ nodes: 200 }), {}, activity), undefined);
+    }
+  });
+
+  void it('counts elements added plus elements removed, so a replaced row counts twice', () => {
+    assert.equal(reportedDomChanges(read({ nodes: 100 }), {}, NOTHING_ELSE), 100);
+  });
+
+  void it('words a release on the body as outside any element', () => {
+    assert.match(releasedElsewhereWarning('body'), /released outside any element \(on the body\)/);
+    assert.match(releasedElsewhereWarning('button#next'), /released on button#next,/);
   });
 
   void it('stays silent on a page that keeps changing on its own', () => {
     const busy = { burstAges: [300, 120], loading: null };
-    assert.equal(reportedDomChanges(read({ nodes: 200, settle: busy }), {}), undefined);
+    assert.equal(
+      reportedDomChanges(read({ nodes: 200, settle: busy }), {}, NOTHING_ELSE),
+      undefined
+    );
     const once = { burstAges: [120], loading: null };
-    assert.equal(reportedDomChanges(read({ nodes: 200, settle: once }), {}), 200);
+    assert.equal(reportedDomChanges(read({ nodes: 200, settle: once }), {}, NOTHING_ELSE), 200);
   });
 });
 

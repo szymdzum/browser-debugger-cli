@@ -191,7 +191,7 @@ export interface ReadSnapshot {
   expanded?: boolean;
   /** Where focus is after a fill whose handler moved it off the field (when asked for) */
   focusMoved?: string;
-  /** Elements added or removed since the start (same document only) */
+  /** Elements added plus elements removed since the start (same document only) */
   nodes?: number;
 }
 
@@ -570,12 +570,7 @@ async function collectEffects(watch: Watch, options: CollectOptions): Promise<Co
   };
   let snapshot = await readPage(watch, { ...read, stop: false });
   let effects = effectsOf(start, snapshot, watch.listener.events);
-  const quiet = (): boolean =>
-    hadNoEffect(snapshot, effects, {
-      ...watch.listener.activity(),
-      dialogs: options.dialogs,
-      consoleMessages: options.consoleMessages(),
-    });
+  const quiet = (): boolean => hadNoEffect(snapshot, effects, activityOf(watch, options));
   if (options.detectNoEffect && quiet()) {
     await delay(NO_EFFECT_RECHECK_MS);
     snapshot = await readPage(watch, { ...read, stop: true });
@@ -583,7 +578,27 @@ async function collectEffects(watch: Watch, options: CollectOptions): Promise<Co
     if (quiet()) effects = { ...effects, effect: 'none' };
   }
   const domChanging = options.detectUnsettled === true && (await stillChanging(watch, snapshot));
-  return { ...effects, work: pageWork(watch, snapshot, domChanging) };
+  const domChanges = reportedDomChanges(snapshot, effects, activityOf(watch, options));
+  return {
+    ...effects,
+    ...(domChanges !== undefined && { domChanges }),
+    work: pageWork(watch, snapshot, domChanging),
+  };
+}
+
+/**
+ * What the action did besides changing the page, so far.
+ *
+ * @param watch - The action's watch
+ * @param options - Dialogs and console messages
+ * @returns Requests, dialogs, windows and console messages
+ */
+function activityOf(watch: Watch, options: CollectOptions): OtherActivity {
+  return {
+    ...watch.listener.activity(),
+    dialogs: options.dialogs,
+    consoleMessages: options.consoleMessages(),
+  };
 }
 
 /**
@@ -734,15 +749,13 @@ function effectsOf(
         ? newMessages(start.messages, snapshot.messages, snapshot.fresh)
         : { messages: [], more: 0 };
     const shown = shownElements(snapshot?.shown ?? [], messages);
-    const reported: ActionEffects = {
+    return {
       ...(navigation && { navigation }),
       ...(messages.length > 0 && { messages }),
       ...(more > 0 && { moreMessages: more }),
       ...(shown.length > 0 && { shown }),
       ...pressOutcomes(snapshot),
     };
-    const domChanges = reportedDomChanges(snapshot, reported);
-    return domChanges === undefined ? reported : { ...reported, domChanges };
   } catch (error) {
     log.debug(
       `Page effects not readable (the page replaced built-ins?): ${getErrorMessage(error)}`
@@ -779,24 +792,30 @@ function pressOutcomes(
 }
 
 /**
- * Elements the action added or removed, as a last resort when nothing else
- * says what it changed: at least {@link MIN_REPORTED_DOM_NODES} of them, no
- * other effect in `reported` (a navigation, messages, shown elements, a form
- * submit, the button's change, a key's click, an expansion, a focus move)
- * and no recent bursts of DOM changes that make the DOM look busy
+ * Elements the action added plus elements it removed (a replaced row counts
+ * twice), as a last resort when nothing else says what it changed: at least
+ * {@link MIN_REPORTED_DOM_NODES} of them, no other effect in `reported` (a
+ * navigation, messages, shown elements, a form submit, the button's change, a
+ * key's click, an expansion, a focus move), no request, dialog, new window
+ * or console message (`activity`) and no recent bursts of DOM changes that make the DOM look busy
  * ({@link recentBursts}): a page that re-renders on a timer is not the
  * action's doing.
  *
  * @param snapshot - Read after the action, if taken
  * @param reported - What the action is reported to have changed
- * @returns Elements added or removed, or undefined
+ * @param activity - Requests, dialogs, windows and console messages during the action
+ * @returns Elements added plus removed, or undefined
  */
 export function reportedDomChanges(
   snapshot: ReadSnapshot | undefined,
-  reported: ActionEffects
+  reported: ActionEffects,
+  activity: OtherActivity
 ): number | undefined {
   const nodes = snapshot?.nodes;
   if (!snapshot || snapshot.fresh || nodes === undefined || nodes < MIN_REPORTED_DOM_NODES) {
+    return undefined;
+  }
+  if (activity.requests + activity.dialogs + activity.consoleMessages > 0 || activity.opened) {
     return undefined;
   }
   if (Object.keys(reported).length > 0 || recentBursts(snapshot.settle).length >= BUSY_BURSTS) {

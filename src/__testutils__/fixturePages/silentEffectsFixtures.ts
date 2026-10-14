@@ -6,7 +6,9 @@
  * `#mover`, whose `input` handler moves focus to `#other`; `#counted`, whose
  * `input` handler echoes its value in `#count` next to it (focus stays);
  * `#disclosure`, which only toggles `hidden` on `#panel`; `#plain-hover`, a
- * button with a CSS-only `:hover` style; and `#noop`, a button with no handler.
+ * button with a CSS-only `:hover` style; `#fetch-append`, which fetches the
+ * page and appends 5 `<u>` elements (a request is reported, so no DOM change
+ * line); and `#noop`, a button with no handler.
  * `/silent-effects-busy` re-renders a list of 60 items every 100 ms from the
  * load on, whatever the user does; it has `#noop` too. For the hover that
  * removes 200 elements see `/effects` (`#shift-target`), and for a release
@@ -22,7 +24,7 @@ const SILENT_EFFECTS_HTML = `<!doctype html><title>silent effects</title>
 <p><input id="mover" aria-label="Mover"> <input id="other" aria-label="Other"></p>
 <p><input id="counted" aria-label="Counted"> <span id="count">0</span></p>
 <p><button id="disclosure">Details</button><span id="panel" hidden>More details</span></p>
-<p><button id="plain-hover">Plain hover</button> <button id="noop">Noop</button></p>
+<p><button id="plain-hover">Plain hover</button> <button id="noop">Noop</button> <button id="fetch-append">Fetch</button></p>
 <script>
   const expander = document.getElementById('expander');
   expander.addEventListener('click', () => {
@@ -35,6 +37,10 @@ const SILENT_EFFECTS_HTML = `<!doctype html><title>silent effects</title>
       close.setAttribute('aria-label', 'Close menu');
       document.getElementById('bar').append(close);
     } else if (!open && existing) existing.remove();
+  });
+  document.getElementById('fetch-append').addEventListener('click', () => {
+    fetch('/silent-effects');
+    document.body.insertAdjacentHTML('beforeend', '<u>a</u><u>b</u><u>c</u><u>d</u><u>e</u>');
   });
   document.getElementById('mover').addEventListener('input', () => document.getElementById('other').focus());
   document.getElementById('counted').addEventListener('input', (event) => {
