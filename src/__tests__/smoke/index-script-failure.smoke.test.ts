@@ -83,12 +83,18 @@ void describe('Action script failure on an index', () => {
 
   void it('names the index of a dom query result', async () => {
     await bdg(['dom', 'query', 'button']);
-    assert.match((await failedClick('0')).suggestion, /bdg dom listeners 0, or inspect its methods with bdg dom eval/);
+    assert.match(
+      (await failedClick('0')).suggestion,
+      /bdg dom listeners 0, or inspect its methods with bdg dom eval/
+    );
   });
 
   void it('still names the quoted selector for a selector target', async () => {
     const text = await bdg(['dom', 'click', '#go'], 91);
     assert.match(text, /bdg dom listeners "#go", or inspect its methods with bdg dom eval/);
-    assert.match((await failedClick('#go')).suggestion, /bdg dom listeners "#go", or inspect its methods with bdg dom eval/);
+    assert.match(
+      (await failedClick('#go')).suggestion,
+      /bdg dom listeners "#go", or inspect its methods with bdg dom eval/
+    );
   });
 });
