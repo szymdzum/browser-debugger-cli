@@ -74,7 +74,7 @@ The highest-yield step: bdg's users are agents, so the tester doesn't play the u
 | 2 | behaviour change: new or changed output, flag, hint, default | reviewer | yes | yes |
 | 3 | session lifecycle, Chrome launch, files on disk, concurrency, security, contracts, redaction or parsing | reviewer, plus a fresh second reviewer on a fix commit that changes the approach or adds more than ~15 product lines | yes, plus the interrupt scenario (S08) when relevant | yes; timing: `ship repeat` on the final head; redaction or parsing: the brief's case matrix is the red commit's table test |
 
-After a round, **one verifier** reproduces all older-code findings on current `main` in one pass. **Only you file issues**, one umbrella per root cause (cause in the title, symptoms as a checklist with the verifier's command and output, milestone set); a symptom of an open issue becomes a comment on it.
+After a round, **one verifier** reproduces all older-code findings on current `main` in one pass. **Only you file issues**, one umbrella per root cause (cause in the title, symptoms as a checklist with the verifier's command and output, milestone and `priority:` label set); a symptom of an open issue becomes a comment on it. What gets an issue at all: **Fix, file or record** below.
 
 ## Gates
 
@@ -95,7 +95,10 @@ A red `main` is fixed before any new work; the PR that fixes it merges with `--f
 
 - **`ship log <pr>`** after each merge (rows accumulate in the main checkout's `log.md`; the session's retro PR commits them): tier, review findings as `blocking/should-fix/nit`, tester bugs, fix rounds, implementer model, subagent tokens, a note. When a bug is later found in a merged change, add it under **Escaped** in `log.md`.
 - **Roadmap #466:** one update at the session end (done / new / moved); re-read the body right before editing.
-- **Fix or file:** every finding from any step is fixed now or filed as a verified issue; never only "out of scope".
+- **Fix, file or record:** every finding from any step is fixed now, filed as a verified issue, or recorded as a known limit; never only "out of scope". File only what earns a priority:
+  - `priority: high`: bdg changes the page under test, or tells the agent something false about what an action or command did.
+  - `priority: medium`: wrong data in output, a contract or exit-code problem, a gap agents hit on common pages.
+  - A narrow edge case (rare syntax, contrived markup, one site's quirk, a raw `bdg cdp` call undoing bdg state) is low: record it as a known limit in the PR description or `docs/CLI_REFERENCE.md`, or as a comment on the issue it follows. It gets its own `priority: low` issue only when the user asks. In S1–S9 every edge case became an issue, the queue stayed near 50, and the 2026-10-14 triage closed 16 as not worth fixing.
 - **Reporting:** one line per step change, a summary at merges, real problems and decisions; don't relay interim notifications.
 - **Releases** only when the user decides (`docs/RELEASE_PROCESS.md`).
 - **One conversation per session:** start the next in a fresh conversation with the roadmap, `log.md` and the memory notes.

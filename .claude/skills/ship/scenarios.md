@@ -51,7 +51,7 @@ Each agent answers per scenario:
 - Discovery: how it found the right command (help, --help --json, an error's suggestion, a hint)
 ```
 
-The round summary (`.tmp/<round>/SUMMARY.md`, untracked) has the branch and commit, a table per scenario (result, ease, eval/screenshot counts) next to the previous round's, and the findings in priority order. Every finding is fixed in the PR or filed as an issue.
+The round summary (`.tmp/<round>/SUMMARY.md`, untracked) has the branch and commit, a table per scenario (result, ease, eval/screenshot counts) next to the previous round's, and the findings in priority order. Every finding is fixed in the PR, filed as an issue, or recorded as a known limit (SKILL.md, "Fix, file or record").
 
 ## Scenarios
 
@@ -185,4 +185,4 @@ The scenarios keep rounds comparable; the sweep finds what they don't cover. Run
 2. **Give each agent an open-ended task** per site, the way a user would: "find out why this page is slow", "fill the signup form without submitting it", "check what this page logs and requests when you add an item to the cart". No feature names.
 3. **Watch for**: false success (an action claims success but nothing happened), wrong or stale data, outputs too big to read, hints pointing to the wrong command, workarounds (`dom eval`, screenshots, `sleep` loops, raw CDP for something bdg has), leaks (secret values, files outside the session directory, `~/Downloads`), sessions left running.
 4. **Report** in the same format (result, ease, bugs, friction), plus "would add to the scenario list?". A finding that should be checked every round becomes a new scenario here (next free ID, with its setup and a History line).
-5. **Triage**: every finding is fixed or filed as a verified issue (reproduced, with the command and output).
+5. **Triage**: every finding is fixed, filed as a verified issue (reproduced, with the command and output) with a `priority:` label, or recorded as a known limit (SKILL.md, "Fix, file or record").
