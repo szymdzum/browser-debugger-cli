@@ -813,15 +813,15 @@ export interface EvalTarget {
 
 /** A `bdg dom eval` the daemon has not answered yet */
 interface PendingEvaluation {
-  /** Settles once the daemon answered (or Chrome did) */
-  released: Promise<void>;
   /**
    * Settles once its script cannot hold the page any more: answered, or (a
    * script with a top-level `await`) the page answered a check sent after it
    */
   idle: Promise<void>;
-  /** Marks a script with a top-level `await` as waiting for its promise */
-  markWaiting?: () => void;
+  /** Settles {@link idle} */
+  markIdle: () => void;
+  /** Whether the script has a top-level `await` */
+  awaits: boolean;
   /** Session the script runs on (empty for the page's own) */
   sessionId: string;
 }
@@ -856,13 +856,19 @@ interface EvalTracking {
  */
 function checkAwaitingEvaluations(cdp: CDPSender, sessionId: string): void {
   const awaiting = [...pendingEvaluations].filter(
-    (evaluation) => evaluation.markWaiting && evaluation.sessionId === sessionId
+    (evaluation) => evaluation.awaits && evaluation.sessionId === sessionId
   );
   if (awaiting.length === 0) return;
   cdp.send('Runtime.evaluate', { expression: '1', returnByValue: true }).then(
-    () => awaiting.forEach((evaluation) => evaluation.markWaiting?.()),
+    () => awaiting.forEach((evaluation) => evaluation.markIdle()),
     (error: unknown) => log.debug(`Could not check awaiting evals: ${getErrorMessage(error)}`)
   );
+}
+
+/** A tracked eval and the evals sent before it */
+interface TrackedEvaluation {
+  entry: PendingEvaluation;
+  earlier: PendingEvaluation[];
 }
 
 /**
@@ -871,24 +877,15 @@ function checkAwaitingEvaluations(cdp: CDPSender, sessionId: string): void {
  *
  * @param awaits - Whether the script has a top-level `await`
  * @param sessionId - Session the script runs on (empty for the page's own)
- * @returns The entry and the call that releases it
+ * @returns The entry and the evals sent before it
  */
-function trackEvaluation(
-  awaits: boolean,
-  sessionId: string
-): { entry: PendingEvaluation; release: () => void } {
-  let release = (): void => undefined;
-  let waiting = (): void => undefined;
-  const released = new Promise<void>((resolve) => (release = resolve));
-  const waits = new Promise<void>((resolve) => (waiting = resolve));
-  const entry: PendingEvaluation = {
-    released,
-    idle: Promise.race([released, waits]),
-    sessionId,
-    ...(awaits && { markWaiting: waiting }),
-  };
+function trackEvaluation(awaits: boolean, sessionId: string): TrackedEvaluation {
+  const earlier = [...pendingEvaluations];
+  let markIdle = (): void => undefined;
+  const idle = new Promise<void>((resolve) => (markIdle = resolve));
+  const entry: PendingEvaluation = { idle, markIdle, awaits, sessionId };
   pendingEvaluations.add(entry);
-  return { entry, release };
+  return { entry, earlier };
 }
 
 /**
@@ -911,7 +908,7 @@ function trackEvaluation(
  * @param cdp - Where to check and stop the target
  * @param scope - Whether the script runs in the page or an iframe
  * @param evaluation - The script's pending `Runtime.evaluate`
- * @param pending - The eval's entry and the evals sent before it
+ * @param tracked - The eval's entry and the evals sent before it
  * @param abandoned - Aborts when the client disconnects
  * @returns Calls ending the tracking
  */
@@ -919,15 +916,15 @@ function stopWhenAbandoned(
   cdp: CDPSender,
   scope: BusyScope,
   evaluation: Promise<unknown>,
-  pending: { entry: PendingEvaluation; release: () => void; earlier: PendingEvaluation[] },
+  tracked: TrackedEvaluation,
   abandoned: AbortSignal | undefined
 ): EvalTracking {
-  const { entry, release, earlier } = pending;
+  const { entry, earlier } = tracked;
   let scriptDone = false;
   const mayStop = (): boolean =>
     pendingEvaluations.has(entry) &&
     !scriptDone &&
-    (!entry.markWaiting || pendingEvaluations.size === 1);
+    (!entry.awaits || pendingEvaluations.size === 1);
   const stop = (): void => {
     void stopAbandonedScript(cdp, scope, earlier, mayStop).catch((error: unknown) => {
       log.debug(`Could not stop an abandoned eval: ${getErrorMessage(error)}`);
@@ -936,7 +933,7 @@ function stopWhenAbandoned(
   const answered = (): void => {
     pendingEvaluations.delete(entry);
     abandoned?.removeEventListener('abort', stop);
-    release();
+    entry.markIdle();
   };
   log.debug(`dom eval sent (${pendingEvaluations.size} pending)`);
   evaluation.then(answered, answered);
@@ -1227,13 +1224,12 @@ export async function evaluateScript(
   let tracking: EvalTracking | undefined;
   try {
     checkAwaitingEvaluations(session, sessionId);
-    const earlier = [...pendingEvaluations];
     const evaluation = executeScript(session, script, evaluateOptions(target, objectGroup));
     tracking = stopWhenAbandoned(
       target.recovery ?? session,
       scope,
       evaluation,
-      { ...trackEvaluation(awaits, sessionId), earlier },
+      trackEvaluation(awaits, sessionId),
       target.abandoned
     );
     const response = await withDeadline(
