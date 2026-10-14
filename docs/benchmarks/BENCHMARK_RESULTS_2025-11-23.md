@@ -1,5 +1,7 @@
 # Browser Automation Tool Benchmark Results
 
+> Historical: run on v0.6.x, 2025-11; commands and numbers predate later releases.
+
 **Version:** 1.0  
 **Date:** 2025-11-23  
 **Tester:** Claude (Warp Agent Mode)  

@@ -413,6 +413,5 @@ echo '{"type":"handshake_request","sessionId":"test"}' | nc -U ~/.bdg/daemon.soc
 
 - **IPC Architecture**: `docs/architecture/BIDIRECTIONAL_IPC.md`
 - **Telemetry Plugins**: `docs/architecture/TELEMETRY-PLUGIN.md`
-- **Migration Plan**: `docs/roadmap/DAEMON_SESSION_MIGRATION.md`
 - **CLI Reference**: `docs/CLI_REFERENCE.md`
 - **Command Patterns**: `CLAUDE.md`

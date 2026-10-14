@@ -1,5 +1,7 @@
 # bdg Agent Stress Test Benchmark v2.0
 
+> Historical: run on v0.6.x, 2025-11; commands and numbers predate later releases.
+
 **Purpose**: Stress test both bdg capabilities AND agent reasoning/discovery skills across real-world scenarios.
 
 **Philosophy**:

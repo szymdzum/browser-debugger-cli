@@ -313,4 +313,3 @@ See these commands for complete working examples:
 
 - [Execution Flow](./BDG_EXECUTION_FLOW.md)
 - [Telemetry Plugins](./TELEMETRY-PLUGIN.md)
-- [Daemon = Session Migration](../roadmap/DAEMON_SESSION_MIGRATION.md)

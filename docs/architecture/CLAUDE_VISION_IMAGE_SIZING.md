@@ -220,7 +220,7 @@ await CDP.send('Page.captureScreenshot', {
 bdg dom screenshot --selector "footer"
 
 # Scroll to element and capture viewport
-bdg dom screenshot --scroll-to "#main-content"
+bdg dom screenshot --scroll "#main-content"
 ```
 
 **Pros:**
@@ -431,7 +431,7 @@ JSON includes structured reasoning
 
 **New option:**
 ```bash
---scroll-to <selector>  # Scroll element into view, capture viewport
+--scroll <selector>  # Scroll element into view, capture viewport
 ```
 
 ### Phase 2: Chunked Capture
@@ -491,9 +491,9 @@ JSON includes structured reasoning
 | Scenario | Recommended Approach |
 |----------|---------------------|
 | General page inspection | Viewport capture |
-| Specific element needed | `--selector` or `--scroll-to` |
+| Specific element needed | `--selector` or `--scroll` |
 | Complete page archive | `--no-resize` or `--paginate` |
-| AI agent automation | Viewport + scroll-to |
+| AI agent automation | Viewport + scroll |
 | Documentation/testing | Full resolution |
 
 ---

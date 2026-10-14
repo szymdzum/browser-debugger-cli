@@ -21,17 +21,18 @@ When working with 300+ CDP methods, typos are inevitable:
 # Human or agent types:
 $ bdg cdp Network.getCokies
 
-# Without typo detection:
-Error: Method 'getCokies' not found
-# Dead end. User has to guess what went wrong.
+# Without typo detection the error would be a dead end: the user has to guess what went wrong.
 
 # With typo detection:
-Error: Method 'getCokies' not found in domain 'Network'
+Error: Method 'Network.getCokies' not found
+Use: bdg cdp --search <keyword> (to search for methods)
 
 Did you mean:
-  Network.getCookies (distance: 2)
-  Network.setCookies (distance: 3)
-  Network.getAllCookies (distance: 4)
+  - Network.getCookies
+  - Network.setCookie
+  - Network.setCookies
+
+To send it as typed (a method newer than bdg's protocol): bdg cdp Network.getCokies --send-anyway
 ```
 
 **The difference**: User can immediately see the correct spelling and fix their command.
@@ -331,11 +332,15 @@ Agents can build a mapping of common errors:
 
 ```bash
 $ bdg cdp Network.setCokies
-Error: Method 'setCokies' not found in domain 'Network'
+Error: Method 'Network.setCokies' not found
+Use: bdg cdp --search <keyword> (to search for methods)
 
 Did you mean:
-  Network.setCookies (distance: 2)
-  Network.getCookies (distance: 3)
+  - Network.setCookies
+  - Network.getCookies
+  - Network.setCookie
+
+To send it as typed (a method newer than bdg's protocol): bdg cdp Network.setCokies --send-anyway
 ```
 
 **Why these suggestions?**
@@ -346,10 +351,13 @@ Did you mean:
 
 ```bash
 $ bdg cdp Page.captureScrenshot
-Error: Method 'captureScrenshot' not found in domain 'Page'
+Error: Method 'Page.captureScrenshot' not found
+Use: bdg cdp --search <keyword> (to search for methods)
 
 Did you mean:
-  Page.captureScreenshot (distance: 1)
+  - Page.captureScreenshot
+
+To send it as typed (a method newer than bdg's protocol): bdg cdp Page.captureScrenshot --send-anyway
 ```
 
 **Why distance 1?**
@@ -359,10 +367,13 @@ Did you mean:
 
 ```bash
 $ bdg cdp Runtime.evaulate
-Error: Method 'evaulate' not found in domain 'Runtime'
+Error: Method 'Runtime.evaulate' not found
+Use: bdg cdp --search <keyword> (to search for methods)
 
 Did you mean:
-  Runtime.evaluate (distance: 2)
+  - Runtime.evaluate
+
+To send it as typed (a method newer than bdg's protocol): bdg cdp Runtime.evaulate --send-anyway
 ```
 
 **Why distance 2?**
@@ -373,19 +384,25 @@ Did you mean:
 
 ```bash
 $ bdg cdp Netwrk.gtCokies
-Error: Domain 'Netwrk' not found
+Error: Method 'Netwrk.gtCokies' not found
+Use: bdg cdp --search <keyword> (to search for methods)
 
 Did you mean:
-  Network (distance: 1)
+  - Network.getCookies
+
+To send it as typed (a method newer than bdg's protocol): bdg cdp Netwrk.gtCokies --send-anyway
 ```
 
-Then after fixing domain:
+The domain and the method are corrected in one step. A typo in the method alone behaves the same:
 ```bash
 $ bdg cdp Network.gtCokies
-Error: Method 'gtCokies' not found in domain 'Network'
+Error: Method 'Network.gtCokies' not found
+Use: bdg cdp --search <keyword> (to search for methods)
 
 Did you mean:
-  Network.getCookies (distance: 3)
+  - Network.getCookies
+
+To send it as typed (a method newer than bdg's protocol): bdg cdp Network.gtCokies --send-anyway
 ```
 
 **Note**: Distance 3 is at the threshold. More errors and it won't suggest anything.

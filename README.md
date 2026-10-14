@@ -36,9 +36,15 @@ No Playwright script written up front. The agent runs one command, reads what th
 
 ```console
 $ bdg network getCookies
-[1] session_id
-  Value: s%3A9f8e7d6c
-  HttpOnly: Yes
+1 Cookie:
+
+[0] tp_lax
+  Value: cookie-marker-493
+  Domain: localhost
+  Path: /
+  Expires: Session
+  HttpOnly: No
+  Secure: No
   SameSite: Lax
 
 $ bdg network headers 89565.2 --header authorization
@@ -82,23 +88,30 @@ No docs to paste into the prompt. The agent asks bdg:
 ```bash
 bdg --help --json                          # Every command, flag and exit code, plus "task → command" mappings
 bdg dom query --help --json                # One command in full: option behaviors, defaults, examples
-bdg cdp --search cookie                    # 13 matching methods across all CDP domains, each with an example call
-bdg cdp Network.getCookies --describe      # Parameters, return types, an example
+bdg cdp --search cookie                    # 13 matching methods across all CDP domains, one line each
+bdg cdp Network.getCookies --describe      # Parameters, return types, an example call
 ```
 
 And when it gets something wrong, bdg tells it what it meant:
 
 ```console
 $ bdg dom clik "a"
-error: unknown command 'clik'
-(Did you mean click?)
+Error: unknown command 'clik'
+Did you mean: click?
 
 $ bdg cdp Network.getCookie
-  "error": "Method 'Network.getCookie' not found",
-  "suggestion": "... Did you mean: Network.getCookies, Network.setCookie, Network.setCookies"
+Error: Method 'Network.getCookie' not found
+Use: bdg cdp --search <keyword> (to search for methods)
+
+Did you mean:
+  - Network.getCookies
+  - Network.setCookie
+  - Network.setCookies
+
+To send it as typed (a method newer than bdg's protocol): bdg cdp Network.getCookie --send-anyway
 ```
 
-Each mistake exits with code 81 (invalid arguments), so the agent knows to fix the call rather than retry it. CDP method names are case-insensitive, and raw CDP calls point to the friendlier command when one exists. More in the [Agent-Friendly Tools](docs/principles/AGENT_FRIENDLY_TOOLS.md) principles bdg follows.
+With `--json` the same hint is a `suggestion` field. Each mistake exits with code 81 (invalid arguments), so the agent knows to fix the call rather than retry it. CDP method names are case-insensitive, and raw CDP calls point to the friendlier command when one exists. More in the [Agent-Friendly Tools](docs/principles/AGENT_FRIENDLY_TOOLS.md) principles bdg follows.
 
 ## Benchmark: CLI vs MCP
 
@@ -155,7 +168,7 @@ Local dev servers with self-signed certificates: `bdg https://localhost:5173 --c
 | **Telemetry** | network requests and headers (incl. `Authorization`), HAR export, cookies (incl. `HttpOnly`), console messages, live `peek --follow` |
 | **Accessibility** | accessibility tree, semantic queries (`role:button name:Submit`), contrast checks |
 | **Performance** | metrics, CPU and heap profiling, tracing, CPU and network throttling (raw CDP) |
-| **Sessions** | several named sessions side by side, or attach to a browser you already have open (`--chrome-ws-url`) |
+| **Sessions** | several named sessions side by side, or attach to a browser you already have open (`bdg attach` lists its tabs and attaches to one without reloading it; `--chrome-ws-url` for a Chrome started with a debugging port) |
 | **Everything else** | raw CDP: `bdg cdp --list`, `--search`, `--describe` |
 
 The [CLI reference](docs/CLI_REFERENCE.md) documents every command. `bdg --help --json` gives agents the machine-readable version.
@@ -171,8 +184,10 @@ The [CLI reference](docs/CLI_REFERENCE.md) documents every command. `bdg --help 
 ```bash
 CHROME_PATH="/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" bdg example.com   # macOS
 CHROME_PATH=/usr/bin/microsoft-edge bdg example.com                                         # Linux
-bdg example.com --chrome-ws-url 9222                                                        # Attach to a running browser
+bdg example.com --chrome-ws-url 9222                                                        # Open a URL in a running browser
 ```
+
+Your everyday Chrome: enable remote debugging at `chrome://inspect/#remote-debugging`, then `bdg attach` lists its tabs and `bdg attach checkout` starts a session on one as it is (no reload; Chrome asks you to allow each connection). `--user-data-dir <dir>` picks another profile (Canary, Edge, Brave).
 
 Firefox and Safari are not supported: bdg speaks the Chrome DevTools Protocol, which they do not implement.
 
