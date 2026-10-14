@@ -20,7 +20,7 @@
  */
 
 import * as assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as net from 'node:net';
 import * as os from 'node:os';
@@ -213,6 +213,51 @@ async function until(condition: () => boolean): Promise<void> {
   }
 }
 
+/**
+ * Whether a process group still has a member.
+ *
+ * @param pgid - Process group id
+ * @returns True while any process of the group runs
+ */
+function groupAlive(pgid: number): boolean {
+  try {
+    process.kill(-pgid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Stop a Chrome spawned as its own process group (`detached`) and wait until
+ * the browser process has exited and none of its helpers (network service,
+ * GPU, renderers, which write the profile's cache) is left, so its profile
+ * can be removed. Bounded by {@link until}.
+ *
+ * @param child - The Chrome process, group leader
+ */
+async function killProcessGroup(child: ChildProcess): Promise<void> {
+  const pgid = child.pid;
+  if (pgid === undefined) return;
+  const exited =
+    child.exitCode !== null || child.signalCode !== null
+      ? Promise.resolve()
+      : new Promise<void>((resolve) => child.once('exit', () => resolve()));
+  if (groupAlive(pgid)) process.kill(-pgid, 'SIGTERM');
+  await exited;
+  await until(() => !groupAlive(pgid));
+}
+
+/**
+ * Remove a Chrome profile dir once its Chrome is gone (retrying a directory
+ * a late writer refilled).
+ *
+ * @param dir - The profile dir
+ */
+function removeProfile(dir: string): void {
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+}
+
 void describe('bdg attach', () => {
   let fixture: FixtureServer;
   let chrome: LaunchedChrome;
@@ -256,7 +301,7 @@ void describe('bdg attach', () => {
     await chrome.kill().catch(() => undefined);
     await fixture.close();
     fs.rmSync(sessionDir, { recursive: true, force: true });
-    fs.rmSync(profile, { recursive: true, force: true });
+    removeProfile(profile);
     fs.rmSync(downloadDir, { recursive: true, force: true });
   });
 
@@ -305,7 +350,7 @@ void describe('bdg attach', () => {
         ...(needsNoSandbox() ? ['--no-sandbox'] : []),
         `${fixture.url}attach-a`,
       ],
-      { stdio: 'ignore' }
+      { stdio: 'ignore', detached: true }
     );
     try {
       await until(
@@ -324,9 +369,8 @@ void describe('bdg attach', () => {
       assert.match(marker.output, /kept/);
     } finally {
       await runCommand('stop', [], { timeout: 15000, env });
-      child.kill();
-      await new Promise((resolve) => child.once('exit', resolve));
-      fs.rmSync(dir, { recursive: true, force: true });
+      await killProcessGroup(child);
+      removeProfile(dir);
     }
   });
 
