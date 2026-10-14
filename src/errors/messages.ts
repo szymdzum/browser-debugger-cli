@@ -1867,6 +1867,45 @@ function shellQuote(value: string): string {
   return `'${value.split("'").join(`'\\''`)}'`;
 }
 
+/** Characters a shell passes through unquoted */
+const SHELL_SAFE_WORD = /^[\w@%+=:,./-]+$/;
+
+/**
+ * Suggestion for a `--filter` word written without a `type:`.
+ *
+ * @param word - The word as typed, without any `!` or `-` prefix
+ * @param negated - Whether the word was negated
+ * @returns e.g. `Did you mean: url:access_token? (url: matches a part of the URL as shown)`
+ */
+export function untypedFilterWordSuggestion(word: string, negated: boolean): string {
+  return `Did you mean: ${shellWord(`${negated ? '!' : ''}url:${word}`)}? (url: matches a part of the URL as shown)`;
+}
+
+/**
+ * A word as a shell command line takes it: as is when safe, otherwise quoted.
+ *
+ * @param word - Word
+ * @returns The word to write
+ */
+function shellWord(word: string): string {
+  return SHELL_SAFE_WORD.test(word) ? word : shellQuote(word);
+}
+
+/** Hint for a `url:` filter that matched nothing while some shown URLs are masked */
+export const MASKED_URL_FILTER_HINT =
+  'url: matches the URL as shown; masked values match only with --include-sensitive';
+
+/**
+ * Hint for a `url:` pattern with a `*` that matched nothing.
+ *
+ * @param value - The `url:` value as written (has a `*`, not at both ends)
+ * @returns What the `*` implies, and the pattern to try
+ */
+export function wildcardUrlFilterHint(value: string): string {
+  const inner = value.replace(/^\*+|\*+$/g, '');
+  return `With *, url: must match the whole URL; try ${shellWord(`url:*${inner}*`)}`;
+}
+
 /** Why a page scroll moved nothing */
 export interface ScrollNoEffect {
   /** Direction asked for */

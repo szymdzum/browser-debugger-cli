@@ -288,7 +288,8 @@ function evaluatePatternMatch(url: string, config: PatternMatchConfig): boolean 
 }
 
 /**
- * Simple wildcard pattern matcher.
+ * Simple wildcard pattern matcher, case-insensitive, linear in the lengths
+ * (greedy scan of the segments between the `*`; no backtracking).
  * Supports only the * wildcard character.
  *
  * Examples:
@@ -301,10 +302,20 @@ function evaluatePatternMatch(url: string, config: PatternMatchConfig): boolean 
  * @returns True if the string matches the pattern
  */
 export function matchesWildcard(str: string, pattern: string): boolean {
-  const regexPattern = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
-
-  const regex = new RegExp(`^${regexPattern}$`, 'i');
-  return regex.test(str);
+  const text = str.toLowerCase();
+  const [first = '', ...rest] = pattern.toLowerCase().split('*');
+  if (rest.length === 0) return text === first;
+  const last = rest.pop() ?? '';
+  if (!text.startsWith(first)) return false;
+  const end = text.length - last.length;
+  if (end < first.length || !text.endsWith(last)) return false;
+  let position = first.length;
+  for (const segment of rest) {
+    const found = text.indexOf(segment, position);
+    if (found === -1 || found + segment.length > end) return false;
+    position = found + segment.length;
+  }
+  return true;
 }
 
 /**

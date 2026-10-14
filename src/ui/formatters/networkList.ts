@@ -23,6 +23,8 @@ export interface NetworkListOptions {
   verbose?: boolean;
   /** Start of the current page, which the START column counts from ({@link pageStartOf}) */
   pageStart?: PageStart;
+  /** Why a url: filter matched nothing, shown after "No matching requests found." */
+  filterHints?: string[];
   last?: number;
   totalCount?: number;
   /** Requests matching the filters, before --last (defaults to totalCount) */
@@ -254,6 +256,7 @@ function formatNetworkListHuman(requests: NetworkRequest[], options: NetworkList
 
   if (requests.length === 0) {
     fmt.text('No matching requests found.');
+    options.filterHints?.forEach((hint) => fmt.text(hint));
     if (hiddenNote) fmt.text(hiddenNote);
     return fmt.build();
   }

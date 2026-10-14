@@ -696,3 +696,80 @@ void describe('page:current', () => {
     assert.match(getFilterHelpText(), /page:current/);
   });
 });
+
+describe('url: filter (#652)', () => {
+  const requests = [
+    createRequest({
+      requestId: 'a',
+      url: 'https://example.com/api/v2/items?access_token=%E2%80%A2&q=1',
+    }),
+    createRequest({ requestId: 'b', url: 'https://cdn.example.com/logo.png' }),
+    createRequest({ requestId: 'c', url: 'https://example.com/api/v1/ping' }),
+  ];
+  const ids = (filter: string): string[] =>
+    applyFilters(requests, parseFilterString(filter)).map((r) => r.requestId);
+
+  it('matches a case-insensitive substring of the URL', () => {
+    assert.deepEqual(ids('url:ACCESS_TOKEN'), ['a']);
+    assert.deepEqual(ids('url:example.com/api'), ['a', 'c']);
+  });
+
+  it('treats * as a wildcard over the whole URL, anchored like domain:', () => {
+    assert.deepEqual(ids('url:*api*v2*'), ['a']);
+    assert.deepEqual(ids('url:api*v2'), []);
+    assert.deepEqual(ids('url:https://cdn.*'), ['b']);
+  });
+
+  it('negates with !url:', () => {
+    assert.deepEqual(ids('!url:cdn'), ['a', 'c']);
+  });
+
+  it('rejects an empty value', () => {
+    const result = validateFilterString('url:');
+    assert.equal(result.valid, false);
+  });
+
+  it('proposes url: for a word without a type', () => {
+    const result = validateFilterString('access_token');
+    assert.equal(result.valid, false);
+    if (result.valid) return;
+    assert.ok(result.suggestion?.includes('url:access_token'), result.suggestion);
+  });
+
+  it('quotes a proposed value that is not shell-safe', () => {
+    const result = validateFilterString('"a b;c"');
+    assert.equal(result.valid, false);
+    if (result.valid) return;
+    assert.ok(result.suggestion?.includes("'url:a b;c'"), result.suggestion);
+  });
+
+  it('proposes the negated form for a negated word', () => {
+    const result = validateFilterString('!cdn');
+    assert.equal(result.valid, false);
+    if (result.valid) return;
+    assert.ok(result.suggestion?.includes('!url:cdn'), result.suggestion);
+  });
+
+  it('keeps did-you-mean for an unknown type and lists url among the types', () => {
+    const near = validateFilterString('url2:x');
+    assert.equal(near.valid, false);
+    if (near.valid) return;
+    assert.match(near.suggestion ?? '', /Did you mean: url/);
+    const far = validateFilterString('zzz:x');
+    if (far.valid) return assert.fail('zzz is no type');
+    assert.match(far.suggestion ?? '', /Valid types:.*\burl\b/);
+  });
+
+  it('is in the help text', () => {
+    assert.match(getFilterHelpText(), /url:/);
+  });
+});
+
+describe('unbalanced quote (#652)', () => {
+  it('names the quote instead of a missing value', () => {
+    const result = validateFilterString('url:"v1');
+    assert.equal(result.valid, false);
+    if (result.valid) return;
+    assert.match(result.error, /quote/i);
+  });
+});
