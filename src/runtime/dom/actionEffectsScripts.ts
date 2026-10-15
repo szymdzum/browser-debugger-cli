@@ -153,11 +153,15 @@ export const MESSAGE_CHROME_JS = `(node) => {
  * `h3[role="alert"]`). Each element gets a number from `ids` that stays the
  * same within the document, so a later snapshot can tell a new element from
  * one that was there. With `marked` (elements the page kept changing before
- * the action, as {@link MARKED_REGIONS_JS} extends them), a message that is
- * one of them is flagged `self`; one that only sits inside one (a validation
- * message rendered into a re-rendered app root) is not.
+ * the action, as {@link MARKED_REGIONS_JS} extends them, from the history's
+ * own elements `own`), a message that is one of the history's own elements
+ * is flagged `self`; a message box marked for a marked element inside it
+ * gets `otherText`, its text without those elements, so a read can tell
+ * whether anything else in it changed (the action's own message next to a
+ * ticker); a message that only sits inside a marked element (a validation
+ * message rendered into a re-rendered app root) gets neither.
  */
-const MESSAGES_JS = `(ids, marked) => {
+const MESSAGES_JS = `(ids, marked, own) => {
   const deadline = performance.now() + ${MESSAGES_BUDGET_MS};
   const description = ${ELEMENT_DESCRIPTION_JS};
   const chrome = ${MESSAGE_CHROME_JS};
@@ -176,6 +180,10 @@ const MESSAGES_JS = `(ids, marked) => {
     for (let n = node; n && n !== el; n = n.parentElement) if (chrome(n)) return true;
     return false;
   };
+  const inOwn = (node, el) => {
+    for (let n = node; n && n !== el; n = n.parentElement) if (own.has(n)) return true;
+    return false;
+  };
   const found = [];
   for (const el of document.querySelectorAll(${JSON.stringify(MESSAGE_CANDIDATES)})) {
     if (found.length >= ${MAX_MESSAGES} || performance.now() > deadline) break;
@@ -191,8 +199,10 @@ const MESSAGES_JS = `(ids, marked) => {
         id = ids.next++;
         ids.map.set(m.el, id);
       }
-      const self = Boolean(marked) && marked.has(m.el);
-      return { id: id, text: m.text, element: describe(m.el), ...(self && { self: true }) };
+      const self = Boolean(own) && own.has(m.el);
+      const boxed = !self && Boolean(marked) && marked.has(m.el);
+      const other = boxed ? visibleText(m.el, (node) => inChrome(node, m.el) || inOwn(node, m.el)) : undefined;
+      return { id: id, text: m.text, element: describe(m.el), ...(self && { self: true }), ...(boxed && { otherText: other }) };
     });
 }`;
 
@@ -523,9 +533,10 @@ export const EFFECTS_START_SCRIPT = `(() => {
   const structural = ${STRUCTURAL_CHANGE_JS};
   const ids = { map: new WeakMap(), next: 1 };
   const history = window.__bdgHistory;
-  const marked = (${MARKED_REGIONS_JS})(history ? history.selfUpdating(performance.now()) : []);
+  const own = new Set(history ? history.selfUpdating(performance.now()) : []);
+  const marked = (${MARKED_REGIONS_JS})(Array.from(own));
   const state = {
-    marked: marked, alsoChanging: new Set(),
+    marked: marked, own: own, alsoChanging: new Set(),
     ids: ids, changes: 0, targets: new Set(), path: new Set(), focus: document.activeElement,
     pressScroll: null, copied: false, stopped: false, added: [], removed: [], bursts: [],
     keyTarget: null, loaders: new Set((${LOADERS_JS})()),
@@ -630,7 +641,7 @@ export const EFFECTS_START_SCRIPT = `(() => {
   };
   const expiry = setTimeout(state.stop, ${MAX_WATCH_MS});
   window.__bdgEffects = state;
-  return { href: location.href, messages: (${MESSAGES_JS})(ids, marked) };
+  return { href: location.href, messages: (${MESSAGES_JS})(ids, marked, own) };
 })()`;
 
 /**
@@ -677,7 +688,7 @@ export const EFFECTS_READ_SCRIPT = `((stop, shown, focus) => {
     fresh: false,
     changes: state.changes + (scrolled ? 1 : 0),
     uncertain: (${UNCERTAIN_JS})(state, document.activeElement),
-    messages: (${MESSAGES_JS})(state.ids, state.marked),
+    messages: (${MESSAGES_JS})(state.ids, state.marked, state.own),
     alsoChanging: Array.from(state.alsoChanging).filter((el) => el.isConnected).slice(0, ${MAX_ALSO_CHANGING})
       .map(${ELEMENT_DESCRIPTION_JS}),
     settle: (${SETTLE_JS})(state),

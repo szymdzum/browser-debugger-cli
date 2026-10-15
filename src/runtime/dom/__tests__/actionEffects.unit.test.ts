@@ -148,6 +148,19 @@ void describe('messages changing before the action (#774)', () => {
     assert.deepEqual(found.alsoChanging, [{ text: 'tick 51', element: 'aside#t' }]);
   });
 
+  void it('reports a box around a ticker as New text when its other text changed', () => {
+    const box = (text: string, otherText: string): SeenMessage => ({
+      ...seen(2, text, 'div#box'),
+      otherText,
+    });
+    const placed = newMessages([box('67', '')], [box('68 Order placed', 'Order placed')], false);
+    assert.deepEqual(placed.messages, [{ text: '68 Order placed', element: 'div#box' }]);
+    assert.deepEqual(placed.alsoChanging, []);
+    const ticked = newMessages([box('Now: 67', 'Now:')], [box('Now: 68', 'Now:')], false);
+    assert.deepEqual(ticked.messages, []);
+    assert.deepEqual(ticked.alsoChanging, [{ text: 'Now: 68', element: 'div#box' }]);
+  });
+
   void it('names nothing for such a message whose text stayed', () => {
     const found = newMessages([seen(1, 'tick 51', 'aside#t')], [ticker], false);
     assert.deepEqual(found.alsoChanging, []);

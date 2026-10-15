@@ -151,6 +151,14 @@ void describe('Self-updating regions in action results (#774)', () => {
     assertAlsoChanging(data, 'div#st', /^Now: tick \d+$/);
   });
 
+  void it('the click’s own message next to a ticker in the same box stays New text', async () => {
+    await open(`${fixture.url}self-status-box`);
+    const data = await click('#place');
+    const message = (data.messages ?? []).find((found) => found.element === 'div#box');
+    assert.match(message?.text ?? '', /Order placed$/, JSON.stringify(data));
+    assert.equal(data.alsoChanging, undefined, JSON.stringify(data));
+  });
+
   void it('b a toast the click shows 300 ms later is New text', async () => {
     await open(`${fixture.url}self-status-toast`);
     const data = await click('#save');

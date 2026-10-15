@@ -140,8 +140,13 @@ export interface SeenMessage {
   id: number;
   text: string;
   element: string;
-  /** The page was changing it (or a region it holds or sits in) right before the action */
+  /** The page was changing it right before the action */
   self?: boolean;
+  /**
+   * For a message box around an element the page was changing: its text
+   * without that element's
+   */
+  otherText?: string;
 }
 
 /** The page before the action */
@@ -242,8 +247,10 @@ export interface OtherActivity {
  * re-rendered message with the same text is not new) and those whose
  * element changed its text. Texts that tick on their own
  * ({@link TICKING_TEXT}: clocks, counters) are left out; other elements
- * the page was changing right before the action (`self`) are returned
- * apart, as `alsoChanging`; others that change on their own (a rotating
+ * the page was changing right before the action are returned apart, as
+ * `alsoChanging`: one the page was changing itself (`self`), or a box around
+ * such an element whose other text (`otherText`) is what it was before (a
+ * box whose other text changed is the action's message, ticker included); others that change on their own (a rotating
  * banner the action history did not see) are not recognised. Each text
  * is reported once, at most {@link MAX_NEW_MESSAGES}, cut to
  * {@link MAX_MESSAGE_LENGTH} characters.
@@ -266,6 +273,10 @@ export function newMessages(
   const beforeCounts = countTexts(before);
   const afterCounts = countTexts(after);
   const textBefore = new Map(before.map((message) => [message.id, message.text]));
+  const otherBefore = new Map(before.map((message) => [message.id, message.otherText]));
+  const changingOnly = (message: SeenMessage): boolean =>
+    message.self === true ||
+    (message.otherText !== undefined && otherBefore.get(message.id) === message.otherText);
   const isNew = (message: SeenMessage): boolean => {
     if (newDocument) return true;
     const previous = textBefore.get(message.id);
@@ -281,7 +292,7 @@ export function newMessages(
     if (!isNew(message)) continue;
     reported.add(message.text);
     const found = { text: cutText(message.text), element: message.element };
-    (message.self && !newDocument ? alsoChanging : result).push(found);
+    (changingOnly(message) && !newDocument ? alsoChanging : result).push(found);
   }
   return {
     messages: result.slice(0, MAX_NEW_MESSAGES),

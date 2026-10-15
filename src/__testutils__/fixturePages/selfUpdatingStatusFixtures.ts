@@ -11,6 +11,9 @@
  *   `role=status` aside every 50 ms (keeping the last 5); `#rows` as above.
  * - `/self-status-nested`: `div#st[role=status]` holding `span#clock` whose
  *   text is replaced with `tick N` every 50 ms; `#rows` as above.
+ * - `/self-status-box`: `div#box[role=status]` holding `span#clk`, whose
+ *   number ticks every 100 ms, and an empty `span#res`; `#place` sets
+ *   `#res` to "Order placed" (the click's own message next to a ticker).
  * - `/self-status-toast`: `#save` shows "Saved" in `div#s[role=status]` 300 ms
  *   after the click; nothing updates on its own.
  * - `/self-status-flash`: submitting `form#f` (`#go`) renders a `.flash`
@@ -94,6 +97,14 @@ ${ADD_ROWS}`
     TICKER_BODY('<div id="st" role="status">Now: <span id="clock">tick 0</span></div>'),
     `setInterval(() => { document.getElementById('clock').textContent = 'tick ' + (++window.ticks); }, 50);
 ${ADD_ROWS}`
+  ),
+  '/self-status-box': page(
+    'message next to a ticker',
+    '<div id="box" role="status"><span id="clk">0</span> <span id="res"></span></div><section><div><button id="place">Place order</button></div></section>',
+    `setInterval(() => { document.getElementById('clk').textContent = String(++window.ticks); }, 100);
+document.getElementById('place').addEventListener('click', () => {
+  document.getElementById('res').textContent = 'Order placed';
+});`
   ),
   '/self-status-toast': page(
     'toast',
