@@ -383,6 +383,17 @@ export function moreMessagesText(count: number, partial = false): string {
 }
 
 /**
+ * Last `Shown:` row when elements are left out or the scan stopped early.
+ *
+ * @param count - Elements not listed (0 when none were counted)
+ * @param partial - The page stopped looking at its time budget
+ * @returns e.g. `(+4 more)`, `(+4 or more)`, `(scan cut short: more may be there)`
+ */
+export function moreShownText(count: number, partial = false): string {
+  return count > 0 ? moreMessagesText(count, partial) : '(scan cut short: more may be there)';
+}
+
+/**
  * An error's text with its source shortened ({@link shortUrlName}), without
  * its count.
  *

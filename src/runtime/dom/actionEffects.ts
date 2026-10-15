@@ -763,7 +763,7 @@ function pageWork(watch: Watch, snapshot?: ReadSnapshot, domChanging = false): P
  * @param events - Main-frame navigation events
  * @returns Effects, without empty parts
  */
-function effectsOf(
+export function effectsOf(
   start: StartSnapshot | undefined,
   snapshot: ReadSnapshot | undefined,
   events: NavigationEvents
@@ -782,7 +782,7 @@ function effectsOf(
       ...(more > 0 && { moreMessages: more }),
       ...(shown.length > 0 && { shown }),
       ...(moreShown > 0 && { moreShown }),
-      ...(moreShown > 0 && snapshot?.shownPartial && { moreShownPartial: true }),
+      ...(snapshot?.shownPartial && { moreShownPartial: true }),
       ...pressOutcomes(snapshot),
     };
   } catch (error) {
