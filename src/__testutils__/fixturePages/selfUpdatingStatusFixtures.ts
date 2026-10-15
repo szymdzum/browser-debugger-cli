@@ -9,6 +9,8 @@
  * - `/self-status-live`: the same with `aria-live=polite` instead of the role.
  * - `/self-status-append`: the ticker appends a `<p>tick N</p>` to the
  *   `role=status` aside every 50 ms (keeping the last 5); `#rows` as above.
+ * - `/self-status-nested`: `div#st[role=status]` holding `span#clock` whose
+ *   text is replaced with `tick N` every 50 ms; `#rows` as above.
  * - `/self-status-toast`: `#save` shows "Saved" in `div#s[role=status]` 300 ms
  *   after the click; nothing updates on its own.
  * - `/self-status-flash`: submitting `form#f` (`#go`) renders a `.flash`
@@ -85,6 +87,12 @@ export const ROUTES: FixtureRoutes = {
   t.append(p);
   if (t.children.length > 5) t.firstElementChild.remove();
 }, 50);
+${ADD_ROWS}`
+  ),
+  '/self-status-nested': page(
+    'nested status ticker',
+    TICKER_BODY('<div id="st" role="status">Now: <span id="clock">tick 0</span></div>'),
+    `setInterval(() => { document.getElementById('clock').textContent = 'tick ' + (++window.ticks); }, 50);
 ${ADD_ROWS}`
   ),
   '/self-status-toast': page(

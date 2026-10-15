@@ -145,6 +145,12 @@ void describe('Self-updating regions in action results (#774)', () => {
     assertAlsoChanging(data, 'aside#t');
   });
 
+  void it('a ticker span inside a status box marks the box', async () => {
+    await open(`${fixture.url}self-status-nested`);
+    const data = await click('#rows');
+    assertAlsoChanging(data, 'div#st', /^Now: tick \d+$/);
+  });
+
   void it('b a toast the click shows 300 ms later is New text', async () => {
     await open(`${fixture.url}self-status-toast`);
     const data = await click('#save');

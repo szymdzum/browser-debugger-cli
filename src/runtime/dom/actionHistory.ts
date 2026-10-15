@@ -40,10 +40,14 @@ const MAX_HOT_ELEMENTS = 64;
  * (a text node's parent), the time of each delivery that changed it, the
  * last {@link TIMES_PER_ELEMENT}, unless an action's watch is running.
  * Elements changed in two deliveries or more are kept as candidates, at most
- * {@link MAX_HOT_ELEMENTS}, the most recently changed. `selfUpdating(now)`
+ * {@link MAX_HOT_ELEMENTS}, the most recently changed (elements no longer in
+ * the document are dropped first when there are more, so a removed subtree
+ * is not kept alive). `selfUpdating(now)`
  * lists the candidates still in the document changed in at least
  * {@link MIN_IDLE_CHANGES} deliveries within {@link HISTORY_MS} before `now`,
- * the last within {@link HISTORY_RECENT_MS}.
+ * the last within {@link HISTORY_RECENT_MS}. Added to new documents, it also
+ * runs in iframes; only the top frame's history is read (actions watch the
+ * top document).
  */
 export const HISTORY_START_SCRIPT = `(() => {
   if (window.__bdgHistory) return true;
@@ -64,6 +68,8 @@ export const HISTORY_START_SCRIPT = `(() => {
       if (list.length < 2) continue;
       hot.delete(el);
       hot.add(el);
+      if (hot.size <= ${MAX_HOT_ELEMENTS}) continue;
+      for (const kept of hot) if (!kept.isConnected) hot.delete(kept);
       if (hot.size > ${MAX_HOT_ELEMENTS}) hot.delete(hot.values().next().value);
     }
   };

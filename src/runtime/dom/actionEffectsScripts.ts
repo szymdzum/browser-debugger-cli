@@ -153,8 +153,8 @@ export const MESSAGE_CHROME_JS = `(node) => {
  * `h3[role="alert"]`). Each element gets a number from `ids` that stays the
  * same within the document, so a later snapshot can tell a new element from
  * one that was there. With `marked` (elements the page kept changing before
- * the action, from the action history), a message that is one of them or
- * holds one is flagged `self`; one that only sits inside one (a validation
+ * the action, as {@link MARKED_REGIONS_JS} extends them), a message that is
+ * one of them is flagged `self`; one that only sits inside one (a validation
  * message rendered into a re-rendered app root) is not.
  */
 const MESSAGES_JS = `(ids, marked) => {
@@ -183,7 +183,6 @@ const MESSAGES_JS = `(ids, marked) => {
     const text = visibleText(el, (node) => inChrome(node, el));
     if (text !== '' && text.length <= ${MAX_MESSAGE_TEXT}) found.push({ el: el, text: text });
   }
-  const markedList = marked ? Array.from(marked) : [];
   return found
     .filter((m) => !found.some((other) => other !== m && m.el.contains(other.el)))
     .map((m) => {
@@ -192,9 +191,27 @@ const MESSAGES_JS = `(ids, marked) => {
         id = ids.next++;
         ids.map.set(m.el, id);
       }
-      const self = markedList.length > 0 && (marked.has(m.el) || markedList.some((node) => m.el.contains(node)));
+      const self = Boolean(marked) && marked.has(m.el);
       return { id: id, text: m.text, element: describe(m.el), ...(self && { self: true }) };
     });
+}`;
+
+/**
+ * Page-side regions changing before the action, from the elements the
+ * action history marked: each of them, plus the closest message element
+ * around it (itself included; a candidate of {@link MESSAGE_CANDIDATES}
+ * with at most {@link MAX_MESSAGE_TEXT} characters of text), so a ticker
+ * `<span>` inside a `role=status` box marks the box. The one set both the
+ * watch's change count (record targets) and the message flag (`self`)
+ * test, so they agree; never an element only because an ancestor is marked.
+ */
+export const MARKED_REGIONS_JS = `(nodes) => {
+  const marked = new Set(nodes);
+  for (const node of nodes) {
+    const message = node.closest(${JSON.stringify(MESSAGE_CANDIDATES)});
+    if (message && (message.textContent || '').length <= ${MAX_MESSAGE_TEXT}) marked.add(message);
+  }
+  return marked;
 }`;
 
 /**
@@ -493,7 +510,7 @@ const OUTCOMES_JS = `(state, focus) => {
  * copy/cut events and the scroll position at the first press (a click
  * scrolls its target into view first). Elements the action history
  * (`window.__bdgHistory`, see `actionHistory.ts`) found the page changing on
- * its own right before are `marked`: changes whose target is one of them
+ * its own right before are `marked` ({@link MARKED_REGIONS_JS}): changes whose target is one of them
  * (exactly, not inside it) make no burst and add no nodes, and those with
  * structural changes are kept in `alsoChanging`. The watch stops itself after
  * {@link MAX_WATCH_MS}, so a snapshot that ran late (after a navigation,
@@ -506,7 +523,7 @@ export const EFFECTS_START_SCRIPT = `(() => {
   const structural = ${STRUCTURAL_CHANGE_JS};
   const ids = { map: new WeakMap(), next: 1 };
   const history = window.__bdgHistory;
-  const marked = new Set(history ? history.selfUpdating(performance.now()) : []);
+  const marked = (${MARKED_REGIONS_JS})(history ? history.selfUpdating(performance.now()) : []);
   const state = {
     marked: marked, alsoChanging: new Set(),
     ids: ids, changes: 0, targets: new Set(), path: new Set(), focus: document.activeElement,
