@@ -409,7 +409,8 @@ const ELEMENT_DETAILS_FUNCTION = `function (count) {
     try {
       const attributes = [];
       for (const attribute of Array.from(el.attributes || [])) attributes.push(attribute.name, attribute.value);
-      return { tag: el.nodeName, attributes: attributes, context: contextOf(el), text: textOf(el), name: textOf(el) ? '' : nameOf(el), state: stateOf(el), geometry: index < ${VIEWPORT_HINT_LIMIT} ? geometryOf(el) : null };
+      const text = textOf(el);
+      return { tag: el.nodeName, attributes: attributes, context: contextOf(el), text: text, name: text ? '' : nameOf(el), state: stateOf(el), geometry: index < ${VIEWPORT_HINT_LIMIT} ? geometryOf(el) : null };
     } catch (e) {
       return {};
     }

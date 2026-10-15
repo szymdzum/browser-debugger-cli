@@ -52,8 +52,10 @@ export async function handleDomQuery(
           errorContext: { suggestion: err.suggestion },
         };
       }
-      await cache.set(result, document);
-      origin = await pageOrigin();
+      [, origin] = await Promise.all([
+        cache.set(result, document),
+        options.json ? undefined : pageOrigin(),
+      ]);
       return { success: true, data: listedMatches(result, limit) };
     },
     options,

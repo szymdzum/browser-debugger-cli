@@ -163,9 +163,13 @@ async function handleSemanticGet(
   await runCommand(
     async () => {
       const { nodeId, indexSource } = await getTarget(selectorOrIndex, matchIndex(options));
-      origin = await pageOrigin();
+      const [element, elementOrigin] = await Promise.all([
+        semanticElement(nodeId, options.full === true),
+        options.json ? undefined : pageOrigin(),
+      ]);
+      origin = elementOrigin;
       const data: WithIndexSource<SemanticNodeWithContext> = {
-        ...(await semanticElement(nodeId, options.full === true)),
+        ...element,
         ...(indexSource && { indexSource }),
       };
       return { success: true, data };
