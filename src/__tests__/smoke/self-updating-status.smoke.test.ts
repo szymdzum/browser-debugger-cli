@@ -195,6 +195,18 @@ void describe('Self-updating regions in action results (#774)', () => {
     assertAlsoChanging(second, 'ul#list');
   });
 
+  void it('a validation message rendered into a self-updating app root stays New text', async () => {
+    await open(`${fixture.url}self-status-app`);
+    const data = (
+      JSON.parse(await bdg(['dom', 'fill', '#f', 'abcdefg', '--json'])) as { data: ActionData }
+    ).data;
+    assert.deepEqual(messageTexts(data), ['Too long'], JSON.stringify(data));
+    assert.ok(
+      !(data.alsoChanging ?? []).some((region) => region.text === 'Too long'),
+      JSON.stringify(data)
+    );
+  });
+
   void it('h a <search> element scopes Shown like [role=search]', async () => {
     await open(`${fixture.url}self-status-search`);
     const data = await click('#go');

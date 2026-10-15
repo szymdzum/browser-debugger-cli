@@ -21,6 +21,10 @@
  *   "3 items" every 100 ms (a poll), `#add` makes it "4 items".
  * - `/self-status-list`: `ul#list` re-rendered with 60 random numbers every
  *   100 ms; `#noop` has no handler.
+ * - `/self-status-app`: a framework-style app whose `div#view` is
+ *   re-rendered with `innerHTML` every 100 ms and on each input of `input#f`
+ *   (kept in place, outside the view);
+ *   a value over 5 characters renders `p#err[role=alert]` "Too long".
  * - `/self-status-search`: a `<search>` box (`#go` appends a suggestion to
  *   its `ul#sugg`) inside a `section` where the same click also adds a
  *   "Promo banner" paragraph outside the search box.
@@ -158,6 +162,17 @@ document.getElementById('add').addEventListener('click', () => { items++; render
   }
   window.ticks++;
 }, 100);`
+  ),
+  '/self-status-app': page(
+    'framework root',
+    '<div id="app"><input id="f" aria-label="Name"><div id="view"></div></div>',
+    `const render = () => {
+  const value = document.getElementById('f').value;
+  document.getElementById('view').innerHTML =
+    value.length > 5 ? '<p id="err" role="alert">Too long</p>' : '<p>Name</p>';
+};
+setInterval(() => { render(); window.ticks++; }, 100);
+document.getElementById('f').addEventListener('input', render);`
   ),
   '/self-status-search': page(
     'search element',

@@ -153,8 +153,9 @@ export const MESSAGE_CHROME_JS = `(node) => {
  * `h3[role="alert"]`). Each element gets a number from `ids` that stays the
  * same within the document, so a later snapshot can tell a new element from
  * one that was there. With `marked` (elements the page kept changing before
- * the action, from the action history), a message that is one of them,
- * holds one or is a direct child of one is flagged `self`.
+ * the action, from the action history), a message that is one of them or
+ * holds one is flagged `self`; one that only sits inside one (a validation
+ * message rendered into a re-rendered app root) is not.
  */
 const MESSAGES_JS = `(ids, marked) => {
   const deadline = performance.now() + ${MESSAGES_BUDGET_MS};
@@ -191,8 +192,7 @@ const MESSAGES_JS = `(ids, marked) => {
         id = ids.next++;
         ids.map.set(m.el, id);
       }
-      const self = markedList.length > 0 && (marked.has(m.el) || marked.has(m.el.parentElement) ||
-        markedList.some((node) => m.el.contains(node)));
+      const self = markedList.length > 0 && (marked.has(m.el) || markedList.some((node) => m.el.contains(node)));
       return { id: id, text: m.text, element: describe(m.el), ...(self && { self: true }) };
     });
 }`;
