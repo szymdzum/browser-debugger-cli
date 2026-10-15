@@ -3,7 +3,7 @@
  * watched (#750), served by the fixture server.
  *
  * - `/self-updating-stream`: `#steps` starts a chain appending `p "Step N"` to
- *   `#log` every 50 ms for 5 s; `#note` appends `p "Note added"` to the same
+ *   `#log` (below the buttons, so they do not move) every 50 ms for 5 s; `#note` appends `p "Note added"` to the same
  *   `#log` in its click handler. `#more` appends 5 `li` to `#items` at once,
  *   `#slow` 350 ms later; `#items` changes only then.
  * - `/self-updating-ticker`: a ticker appends a `p[role=status]` to
@@ -19,7 +19,7 @@ import type { FixtureRoutes } from '@/__testutils__/fixtureRoutes.js';
 
 /** A container a timer chain and a click both append to, and a list only clicks change */
 const STREAM_HTML = `<!doctype html><title>self-updating stream</title>
-<section><div id="log"></div><p><button id="steps">Steps</button> <button id="note">Note</button></p></section>
+<section><p><button id="steps">Steps</button> <button id="note">Note</button></p><div id="log"></div></section>
 <section><ul id="items"><li>Item 0</li></ul><p><button id="more">Load more</button> <button id="slow">Load more slowly</button></p></section>
 <script>
   const log = document.getElementById('log');
