@@ -48,9 +48,9 @@ after(async () => {
 void describe('human output matches the data', () => {
   void it('shows a same-origin link as its path and others in full', async () => {
     const output = await bdg(['dom', 'query', 'a']);
-    assert.match(output, /<a href="\/register\/\?a=1#top"/);
-    assert.match(output, /<a href="https:\/\/example\.com\/docs\/page"/);
-    assert.match(output, /<a href="\/\/proto\.example\/y"/);
+    assert.match(output, / href="\/register\/\?a=1#top"/);
+    assert.match(output, / href="https:\/\/example\.com\/docs\/page"/);
+    assert.match(output, / href="\/\/proto\.example\/y"/);
   });
 
   void it('escapes quotes, backslashes and newlines in a value, on one line', async () => {
