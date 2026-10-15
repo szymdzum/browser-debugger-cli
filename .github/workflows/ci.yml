@@ -221,8 +221,8 @@ jobs:
 
   # Smoke tests with Chrome: Node 22 on PRs, 22/24/26 on main and nightly,
   # the `node` input on dispatch.
-  # The shell integration suite runs on main pushes and the nightly run
-  # (on PRs once #446 makes it hermetic).
+  # The shell integration suite (against the local fixture server) runs after
+  # the smoke tests, but not on dispatches.
   smoke:
     name: Smoke Tests (Chrome) (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
@@ -304,7 +304,7 @@ jobs:
         run: scripts/smoke-selected.sh
 
       - name: Run integration tests
-        if: github.ref == 'refs/heads/main' && matrix.node == '22'
+        if: github.event_name != 'workflow_dispatch' && matrix.node == '22'
         run: ./tests/run-all-tests.sh --integration
 
       - name: Upload session logs
@@ -316,6 +316,9 @@ jobs:
             /tmp/bdg-test-*/**/daemon.log*
             /tmp/bdg-test-*/**/chrome-err.log
             /tmp/bdg-test-*/**/chrome-out.log
+            /tmp/bdg-it-*/**/daemon.log*
+            /tmp/bdg-it-*/**/chrome-err.log
+            /tmp/bdg-it-*/**/chrome-out.log
             tests/results/*.log
           if-no-files-found: ignore
           retention-days: 7

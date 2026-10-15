@@ -68,23 +68,22 @@ tests/
 └── run-all-tests.sh     # Master test runner
 ```
 
+The `integration`, `error-scenarios` and `edge-cases` scripts load pages from the local fixture server (`src/__testutils__/serveFixtures.ts`), which `run-all-tests.sh` starts on a free port and stops on exit; its URL is in `BDG_FIXTURE_URL`. They need no outside network. The session directory of a failed script is kept (`/tmp/bdg-it-*`, listed in the output; CI uploads their logs). A script run on its own needs `BDG_FIXTURE_URL` exported.
+
+Smoke tests run `dist/index.js` and refuse to start when a product file under `src/` is newer than it ("run npm run build"). The check is skipped on CI. The `dom eval` smoke tests shorten the eval timeout paths with `BDG_TEST_EVAL_TIMEOUT_MS` and `BDG_TEST_EVAL_GRACE_MS` (whole ms from 100 up to the production value, anything else is ignored); set them before the session starts, as the daemon reads them.
+
 ## Test Coverage
 
 ### Current Status
 
-**TypeScript Tests:** 478 tests
-- Unit: 61 tests (utilities, parsers, validators)
-- Contract: 389 tests (APIs, protocols, collectors)
-- Integration: 3 tests (session files)
-- Smoke: 8 tests (full workflows)
-- **Pass Rate:** 100% (477 pass, 1 skip)
+Counts change with every PR, so get them from the suites:
 
-**Shell Tests:** 19 tests
-- Agent Benchmarks: 4 tests
-- Integration: 8 tests
-- Error Scenarios: 6 tests
-- Edge Cases: 1 test
-- **Pass Rate:** 100% (19 pass)
+```bash
+npm test 2>&1 | grep -E '^# (tests|pass|fail|skipped)'          # unit and contract
+npm run test:smoke 2>&1 | grep -E '^# (tests|pass|fail|skipped)' # smoke (needs Chrome)
+ls src/__tests__/smoke/*.smoke.test.ts | wc -l                  # smoke files
+./tests/run-all-tests.sh --integration                          # shell suites, one PASSED line per script
+```
 
 ### Well-Tested Modules
 

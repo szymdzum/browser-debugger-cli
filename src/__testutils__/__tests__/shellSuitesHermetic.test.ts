@@ -25,8 +25,10 @@ void describe('shell suites', () => {
 
   void it('are run against the fixture server and keep their session dirs on failure', () => {
     const runner = fs.readFileSync(path.join(TESTS_DIR, 'run-all-tests.sh'), 'utf8');
-    assert.match(runner, /serveFixtures/);
-    assert.match(runner, /BDG_FIXTURE_URL/);
+    const fixtures = fs.readFileSync(path.join(TESTS_DIR, 'lib', 'fixtures.sh'), 'utf8');
+    assert.match(runner, /source "\$TESTS_DIR\/lib\/fixtures\.sh"/);
+    assert.match(fixtures, /serveFixtures/);
+    assert.match(fixtures, /export BDG_FIXTURE_URL/);
     assert.match(runner, /session dir kept/i);
   });
 });
