@@ -352,7 +352,9 @@ const NEAR_SCOPE_JS = `(target) => {
  * (itself first) that is not a secret's. Only shown ones
  * with visible text count, the outermost of nested ones, and not those
  * whose text a removed element had (a re-render). At most
- * {@link MAX_SHOWN}, within {@link SHOWN_BUDGET_MS}. An element the
+ * {@link MAX_SHOWN}, within {@link SHOWN_BUDGET_MS} counted from after the
+ * page's layout is brought up to date (on a slow runner that layout alone
+ * can take longer than the budget). An element the
  * action's own event handlers did not add (`state.direct`, see
  * {@link EFFECTS_START_SCRIPT}) to a parent that got an element added within
  * {@link OWN_RECENT_MS} before the action's first event (`state.own`) is the
@@ -363,7 +365,6 @@ const NEAR_SCOPE_JS = `(target) => {
  * (`partial`: more may exist, uncounted) and the parents changing on their own.
  */
 export const SHOWN_ELEMENTS_JS = `(state) => {
-  const deadline = performance.now() + ${SHOWN_BUDGET_MS};
   const describe = ${ELEMENT_DESCRIPTION_JS};
   const shown = ${SHOWN_JS};
   const visibleText = ${VISIBLE_TEXT_JS};
@@ -405,6 +406,8 @@ export const SHOWN_ELEMENTS_JS = `(state) => {
   };
   const found = [];
   let partial = false;
+  void document.documentElement.offsetHeight;
+  const deadline = performance.now() + ${SHOWN_BUDGET_MS};
   for (const el of candidates) {
     if (performance.now() > deadline) { partial = true; break; }
     if (!shown(el) || removed.has(contentOf(el))) continue;
@@ -577,7 +580,14 @@ const OUTCOMES_JS = `(state, focus) => {
  * handler fires itself (`focus()` firing `focusin`, `other.click()`) nest:
  * the window closes when the outermost event ends (a depth count), and a
  * posted message closes it when the page stops an event's propagation, and notes the parents that got
- * elements before the first event ({@link NOTE_PARENT_JS}). Once stopped, the
+ * elements before the first event ({@link NOTE_PARENT_JS}). After the first
+ * event it counts, per parent, the separate deliveries of records (tasks)
+ * that added elements other than while an event is dispatched; a parent
+ * with two or more is a stream the page runs by itself (a ticker, a
+ * re-rendering list, an earlier action's timer chain; one batch, such as a
+ * slow Load more's items, is not) and is handed over with the time of its
+ * last addition, so the next action knows it even when it comes right after
+ * the stop, before the idle observer saw anything. Once stopped, the
  * watch leaves an idle observer in `window.__bdgIdle` that keeps noting such
  * parents (child lists only) for up to {@link MAX_WATCH_MS}, until the next
  * watch takes its notes over (those within {@link OWN_RECENT_MS}) or
@@ -594,7 +604,7 @@ export const EFFECTS_START_SCRIPT = `((watchIdle) => {
     keyTarget: null, loaders: new Set((${LOADERS_JS})()),
     pressTarget: null, submits: [], forms: [], control: null, keyClick: null, enterField: null,
     nodes: 0, expandable: null, inputTarget: null,
-    firstEventAt: null, dispatching: false, depth: 0, direct: new WeakSet(), parentOf: new WeakMap(),
+    firstEventAt: null, dispatching: false, depth: 0, streams: new Map(), deliveries: 0, direct: new WeakSet(), parentOf: new WeakMap(),
     own: window.__bdgIdle ? window.__bdgIdle.take() : new Map()
   };
   const noteParent = ${NOTE_PARENT_JS};
@@ -636,8 +646,28 @@ export const EFFECTS_START_SCRIPT = `((watchIdle) => {
   const keep = (list, nodes) => {
     for (const node of nodes) if (node.nodeType === 1 && list.length < ${MAX_TRACKED_NODES}) list.push(node);
   };
+  const noteStream = (parent, nodes, now) => {
+    if (!Array.prototype.some.call(nodes, (node) => node.nodeType === 1)) return;
+    const seen = state.streams.get(parent);
+    if (seen && seen.delivery === state.deliveries) {
+      seen.time = now;
+      return;
+    }
+    if (!seen && state.streams.size >= ${MAX_OWN_PARENTS}) return;
+    state.streams.set(parent, { delivery: state.deliveries, batches: (seen ? seen.batches : 0) + 1, time: now });
+  };
+  const handOverStreams = () => {
+    for (const [parent, seen] of state.streams) {
+      if (seen.batches < 2) continue;
+      state.own.delete(parent);
+      state.own.set(parent, seen.time);
+    }
+    while (state.own.size > ${MAX_OWN_PARENTS}) state.own.delete(state.own.keys().next().value);
+    state.streams.clear();
+  };
   const noteAdded = (record, now) => {
     if (state.targets.size === 0) noteParent(state.own, record, now);
+    else if (!state.dispatching) noteStream(record.target, record.addedNodes, now);
     let room = ${MAX_TRACKED_NODES} - state.added.length;
     for (const node of record.addedNodes) {
       if (node.nodeType !== 1) continue;
@@ -649,6 +679,7 @@ export const EFFECTS_START_SCRIPT = `((watchIdle) => {
   const elementCount = (nodes) => Array.from(nodes).filter((node) => node.nodeType === 1).length;
   const count = (records) => {
     const now = performance.now();
+    state.deliveries++;
     let burst = false;
     for (const record of records) {
       if (churnOnly(record, state.targets)) continue;
@@ -719,6 +750,7 @@ export const EFFECTS_START_SCRIPT = `((watchIdle) => {
     state.stopped = true;
     clearTimeout(expiry);
     observer.disconnect();
+    handOverStreams();
     watchIdle(state.own, roots);
     dispatched.port1.close();
     if (Element.prototype.attachShadow === watchedAttach) Element.prototype.attachShadow = attachShadow;
