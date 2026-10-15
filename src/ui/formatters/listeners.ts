@@ -55,7 +55,7 @@ export function handlerLocation(handler: ElementListener['handler']): string {
 function listenerCells(listener: ElementListener): string[] {
   const flags = [
     listener.reactProp ? `React ${listener.reactProp}` : listener.framework,
-    listener.delegateSelector && `delegate ${listener.delegateSelector}`,
+    listener.delegateSelector && `delegate ${escapeOneLine(listener.delegateSelector)}`,
     listener.noop && 'no-op',
     listener.useCapture && 'capture',
     listener.passive && 'passive',
@@ -64,8 +64,8 @@ function listenerCells(listener: ElementListener): string[] {
   const preview = flags.length > 0 ? `[${flags.join(', ')}] ` : '';
   return [
     listener.on,
-    listener.node,
-    truncateByLength(listener.handler.name || ANONYMOUS, NAME_MAX_LENGTH),
+    escapeOneLine(listener.node),
+    escapeOneLine(truncateByLength(listener.handler.name || ANONYMOUS, NAME_MAX_LENGTH)),
     handlerLocation(listener.handler),
     `${preview}${listener.handler.preview}`,
   ];
@@ -179,10 +179,14 @@ function appendCollapsed(fmt: OutputFormatter, collapsed: CollapsedListeners[]):
   fmt.blank().text(COLLAPSED_LISTENERS_HEADING);
   const rows = collapsed.map((root) => {
     const names = root.handlers.map((handler) =>
-      truncateByLength(handler.name || ANONYMOUS, NAME_MAX_LENGTH)
+      escapeOneLine(truncateByLength(handler.name || ANONYMOUS, NAME_MAX_LENGTH))
     );
     const shown = [...new Set(names)].slice(0, COLLAPSED_HANDLERS_SHOWN);
-    return [root.on, root.node, collapsedListenersSummary({ ...root, handlers: shown })];
+    return [
+      root.on,
+      escapeOneLine(root.node),
+      collapsedListenersSummary({ ...root, handlers: shown }),
+    ];
   });
   alignColumns(rows).forEach((line) => fmt.text(`  ${line}`));
 }

@@ -18,6 +18,7 @@ import type { InspectOutput } from '@/ui/formatters/inspect.js';
 import { formatInspect } from '@/ui/formatters/inspect.js';
 import { inspectHeader } from '@/ui/formatters/inspect.js';
 import { layoutLine } from '@/ui/formatters/layout.js';
+import { formatListeners } from '@/ui/formatters/listeners.js';
 
 /** Value, and how it is written inside `"..."` (300 characters are cut: see `LONG`) */
 const ESCAPES: ReadonlyArray<readonly [string, string, string]> = [
@@ -247,5 +248,23 @@ void describe('dom layout rows escape the element label (#734 round 2)', () => {
     } as unknown as ElementLayout);
     assert.ok(output.includes('p#z\\"b\\nc.odd'), output);
     assert.doesNotMatch(output, /z"b\nc/);
+  });
+});
+
+void describe('dom listeners rows escape page labels (#734 round 3)', () => {
+  void it('writes a target label with a quote and a newline on one line', () => {
+    const output = formatListeners({
+      element: 'button',
+      listeners: [
+        {
+          on: 'target',
+          node: 'button#y"q\nr',
+          type: 'click',
+          handler: { name: '', scriptId: '1', lineNumber: 0, columnNumber: 0, preview: '()=>1' },
+        },
+      ],
+    } as unknown as Parameters<typeof formatListeners>[0]);
+    assert.ok(output.includes('button#y\\"q\\nr'), output);
+    assert.doesNotMatch(output, /y"q\nr/);
   });
 });
