@@ -10,10 +10,11 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { formatSemanticNodeWithContext } from '@/commands/dom/semanticUtils.js';
-import type { InspectOutput } from '@/ui/formatters/inspect.js';
-import { inspectHeader } from '@/ui/formatters/inspect.js';
+import type { A11yNode } from '@/types.js';
 import { formatA11yNodeWithContext } from '@/ui/formatters/a11y.js';
 import { formatDomQuery } from '@/ui/formatters/dom.js';
+import type { InspectOutput } from '@/ui/formatters/inspect.js';
+import { inspectHeader } from '@/ui/formatters/inspect.js';
 
 /** Value, and how it is written inside `"..."` (300 characters are cut: see `LONG`) */
 const ESCAPES: ReadonlyArray<readonly [string, string, string]> = [
@@ -148,11 +149,11 @@ void describe('dom get shows invalid (#645)', () => {
 });
 
 void describe('dom a11y describe (#645)', () => {
-  const describeNode = (node: Record<string, unknown>): string =>
+  const describeNode = (node: Partial<A11yNode>): string =>
     formatA11yNodeWithContext({
       node: { nodeId: '5', role: 'button', ...node },
       domContext: null,
-    } as never);
+    });
 
   void it('says Name and Description are missing', () => {
     const output = describeNode({});
@@ -173,12 +174,12 @@ void describe('dom a11y describe (#645)', () => {
 });
 
 void describe('dom query names an icon-only button (#645)', () => {
-  const row = (node: Record<string, unknown>): string =>
+  const row = (node: { preview?: string; accessibleName?: string }): string =>
     formatDomQuery({
       selector: 'button',
       count: 1,
       nodes: [{ index: 2, nodeId: 1, tag: 'button', classes: ['icon'], ...node }],
-    } as never)
+    })
       .split('\n')[1]!
       .trim();
 

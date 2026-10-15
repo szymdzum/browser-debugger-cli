@@ -1103,7 +1103,7 @@ export async function pageOrigin(): Promise<string | undefined> {
       returnByValue: true,
     });
     const { result } = (evaluated.data?.result ?? {}) as Partial<Protocol.Runtime.EvaluateResponse>;
-    const origin = result?.value;
+    const origin: unknown = result?.value;
     return typeof origin === 'string' && /^https?:\/\//.test(origin) ? origin : undefined;
   } catch (error) {
     log.debug(`Page origin not read: ${getErrorMessage(error)}`);

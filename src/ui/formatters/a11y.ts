@@ -103,6 +103,17 @@ export function formatA11yQueryResult(result: A11yQueryResult): string {
 const NONE = '(none)';
 
 /**
+ * A name or description for display.
+ *
+ * @param text - Text, if the node has any
+ * @returns The text, or {@link NONE} when missing or empty
+ */
+function orNone(text: string | undefined): string {
+  if (text === undefined || text === '') return NONE;
+  return text;
+}
+
+/**
  * Format single accessibility node with DOM context fallback.
  *
  * Shows detailed properties including role, name, description, value, and states.
@@ -120,8 +131,8 @@ export function formatA11yNodeWithContext(data: A11yNodeWithContext): string {
   const props: [string, string][] = [];
 
   // A11y properties
-  props.push(['Name', node.name || NONE]);
-  props.push(['Description', node.description || NONE]);
+  props.push(['Name', orNone(node.name)]);
+  props.push(['Description', orNone(node.description)]);
   if (node.value !== undefined) {
     props.push(['Value', node.value]);
   }
