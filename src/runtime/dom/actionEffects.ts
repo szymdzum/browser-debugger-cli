@@ -612,6 +612,9 @@ async function collectEffects(watch: Watch, options: CollectOptions): Promise<Co
   return {
     ...effects,
     ...(domChanges !== undefined && { domChanges }),
+    ...((snapshot as { diag750?: unknown } | undefined)?.diag750 !== undefined && {
+      diag750: (snapshot as { diag750?: unknown }).diag750,
+    }),
     work: pageWork(watch, snapshot, domChanging),
   };
 }
