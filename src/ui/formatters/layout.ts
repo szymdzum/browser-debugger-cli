@@ -6,6 +6,7 @@ import { LAYOUT_ELEMENT_LIMIT } from '@/constants.js';
 import { indexSourceText } from '@/errors/messages.js';
 import type { ElementLayout, LayoutResult, LayoutSize } from '@/ipc/protocol/domTypes.js';
 import type { IndexSource } from '@/types.js';
+import { escapeOneLine } from '@/ui/formatters/keyAttributes.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import {
   coverText,
@@ -39,7 +40,7 @@ type LayoutOutput = Omit<LayoutResult, 'success'> & { indexSource?: IndexSource 
 export function layoutLine(element: ElementLayout, viewport?: LayoutSize): string {
   const box = element.content ?? element.bounds;
   return [
-    `[${element.index}] ${element.element}${element.text ? ` "${element.text}"` : ''}`,
+    `[${element.index}] ${escapeOneLine(element.element)}${element.text ? ` "${element.text}"` : ''}`,
     element.inViewport !== 'hidden' &&
       `${box.x},${box.y} ${box.width}×${box.height}${element.content ? ' (content)' : ''}`,
     layoutPositionLabel(element, viewport),

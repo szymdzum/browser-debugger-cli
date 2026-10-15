@@ -3,6 +3,7 @@
  */
 
 import type { AuditResult, CssSearchResult } from '@/ipc/protocol/auditTypes.js';
+import { escapeOneLine } from '@/ui/formatters/keyAttributes.js';
 import { auditCanvasNote, auditUncertainContrastNote } from '@/ui/messages/commands.js';
 import { truncateByLength } from '@/utils/strings.js';
 
@@ -36,7 +37,7 @@ function contrastSection(contrast: NonNullable<AuditResult['contrast']>): string
   const head = `Contrast (${contrast.level}): ${contrast.failing} of ${contrast.checked} text elements below`;
   const rows = contrast.items.map(
     (item) =>
-      `  ${item.ratio.toFixed(2).padStart(5)}  ${item.color} on ${item.background}  ${item.element} "${truncateByLength(item.text, TEXT_WIDTH)}" ${item.size}px${item.weight >= 700 ? ' bold' : ''}${item.opacity !== undefined ? ` (faded: opacity ${item.opacity})` : ''}${item.inView ? '' : ' (out of view)'}`
+      `  ${item.ratio.toFixed(2).padStart(5)}  ${item.color} on ${item.background}  ${escapeOneLine(item.element)} "${truncateByLength(item.text, TEXT_WIDTH)}" ${item.size}px${item.weight >= 700 ? ' bold' : ''}${item.opacity !== undefined ? ` (faded: opacity ${item.opacity})` : ''}${item.inView ? '' : ' (out of view)'}`
   );
   const more = contrast.failing - contrast.items.length;
   return [
@@ -60,19 +61,20 @@ function overflowSection(overflow: NonNullable<AuditResult['overflow']>): string
   return [
     head,
     ...overflow.wide.map(
-      (item) => `  past the right edge: ${item.element} (to ${item.right}, ${item.width} wide)`
+      (item) =>
+        `  past the right edge: ${escapeOneLine(item.element)} (to ${item.right}, ${item.width} wide)`
     ),
     ...overflow.truncated.map(
       (item) =>
-        `  cut off (${item.kind}): ${item.element}${times(item.count)} "${truncateByLength(item.text, TEXT_WIDTH)}"`
+        `  cut off (${item.kind}): ${escapeOneLine(item.element)}${times(item.count)} "${truncateByLength(item.text, TEXT_WIDTH)}"`
     ),
     ...overflow.scrollers.map(
       (item) =>
-        `  scrolls sideways inside: ${item.element} (${item.scrollWidth} of content in ${item.width})`
+        `  scrolls sideways inside: ${escapeOneLine(item.element)} (${item.scrollWidth} of content in ${item.width})`
     ),
     ...overflow.images.map(
       (image) =>
-        `  image ${[image.upscaled && `upscaled ${image.scale}x${overflow.pixelRatio > 1 ? ` at pixel ratio ${overflow.pixelRatio}` : ''}`, image.distorted && 'distorted'].filter(Boolean).join(', ')}: ${image.element}${times(image.count)} ${image.natural.w}x${image.natural.h} pixels drawn at ${image.rendered.w}x${image.rendered.h} CSS px`
+        `  image ${[image.upscaled && `upscaled ${image.scale}x${overflow.pixelRatio > 1 ? ` at pixel ratio ${overflow.pixelRatio}` : ''}`, image.distorted && 'distorted'].filter(Boolean).join(', ')}: ${escapeOneLine(image.element)}${times(image.count)} ${image.natural.w}x${image.natural.h} pixels drawn at ${image.rendered.w}x${image.rendered.h} CSS px`
     ),
   ];
 }
@@ -99,7 +101,7 @@ function layersSection(layers: NonNullable<AuditResult['layers']>): string[] {
     `Layers: ${layers.length} fixed or sticky`,
     ...layers.map(
       (layer) =>
-        `  ${layer.position} z ${layer.zIndex}  ${layer.element} ${layer.rect.w}x${layer.rect.h} at ${layer.rect.x},${layer.rect.y} of the viewport${layer.inView ? '' : ' (not in view now)'}`
+        `  ${layer.position} z ${layer.zIndex}  ${escapeOneLine(layer.element)} ${layer.rect.w}x${layer.rect.h} at ${layer.rect.x},${layer.rect.y} of the viewport${layer.inView ? '' : ' (not in view now)'}`
     ),
   ];
 }
@@ -121,7 +123,7 @@ function animationsSection(
     `Animations: ${animations.length} running`,
     ...animations.map(
       (animation) =>
-        `  ${animation.name} on ${animation.element}${times(animation.count)} (${animation.type}, ${typeof animation.duration === 'number' ? `${animation.duration}ms` : animation.duration}, ${animation.iterations === 'infinite' ? 'infinite' : `${animation.iterations}x`}${animation.scrollDriven ? ', scroll-driven' : ''})`
+        `  ${animation.name} on ${escapeOneLine(animation.element)}${times(animation.count)} (${animation.type}, ${typeof animation.duration === 'number' ? `${animation.duration}ms` : animation.duration}, ${animation.iterations === 'infinite' ? 'infinite' : `${animation.iterations}x`}${animation.scrollDriven ? ', scroll-driven' : ''})`
     ),
     ...note,
   ];

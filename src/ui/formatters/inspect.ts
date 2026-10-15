@@ -31,6 +31,7 @@ import type {
 } from '@/ipc/protocol/inspectTypes.js';
 import { containerKind } from '@/runtime/dom/inspectLayoutModel.js';
 import type { IndexSource } from '@/types.js';
+import { escapeOneLine, shortId } from '@/ui/formatters/keyAttributes.js';
 import { joinLines } from '@/ui/formatting.js';
 import {
   inspectCascadeNote,
@@ -83,9 +84,9 @@ export function inspectHeader(data: InspectOutput): string {
   const display = data.layout?.display ?? data.all?.['display'];
   const kind = containerKind(display);
   return [
-    data.element,
-    data.content !== undefined && `"${data.content}"`,
-    data.placeholder !== undefined && `placeholder "${data.placeholder}"`,
+    headerLabel(data),
+    data.content !== undefined && `"${escapeOneLine(data.content)}"`,
+    data.placeholder !== undefined && `placeholder "${escapeOneLine(data.placeholder)}"`,
     data.rect &&
       `${data.rect.w}x${data.rect.h}${data.rect.content ? ' (content)' : ''}${data.rect.screen ? ` (${data.rect.screen.w}x${data.rect.screen.h} on screen)` : ''} @${data.rect.x},${data.rect.y}${data.rect.in ? ' (fixed: viewport position)' : ''}`,
     kind && `[${kind}]`,
@@ -96,6 +97,19 @@ export function inspectHeader(data: InspectOutput): string {
   ]
     .filter(Boolean)
     .join(' ');
+}
+
+/**
+ * The element's label with its id escaped and cut to one line
+ * ({@link shortId}); `element` keeps the id as it is for `--json`.
+ *
+ * @param data - Inspect result
+ * @returns `tag#id.c1.c2(+N)`
+ */
+function headerLabel({ element, id }: InspectOutput): string {
+  const at = element.indexOf('#');
+  if (!id || at < 0 || !element.startsWith(id, at + 1)) return element;
+  return `${element.slice(0, at + 1)}${shortId(id)}${element.slice(at + 1 + id.length)}`;
 }
 
 /**
@@ -208,7 +222,7 @@ function parentLine(layout: InspectLayout): string | undefined {
   const offsets = layout.inParent;
   const gaps = Object.entries(layout.siblings ?? {}).map(([side, gap]) => `${side[0]}${gap}`);
   const parentWords = parent && [
-    truncateByLength(parent.element, PARENT_LABEL_MAX),
+    truncateByLength(escapeOneLine(parent.element), PARENT_LABEL_MAX),
     displayWords(parent.display, parent.direction),
     ...containerParts(parent),
     parent.textAlign && `text-align ${parent.textAlign}`,
@@ -451,7 +465,7 @@ function pseudoLines(pseudo: readonly InspectPseudo[] | undefined): string[] {
  */
 function treeRow(node: InspectTreeNode): string {
   return [
-    node.element,
+    escapeOneLine(node.element),
     node.count !== undefined && `×${node.count}`,
     node.contents ? '(contents)' : `${node.w}x${node.h}`,
     node.shadow && '(shadow root)',

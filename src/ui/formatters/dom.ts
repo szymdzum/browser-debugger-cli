@@ -29,6 +29,7 @@ import {
  * work for matches in shadow roots and iframes too.
  *
  * @param data - DOM query result containing selector, count, and matching nodes
+ * @param options - `origin` of the page, so its own links show as paths
  * @returns Formatted output string
  *
  * @example
@@ -47,16 +48,23 @@ import {
  * //   [1] <span class="error"> Required field
  * ```
  */
-export function formatDomQuery(data: DomQueryResult): string {
+export function formatDomQuery(
+  data: DomQueryResult,
+  options: { origin?: string | undefined } = {}
+): string {
   const { count, nodes, selector } = data;
   const fmt = new OutputFormatter();
 
   const nodeLines = nodes.map((node) => {
-    const attributes = queryTagAttributes(node)
+    const attributes = queryTagAttributes(node, options.origin)
       .map((item) => ` ${item}`)
       .join('');
     const context = node.context ? ` (in ${node.context})` : '';
-    const preview = node.preview ? ` ${node.preview}` : '';
+    const preview = node.preview
+      ? ` ${node.preview}`
+      : node.accessibleName
+        ? ` "${shortId(node.accessibleName)}"`
+        : '';
     const position = node.inViewport && viewportPositionHint(node.inViewport, node.clippedBy);
     const location = position ? ` (${position})` : '';
     return `[${node.index}] <${node.tag}${attributes}>${context}${preview}${location}`;
@@ -79,9 +87,13 @@ export function formatDomQuery(data: DomQueryResult): string {
  * name and alt, a link's href, a field's placeholder and value), then class.
  *
  * @param node - Query match
+ * @param origin - Origin of the page, for links
  * @returns `name="value"` items
  */
-function queryTagAttributes(node: DomQueryResult['nodes'][number]): string[] {
+function queryTagAttributes(
+  node: DomQueryResult['nodes'][number],
+  origin: string | undefined
+): string[] {
   const identifying = {
     ...(node.name && { name: node.name }),
     ...(node.type && { type: node.type }),
@@ -91,7 +103,7 @@ function queryTagAttributes(node: DomQueryResult['nodes'][number]): string[] {
   const classes = node.classes ? classAttribute(node.classes) : undefined;
   return [
     ...(node.id ? [`id="${shortId(node.id)}"`] : []),
-    ...keyAttributeItems(node.tag ?? '', { ...identifying, ...keys }),
+    ...keyAttributeItems(node.tag ?? '', { ...identifying, ...keys }, new Set(), origin),
     ...(classes ? [classes] : []),
   ];
 }

@@ -16,6 +16,7 @@ export {
   selectMatch,
   assertNodeAttached,
   pageDocumentId,
+  pageOrigin,
 } from '@/commands/dom/helpers/query.js';
 
 export { captureScreenshot, screenshotInterrupted } from '@/commands/dom/helpers/screenshot.js';

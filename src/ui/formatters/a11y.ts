@@ -99,6 +99,20 @@ export function formatA11yQueryResult(result: A11yQueryResult): string {
   return fmt.build();
 }
 
+/** Shown for a name or description the node does not have */
+const NONE = '(none)';
+
+/**
+ * A name or description for display.
+ *
+ * @param text - Text, if the node has any
+ * @returns The text, or {@link NONE} when missing or empty
+ */
+function orNone(text: string | undefined): string {
+  if (text === undefined || text === '') return NONE;
+  return text;
+}
+
 /**
  * Format single accessibility node with DOM context fallback.
  *
@@ -117,12 +131,8 @@ export function formatA11yNodeWithContext(data: A11yNodeWithContext): string {
   const props: [string, string][] = [];
 
   // A11y properties
-  if (node.name) {
-    props.push(['Name', node.name]);
-  }
-  if (node.description) {
-    props.push(['Description', node.description]);
-  }
+  props.push(['Name', orNone(node.name)]);
+  props.push(['Description', orNone(node.description)]);
   if (node.value !== undefined) {
     props.push(['Value', node.value]);
   }
@@ -154,7 +164,7 @@ export function formatA11yNodeWithContext(data: A11yNodeWithContext): string {
   }
 
   props.push(['Node ID', node.nodeId]);
-  if (node.backendDOMNodeId) {
+  if (node.backendDOMNodeId && String(node.backendDOMNodeId) !== node.nodeId) {
     props.push(['DOM Node ID', String(node.backendDOMNodeId)]);
   }
 

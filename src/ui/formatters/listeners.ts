@@ -9,6 +9,7 @@ import type {
   ListenersResult,
 } from '@/ipc/protocol/domTypes.js';
 import { delegationNotes } from '@/runtime/dom/listenerSummary.js';
+import { escapeOneLine } from '@/ui/formatters/keyAttributes.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import {
   COLLAPSED_LISTENERS_HEADING,
@@ -54,7 +55,7 @@ export function handlerLocation(handler: ElementListener['handler']): string {
 function listenerCells(listener: ElementListener): string[] {
   const flags = [
     listener.reactProp ? `React ${listener.reactProp}` : listener.framework,
-    listener.delegateSelector && `delegate ${listener.delegateSelector}`,
+    listener.delegateSelector && `delegate ${escapeOneLine(listener.delegateSelector)}`,
     listener.noop && 'no-op',
     listener.useCapture && 'capture',
     listener.passive && 'passive',
@@ -63,8 +64,8 @@ function listenerCells(listener: ElementListener): string[] {
   const preview = flags.length > 0 ? `[${flags.join(', ')}] ` : '';
   return [
     listener.on,
-    listener.node,
-    truncateByLength(listener.handler.name || ANONYMOUS, NAME_MAX_LENGTH),
+    escapeOneLine(listener.node),
+    escapeOneLine(truncateByLength(listener.handler.name || ANONYMOUS, NAME_MAX_LENGTH)),
     handlerLocation(listener.handler),
     `${preview}${listener.handler.preview}`,
   ];
@@ -124,12 +125,16 @@ export function formatListeners(result: ListenersOutput, types?: string[]): stri
   const fmt = new OutputFormatter();
   const collapsed = result.collapsed ?? [];
   if (result.listeners.length === 0 && collapsed.length === 0) {
-    fmt.text(noListenersMessage(result.element, types));
+    fmt.text(noListenersMessage(escapeOneLine(result.element), types));
     if (result.typeSuggestions?.length) fmt.text(eventTypeSuggestion(result.typeSuggestions));
     fmt.tip(NO_LISTENERS_HINT);
   } else {
     fmt.text(
-      listenersHeadline(result.element, listenerCounts(result.listeners, collapsed), result)
+      listenersHeadline(
+        escapeOneLine(result.element),
+        listenerCounts(result.listeners, collapsed),
+        result
+      )
     );
     appendListenerGroups(fmt, result.listeners);
     appendCollapsed(fmt, collapsed);
@@ -174,10 +179,14 @@ function appendCollapsed(fmt: OutputFormatter, collapsed: CollapsedListeners[]):
   fmt.blank().text(COLLAPSED_LISTENERS_HEADING);
   const rows = collapsed.map((root) => {
     const names = root.handlers.map((handler) =>
-      truncateByLength(handler.name || ANONYMOUS, NAME_MAX_LENGTH)
+      escapeOneLine(truncateByLength(handler.name || ANONYMOUS, NAME_MAX_LENGTH))
     );
     const shown = [...new Set(names)].slice(0, COLLAPSED_HANDLERS_SHOWN);
-    return [root.on, root.node, collapsedListenersSummary({ ...root, handlers: shown })];
+    return [
+      root.on,
+      escapeOneLine(root.node),
+      collapsedListenersSummary({ ...root, handlers: shown }),
+    ];
   });
   alignColumns(rows).forEach((line) => fmt.text(`  ${line}`));
 }

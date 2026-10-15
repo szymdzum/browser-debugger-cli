@@ -102,16 +102,21 @@ export function buildContextText(node: A11yNode, domContext: DomContext | null):
  *
  * @param node - Accessibility node
  * @param domContext - DOM context with the key attributes
+ * @param origin - Origin of the page, for links
  * @returns ` src="…/logo.png"`-style text, or empty
  */
-function buildKeyAttributesText(node: A11yNode, domContext: DomContext | null): string {
+function buildKeyAttributesText(
+  node: A11yNode,
+  domContext: DomContext | null,
+  origin: string | undefined
+): string {
   const attributes = withWrittenType(domContext?.attributes, domContext?.typeAttribute);
   if (!domContext || !attributes) return '';
   const shown = Object.entries(attributes)
     .filter(([, value]) => Boolean(node.name) && value === node.name)
     .map(([name]) => name);
   if (node.value !== undefined && node.value !== '') shown.push('value');
-  const items = keyAttributeItems(domContext.tag, attributes, new Set(shown));
+  const items = keyAttributeItems(domContext.tag, attributes, new Set(shown), origin);
   return items.length > 0 ? ` ${items.join(' ')}` : '';
 }
 
@@ -122,8 +127,11 @@ function buildPropertiesText(node: A11yNode): string {
   if (checked !== undefined) {
     props.push(checked === 'mixed' ? 'partly checked' : checked ? 'checked' : 'unchecked');
   }
+  const invalidValue = node.properties?.['invalid'];
+  const invalid = invalidValue === true || invalidValue === 'true';
   const expanded = node.properties?.['expanded'];
   if (expanded !== undefined) props.push(expanded ? 'expanded' : 'collapsed');
+  if (invalid) props.push('invalid');
   if (node.focusable) props.push('focusable');
   if (node.focused) props.push('focused');
   if (node.disabled) props.push('disabled');
@@ -142,13 +150,17 @@ function buildPropertiesText(node: A11yNode): string {
  * or, for an element without text or name, what it holds.
  *
  * @param data - Accessibility node and optional DOM context
+ * @param options - `origin` of the page, so its own links show as paths
  * @returns Role line, plus a text line for elements with longer or differently named text
  */
-export function formatSemanticNodeWithContext(data: SemanticNodeWithContext): string {
+export function formatSemanticNodeWithContext(
+  data: SemanticNodeWithContext,
+  options: { origin?: string | undefined } = {}
+): string {
   const { node, domContext } = data;
   const roleText = buildRoleText(node);
   const contextText = buildContextText(node, domContext);
-  const keysText = buildKeyAttributesText(node, domContext);
+  const keysText = buildKeyAttributesText(node, domContext, options.origin);
   const propsText = buildPropertiesText(node);
   const inferredText = node.inferred ? ' (inferred from DOM)' : '';
   const line = `${roleText}${contextText}${keysText}${propsText}${inferredText}`;

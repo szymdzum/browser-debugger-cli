@@ -614,12 +614,17 @@ export const ELEMENT_IDENTITY_JS = `(el) => {
     const image = node.localName === 'img' ? node : node.querySelector('img[alt]');
     return image ? clean(image.getAttribute('alt')) : '';
   };
+  const svgTitle = (node) => {
+    const title = node.querySelector('svg title');
+    return title ? clean(title.textContent) : '';
+  };
   const attributeText = (node) =>
     clean(node.getAttribute('aria-label')) ||
     labelText(node) ||
     clean(node.getAttribute('placeholder')) ||
     clean(node.getAttribute('title')) ||
-    imageAlt(node);
+    imageAlt(node) ||
+    svgTitle(node);
   const selectName = (node) =>
     labelText(node) ||
     clean(node.getAttribute('aria-label')) ||
@@ -638,7 +643,9 @@ export const ELEMENT_IDENTITY_JS = `(el) => {
     }
     return clean(text);
   };
-  const quoted = (text) => (text ? ' "' + cut(text) + '"' : '');
+  const escaped = (text) =>
+    text.replace(/[\\\\"]/g, '\\\\$&').replace(/\\p{Cc}/gu, (char) => '\\\\u' + char.charCodeAt(0).toString(16).padStart(4, '0'));
+  const quoted = (text) => (text ? ' "' + escaped(cut(text)) + '"' : '');
   const uniqueName = (node) => {
     const name = node.getAttribute('name');
     if (!name) return false;

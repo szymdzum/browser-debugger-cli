@@ -385,6 +385,8 @@ export interface InspectResult {
   pseudoOf?: '::before' | '::after';
   /** `tag#id.c1.c2(+N)` */
   element: string;
+  /** The element's id as it is, when it has one (`element` shows the human header escaped and cut) */
+  id?: string;
   /** The element hosts a closed shadow root: `tree` cannot show its children */
   shadowRootMode?: 'closed';
   /** Its text (innerText) or form value, at most 30 characters; not for containers */
