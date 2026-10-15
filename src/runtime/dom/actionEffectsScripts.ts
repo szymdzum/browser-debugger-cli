@@ -190,7 +190,7 @@ const MESSAGES_JS = `(ids, marked) => {
         id = ids.next++;
         ids.map.set(m.el, id);
       }
-      const self = marked !== undefined && marked.size > 0 && (marked.has(m.el) || marked.has(m.el.parentElement) ||
+      const self = Boolean(marked) && marked.size > 0 && (marked.has(m.el) || marked.has(m.el.parentElement) ||
         Array.from(marked).some((node) => m.el.contains(node)));
       return { id: id, text: m.text, element: describe(m.el), ...(self && { self: true }) };
     });
@@ -552,17 +552,11 @@ export const EFFECTS_START_SCRIPT = `(() => {
     for (const record of records) {
       if (churnOnly(record, state.targets)) continue;
       state.changes++;
-      if (marked.has(record.target)) {
-        if (structural(record)) state.alsoChanging.add(record.target);
-        if (record.type === 'childList') {
-          keep(state.added, record.addedNodes);
-          keep(state.removed, record.removedNodes);
-        }
-        continue;
-      }
-      burst = burst || structural(record);
+      const own = marked.has(record.target);
+      if (!own) burst = burst || structural(record);
+      else if (structural(record)) state.alsoChanging.add(record.target);
       if (record.type === 'childList') {
-        state.nodes += elementCount(record.addedNodes) + elementCount(record.removedNodes);
+        if (!own) state.nodes += elementCount(record.addedNodes) + elementCount(record.removedNodes);
         keep(state.added, record.addedNodes);
         keep(state.removed, record.removedNodes);
       }
