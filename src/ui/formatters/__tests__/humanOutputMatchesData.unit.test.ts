@@ -59,6 +59,7 @@ void describe('attribute values are escaped (#645)', () => {
       const header = inspectHeader({
         element: `p#${value}.z`,
         id: value,
+        visibility: {},
       } as unknown as InspectOutput);
       assert.equal(header, `p#${written}.z`);
     });
@@ -69,7 +70,11 @@ void describe('attribute values are escaped (#645)', () => {
     const shown =
       /placeholder="([^"]*)"/.exec(query({ placeholder: long }, undefined, 'input'))?.[1] ?? '';
     assert.match(shown, LONG);
-    const header = inspectHeader({ element: `p#${long}.z`, id: long } as unknown as InspectOutput);
+    const header = inspectHeader({
+      element: `p#${long}.z`,
+      id: long,
+      visibility: {},
+    } as unknown as InspectOutput);
     assert.match(header, /^p#a+…a+\.z$/u);
     assert.ok(header.length <= 50, header);
   });
@@ -173,7 +178,9 @@ void describe('dom query names an icon-only button (#645)', () => {
       selector: 'button',
       count: 1,
       nodes: [{ index: 2, nodeId: 1, tag: 'button', classes: ['icon'], ...node }],
-    } as never).split('\n')[1]!;
+    } as never)
+      .split('\n')[1]!
+      .trim();
 
   void it('shows the name after the tag, quoted', () => {
     assert.equal(row({ accessibleName: 'Open menu' }), '[2] <button class="icon"> "Open menu"');
