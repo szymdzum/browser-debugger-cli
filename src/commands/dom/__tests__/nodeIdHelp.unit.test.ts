@@ -13,7 +13,7 @@ import { registerDomCommands } from '@/commands/dom/index.js';
  * The help text of one `dom` subcommand.
  *
  * @param name - Subcommand name
- * @returns Its help
+ * @returns Its help, with the text added after the options
  */
 function domHelp(name: string): string {
   const program = new Command();
@@ -22,7 +22,10 @@ function domHelp(name: string): string {
     .find((cmd) => cmd.name() === 'dom')
     ?.commands.find((cmd) => cmd.name() === name);
   assert.ok(sub, `dom ${name} is registered`);
-  return sub.helpInformation();
+  let text = '';
+  sub.configureOutput({ writeOut: (chunk) => (text += chunk) });
+  sub.outputHelp();
+  return text;
 }
 
 void describe('node id help', () => {
