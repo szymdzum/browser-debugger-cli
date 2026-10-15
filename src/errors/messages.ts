@@ -768,19 +768,8 @@ export function usageHelpSuggestion(path: string): string {
  */
 export function quotedArgumentsSuggestion(path: string, args: string[], taken: number): string {
   const words = [...args.slice(0, taken - 1), args.slice(taken - 1).join(' ')];
-  const written = words.map(doubleQuotedWord).join(' ');
+  const written = words.map(shellWord).join(' ');
   return `Did you mean: ${path} ${written}?\n${usageHelpSuggestion(path)}`;
-}
-
-/**
- * A word in double quotes, or in single quotes when double quotes or shell
- * expansions inside would change it.
- *
- * @param word - Word
- * @returns The word to write
- */
-function doubleQuotedWord(word: string): string {
-  return /["$`\\!]/.test(word) ? shellQuote(word) : `"${word}"`;
 }
 
 /**

@@ -222,6 +222,12 @@ function excessArgumentsDetails(args: string[]): { message: string; suggestion: 
     .argument('<selectorOrIndex>')
     .argument('<value>')
     .action(() => undefined);
+  for (const name of ['click', 'scroll', 'get', 'wait']) {
+    dom
+      .command(name)
+      .argument('<selectorOrIndex>')
+      .action(() => undefined);
+  }
   dom
     .command('pressKey')
     .argument('<selectorOrIndex>')
@@ -252,11 +258,11 @@ void describe('usageErrorDetails for too many arguments', () => {
     for (const [args, command, path] of [
       [
         ['dom', 'a11y', 'query', 'role=button', 'name=Pay'],
-        'bdg dom a11y query "role=button name=Pay"',
+        "bdg dom a11y query 'role=button name=Pay'",
         'bdg dom a11y query',
       ],
-      [['dom', 'query', 'div', 'p'], 'bdg dom query "div p"', 'bdg dom query'],
-      [['dom', 'fill', '#pay', 'a', 'b'], 'bdg dom fill "#pay" "a b"', 'bdg dom fill'],
+      [['dom', 'query', 'div', 'p'], "bdg dom query 'div p'", 'bdg dom query'],
+      [['dom', 'fill', '#pay', 'a', 'b'], "bdg dom fill '#pay' 'a b'", 'bdg dom fill'],
       [['dom', 'query', 'a[title="x"]', 'b'], `bdg dom query 'a[title="x"] b'`, 'bdg dom query'],
     ] as const) {
       assert.equal(
@@ -266,8 +272,23 @@ void describe('usageErrorDetails for too many arguments', () => {
     }
   });
 
-  void it('does not join the surplus words of an argument that is not free text', () => {
-    const { suggestion } = excessArgumentsDetails(['dom', 'pressKey', '#a', 'Enter', 'x']);
-    assert.equal(suggestion, 'Run "bdg dom pressKey --help" for usage');
+  void it('does not join the surplus words where that could name another element or drop an option', () => {
+    for (const args of [
+      ['dom', 'pressKey', '#a', 'Enter', 'x'],
+      ['dom', 'click', '#a', '#b'],
+      ['dom', 'scroll', '#a', '#b'],
+      ['dom', 'get', '0', '1'],
+      ['dom', 'get', 'h1', '--raw', 'extra'],
+      ['dom', 'wait', '.x', 'Saved'],
+      ['dom', 'query', '#a', '#b'],
+      ['dom', 'query', 'ul', '.item', '0'],
+    ]) {
+      const path = `bdg dom ${args[1]}`;
+      assert.equal(
+        excessArgumentsDetails(args).suggestion,
+        `Run "${path} --help" for usage`,
+        args.join(' ')
+      );
+    }
   });
 });

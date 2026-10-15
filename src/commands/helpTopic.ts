@@ -126,20 +126,31 @@ function typedOption(flag: string, argv: string[]): string {
   );
 }
 
-/** Arguments that hold free text, which a shell splits when typed unquoted */
-const FREE_TEXT_ARGUMENTS = new Set([
-  'selector',
-  'selectorOrIndex',
-  'pattern',
-  'script',
-  'value',
-  'text',
-  'search',
-]);
+/** Arguments that are free text: the surplus words of an unquoted one were meant as part of it */
+const FREE_TEXT_ARGUMENTS = new Set(['pattern', 'script', 'value', 'text', 'search']);
+
+/** A word that is a selector or an index of its own, not a part of a compound selector */
+const OWN_SELECTOR = /^(?:[#.[]|\d+$)/;
+
+/**
+ * Whether the surplus words are one argument split by the shell: free text,
+ * or the compound selector of `dom query` (`div p`) when no surplus word is a
+ * selector or index of its own (`dom query "#a" "#b"`). Other commands take
+ * one selector or index, so joining could name another element.
+ *
+ * @param command - Command the error came from
+ * @param name - Name of its last argument
+ * @returns Whether to suggest the join
+ */
+function isSplitArgument(command: Command, name: string): boolean {
+  if (FREE_TEXT_ARGUMENTS.has(name)) return true;
+  const surplus = command.args.slice(command.registeredArguments.length);
+  return commandPath(command) === 'bdg dom query' && !surplus.some((w) => OWN_SELECTOR.test(w));
+}
 
 /**
  * The suggestion for a command given more words than it takes, when the last
- * argument is free text that was probably typed without quotes.
+ * argument was probably typed without quotes.
  *
  * @param command - Command the error came from
  * @returns The quoted command and the help pointer, or undefined for other arguments
@@ -147,7 +158,7 @@ const FREE_TEXT_ARGUMENTS = new Set([
 function excessArgumentsSuggestion(command: Command): string | undefined {
   const taken = command.registeredArguments;
   const last = taken.at(-1);
-  if (!last || last.variadic || !FREE_TEXT_ARGUMENTS.has(last.name())) return undefined;
+  if (!last || last.variadic || !isSplitArgument(command, last.name())) return undefined;
   return quotedArgumentsSuggestion(commandPath(command), command.args, taken.length);
 }
 
