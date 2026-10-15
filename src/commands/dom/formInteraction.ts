@@ -71,6 +71,7 @@ import {
   tabClosedText,
   moreErrorsText,
   moreMessagesText,
+  alsoChangingText,
   moreShownText,
   formSubmittedText,
   hiddenTrackerErrorsText,
@@ -607,6 +608,15 @@ function formatActionOutput(
     [
       ...(result.messages ?? []).map(newMessageText),
       ...(result.moreMessages ? [moreMessagesText(result.moreMessages)] : []),
+    ],
+    keyWidth
+  );
+  listRows(
+    fmt,
+    'Also changing',
+    [
+      ...(result.alsoChanging ?? []).map(alsoChangingText),
+      ...(result.moreAlsoChanging ? [moreMessagesText(result.moreAlsoChanging)] : []),
     ],
     keyWidth
   );

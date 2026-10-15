@@ -4,6 +4,7 @@ import type { SessionConfig } from './types.js';
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import { startSessionDownloads } from '@/daemon/session/downloads.js';
+import { startActionHistory } from '@/runtime/dom/actionHistory.js';
 import { hideHeadlessUserAgent } from '@/runtime/page/userAgent.js';
 import { startConsoleCollection } from '@/telemetry/console.js';
 import { startDialogHandling } from '@/telemetry/dialogs.js';
@@ -189,6 +190,11 @@ export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
         if (!config.viewport?.mobile) await hideHeadlessUserAgent(cdp, logger);
         return () => undefined;
       },
+    },
+    {
+      name: 'action-history',
+      runAlways: true,
+      start: ({ cdp }) => startActionHistory(cdp),
     },
     {
       name: 'page-crash',

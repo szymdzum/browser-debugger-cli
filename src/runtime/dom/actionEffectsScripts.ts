@@ -53,7 +53,7 @@ const REVEAL_BUDGET_MS = 8;
  * a search box, a dialog); without one, the target's grandparent is used
  */
 const NEAR_CONTAINERS =
-  'form, [role="form"], [role="search"], dialog, [role="dialog"], [role="combobox"]';
+  'form, [role="form"], search, [role="search"], dialog, [role="dialog"], [role="combobox"]';
 
 /**
  * Added elements a click or key press reports wherever they are: the page's
@@ -80,6 +80,9 @@ const MAX_SHOWN = 10;
 
 /** Added and removed elements a watch keeps */
 const MAX_TRACKED_NODES = 200;
+
+/** Elements changing before the action a read names (`alsoChanging`), at most */
+const MAX_ALSO_CHANGING = 10;
 
 /** Longer texts are containers (a page, a form), not messages */
 const MAX_MESSAGE_TEXT = 300;
@@ -149,9 +152,11 @@ export const MESSAGE_CHROME_JS = `(node) => {
  * described by tag, id and classes (or its role when it has neither,
  * `h3[role="alert"]`). Each element gets a number from `ids` that stays the
  * same within the document, so a later snapshot can tell a new element from
- * one that was there.
+ * one that was there. With `marked` (elements the page kept changing before
+ * the action, from the action history), a message that is one of them,
+ * holds one or is a direct child of one is flagged `self`.
  */
-const MESSAGES_JS = `(ids) => {
+const MESSAGES_JS = `(ids, marked) => {
   const deadline = performance.now() + ${MESSAGES_BUDGET_MS};
   const description = ${ELEMENT_DESCRIPTION_JS};
   const chrome = ${MESSAGE_CHROME_JS};
@@ -185,7 +190,9 @@ const MESSAGES_JS = `(ids) => {
         id = ids.next++;
         ids.map.set(m.el, id);
       }
-      return { id: id, text: m.text, element: describe(m.el) };
+      const self = marked !== undefined && marked.size > 0 && (marked.has(m.el) || marked.has(m.el.parentElement) ||
+        Array.from(marked).some((node) => m.el.contains(node)));
+      return { id: id, text: m.text, element: describe(m.el), ...(self && { self: true }) };
     });
 }`;
 
@@ -483,7 +490,11 @@ const OUTCOMES_JS = `(state, focus) => {
  * times of {@link STRUCTURAL_CHANGE_JS} bursts. Capture listeners record
  * which elements the action's events reached, the first key press's target,
  * copy/cut events and the scroll position at the first press (a click
- * scrolls its target into view first). The watch stops itself after
+ * scrolls its target into view first). Elements the action history
+ * (`window.__bdgHistory`, see `actionHistory.ts`) found the page changing on
+ * its own right before are `marked`: changes whose target is one of them
+ * (exactly, not inside it) make no burst and add no nodes, and those with
+ * structural changes are kept in `alsoChanging`. The watch stops itself after
  * {@link MAX_WATCH_MS}, so a snapshot that ran late (after a navigation,
  * with nobody reading it) leaves nothing behind. Evaluates to the URL and
  * the messages.
@@ -493,7 +504,10 @@ export const EFFECTS_START_SCRIPT = `(() => {
   const churnOnly = ${CHURN_ONLY_JS};
   const structural = ${STRUCTURAL_CHANGE_JS};
   const ids = { map: new WeakMap(), next: 1 };
+  const history = window.__bdgHistory;
+  const marked = new Set(history ? history.selfUpdating(performance.now()) : []);
   const state = {
+    marked: marked, alsoChanging: new Set(),
     ids: ids, changes: 0, targets: new Set(), path: new Set(), focus: document.activeElement,
     pressScroll: null, copied: false, stopped: false, added: [], removed: [], bursts: [],
     keyTarget: null, loaders: new Set((${LOADERS_JS})()),
@@ -538,6 +552,14 @@ export const EFFECTS_START_SCRIPT = `(() => {
     for (const record of records) {
       if (churnOnly(record, state.targets)) continue;
       state.changes++;
+      if (marked.has(record.target)) {
+        if (structural(record)) state.alsoChanging.add(record.target);
+        if (record.type === 'childList') {
+          keep(state.added, record.addedNodes);
+          keep(state.removed, record.removedNodes);
+        }
+        continue;
+      }
       burst = burst || structural(record);
       if (record.type === 'childList') {
         state.nodes += elementCount(record.addedNodes) + elementCount(record.removedNodes);
@@ -596,7 +618,7 @@ export const EFFECTS_START_SCRIPT = `(() => {
   };
   const expiry = setTimeout(state.stop, ${MAX_WATCH_MS});
   window.__bdgEffects = state;
-  return { href: location.href, messages: (${MESSAGES_JS})(ids) };
+  return { href: location.href, messages: (${MESSAGES_JS})(ids, marked) };
 })()`;
 
 /**
@@ -623,8 +645,10 @@ export const AWAIT_DUE_TIMERS_SCRIPT = 'globalThis.__bdgDueTimers';
  * when the snapshot is still there (same document), the number of changes
  * counted (plus one when the page scrolled after the press), why "no
  * effect" could not be claimed ({@link UNCERTAIN_JS}) and whether the page
- * is still working ({@link SETTLE_JS}). `fresh` means a new document
- * (everything shown is new).
+ * is still working ({@link SETTLE_JS}), and the marked elements with
+ * structural changes during the watch (`alsoChanging`, described, at most
+ * {@link MAX_ALSO_CHANGING}). `fresh` means a new document (everything
+ * shown is new).
  */
 export const EFFECTS_READ_SCRIPT = `((stop, shown, focus) => {
   const state = window.__bdgEffects;
@@ -641,7 +665,9 @@ export const EFFECTS_READ_SCRIPT = `((stop, shown, focus) => {
     fresh: false,
     changes: state.changes + (scrolled ? 1 : 0),
     uncertain: (${UNCERTAIN_JS})(state, document.activeElement),
-    messages: (${MESSAGES_JS})(state.ids),
+    messages: (${MESSAGES_JS})(state.ids, state.marked),
+    alsoChanging: Array.from(state.alsoChanging).filter((el) => el.isConnected).slice(0, ${MAX_ALSO_CHANGING})
+      .map((el) => (${ELEMENT_DESCRIPTION_JS})(el)),
     settle: (${SETTLE_JS})(state),
     shown: listed && listed.elements,
     shownCut: listed && listed.cut,

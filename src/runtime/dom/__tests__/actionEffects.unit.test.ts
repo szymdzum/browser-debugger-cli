@@ -11,6 +11,7 @@ import * as vm from 'node:vm';
 import { submitNetworkBusyWarning, submitTimeoutError } from '@/errors/messages.js';
 import type { TriggeredRequest } from '@/ipc/protocol/domTypes.js';
 import {
+  alsoChangingOf,
   domKeptChanging,
   effectsOf,
   domLooksBusy,
@@ -135,6 +136,45 @@ void describe('newMessages', () => {
     const long = newMessages([], [seen(1, 'x'.repeat(200))], false).messages[0]?.text ?? '';
     assert.equal(Array.from(long).length, 120);
     assert.ok(long.endsWith('…'));
+  });
+});
+
+void describe('messages changing before the action (#774)', () => {
+  const ticker = { ...seen(1, 'tick 51', 'aside#t'), self: true };
+
+  void it('reports a new text of a message the page was changing apart from New text', () => {
+    const found = newMessages([seen(1, 'tick 50', 'aside#t')], [ticker], false);
+    assert.deepEqual(found.messages, []);
+    assert.deepEqual(found.alsoChanging, [{ text: 'tick 51', element: 'aside#t' }]);
+  });
+
+  void it('names nothing for such a message whose text stayed', () => {
+    const found = newMessages([seen(1, 'tick 51', 'aside#t')], [ticker], false);
+    assert.deepEqual(found.alsoChanging, []);
+  });
+
+  void it('reports every message on a new document as New text', () => {
+    assert.deepEqual(newMessages([], [ticker], true).messages, [
+      { text: 'tick 51', element: 'aside#t' },
+    ]);
+  });
+
+  void it('lists messages first and other elements once, beyond the cap as moreAlsoChanging', () => {
+    const regions = alsoChangingOf(
+      [{ element: 'aside#t', text: 'tick 51' }],
+      ['aside#t', 'ul#a', 'ul#b', 'ul#c']
+    );
+    assert.deepEqual(
+      regions.map((region) => region.element),
+      ['aside#t', 'ul#a', 'ul#b', 'ul#c']
+    );
+    const effects = effectsOf(
+      { href: 'https://shop.test/cart', messages: [] },
+      read({ alsoChanging: ['ul#a', 'ul#b', 'ul#c', 'ul#d'] }),
+      {} as NavigationEvents
+    );
+    assert.equal(effects.alsoChanging?.length, 3);
+    assert.equal(effects.moreAlsoChanging, 1);
   });
 });
 

@@ -9,6 +9,7 @@ import type { ErrorWithSuggestion } from '@/errors/messages.js';
 import type { DomFrame, PageLoadingState, PendingRequestInfo } from '@/ipc/protocol/commands.js';
 import type {
   ActionError,
+  AlsoChanging,
   ControlChange,
   DialogAnswer,
   DialogInfo,
@@ -560,6 +561,18 @@ export const HOVER_USAGE =
  */
 export function newMessageText(message: NewMessage): string {
   return `"${message.text}" (${message.element})`;
+}
+
+/**
+ * A region the page was changing right before the action, for its
+ * `Also changing:` rows.
+ *
+ * @param region - The region, with its text when it is a message
+ * @returns e.g. `aside#ticker "tick 51" (changing before the action)`, `ul#list (changing before the action)`
+ */
+export function alsoChangingText(region: AlsoChanging): string {
+  const text = region.text === undefined ? '' : ` "${region.text}"`;
+  return `${region.element}${text} (changing before the action)`;
 }
 
 /**

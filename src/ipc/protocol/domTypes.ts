@@ -92,6 +92,17 @@ export interface ShownElement {
   element: string;
 }
 
+/**
+ * A region the page was changing on its own right before the action (#774),
+ * reported apart from the action's own messages
+ */
+export interface AlsoChanging {
+  /** The element, e.g. `aside#ticker` */
+  element: string;
+  /** Its text now, for a message element (at most 120 characters) */
+  text?: string;
+}
+
 /** State of a download: still running, saved, or stopped before it finished */
 export type DownloadState = 'inProgress' | 'completed' | 'canceled';
 
@@ -165,6 +176,15 @@ export interface ActionEffects {
   messages?: NewMessage[];
   /** How many more new messages there were than `messages` lists */
   moreMessages?: number;
+  /**
+   * Regions the page was changing on its own right before the action whose
+   * text or elements changed during it (at most 3; absent when none): their
+   * messages are left out of `messages`, their changes do not make the page
+   * look still changing
+   */
+  alsoChanging?: AlsoChanging[];
+  /** How many more such regions there were than `alsoChanging` lists */
+  moreAlsoChanging?: number;
   /** Elements a hover or key press showed (at most 3, outermost first; absent when none) */
   shown?: ShownElement[];
   /** How many more elements qualified than `shown` lists */
