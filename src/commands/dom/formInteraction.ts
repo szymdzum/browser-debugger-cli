@@ -75,6 +75,7 @@ import {
   hiddenTrackerErrorsText,
   newMessageText,
   pageNavigationText,
+  selfChangingText,
   shownElementText,
   stillChangingNote,
   submitBlockedNote,
@@ -617,6 +618,7 @@ function formatActionOutput(
     ],
     keyWidth
   );
+  listRows(fmt, 'Also changing', (result.changingOnItsOwn ?? []).map(selfChangingText), keyWidth);
   listRows(
     fmt,
     'Errors',

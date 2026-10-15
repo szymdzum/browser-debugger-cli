@@ -78,6 +78,19 @@ const SHOWN_BUDGET_MS = 10;
 /** Shown elements a read returns at most */
 const MAX_SHOWN = 10;
 
+/**
+ * How recent a parent's last element addition before an action's first
+ * event must be for the parent to count as changing on its own (ms): streams
+ * adding at least once a second count, a list a click changed earlier does not
+ */
+const OWN_RECENT_MS = 1000;
+
+/** Parents whose last element addition a watch and its idle observer keep (the least recent are dropped) */
+const MAX_OWN_PARENTS = 200;
+
+/** Containers changing on their own a read returns at most */
+const MAX_OWN_CONTAINERS = 3;
+
 /** Added and removed elements a watch keeps */
 const MAX_TRACKED_NODES = 200;
 
@@ -257,6 +270,17 @@ export const REVEAL_SNAPSHOT_JS = `(el, press) => {
  * the target's form, search box, dialog or combobox, else its grandparent
  * (its parent when the grandparent is the body).
  */
+/**
+ * Page-side note that `parent` got an element added now, in a map of
+ * parents by the time of their last addition (most recent last, at most
+ * {@link MAX_OWN_PARENTS})
+ */
+const NOTE_OWN_JS = `(own, parent) => {
+  own.delete(parent);
+  own.set(parent, performance.now());
+  if (own.size > ${MAX_OWN_PARENTS}) own.delete(own.keys().next().value);
+}`;
+
 const NEAR_SCOPE_JS = `(target) => {
   const container = target.closest(${JSON.stringify(NEAR_CONTAINERS)});
   if (container) return container;
@@ -284,9 +308,15 @@ const NEAR_SCOPE_JS = `(target) => {
  * (itself first) that is not a secret's. Only shown ones
  * with visible text count, the outermost of nested ones, and not those
  * whose text a removed element had (a re-render). At most
- * {@link MAX_SHOWN}, within {@link SHOWN_BUDGET_MS}. Returns the
- * elements, how many more qualified than they list (`cut`) and whether the
- * time budget stopped the scan (`partial`: more may exist, uncounted).
+ * {@link MAX_SHOWN}, within {@link SHOWN_BUDGET_MS}. An element the
+ * action's own event handlers did not add (`state.direct`, see
+ * {@link EFFECTS_START_SCRIPT}) to a parent that got an element added within
+ * {@link OWN_RECENT_MS} before the action's first event (`state.own`) is the
+ * page changing on its own (a ticker, a feed, an earlier action's timers):
+ * it is not listed but counted per parent (`own`, at most
+ * {@link MAX_OWN_CONTAINERS}). Returns the elements, how many more qualified
+ * than they list (`cut`), whether the time budget stopped the scan
+ * (`partial`: more may exist, uncounted) and the parents changing on their own.
  */
 export const SHOWN_ELEMENTS_JS = `(state) => {
   const deadline = performance.now() + ${SHOWN_BUDGET_MS};
@@ -323,19 +353,29 @@ export const SHOWN_ELEMENTS_JS = `(state) => {
   const removed = new Set(state.removed.map(contentOf));
   const candidates = new Set(state.added.filter((node) => node.isConnected && near(node)));
   if (state.reveal) for (const el of state.reveal.hidden) if (el.isConnected) candidates.add(el);
+  const ownParent = (el) => {
+    if (state.firstEventAt === null || state.direct.has(el)) return null;
+    const parent = state.parentOf.get(el);
+    const last = parent ? state.own.get(parent) : undefined;
+    return last !== undefined && last >= state.firstEventAt - ${OWN_RECENT_MS} ? parent : null;
+  };
   const found = [];
   let partial = false;
   for (const el of candidates) {
     if (performance.now() > deadline) { partial = true; break; }
     if (!shown(el) || removed.has(contentOf(el))) continue;
     const text = visibleText(el, secretPart) || dialogName(el);
-    if (text !== '') found.push({ el: el, text: text });
+    if (text !== '') found.push({ el: el, text: text, own: ownParent(el) });
   }
   const outermost = found.filter((m) => !found.some((other) => other !== m && within(other.el, m.el)));
+  const listed = outermost.filter((m) => !m.own);
+  const ownCounts = new Map();
+  for (const m of outermost) if (m.own) ownCounts.set(m.own, (ownCounts.get(m.own) || 0) + 1);
   return {
-    elements: outermost.slice(0, ${MAX_SHOWN}).map((m) => ({ text: m.text, element: describe(m.el) })),
-    cut: Math.max(0, outermost.length - ${MAX_SHOWN}),
-    partial: partial
+    elements: listed.slice(0, ${MAX_SHOWN}).map((m) => ({ text: m.text, element: describe(m.el) })),
+    cut: Math.max(0, listed.length - ${MAX_SHOWN}),
+    partial: partial,
+    own: Array.from(ownCounts).slice(0, ${MAX_OWN_CONTAINERS}).map(([parent, added]) => ({ element: describe(parent), added: added }))
   };
 }`;
 
@@ -482,8 +522,17 @@ const OUTCOMES_JS = `(state, focus) => {
  * copy/cut events and the scroll position at the first press (a click
  * scrolls its target into view first). The watch stops itself after
  * {@link MAX_WATCH_MS}, so a snapshot that ran late (after a navigation,
- * with nobody reading it) leaves nothing behind. Evaluates to the URL and
- * the messages.
+ * with nobody reading it) leaves nothing behind. For telling what the page
+ * adds by itself ({@link SHOWN_ELEMENTS_JS}), it keeps the parent of each
+ * added element, marks as direct the elements added while one of the
+ * action's events is dispatched (its handlers and their microtasks: the
+ * flag is cleared in a microtask after the event's last listener on
+ * `window`, else by a posted message), and notes the parents that got
+ * elements before the first event ({@link NOTE_OWN_JS}). Once stopped, the
+ * watch leaves an idle observer in `window.__bdgIdle` that keeps noting such
+ * parents (child lists only) for up to {@link MAX_WATCH_MS}, until the next
+ * watch takes its notes over (those within {@link OWN_RECENT_MS}) or
+ * {@link IDLE_STOP_SCRIPT} stops it. Evaluates to the URL and the messages.
  */
 export const EFFECTS_START_SCRIPT = `(() => {
   if (window.__bdgEffects) window.__bdgEffects.stop();
@@ -495,8 +544,14 @@ export const EFFECTS_START_SCRIPT = `(() => {
     pressScroll: null, copied: false, stopped: false, added: [], removed: [], bursts: [],
     keyTarget: null, loaders: new Set((${LOADERS_JS})()),
     pressTarget: null, submits: [], forms: [], control: null, keyClick: null, enterField: null,
-    nodes: 0, expandable: null, inputTarget: null
+    nodes: 0, expandable: null, inputTarget: null,
+    firstEventAt: null, dispatching: false, direct: new WeakSet(), parentOf: new WeakMap(),
+    own: window.__bdgIdle ? window.__bdgIdle.take() : new Map()
   };
+  const noteOwn = ${NOTE_OWN_JS};
+  const hasElement = (nodes) => Array.from(nodes).some((node) => node.nodeType === 1);
+  const dispatched = new MessageChannel();
+  dispatched.port1.onmessage = () => { state.dispatching = false; };
   const listen = EventTarget.prototype.addEventListener;
   const unlisten = EventTarget.prototype.removeEventListener;
   const controlLabel = ${CONTROL_LABEL_JS};
@@ -529,6 +584,14 @@ export const EFFECTS_START_SCRIPT = `(() => {
   const keep = (list, nodes) => {
     for (const node of nodes) if (node.nodeType === 1 && list.length < ${MAX_TRACKED_NODES}) list.push(node);
   };
+  const noteAdded = (record) => {
+    if (state.targets.size === 0 && hasElement(record.addedNodes)) noteOwn(state.own, record.target);
+    for (const node of record.addedNodes) {
+      if (node.nodeType !== 1) continue;
+      state.parentOf.set(node, record.target);
+      if (state.dispatching) state.direct.add(node);
+    }
+  };
   const elementCount = (nodes) => Array.from(nodes).filter((node) => node.nodeType === 1).length;
   const count = (records) => {
     let burst = false;
@@ -537,6 +600,7 @@ export const EFFECTS_START_SCRIPT = `(() => {
       state.changes++;
       burst = burst || structural(record);
       if (record.type === 'childList') {
+        noteAdded(record);
         state.nodes += elementCount(record.addedNodes) + elementCount(record.removedNodes);
         keep(state.added, record.addedNodes);
         keep(state.removed, record.removedNodes);
@@ -548,11 +612,11 @@ export const EFFECTS_START_SCRIPT = `(() => {
   };
   const observer = new MutationObserver(count);
   const options = { subtree: true, childList: true, characterData: true, attributes: true, attributeOldValue: true };
-  const observe = (root) => {
-    observer.observe(root, options);
-    for (const el of root.querySelectorAll('*')) if (el.shadowRoot) observe(el.shadowRoot);
+  const observeTree = (target, root, rootOptions) => {
+    target.observe(root, rootOptions);
+    for (const el of root.querySelectorAll('*')) if (el.shadowRoot) observeTree(target, el.shadowRoot, rootOptions);
   };
-  observe(document);
+  observeTree(observer, document, options);
   const attachShadow = Element.prototype.attachShadow;
   const watchedAttach = function (init) {
     const root = attachShadow.call(this, init);
@@ -563,7 +627,15 @@ export const EFFECTS_START_SCRIPT = `(() => {
   Element.prototype.attachShadow = watchedAttach;
   const types = ['pointerdown', 'mousedown', 'click', 'keydown', 'focusin', 'submit', 'mouseover', 'input', 'change', 'copy', 'cut'];
   const pressTypes = ['pointerdown', 'mousedown', 'click', 'keydown', 'submit'];
+  const endDispatch = (event) => {
+    unlisten.call(window, event.type, endDispatch, false);
+    queueMicrotask(() => { state.dispatching = false; });
+  };
   const record = (event) => {
+    if (state.firstEventAt === null) state.firstEventAt = performance.now();
+    state.dispatching = true;
+    listen.call(window, event.type, endDispatch, false);
+    dispatched.port2.postMessage(null);
     if (event.type === 'copy' || event.type === 'cut') state.copied = true;
     const path = event.composedPath().filter((node) => node.nodeType === 1);
     if (path[0]) state.targets.add(path[0]);
@@ -582,11 +654,37 @@ export const EFFECTS_START_SCRIPT = `(() => {
   };
   types.forEach((type) => window.addEventListener(type, record, true));
   state.flush = () => count(observer.takeRecords());
+  const watchIdle = () => {
+    const own = state.own;
+    const idle = new MutationObserver((records) => {
+      for (const record of records) if (record.type === 'childList' && hasElement(record.addedNodes)) noteOwn(own, record.target);
+    });
+    const end = () => {
+      clearTimeout(begin);
+      clearTimeout(idleExpiry);
+      idle.disconnect();
+      if (window.__bdgIdle === handle) delete window.__bdgIdle;
+    };
+    const begin = setTimeout(() => observeTree(idle, document, { subtree: true, childList: true }), 0);
+    const idleExpiry = setTimeout(end, ${MAX_WATCH_MS});
+    const handle = {
+      stop: end,
+      take: () => {
+        const since = performance.now() - ${OWN_RECENT_MS};
+        for (const record of idle.takeRecords()) if (record.type === 'childList' && hasElement(record.addedNodes)) noteOwn(own, record.target);
+        end();
+        for (const [parent, time] of own) if (time < since) own.delete(parent);
+        return own;
+      }
+    };
+    window.__bdgIdle = handle;
+  };
   state.stop = () => {
     if (state.stopped) return;
     state.stopped = true;
     clearTimeout(expiry);
     observer.disconnect();
+    watchIdle();
     if (Element.prototype.attachShadow === watchedAttach) Element.prototype.attachShadow = attachShadow;
     types.forEach((type) => window.removeEventListener(type, record, true));
     state.forms.forEach((form) => unlisten.call(form, 'submit', onSubmit, true));
@@ -643,6 +741,7 @@ export const EFFECTS_READ_SCRIPT = `((stop, shown, focus) => {
     shown: listed && listed.elements,
     shownCut: listed && listed.cut,
     shownPartial: listed && listed.partial,
+    changingOnItsOwn: listed && listed.own,
     ...(${OUTCOMES_JS})(state, focus)
   };
 })`;
@@ -729,6 +828,9 @@ export const LONG_TASKS_READ_SCRIPT = `(() => {
 /** Stops the watch {@link STALL_WATCH_START_SCRIPT} left */
 export const STALL_WATCH_STOP_SCRIPT =
   'if (globalThis.__bdgStalls) { globalThis.__bdgStalls.stop(); delete globalThis.__bdgStalls; }';
+
+/** Stops the idle observer a stopped {@link EFFECTS_START_SCRIPT} watch left */
+export const IDLE_STOP_SCRIPT = 'if (window.__bdgIdle) window.__bdgIdle.stop();';
 
 /** Stops the watch {@link EFFECTS_START_SCRIPT} left (when no read stopped it) */
 export const EFFECTS_STOP_SCRIPT =

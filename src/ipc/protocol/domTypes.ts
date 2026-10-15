@@ -92,6 +92,18 @@ export interface ShownElement {
   element: string;
 }
 
+/**
+ * A container the page was already adding elements to by itself before the
+ * action, with how many elements were added to it during the action other
+ * than by the action's own event handlers
+ */
+export interface SelfChangingContainer {
+  /** The container, e.g. `div#log` */
+  element: string;
+  /** Elements with visible text added to it during the action (not listed as shown) */
+  added: number;
+}
+
 /** State of a download: still running, saved, or stopped before it finished */
 export type DownloadState = 'inProgress' | 'completed' | 'canceled';
 
@@ -171,6 +183,13 @@ export interface ActionEffects {
   moreShown?: number;
   /** The count in `moreShown` is a minimum: the page stopped looking at its time budget */
   moreShownPartial?: boolean;
+  /**
+   * Containers the page was already changing by itself before the action
+   * (a ticker, a feed, an earlier action's timers): elements added to them
+   * during the action, other than by its own event handlers, are counted
+   * here instead of `shown`/`moreShown` (at most 3 containers; absent when none)
+   */
+  changingOnItsOwn?: SelfChangingContainer[];
   /**
    * A form fired `submit` during the action, in the same document (absent
    * otherwise; a submit that loaded a new document is the navigation):

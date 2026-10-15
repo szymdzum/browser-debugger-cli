@@ -22,6 +22,7 @@ import type {
   NewMessage,
   PageNavigation,
   PendingChanges,
+  SelfChangingContainer,
   ShownElement,
   TriggeredRequest,
 } from '@/ipc/protocol/domTypes.js';
@@ -183,6 +184,8 @@ export interface ReadSnapshot {
   shownCut?: number;
   /** The page's time budget stopped the scan, so more may exist */
   shownPartial?: boolean;
+  /** Containers changing on their own, with what was added to them instead of shown */
+  changingOnItsOwn?: SelfChangingContainer[];
   /** First form that fired `submit` during the watch (same document only) */
   submitted?: FormSubmit;
   /** The pressed button's own change (same document only) */
@@ -497,6 +500,7 @@ export function hadNoEffect(
     effects.navigation === undefined &&
     (effects.messages ?? []).length === 0 &&
     (effects.shown ?? []).length === 0 &&
+    effects.changingOnItsOwn === undefined &&
     effects.submitted === undefined &&
     effects.controlChange === undefined &&
     effects.expanded === undefined &&
@@ -783,6 +787,7 @@ function effectsOf(
       ...(shown.length > 0 && { shown }),
       ...(moreShown > 0 && { moreShown }),
       ...(moreShown > 0 && snapshot?.shownPartial && { moreShownPartial: true }),
+      ...(snapshot?.changingOnItsOwn?.length && { changingOnItsOwn: snapshot.changingOnItsOwn }),
       ...pressOutcomes(snapshot),
     };
   } catch (error) {

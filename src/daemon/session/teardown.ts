@@ -6,6 +6,7 @@
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { ChromeNoticeCode, NoticeSink } from '@/errors/notices.js';
+import { IDLE_STOP_SCRIPT } from '@/runtime/dom/actionEffectsScripts.js';
 import { clearChromePid } from '@/session/chrome.js';
 import type { LaunchedChrome } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
@@ -17,6 +18,9 @@ import { isProcessAlive, killChromeProcess, waitForProcessExit } from '@/utils/p
 const CHROME_EXIT_POLL_MS = 50;
 /** Up to 5 s for Chrome to shut down cleanly after Browser.close or SIGTERM */
 const GRACEFUL_EXIT_WAIT_MS = 5000;
+/** How long to wait for the page to stop bdg's idle observer in a Chrome left running */
+const IDLE_STOP_REPLY_MS = 200;
+
 /** How long to wait for Browser.close to answer (Chrome may exit without answering) */
 const BROWSER_CLOSE_REPLY_MS = 500;
 
@@ -37,7 +41,8 @@ export interface ConnectionRelease {
 /**
  * Release the page connection: a launched Chrome is asked to close itself
  * through it first ({@link requestBrowserClose}); an attached Chrome is left
- * running, and the user is told so. Never throws.
+ * running, and the user is told so, after its page was asked to stop the
+ * idle observer the last action left ({@link IDLE_STOP_SCRIPT}). Never throws.
  *
  * @param release - Connection, Chrome and how to report
  */
@@ -45,12 +50,31 @@ export async function releaseConnection(release: ConnectionRelease): Promise<voi
   const { chrome, cdp, external, log, notify } = release;
   if (!cdp) return;
   if (chrome) await requestBrowserClose(cdp, chrome.pid, log);
+  else await stopIdleObserver(cdp, log);
   try {
     cdp.close();
   } catch (error) {
     log.info(`Error closing CDP: ${getErrorMessage(error)}`);
   }
   if (!chrome && external) notify({ code: 'EXTERNAL_CHROME_SKIP_TERMINATION' });
+}
+
+/**
+ * Stop the idle observer bdg's last action left in the page, without
+ * waiting more than {@link IDLE_STOP_REPLY_MS}.
+ *
+ * @param cdp - Open CDP connection
+ * @param log - Logger
+ */
+async function stopIdleObserver(cdp: CDPConnection, log: Logger): Promise<void> {
+  try {
+    await raceTimeout(
+      cdp.send('Runtime.evaluate', { expression: IDLE_STOP_SCRIPT }),
+      IDLE_STOP_REPLY_MS
+    );
+  } catch (error) {
+    log.debug(`Idle observer not stopped: ${getErrorMessage(error)}`);
+  }
 }
 
 /**

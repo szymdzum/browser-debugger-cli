@@ -23,6 +23,7 @@ import type {
   PageLayout,
   PageNavigation,
   PendingChanges,
+  SelfChangingContainer,
   ShownElement,
   ValidityReport,
 } from '@/ipc/protocol/domTypes.js';
@@ -302,6 +303,17 @@ export function stillChangingNote(
  */
 export function shownElementText(element: ShownElement): string {
   return `${element.element} "${element.text}"`;
+}
+
+/**
+ * A container the page was already changing by itself, for an action's
+ * `Also changing:` rows.
+ *
+ * @param container - Container and how many elements were added to it
+ * @returns e.g. `div#log, 4 added (it was already changing before the action)`
+ */
+export function selfChangingText(container: SelfChangingContainer): string {
+  return `${container.element}, ${container.added} added (it was already changing before the action)`;
 }
 
 /**
