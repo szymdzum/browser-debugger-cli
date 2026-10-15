@@ -12,7 +12,6 @@ import {
   withLoadingHint,
 } from '@/errors/messages.js';
 import type { PendingRequestInfo } from '@/ipc/protocol/commands.js';
-import { pendingRequestsText } from '@/ui/messages/commands.js';
 
 void describe('loading hints', () => {
   void it('suggests dom wait for the selector, quoted for the shell', () => {
@@ -131,7 +130,10 @@ void describe('waitTimeoutError on a page still loading with pending requests (#
       /^The page is still loading; waiting on: GET localhost:8765\/a\.js \(pending 2s\)/
     );
     assert.match(err.suggestion, /and 2 more/);
-    assert.ok(err.suggestion.includes(pendingRequestsText(loading.pending, 5)), err.suggestion);
+    assert.equal(
+      err.suggestion,
+      'The page is still loading; waiting on: GET localhost:8765/a.js (pending 2s), GET localhost:8765/b.js (pending 2s), GET localhost:8765/c.js (pending 2s) and 2 more (all of them with bdg peek); allow more time with --timeout <ms>'
+    );
   });
 
   void it('keeps the old text with no pending requests', () => {

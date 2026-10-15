@@ -141,7 +141,7 @@ export const DOM_ACTION_BEHAVIORS: BehaviorTable = {
     default: 'Gives up after 10000 ms',
     whenEnabled: 'Gives up after the given milliseconds (1 to 600000)',
     automaticBehavior:
-      'The page is watched (DOM mutations plus a 100 ms poll for style changes) and answers as soon as the matches change; a navigation during the wait continues it on the new document. A timeout exits 102 (CDP_TIMEOUT) with what the page showed last, e.g. "2 matches, none visible" or "document.readyState: loading", and a next step (dom query for no matches, dom layout for hidden ones, the requests a page still loading waits on are named, as in the start warning, and --json adds pending and pendingCount)',
+      'The page is watched (DOM mutations plus a 100 ms poll for style changes) and answers as soon as the matches change; a navigation during the wait continues it on the new document. A timeout exits 102 (CDP_TIMEOUT) with what the page showed last, e.g. "2 matches, none visible" or "document.readyState: loading", and a next step (dom query for no matches, dom layout for hidden ones, the requests a page still loading waits on are named, as in the start warning, and --json adds the top-level fields pending and pendingCount to the error)',
   },
   'wait:--visible': {
     default: 'Counts every match, hidden ones included',

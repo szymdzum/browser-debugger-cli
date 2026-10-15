@@ -5,7 +5,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { readPageLoadingState, summarizePendingRequests } from '@/runtime/page/loadingState.js';
+import {
+  loadingStateOf,
+  readPageLoadingState,
+  summarizePendingRequests,
+} from '@/runtime/page/loadingState.js';
 import type { PendingRequest } from '@/telemetry/network.js';
 import type { CDPSender } from '@/telemetry/objectExpander.js';
 
@@ -96,5 +100,27 @@ void describe('readPageLoadingState', () => {
 
   void it('reports nothing when the page does not answer', async () => {
     assert.equal(await readPageLoadingState(fakeCdp(undefined), []), undefined);
+  });
+});
+
+void describe('loadingStateOf (#775)', () => {
+  void it('masks credentials and token values in the named URLs, like the start warning', () => {
+    const state = loadingStateOf('loading', [
+      pending('https://user:hunter2@cdn.example.com/app.js?token=abc123XYZ&v=1', 1, 'Script'),
+    ]);
+    const shown = JSON.stringify(state);
+    assert.ok(!shown.includes('hunter2'), shown);
+    assert.ok(!shown.includes('abc123XYZ'), shown);
+    assert.ok(!shown.includes('user:'), shown);
+    assert.match(state.pending[0]?.url ?? '', /^https:\/\/cdn\.example\.com\/app\.js/);
+  });
+
+  void it('counts every running request but names three', () => {
+    const state = loadingStateOf(
+      'interactive',
+      [1, 2, 3, 4, 5].map((n) => pending(`https://a.test/${n}.js`, n, 'Script'))
+    );
+    assert.equal(state.pending.length, 3);
+    assert.equal(state.pendingCount, 5);
   });
 });
