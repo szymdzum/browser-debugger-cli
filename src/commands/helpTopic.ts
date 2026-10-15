@@ -10,6 +10,7 @@ import {
   didYouMeanSuggestion,
   missingSubcommandMessage,
   quotedArgumentsSuggestion,
+  quoteScriptSuggestion,
   unknownCommandError,
   unknownHelpTopicError,
   usageHelpSuggestion,
@@ -159,6 +160,8 @@ function excessArgumentsSuggestion(command: Command): string | undefined {
   const taken = command.registeredArguments;
   const last = taken.at(-1);
   if (!last || last.variadic || !isSplitArgument(command, last.name())) return undefined;
+  if (last.name() === 'script')
+    return quoteScriptSuggestion(commandPath(command), command.args.length);
   return quotedArgumentsSuggestion(commandPath(command), command.args, taken.length);
 }
 

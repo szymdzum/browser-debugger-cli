@@ -773,6 +773,18 @@ export function quotedArgumentsSuggestion(path: string, args: string[], taken: n
 }
 
 /**
+ * Suggestion for a script given as several words: the shell removed the
+ * quotes and spacing inside it, so the script cannot be rebuilt from them.
+ *
+ * @param path - Command path, e.g. "bdg dom eval"
+ * @param words - Number of words the shell passed
+ * @returns Instruction to quote the whole script, then the help pointer
+ */
+export function quoteScriptSuggestion(path: string, words: number): string {
+  return `Quote the whole script as one argument: ${path} '<script>' (the shell split it into ${words} words and removed any quotes inside it)\n${usageHelpSuggestion(path)}`;
+}
+
+/**
  * A command group was run without one of its subcommands.
  *
  * @param group - Group name, e.g. "page"

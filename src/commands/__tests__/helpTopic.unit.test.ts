@@ -292,3 +292,24 @@ void describe('usageErrorDetails for too many arguments', () => {
     }
   });
 });
+
+void describe('usageErrorDetails for a script split by the shell', () => {
+  void it('asks to quote the script instead of rebuilding it', () => {
+    const root = new Command('bdg').exitOverride().configureOutput({ writeErr: () => undefined });
+    const evalCommand = root
+      .command('eval')
+      .argument('<script>')
+      .action(() => undefined);
+    try {
+      root.parse(['eval', 'document.title', '+', 'x'], { from: 'user' });
+    } catch (error) {
+      assert.ok(error instanceof CommanderError);
+      assert.equal(
+        usageErrorDetails(error, evalCommand).suggestion,
+        'Quote the whole script as one argument: bdg eval \'<script>\' (the shell split it into 3 words and removed any quotes inside it)\nRun "bdg eval --help" for usage'
+      );
+      return;
+    }
+    assert.fail('expected too many arguments');
+  });
+});

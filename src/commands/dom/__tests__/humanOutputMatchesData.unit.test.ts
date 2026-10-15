@@ -167,13 +167,14 @@ void describe('dom a11y describe (#645)', () => {
 
   void it('prints one id line when both ids are the same', () => {
     const output = describeNode({ nodeId: '7', backendDOMNodeId: 7 });
-    assert.equal(output.match(/Node ID/g)?.length, 1, output);
+    assert.equal(output.match(/ID:/g)?.length, 1, output);
+    assert.match(output, /^A11y\+DOM ID: +7$/m);
   });
 
   void it('keeps both id lines when the ids differ', () => {
     const output = describeNode({ nodeId: '7', backendDOMNodeId: 9 });
-    assert.match(output, /^Node ID: +7$/m);
-    assert.match(output, /^DOM Node ID: +9$/m);
+    assert.match(output, /^A11y node ID: +7$/m);
+    assert.match(output, /^Backend ID: +9$/m);
   });
 });
 
