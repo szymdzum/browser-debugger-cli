@@ -185,6 +185,23 @@ void describe('Self-updating containers', () => {
     });
   });
 
+  void describe('handlers that fire events of their own', () => {
+    before(() => open(`${fixture.url}self-updating-nested`));
+
+    for (const [id, texts] of [
+      ['focus-first', ['Me hello']],
+      ['focus-between', ['Me first', 'Me second']],
+      ['click-other', ['Me before', 'Other said', 'Me after']],
+    ] as const) {
+      void it(`lists what #${id} added, not the bot's messages`, async () => {
+        await act(['click', '#noop']);
+        const data = await act(['click', `#${id}`]);
+        assert.deepEqual(shownTexts(data), texts, JSON.stringify(data));
+        assert.equal(data.changingOnItsOwn?.[0]?.element, 'ul#msgs', JSON.stringify(data));
+      });
+    }
+  });
+
   void describe('a chat log a bot writes to', () => {
     before(() => open(`${fixture.url}self-updating-chat`));
 

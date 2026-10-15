@@ -15,6 +15,12 @@
  *   `p "Raf message N"` / `p "Timer message N"` to `#tk` from a
  *   `requestAnimationFrame` / `setTimeout(0)` callback, `#raf-quiet` and
  *   `#timer-quiet` the same to `div#quiet`, which nothing else changes.
+ * - `/self-updating-nested`: a bot appends `li "Bot says N"` to `ul#msgs`
+ *   (below the buttons) every 60 ms; `#focus-first` focuses `#in1` and then
+ *   appends `li "Me hello"`, `#focus-between` appends `li "Me first"`,
+ *   focuses `#in2` and appends `li "Me second"`, `#click-other` appends
+ *   `li "Me before"`, clicks `#other` (which appends `li "Other said"`) and
+ *   appends `li "Me after"`; `#noop` does nothing.
  * - `/self-updating-chat`: a bot appends `li "Bot says N"` to `ul#messages`
  *   (below the buttons, so they do not move) every 60 ms; `#send` appends `li "Me: hello"` to it in its click handler;
  *   `#noop` does nothing.
@@ -39,6 +45,31 @@ const ASYNC_HTML = `<!doctype html><title>self-updating async</title>
   document.getElementById('timer-busy').onclick = () => setTimeout(() => append('tk', 'Timer message'), 0);
   document.getElementById('raf-quiet').onclick = () => requestAnimationFrame(() => append('quiet', 'Raf message'));
   document.getElementById('timer-quiet').onclick = () => setTimeout(() => append('quiet', 'Timer message'), 0);
+</script>`;
+
+/** Click handlers that fire events of their own (focus, another click) between their additions */
+const NESTED_HTML = `<!doctype html><title>self-updating nested</title>
+<section><p><input id="in1" aria-label="One"> <input id="in2" aria-label="Two"> <button id="focus-first">Focus first</button> <button id="focus-between">Focus between</button> <button id="click-other">Click other</button> <button id="other">Other</button> <button id="noop">Noop</button></p><ul id="msgs"></ul></section>
+<script>
+  const msgs = document.getElementById('msgs');
+  const add = (text) => msgs.insertAdjacentHTML('beforeend', '<li>' + text + '</li>');
+  let said = 0;
+  setInterval(() => add('Bot says ' + said++), 60);
+  document.getElementById('focus-first').onclick = () => {
+    document.getElementById('in1').focus();
+    add('Me hello');
+  };
+  document.getElementById('focus-between').onclick = () => {
+    add('Me first');
+    document.getElementById('in2').focus();
+    add('Me second');
+  };
+  document.getElementById('other').onclick = () => add('Other said');
+  document.getElementById('click-other').onclick = () => {
+    add('Me before');
+    document.getElementById('other').click();
+    add('Me after');
+  };
 </script>`;
 
 /** A container a timer chain and a click both append to, and a list only clicks change */
@@ -103,4 +134,5 @@ export const ROUTES: FixtureRoutes = {
   '/self-updating-ticker': TICKER_HTML,
   '/self-updating-chat': CHAT_HTML,
   '/self-updating-async': ASYNC_HTML,
+  '/self-updating-nested': NESTED_HTML,
 };

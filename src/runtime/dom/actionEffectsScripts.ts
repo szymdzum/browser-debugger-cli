@@ -571,10 +571,12 @@ const OUTCOMES_JS = `(state, focus) => {
  * added element, marks as direct the elements added while one of the
  * action's events is dispatched: the observer's records are taken
  * synchronously when an event reaches `window` in the capture phase (what
- * came before it is not the event's) and after its bubble listener on
- * `window`, so its handlers and their microtasks count, whatever the runner's
- * speed and however the browser batches the events (a posted message
- * clears the flag when the page stops the event's propagation), and notes the parents that got
+ * came before an outermost event is not the event's) and after its bubble
+ * listener on `window`, so its handlers and their microtasks count, whatever
+ * the runner's speed and however the browser batches the events. Events a
+ * handler fires itself (`focus()` firing `focusin`, `other.click()`) nest:
+ * the window closes when the outermost event ends (a depth count), and a
+ * posted message closes it when the page stops an event's propagation, and notes the parents that got
  * elements before the first event ({@link NOTE_PARENT_JS}). Once stopped, the
  * watch leaves an idle observer in `window.__bdgIdle` that keeps noting such
  * parents (child lists only) for up to {@link MAX_WATCH_MS}, until the next
@@ -592,13 +594,16 @@ export const EFFECTS_START_SCRIPT = `((watchIdle) => {
     keyTarget: null, loaders: new Set((${LOADERS_JS})()),
     pressTarget: null, submits: [], forms: [], control: null, keyClick: null, enterField: null,
     nodes: 0, expandable: null, inputTarget: null,
-    firstEventAt: null, dispatching: false, direct: new WeakSet(), parentOf: new WeakMap(),
+    firstEventAt: null, dispatching: false, depth: 0, direct: new WeakSet(), parentOf: new WeakMap(),
     own: window.__bdgIdle ? window.__bdgIdle.take() : new Map()
   };
   const noteParent = ${NOTE_PARENT_JS};
   const roots = [];
   const dispatched = new MessageChannel();
-  dispatched.port1.onmessage = () => { state.dispatching = false; };
+  dispatched.port1.onmessage = () => {
+    state.depth = 0;
+    state.dispatching = false;
+  };
   const listen = EventTarget.prototype.addEventListener;
   const unlisten = EventTarget.prototype.removeEventListener;
   const controlLabel = ${CONTROL_LABEL_JS};
@@ -681,11 +686,13 @@ export const EFFECTS_START_SCRIPT = `((watchIdle) => {
   const pressTypes = ['pointerdown', 'mousedown', 'click', 'keydown', 'submit'];
   const endDispatch = () => {
     count(observer.takeRecords());
-    state.dispatching = false;
+    state.depth = Math.max(0, state.depth - 1);
+    state.dispatching = state.depth > 0;
   };
   const record = (event) => {
     count(observer.takeRecords());
     if (state.firstEventAt === null) state.firstEventAt = performance.now();
+    state.depth++;
     state.dispatching = true;
     dispatched.port2.postMessage(null);
     if (event.type === 'copy' || event.type === 'cut') state.copied = true;
