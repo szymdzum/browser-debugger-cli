@@ -36,6 +36,7 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# ubuntu-24.04 is pinned: ubuntu-latest moves to Ubuntu 26 on 2026-10-19 (#779).
 jobs:
   # Whether a PR changes anything besides docs. Pushes to main and nightly runs
   # always count as code changes. Every job below depends on this (directly or
@@ -44,7 +45,7 @@ jobs:
   # macOS smoke runs on it too (#529).
   changes:
     name: Detect changes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       code: ${{ github.event_name != 'pull_request' || steps.filter.outputs.code == 'true' }}
       timing: ${{ steps.timing.outputs.timing == 'true' }}
@@ -94,7 +95,7 @@ jobs:
   # Single job to install deps and build - share artifacts with other jobs
   build:
     name: Build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: changes
     if: needs.changes.outputs.code == 'true'
 
@@ -155,7 +156,7 @@ jobs:
 
   quality:
     name: Code Quality
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: build
 
     steps:
@@ -189,7 +190,7 @@ jobs:
 
   test:
     name: Contract Tests (Node ${{ matrix.node }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: build
     strategy:
       fail-fast: false
@@ -225,7 +226,7 @@ jobs:
   # the smoke tests, but not on dispatches.
   smoke:
     name: Smoke Tests (Chrome) (Node ${{ matrix.node }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: build
     # A full run takes about 10 min. Dispatches get 15 min more per repeat
     # (expressions have no arithmetic, hence the table); other repeat values
@@ -407,7 +408,7 @@ jobs:
 
   security:
     name: Security Audit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: build
 
     steps:
@@ -432,7 +433,7 @@ jobs:
   # not block unrelated merges. It still runs and reports.
   ci-ok:
     name: CI OK
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [changes, build, quality, test, smoke]
     if: always()
 
