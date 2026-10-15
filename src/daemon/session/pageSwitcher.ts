@@ -23,9 +23,9 @@ import type {
   PageTabsData,
   TabInfo,
 } from '@/ipc/protocol/tabTypes.js';
+import { IDLE_STOP_SCRIPT } from '@/runtime/dom/actionEffectsScripts.js';
 import type { PageIssueLog } from '@/telemetry/issues.js';
 import type { CDPTarget, CleanupFunction } from '@/types.js';
-import { IDLE_STOP_SCRIPT } from '@/runtime/dom/actionEffectsScripts.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { displayUrl } from '@/utils/displayUrl.js';
 import { getErrorMessage } from '@/utils/errors.js';

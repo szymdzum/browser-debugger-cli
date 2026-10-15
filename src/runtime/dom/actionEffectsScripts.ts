@@ -569,9 +569,12 @@ const OUTCOMES_JS = `(state, focus) => {
  * with nobody reading it) leaves nothing behind. For telling what the page
  * adds by itself ({@link SHOWN_ELEMENTS_JS}), it keeps the parent of each
  * added element, marks as direct the elements added while one of the
- * action's events is dispatched (its handlers and their microtasks: the
- * flag is cleared in a microtask after the event's last listener on
- * `window`, else by a posted message), and notes the parents that got
+ * action's events is dispatched: the observer's records are taken
+ * synchronously when an event reaches `window` in the capture phase (what
+ * came before it is not the event's) and after its bubble listener on
+ * `window`, so its handlers and their microtasks count, whatever the runner's
+ * speed and however the browser batches the events (a posted message
+ * clears the flag when the page stops the event's propagation), and notes the parents that got
  * elements before the first event ({@link NOTE_PARENT_JS}). Once stopped, the
  * watch leaves an idle observer in `window.__bdgIdle` that keeps noting such
  * parents (child lists only) for up to {@link MAX_WATCH_MS}, until the next
@@ -676,8 +679,12 @@ export const EFFECTS_START_SCRIPT = `((watchIdle) => {
   Element.prototype.attachShadow = watchedAttach;
   const types = ['pointerdown', 'mousedown', 'click', 'keydown', 'focusin', 'submit', 'mouseover', 'input', 'change', 'copy', 'cut'];
   const pressTypes = ['pointerdown', 'mousedown', 'click', 'keydown', 'submit'];
-  const endDispatch = () => queueMicrotask(() => { state.dispatching = false; });
+  const endDispatch = () => {
+    count(observer.takeRecords());
+    state.dispatching = false;
+  };
   const record = (event) => {
+    count(observer.takeRecords());
     if (state.firstEventAt === null) state.firstEventAt = performance.now();
     state.dispatching = true;
     dispatched.port2.postMessage(null);
