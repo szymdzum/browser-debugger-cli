@@ -4,7 +4,7 @@ Render a brief with `node .claude/skills/ship/scripts/ship.mjs brief <role> N=<n
 
 | Role | Agent | Model | Runs | Cap (tool calls) |
 |---|---|---|---|---|
-| implementer | `general-purpose` | `sonnet`; `opus` for tier 3 | background | 80 |
+| implementer | `general-purpose` | `sonnet`; `opus` for tier 3 | background | 80, plus 30 per fix round |
 | reviewer | `general-purpose` | `sonnet` | foreground | 25 (tier 1–2), 40 (tier 3) |
 | tester | `general-purpose` | `sonnet` | foreground | 40; 20 for a fix with no new output or flag |
 | verifier | `general-purpose` | `sonnet` | foreground | 60 |
@@ -62,10 +62,10 @@ Implement issue #<N> in bdg (github.com/szymdzum/browser-debugger-cli). Read the
 - Run them on that commit: they must fail **on an assertion about the issue** (or the CLI's real output), not on a build or import error.
 - Then fix vertically: one test, then the code that passes it. Never weaken a red assertion in a fix commit; if one was wrong, fix it in a commit of its own and say why in the report.
 - A test that passed on its first run is a regression test: say what it protects against.
-- Deterministic only: wait for an observable event (a log line, a request, a DOM change, a file), never a fixed sleep. List timing-sensitive smoke files in the report (the orchestrator dispatches the repeat run).
+- Deterministic only: wait for an observable event (a log line, a request, a DOM change, a file), never a fixed sleep. A timing-dependent test asserts exactly the acceptance criterion, no tighter (S13 #777: a CPU-throttled test stricter than the criterion cost two fix rounds). List timing-sensitive smoke files in the report (the orchestrator dispatches the repeat run on your first draft).
 - **Simplify.** Once the tests are green, review your diff against `<BASE>` by hand for reuse, simplification and efficiency; fixes go in a separate `refactor:` commit, then re-run the affected tests. Don't run `/simplify`: it starts background agents. Over 150 product lines the orchestrator runs it in your worktree after the draft PR, leaves its edits uncommitted and asks you to run the affected tests and commit them as `refactor:`.
 - No red commit for docs-only changes, refactors covered by existing tests, or CI/tooling; say which applies.
-- <detection heuristics only, delete otherwise: before the PR, build a false-positive matrix on scratch pages and report the counts: an element that unmounts on press, a label that changes on press, a sibling that slides under the mouse, a page-wide ticker or aria-live region updating on its own, an unrelated toast during the action window; each must stay silent unless the issue says otherwise>
+- <detection heuristics only, delete otherwise: before the PR, build a false-positive matrix on scratch pages and report the counts: an element that unmounts on press, a label that changes on press, a sibling that slides under the mouse, a page-wide ticker or aria-live region updating on its own, an unrelated toast during the action window, and the user's own result arriving in several chunks (Load more, streamed search results, a slow response); each must stay silent, or for the chunked result reported, unless the issue says otherwise>
 - <redaction or parsing changes only, delete otherwise: the case matrix, inputs × output surfaces (human, --json, file, log); every cell is a row of the red commit's table test; report the counts>
 
 **Verify.** Every shell call starts with:
@@ -81,7 +81,7 @@ Run `npm run check`, `npm test`, `npm run build` and the affected smoke files (`
 
 {{forbidden}}
 
-**Budget.** At most 80 tool calls; at the cap, stop and report what is left.
+**Budget.** At most 80 tool calls up to the draft PR; each fix round you are resumed for has its own 30. At a cap, stop and report what is left.
 
 **Report.** What changed; decisions with reasons; the red commit (SHA and the failure line); before/after in two lines; test result lines; timing-sensitive smoke files; adjacent fixes; findings outside the scope with command and output. {{report-tail}} The **last line** is exactly `PR <url> HEAD <sha>`; a report without it counts as unfinished.
 <!-- /brief -->

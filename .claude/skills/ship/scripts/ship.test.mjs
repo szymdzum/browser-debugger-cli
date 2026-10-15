@@ -7,12 +7,14 @@
 
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
 import {
   appendSnapshotEntries,
+  socketAccepts,
   callTimeout,
   closedIssues,
   EXIT,
@@ -20,6 +22,7 @@ import {
   isProductFile,
   insertLogRow,
   isTransientGhError,
+  jobsLostWithoutResult,
   listEntries,
   mainGateVerdict,
   MIN_CALL_BUDGET_MS,
@@ -28,6 +31,7 @@ import {
   resolveSha,
   statusLine,
   timeoutMessage,
+  unfinishedRepeat,
   judgeConclusions,
   overlappingFiles,
   parseArgs,
@@ -825,4 +829,50 @@ test('listEntries skips .DS_Store, so Finder never fails gate 8', () => {
     [['report.pdf', 3]]
   );
   assert.deepEqual(listEntries(join(dir, 'missing')), []);
+});
+
+test('parseSnapshotArgs takes --accept-live alone, and nothing after it', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ship-bdg-'));
+  assert.deepEqual(parseSnapshotArgs(['--accept-live'], { bdg: dir }), { acceptLive: true });
+  assert.ok('error' in parseSnapshotArgs(['--accept-live', 'x'], { bdg: dir }));
+  assert.ok('error' in parseSnapshotArgs(['--accept', '--accept-live'], { bdg: dir }));
+});
+
+test('unfinishedRepeat finds a queued or running dispatch, not finished ones', () => {
+  assert.equal(unfinishedRepeat([]), null);
+  assert.equal(unfinishedRepeat([{ databaseId: 1, status: 'completed' }]), null);
+  assert.deepEqual(
+    unfinishedRepeat([
+      { databaseId: 1, status: 'completed' },
+      { databaseId: 2, status: 'queued' },
+      { databaseId: 3, status: 'in_progress' },
+    ]),
+    { databaseId: 2, status: 'queued' }
+  );
+});
+
+test('jobsLostWithoutResult names failed jobs without a failed step, not test failures or CI OK', () => {
+  const jobs = [
+    { name: 'Smoke (Node 22)', conclusion: 'failure', steps: [{ conclusion: 'success' }, { conclusion: 'failure' }] },
+    { name: 'Smoke (macOS)', conclusion: 'failure', steps: [{ conclusion: 'success' }, { conclusion: 'cancelled' }] },
+    { name: 'Build', conclusion: 'failure', steps: [] },
+    { name: 'Lint', conclusion: 'success', steps: [{ conclusion: 'success' }] },
+    { name: 'CI OK', conclusion: 'failure', steps: [{ conclusion: 'success' }] },
+  ];
+  assert.deepEqual(jobsLostWithoutResult(jobs), ['Smoke (macOS)', 'Build']);
+});
+
+test('socketAccepts is true for a listening socket, false for a stale or missing one', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ship-sock-'));
+  const live = join(dir, 'daemon.sock');
+  const server = createServer((c) => c.end());
+  await new Promise((r) => server.listen(live, r));
+  try {
+    assert.equal(await socketAccepts(live), true);
+  } finally {
+    await new Promise((r) => server.close(r));
+  }
+  writeFileSync(join(dir, 'stale.sock'), '');
+  assert.equal(await socketAccepts(join(dir, 'stale.sock')), false);
+  assert.equal(await socketAccepts(join(dir, 'missing.sock')), false);
 });
