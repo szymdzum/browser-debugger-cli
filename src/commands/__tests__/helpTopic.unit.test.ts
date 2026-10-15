@@ -203,3 +203,71 @@ void describe('usageErrorDetails', () => {
     );
   });
 });
+
+/**
+ * The details of the usage error Commander raises for a command line.
+ *
+ * @param args - Arguments after `bdg`
+ * @returns Message and suggestion
+ */
+function excessArgumentsDetails(args: string[]): { message: string; suggestion: string } {
+  const root = new Command('bdg').exitOverride().configureOutput({ writeErr: () => undefined });
+  const dom = root.command('dom');
+  dom
+    .command('query')
+    .argument('<selector>')
+    .action(() => undefined);
+  dom
+    .command('fill')
+    .argument('<selectorOrIndex>')
+    .argument('<value>')
+    .action(() => undefined);
+  dom
+    .command('pressKey')
+    .argument('<selectorOrIndex>')
+    .argument('<key>')
+    .action(() => undefined);
+  dom
+    .command('a11y')
+    .command('query')
+    .argument('<pattern>')
+    .action(() => undefined);
+  const [group, ...rest] = args;
+  const command = root.commands.find((c) => c.name() === group) as Command;
+  const leaf = rest.reduce<Command>(
+    (parent, word) => parent.commands.find((c) => c.name() === word) ?? parent,
+    command
+  );
+  try {
+    root.parse(args, { from: 'user' });
+  } catch (error) {
+    assert.ok(error instanceof CommanderError);
+    return usageErrorDetails(error, leaf);
+  }
+  assert.fail('expected too many arguments');
+}
+
+void describe('usageErrorDetails for too many arguments', () => {
+  void it('quotes the surplus words as one argument in the suggested command', () => {
+    for (const [args, command, path] of [
+      [
+        ['dom', 'a11y', 'query', 'role=button', 'name=Pay'],
+        'bdg dom a11y query "role=button name=Pay"',
+        'bdg dom a11y query',
+      ],
+      [['dom', 'query', 'div', 'p'], 'bdg dom query "div p"', 'bdg dom query'],
+      [['dom', 'fill', '#pay', 'a', 'b'], 'bdg dom fill "#pay" "a b"', 'bdg dom fill'],
+      [['dom', 'query', 'a[title="x"]', 'b'], `bdg dom query 'a[title="x"] b'`, 'bdg dom query'],
+    ] as const) {
+      assert.equal(
+        excessArgumentsDetails([...args]).suggestion,
+        `Did you mean: ${command}?\nRun "${path} --help" for usage`
+      );
+    }
+  });
+
+  void it('does not join the surplus words of an argument that is not free text', () => {
+    const { suggestion } = excessArgumentsDetails(['dom', 'pressKey', '#a', 'Enter', 'x']);
+    assert.equal(suggestion, 'Run "bdg dom pressKey --help" for usage');
+  });
+});
