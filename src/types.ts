@@ -611,6 +611,8 @@ export interface DomQueryResult {
     classes?: string[];
     /** Text content preview (display only, never used for targeting) */
     preview?: string;
+    /** Accessible name of an element with no text (`aria-label`, `aria-labelledby`, SVG `<title>`) */
+    accessibleName?: string;
     /** Enclosing iframe(s) and shadow root, e.g. "iframe#pay > shadow root of <x-card>" */
     context?: string;
     /** Where the element is relative to the viewport when queried (first 100 matches) */

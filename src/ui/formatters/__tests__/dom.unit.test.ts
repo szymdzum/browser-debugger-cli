@@ -245,10 +245,10 @@ void describe('formatDomQuery key attributes', () => {
     );
   });
 
-  void it('shows links, form targets and iframe hosts without their scheme, keeping // ', () => {
+  void it('shows links and form targets with their scheme and iframes by host', () => {
     assert.match(
       line({ index: 0, nodeId: 1, tag: 'a', attributes: { href: 'https://saucelabs.com/' } }),
-      /<a href="\/\/saucelabs\.com">/
+      /<a href="https:\/\/saucelabs\.com">/
     );
     assert.match(
       line({ index: 0, nodeId: 1, tag: 'a', attributes: { href: '#' } }),

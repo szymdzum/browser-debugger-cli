@@ -177,6 +177,7 @@ function header(sources: InspectSources, request: InspectRequest): InspectResult
     count: request.count,
     index: request.index,
     element: elementLabel(raw),
+    ...(raw.id && { id: raw.id }),
     ...(content && { content }),
     ...(raw.placeholder && { placeholder: rowText(raw.placeholder) }),
     ...(raw.context && { context: raw.context }),

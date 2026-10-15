@@ -15,6 +15,7 @@
  * ```
  */
 
+import { shortId } from '@/ui/formatters/keyAttributes.js';
 import type {
   InspectContrast,
   InspectBox,
@@ -83,7 +84,7 @@ export function inspectHeader(data: InspectOutput): string {
   const display = data.layout?.display ?? data.all?.['display'];
   const kind = containerKind(display);
   return [
-    data.element,
+    headerLabel(data),
     data.content !== undefined && `"${data.content}"`,
     data.placeholder !== undefined && `placeholder "${data.placeholder}"`,
     data.rect &&
@@ -96,6 +97,19 @@ export function inspectHeader(data: InspectOutput): string {
   ]
     .filter(Boolean)
     .join(' ');
+}
+
+/**
+ * The element's label with its id escaped and cut to one line
+ * ({@link shortId}); `element` keeps the id as it is for `--json`.
+ *
+ * @param data - Inspect result
+ * @returns `tag#id.c1.c2(+N)`
+ */
+function headerLabel({ element, id }: InspectOutput): string {
+  const at = element.indexOf('#');
+  if (!id || at < 0 || !element.startsWith(id, at + 1)) return element;
+  return `${element.slice(0, at + 1)}${shortId(id)}${element.slice(at + 1 + id.length)}`;
 }
 
 /**

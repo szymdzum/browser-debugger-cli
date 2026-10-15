@@ -2,7 +2,12 @@
  * `bdg dom query` — find elements by CSS selector and populate the query cache.
  */
 
-import { noMatchesError, pageDocumentId, queryDOMElements } from '@/commands/dom/helpers/index.js';
+import {
+  noMatchesError,
+  pageDocumentId,
+  pageOrigin,
+  queryDOMElements,
+} from '@/commands/dom/helpers/index.js';
 import { QUERY_CACHE_LIMIT, VIEWPORT_HINT_LIMIT } from '@/commands/dom/helpers/query.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import type { DomQueryCommandOptions } from '@/commands/shared/optionTypes.js';
@@ -31,6 +36,7 @@ export async function handleDomQuery(
   options: DomQueryCommandOptions
 ): Promise<void> {
   const limit = options.limit ?? (options.json ? QUERY_JSON_LIST_LIMIT : QUERY_LIST_LIMIT);
+  let origin: string | undefined;
   await runCommand(
     async () => {
       const document = await pageDocumentId();
@@ -47,10 +53,11 @@ export async function handleDomQuery(
         };
       }
       await cache.set(result, document);
+      origin = await pageOrigin();
       return { success: true, data: listedMatches(result, limit) };
     },
     options,
-    formatDomQuery
+    (data) => formatDomQuery(data, { origin })
   );
 }
 

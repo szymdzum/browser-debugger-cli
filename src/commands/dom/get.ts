@@ -12,6 +12,7 @@ import {
   getDomContext,
   selectMatch,
   type DomGetOptions as DomGetHelperOptions,
+  pageOrigin,
 } from '@/commands/dom/helpers/index.js';
 import {
   formatSemanticNodeWithContext,
@@ -158,9 +159,11 @@ async function handleSemanticGet(
   selectorOrIndex: string,
   options: DomGetCommandOptions
 ): Promise<void> {
+  let origin: string | undefined;
   await runCommand(
     async () => {
       const { nodeId, indexSource } = await getTarget(selectorOrIndex, matchIndex(options));
+      origin = await pageOrigin();
       const data: WithIndexSource<SemanticNodeWithContext> = {
         ...(await semanticElement(nodeId, options.full === true)),
         ...(indexSource && { indexSource }),
@@ -168,7 +171,7 @@ async function handleSemanticGet(
       return { success: true, data };
     },
     options,
-    (data) => withIndexSourceLine(formatSemanticNodeWithContext(data), data.indexSource)
+    (data) => withIndexSourceLine(formatSemanticNodeWithContext(data, { origin }), data.indexSource)
   );
 }
 

@@ -397,11 +397,19 @@ const ELEMENT_DETAILS_FUNCTION = `function (count) {
   const textOf = ${ELEMENT_TEXT_JS};
   const geometryOf = ${ELEMENT_GEOMETRY_JS};
   const stateOf = ${ELEMENT_STATE_JS};
+  const clean = (text) => (text || '').replace(/\\s+/g, ' ').trim();
+  const nameOf = (el) => {
+    const ids = (el.getAttribute('aria-labelledby') || '').split(/\\s+/).filter(Boolean);
+    const root = el.getRootNode();
+    const labelled = ids.map((id) => root.getElementById(id)).filter(Boolean).map((node) => node.textContent).join(' ');
+    const title = el.querySelector('svg title');
+    return clean(labelled) || clean(el.getAttribute('aria-label')) || clean(title && title.textContent);
+  };
   const read = (el, index) => {
     try {
       const attributes = [];
       for (const attribute of Array.from(el.attributes || [])) attributes.push(attribute.name, attribute.value);
-      return { tag: el.nodeName, attributes: attributes, context: contextOf(el), text: textOf(el), state: stateOf(el), geometry: index < ${VIEWPORT_HINT_LIMIT} ? geometryOf(el) : null };
+      return { tag: el.nodeName, attributes: attributes, context: contextOf(el), text: textOf(el), name: textOf(el) ? '' : nameOf(el), state: stateOf(el), geometry: index < ${VIEWPORT_HINT_LIMIT} ? geometryOf(el) : null };
     } catch (e) {
       return {};
     }
@@ -421,6 +429,8 @@ interface ElementDetails {
   attributes: string[];
   context: string;
   text: string;
+  /** Accessible name from attributes or an SVG title, read for elements with no text */
+  name: string;
   state: ElementState;
   inViewport?: ViewportPosition;
   clippedBy?: string;
@@ -432,6 +442,7 @@ interface PageElementDetails {
   attributes?: string[];
   context?: string;
   text?: string;
+  name?: string;
   state?: ElementState;
   geometry?: ElementGeometry | null;
 }
@@ -474,6 +485,7 @@ async function elementsWithDetails(
         attributes: details?.attributes ?? [],
         context: details?.context ?? '',
         text: details?.text ?? '',
+        name: details?.name ?? '',
         state: details?.state ?? {},
         ...viewportHint(details?.geometry, viewport),
       },
@@ -660,7 +672,7 @@ function queryNode(
   element: ElementDetails,
   index: number
 ): DomQueryResult['nodes'][number] & { classes: string[] } {
-  const { backendNodeId, context, text, state, inViewport, clippedBy } = element;
+  const { backendNodeId, context, text, name, state, inViewport, clippedBy } = element;
   const attributes = unpackAttributes(element.attributes);
   const classes = elementClasses(attributes);
   const preview = state.sensitive ? '' : textPreview(text);
@@ -674,6 +686,7 @@ function queryNode(
     ...(keys && { attributes: keys }),
     classes,
     ...(preview && { preview }),
+    ...(!preview && !state.sensitive && name && { accessibleName: name }),
     ...(context && { context }),
     ...(inViewport && { inViewport }),
     ...(clippedBy && { clippedBy }),
@@ -1072,6 +1085,28 @@ export async function pageDocumentId(): Promise<string | undefined> {
   } catch (error) {
     if (error instanceof CommandError) throw error;
     log.debug(`Page document not identified: ${getErrorMessage(error)}`);
+    return undefined;
+  }
+}
+
+/**
+ * Origin of the page (`https://example.com`), so human output can show its
+ * own links as paths. Unknown (undefined) when the page cannot be asked or
+ * has an opaque origin; links then keep their scheme and host.
+ *
+ * @returns The origin, or undefined
+ */
+export async function pageOrigin(): Promise<string | undefined> {
+  try {
+    const evaluated = await callBdgScript('Runtime.evaluate', {
+      expression: 'location.origin',
+      returnByValue: true,
+    });
+    const { result } = (evaluated.data?.result ?? {}) as Partial<Protocol.Runtime.EvaluateResponse>;
+    const origin = result?.value;
+    return typeof origin === 'string' && /^https?:\/\//.test(origin) ? origin : undefined;
+  } catch (error) {
+    log.debug(`Page origin not read: ${getErrorMessage(error)}`);
     return undefined;
   }
 }

@@ -39,15 +39,28 @@ function hostOf(src: string): string {
   return `//${parsed.host}${more}`;
 }
 
+/** Scheme and authority of an absolute URL */
+const SCHEME_AND_HOST = /^[a-z][a-z\d+.-]*:\/\/[^/?#]*/i;
+
 /**
- * A link or form target: an absolute web URL as `//host/path`, cut in the
- * middle of the path (`//` keeps it from reading as a relative path).
+ * A link or form target as the page has it: an http(s) URL of the page's own
+ * origin as its path, query and fragment (`/register/`), every other value
+ * as written, a URL of another origin with its scheme. Without a known
+ * origin every URL keeps its scheme. A protocol-relative `//host/y` is not
+ * an http(s) URL, so it is shown as written.
  *
  * @param url - `href` or `action` attribute
+ * @param origin - Origin of the page (`https://example.com`), if known
  * @returns Short form
  */
-function shortUrl(url: string): string {
-  return /^https?:/i.test(url) ? `//${truncateUrl(url, MAX_VALUE_LENGTH - 2)}` : url;
+function shortUrl(url: string, origin: string | undefined): string {
+  const parsed = /^https?:/i.test(url) ? safeParseUrl(url) : null;
+  if (!parsed) return url;
+  if (origin !== undefined && parsed.origin === origin) {
+    return cutMiddle(url.replace(SCHEME_AND_HOST, '') || '/', MAX_VALUE_LENGTH);
+  }
+  const scheme = `${parsed.protocol}//`;
+  return `${scheme}${truncateUrl(url, MAX_VALUE_LENGTH - scheme.length)}`;
 }
 
 /**
@@ -56,13 +69,14 @@ function shortUrl(url: string): string {
  * @param tag - Element tag
  * @param name - Attribute name
  * @param value - Full value
- * @returns Short value on one line
+ * @param origin - Origin of the page, if known
+ * @returns Short value on one line, escaped like {@link shortId}
  */
-function shortValue(tag: string, name: string, value: string): string {
+function shortValue(tag: string, name: string, value: string, origin: string | undefined): string {
   let short = value;
   if (name === 'src') short = tag === 'iframe' ? hostOf(value) : fileName(value);
-  else if (name === 'href' || name === 'action') short = shortUrl(value);
-  return cutMiddle(escapeControlChars(short.replace(/\s+/g, ' ').trim()), MAX_VALUE_LENGTH);
+  else if (name === 'href' || name === 'action') short = shortUrl(value, origin);
+  return shortId(short);
 }
 
 /** Escapes for the characters of an id that would read as something else */
@@ -113,24 +127,27 @@ function takeWithin(pieces: string[], budget: number): string[] {
 
 /**
  * Key attributes as `name="value"` items, values shortened: an image's
- * file name, an iframe's host, links without their scheme, the rest cut in
- * the middle at 40 characters. `checked` is shown as a bare word, and left
+ * file name, an iframe's host, links of the page's own origin as paths and
+ * the others with their scheme, the rest cut in the middle at 40 characters,
+ * all escaped on one line. `checked` is shown as a bare word, and left
  * out when false.
  *
  * @param tag - Element tag
  * @param attributes - Key attributes
  * @param leaveOut - Names not to show (already shown elsewhere)
+ * @param origin - Origin of the page, for links ({@link shortUrl})
  * @returns Items in attribute order, e.g. `['src="…/logo.png"', 'alt="Logo"']`
  */
 export function keyAttributeItems(
   tag: string,
   attributes: KeyAttributes | undefined,
-  leaveOut: ReadonlySet<string> = new Set()
+  leaveOut: ReadonlySet<string> = new Set(),
+  origin?: string
 ): string[] {
   return Object.entries(attributes ?? {}).flatMap(([name, value]) => {
     if (leaveOut.has(name) || value === false) return [];
     if (value === true) return [name];
-    return [`${name}="${shortValue(tag, name, value)}"`];
+    return [`${name}="${shortValue(tag, name, value, origin)}"`];
   });
 }
 

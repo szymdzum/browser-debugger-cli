@@ -99,6 +99,9 @@ export function formatA11yQueryResult(result: A11yQueryResult): string {
   return fmt.build();
 }
 
+/** Shown for a name or description the node does not have */
+const NONE = '(none)';
+
 /**
  * Format single accessibility node with DOM context fallback.
  *
@@ -117,12 +120,8 @@ export function formatA11yNodeWithContext(data: A11yNodeWithContext): string {
   const props: [string, string][] = [];
 
   // A11y properties
-  if (node.name) {
-    props.push(['Name', node.name]);
-  }
-  if (node.description) {
-    props.push(['Description', node.description]);
-  }
+  props.push(['Name', node.name || NONE]);
+  props.push(['Description', node.description || NONE]);
   if (node.value !== undefined) {
     props.push(['Value', node.value]);
   }
@@ -154,7 +153,7 @@ export function formatA11yNodeWithContext(data: A11yNodeWithContext): string {
   }
 
   props.push(['Node ID', node.nodeId]);
-  if (node.backendDOMNodeId) {
+  if (node.backendDOMNodeId && String(node.backendDOMNodeId) !== node.nodeId) {
     props.push(['DOM Node ID', String(node.backendDOMNodeId)]);
   }
 
