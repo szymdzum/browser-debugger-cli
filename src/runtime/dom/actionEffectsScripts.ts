@@ -298,7 +298,6 @@ const IDLE_WATCH_JS = `(own, roots) => {
   const note = (records) => {
     const now = performance.now();
     for (const record of records) noteParent(own, record, now);
-    handle.notes += records.length;
   };
   const idle = new MutationObserver(note);
   for (const root of roots) idle.observe(root, { subtree: true, childList: true });
@@ -310,9 +309,6 @@ const IDLE_WATCH_JS = `(own, roots) => {
   const expiry = setTimeout(end, ${MAX_WATCH_MS});
   const handle = {
     stop: end,
-    stoppedAt: performance.now(),
-    notes: 0,
-    peek: () => Array.from(own.values()).map((time) => Math.round(performance.now() - time)),
     take: () => {
       note(idle.takeRecords());
       end();
@@ -414,11 +410,6 @@ export const SHOWN_ELEMENTS_JS = `(state) => {
     if (!shown(el) || removed.has(contentOf(el))) continue;
     const text = visibleText(el, secretPart) || dialogName(el);
     if (text !== '') found.push({ el: el, text: text, own: ownParent(el) });
-    if (text !== '' && state.diag.firstShown === undefined) {
-      const parent = state.parentOf.get(el);
-      const last = parent ? state.own.get(parent) : undefined;
-      state.diag.firstShown = { hasParent: Boolean(parent), direct: state.direct.has(el), ownAgeAtFirstEvent: last === undefined || state.firstEventAt === null ? null : Math.round(state.firstEventAt - last) };
-    }
   }
   const outermost = found.filter((m) => !found.some((other) => other !== m && within(other.el, m.el)));
   const listed = outermost.filter((m) => !m.own);
@@ -604,15 +595,8 @@ export const EFFECTS_START_SCRIPT = `((watchIdle) => {
     pressTarget: null, submits: [], forms: [], control: null, keyClick: null, enterField: null,
     nodes: 0, expandable: null, inputTarget: null,
     firstEventAt: null, dispatching: false, depth: 0, direct: new WeakSet(), parentOf: new WeakMap(),
-    own: new Map(),
-    diag: { startedAt: performance.now(), idle: null, captureRecords: 0, bubbleRecords: 0, preEventNotes: 0, events: [] }
+    own: window.__bdgIdle ? window.__bdgIdle.take() : new Map()
   };
-  if (window.__bdgIdle) {
-    const handle = window.__bdgIdle;
-    state.diag.idle = { sinceStop: Math.round(performance.now() - handle.stoppedAt), notes: handle.notes, agesBeforeTake: handle.peek().slice(-3) };
-    state.own = handle.take();
-    state.diag.idle.sizeAfterTake = state.own.size;
-  }
   const noteParent = ${NOTE_PARENT_JS};
   const roots = [];
   const dispatched = new MessageChannel();
@@ -653,7 +637,7 @@ export const EFFECTS_START_SCRIPT = `((watchIdle) => {
     for (const node of nodes) if (node.nodeType === 1 && list.length < ${MAX_TRACKED_NODES}) list.push(node);
   };
   const noteAdded = (record, now) => {
-    if (state.targets.size === 0) { noteParent(state.own, record, now); state.diag.preEventNotes++; }
+    if (state.targets.size === 0) noteParent(state.own, record, now);
     let room = ${MAX_TRACKED_NODES} - state.added.length;
     for (const node of record.addedNodes) {
       if (node.nodeType !== 1) continue;
@@ -701,17 +685,12 @@ export const EFFECTS_START_SCRIPT = `((watchIdle) => {
   const types = ['pointerdown', 'mousedown', 'click', 'keydown', 'focusin', 'submit', 'mouseover', 'input', 'change', 'copy', 'cut'];
   const pressTypes = ['pointerdown', 'mousedown', 'click', 'keydown', 'submit'];
   const endDispatch = () => {
-    const taken = observer.takeRecords();
-    state.diag.bubbleRecords += taken.length;
-    count(taken);
+    count(observer.takeRecords());
     state.depth = Math.max(0, state.depth - 1);
     state.dispatching = state.depth > 0;
   };
   const record = (event) => {
-    const taken = observer.takeRecords();
-    state.diag.captureRecords += taken.length;
-    if (state.diag.events.length < 12) state.diag.events.push(event.type + '@' + Math.round(performance.now() - state.diag.startedAt));
-    count(taken);
+    count(observer.takeRecords());
     if (state.firstEventAt === null) state.firstEventAt = performance.now();
     state.depth++;
     state.dispatching = true;
@@ -800,7 +779,6 @@ export const EFFECTS_READ_SCRIPT = `((stop, shown, focus) => {
     shownCut: listed && listed.cut,
     shownPartial: listed && listed.partial,
     changingOnItsOwn: listed && listed.own,
-    diag750: Object.assign({}, state.diag, { firstEventAfterStart: state.firstEventAt === null ? null : Math.round(state.firstEventAt - state.diag.startedAt), readAfterStart: Math.round(performance.now() - state.diag.startedAt), ownSize: state.own.size, added: state.added.length, stopped: state.stopped }),
     ...(${OUTCOMES_JS})(state, focus)
   };
 })`;
