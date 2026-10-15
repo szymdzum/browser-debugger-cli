@@ -373,7 +373,7 @@ export function downloadsDirUnavailableReason(detail: string): string {
 }
 
 /**
- * Last `New text:` or `Shown:` row when an action made more messages or elements appear than are listed.
+ * Last `New text:`, `Shown:` or `Also changing:` row when an action made more messages or elements appear (or change) than are listed.
  *
  * @param count - Messages or elements not listed
  * @param partial - The count is a minimum

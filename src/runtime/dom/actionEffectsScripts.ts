@@ -182,6 +182,7 @@ const MESSAGES_JS = `(ids, marked) => {
     const text = visibleText(el, (node) => inChrome(node, el));
     if (text !== '' && text.length <= ${MAX_MESSAGE_TEXT}) found.push({ el: el, text: text });
   }
+  const markedList = marked ? Array.from(marked) : [];
   return found
     .filter((m) => !found.some((other) => other !== m && m.el.contains(other.el)))
     .map((m) => {
@@ -190,8 +191,8 @@ const MESSAGES_JS = `(ids, marked) => {
         id = ids.next++;
         ids.map.set(m.el, id);
       }
-      const self = Boolean(marked) && marked.size > 0 && (marked.has(m.el) || marked.has(m.el.parentElement) ||
-        Array.from(marked).some((node) => m.el.contains(node)));
+      const self = markedList.length > 0 && (marked.has(m.el) || marked.has(m.el.parentElement) ||
+        markedList.some((node) => m.el.contains(node)));
       return { id: id, text: m.text, element: describe(m.el), ...(self && { self: true }) };
     });
 }`;
@@ -661,7 +662,7 @@ export const EFFECTS_READ_SCRIPT = `((stop, shown, focus) => {
     uncertain: (${UNCERTAIN_JS})(state, document.activeElement),
     messages: (${MESSAGES_JS})(state.ids, state.marked),
     alsoChanging: Array.from(state.alsoChanging).filter((el) => el.isConnected).slice(0, ${MAX_ALSO_CHANGING})
-      .map((el) => (${ELEMENT_DESCRIPTION_JS})(el)),
+      .map(${ELEMENT_DESCRIPTION_JS}),
     settle: (${SETTLE_JS})(state),
     shown: listed && listed.elements,
     shownCut: listed && listed.cut,
