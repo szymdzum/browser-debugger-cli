@@ -144,6 +144,47 @@ void describe('Self-updating containers', () => {
     });
   });
 
+  void describe('results a handler adds a frame or a task later', () => {
+    before(() => open(`${fixture.url}self-updating-async`));
+
+    for (const [id, text] of [
+      ['raf-busy', 'Raf message'],
+      ['timer-busy', 'Timer message'],
+    ] as const) {
+      void it(`counts #${id}'s result in a container already changing (known limit)`, async () => {
+        await act(['click', '#raf-quiet']);
+        const data = await act(['click', `#${id}`]);
+        assert.ok(!shownTexts(data).some((shown) => shown.startsWith(text)), JSON.stringify(data));
+        assert.ok(
+          (data.changingOnItsOwn ?? []).some((container) => container.element === 'div#tk'),
+          JSON.stringify(data)
+        );
+      });
+    }
+
+    for (const [id, text] of [
+      ['raf-quiet', 'Raf message'],
+      ['timer-quiet', 'Timer message'],
+    ] as const) {
+      void it(`lists #${id}'s result in a container nothing else changes`, async () => {
+        const data = await act(['click', `#${id}`]);
+        assert.ok(shownTexts(data)[0]?.startsWith(text), JSON.stringify(data));
+      });
+    }
+
+    void it('lists the second of two actions back to back', async () => {
+      const first = await act(['click', '#timer-quiet']);
+      const second = await act(['click', '#timer-quiet']);
+      assert.ok(shownTexts(first)[0]?.startsWith('Timer message'), JSON.stringify(first));
+      assert.ok(shownTexts(second)[0]?.startsWith('Timer message'), JSON.stringify(second));
+      assert.notEqual(shownTexts(first)[0], shownTexts(second)[0]);
+      assert.ok(
+        !(second.changingOnItsOwn ?? []).some((container) => container.element === 'div#quiet'),
+        JSON.stringify(second)
+      );
+    });
+  });
+
   void describe('a chat log a bot writes to', () => {
     before(() => open(`${fixture.url}self-updating-chat`));
 

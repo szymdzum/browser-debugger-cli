@@ -10,12 +10,36 @@
  *   `aside#ticker` every 50 ms from the load on (keeping the last 5). `#rows`
  *   appends 5 `p "row N"` near it, `#toggle` (`aria-expanded`) un-hides 4
  *   panels, `#noop` does nothing.
+ * - `/self-updating-async`: a ticker appends a `p[role=status]` to `div#tk`
+ *   every 50 ms (keeping the last 5); `#raf-busy` and `#timer-busy` append
+ *   `p "Raf message N"` / `p "Timer message N"` to `#tk` from a
+ *   `requestAnimationFrame` / `setTimeout(0)` callback, `#raf-quiet` and
+ *   `#timer-quiet` the same to `div#quiet`, which nothing else changes.
  * - `/self-updating-chat`: a bot appends `li "Bot says N"` to `ul#messages`
  *   every 60 ms; `#send` appends `li "Me: hello"` to it in its click handler;
  *   `#noop` does nothing.
  */
 
 import type { FixtureRoutes } from '@/__testutils__/fixtureRoutes.js';
+
+/** Buttons whose handlers add their result a frame or a task later, to a busy and to a quiet container */
+const ASYNC_HTML = `<!doctype html><title>self-updating async</title>
+<div><p><button id="raf-busy">Raf busy</button> <button id="timer-busy">Timer busy</button></p><div id="tk"></div></div>
+<div><p><button id="raf-quiet">Raf quiet</button> <button id="timer-quiet">Timer quiet</button></p><div id="quiet"></div></div>
+<script>
+  let tick = 0;
+  let sent = 0;
+  const tk = document.getElementById('tk');
+  setInterval(() => {
+    tk.insertAdjacentHTML('beforeend', '<p role="status">tick ' + tick++ + '</p>');
+    if (tk.children.length > 5) tk.querySelector('p[role=status]').remove();
+  }, 50);
+  const append = (id, text) => document.getElementById(id).insertAdjacentHTML('beforeend', '<p>' + text + ' ' + sent++ + '</p>');
+  document.getElementById('raf-busy').onclick = () => requestAnimationFrame(() => append('tk', 'Raf message'));
+  document.getElementById('timer-busy').onclick = () => setTimeout(() => append('tk', 'Timer message'), 0);
+  document.getElementById('raf-quiet').onclick = () => requestAnimationFrame(() => append('quiet', 'Raf message'));
+  document.getElementById('timer-quiet').onclick = () => setTimeout(() => append('quiet', 'Timer message'), 0);
+</script>`;
 
 /** A container a timer chain and a click both append to, and a list only clicks change */
 const STREAM_HTML = `<!doctype html><title>self-updating stream</title>
@@ -78,4 +102,5 @@ export const ROUTES: FixtureRoutes = {
   '/self-updating-stream': STREAM_HTML,
   '/self-updating-ticker': TICKER_HTML,
   '/self-updating-chat': CHAT_HTML,
+  '/self-updating-async': ASYNC_HTML,
 };

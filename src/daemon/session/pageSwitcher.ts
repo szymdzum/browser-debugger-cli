@@ -25,6 +25,7 @@ import type {
 } from '@/ipc/protocol/tabTypes.js';
 import type { PageIssueLog } from '@/telemetry/issues.js';
 import type { CDPTarget, CleanupFunction } from '@/types.js';
+import { IDLE_STOP_SCRIPT } from '@/runtime/dom/actionEffectsScripts.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { displayUrl } from '@/utils/displayUrl.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -331,7 +332,9 @@ export class PageSwitcher {
   }
 
   /**
-   * Make a set-up tab the session's and let go of the old connection.
+   * Make a set-up tab the session's and let go of the old connection,
+   * asking the old page first to stop the idle observer bdg's last action
+   * left there ({@link IDLE_STOP_SCRIPT}; not waited for).
    *
    * @param next - The tab's connection
    * @param tab - The tab
@@ -340,6 +343,9 @@ export class PageSwitcher {
     const old = this.cdp;
     this.cdp = next;
     this.host.tabs.setCurrent(tab.targetId);
+    old
+      ?.send('Runtime.evaluate', { expression: IDLE_STOP_SCRIPT })
+      .catch((error: unknown) => log.debug(`Idle observer not stopped: ${getErrorMessage(error)}`));
     old?.close();
     this.host.switched(next);
     log.info(`Switched to tab ${displayUrl(tab.url)} (${tab.targetId})`);
