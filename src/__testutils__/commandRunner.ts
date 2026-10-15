@@ -10,6 +10,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 
+import { assertDistFresh } from './distFreshness.js';
 import { ensureTestSessionDir, getTestHomeDir } from './testHome.js';
 
 export interface CommandResult {
@@ -64,6 +65,7 @@ export async function runCommand(
   // Path to compiled CLI entry point (ESM module compatibility)
   const currentFileDir = path.dirname(fileURLToPath(import.meta.url));
   const cliPath = path.resolve(currentFileDir, '../../dist/index.js');
+  assertDistFresh();
   const testSessionDir = ensureTestSessionDir();
   const testHomeDir = getTestHomeDir();
 

@@ -8,6 +8,9 @@
 
 set -euo pipefail
 
+# Pages come from the local fixture server (tests/run-all-tests.sh starts it)
+: "${BDG_FIXTURE_URL:?BDG_FIXTURE_URL is not set: run via tests/run-all-tests.sh}"
+
 # Cleanup trap to prevent cascade failures
 cleanup() {
   local exit_code=$?
@@ -62,7 +65,7 @@ fi
 
 # Test 2: Status with active session (basic)
 log_step "Test 2: Starting session for status tests"
-bdg "https://example.com" --headless || die "Failed to start session"
+bdg "$BDG_FIXTURE_URL" --headless || die "Failed to start session"
 sleep 2
 
 log_step "Test 2: Checking basic status"

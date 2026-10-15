@@ -9,6 +9,9 @@
 
 set -euo pipefail
 
+# Pages come from the local fixture server (tests/run-all-tests.sh starts it)
+: "${BDG_FIXTURE_URL:?BDG_FIXTURE_URL is not set: run via tests/run-all-tests.sh}"
+
 # Cleanup trap to prevent cascade failures
 cleanup() {
   local exit_code=$?
@@ -55,7 +58,7 @@ fi
 
 # Test 3: Starting new session should clean up stale files
 log_step "Test 3: New session should clean up stale files"
-bdg "https://example.com" --headless || die "Failed to start session (should auto-recover)"
+bdg "$BDG_FIXTURE_URL" --headless || die "Failed to start session (should auto-recover)"
 sleep 2
 
 # Verify PID is now valid
@@ -79,7 +82,7 @@ log_success "Created stale socket file"
 
 # Test 5: New session should handle stale socket
 log_step "Test 5: New session should clean up stale socket"
-bdg "https://example.com" --headless || die "Failed to start session with stale socket"
+bdg "$BDG_FIXTURE_URL" --headless || die "Failed to start session with stale socket"
 sleep 2
 
 # Verify socket is valid (can communicate)
@@ -117,7 +120,7 @@ fi
 log_step "Test 7: Testing with PID 1 (system process)"
 echo "1" > "$BDG_SESSION_DIR"/daemon.pid
 
-bdg "https://example.com" --headless || die "Failed to start session when PID 1 exists"
+bdg "$BDG_FIXTURE_URL" --headless || die "Failed to start session when PID 1 exists"
 sleep 2
 
 bdg status > /dev/null 2>&1 || die "Session didn't recover from PID 1"

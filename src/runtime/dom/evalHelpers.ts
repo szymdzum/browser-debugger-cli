@@ -16,6 +16,7 @@ import {
   scriptExecutionError,
   scriptTimeoutError,
 } from '@/errors/messages.js';
+import { evalTimeoutMs, terminationGraceMs } from '@/runtime/dom/evalLimits.js';
 import { describeEvalException, wrapEvalScript } from '@/runtime/dom/evalSource.js';
 import { hasTopLevelAwait } from '@/runtime/dom/topLevelAwait.js';
 import { pendingNavigationUrl } from '@/runtime/page/navigation.js';
@@ -104,7 +105,7 @@ export async function executeScript(
   } catch (error) {
     const elapsed = Date.now() - startedAt;
     const timeout = options.timeout;
-    if (timeout !== undefined && elapsed >= timeout && elapsed < timeout + TERMINATION_GRACE_MS) {
+    if (timeout !== undefined && elapsed >= timeout && elapsed < timeout + terminationGraceMs()) {
       const err = scriptTimeoutError(timeout);
       throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.CDP_TIMEOUT);
     }
@@ -192,12 +193,6 @@ export function describeException(details: Protocol.Runtime.ExceptionDetails): s
 function describeEvalFailure(details: Protocol.Runtime.ExceptionDetails): string {
   return describeEvalException(describeException(details), details);
 }
-
-/** Time after the limit within which a failed evaluate counts as V8 terminating it. */
-const TERMINATION_GRACE_MS = 5_000;
-
-/** How long a `bdg dom eval` script may run before V8 terminates it. */
-const EVAL_TIMEOUT_MS = 20_000;
 
 /**
  * Counter giving each `bdg dom eval` its own object group for the objects it
@@ -694,7 +689,7 @@ async function terminatePageScripts(
     const err = navigationPendingError(pendingUrl);
     return new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.CDP_TIMEOUT);
   }
-  const err = pageBusyError(EVAL_TIMEOUT_MS, scope, mayStop() && (await terminateExecution(cdp)));
+  const err = pageBusyError(evalTimeoutMs(), scope, mayStop() && (await terminateExecution(cdp)));
   return new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.CDP_TIMEOUT);
 }
 
@@ -777,7 +772,7 @@ export async function withBusyPageRecovery<T>(
   options: BusyRecoveryOptions = {}
 ): Promise<T> {
   const {
-    busyAfterMs = EVAL_TIMEOUT_MS + TERMINATION_GRACE_MS,
+    busyAfterMs = evalTimeoutMs() + terminationGraceMs(),
     livenessMs = LIVENESS_CHECK_MS,
     scope = 'page',
   } = options;
@@ -1178,7 +1173,7 @@ async function checkForLostResult(
  * @returns Command error (102)
  */
 function promiseTimeout(resultMayBeUnsent = false): CommandError {
-  const err = promiseTimeoutError(EVAL_TIMEOUT_MS, resultMayBeUnsent);
+  const err = promiseTimeoutError(evalTimeoutMs(), resultMayBeUnsent);
   return new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.CDP_TIMEOUT);
 }
 
@@ -1243,7 +1238,7 @@ function evaluateOptions(
     generatePreview: true,
     replMode: true,
     objectGroup,
-    timeout: EVAL_TIMEOUT_MS,
+    timeout: evalTimeoutMs(),
     ...(target.uniqueContextId && { uniqueContextId: target.uniqueContextId }),
   };
 }
@@ -1292,12 +1287,12 @@ export async function evaluateScript(
     );
     const response = await withDeadline(
       untilResultLost(session, evaluation, awaits, target.full ?? false, tracking.scriptFinished),
-      EVAL_TIMEOUT_MS + TERMINATION_GRACE_MS,
+      evalTimeoutMs() + terminationGraceMs(),
       () => evaluationTimeoutError(target.recovery ?? session, scope, awaits, target.full ?? false)
     );
     const settled = await withDeadline(
       settlePromise(session, response.result, script),
-      EVAL_TIMEOUT_MS,
+      evalTimeoutMs(),
       () => promiseTimeout()
     );
     const result = await toEvalResult(session, settled, target.full ?? false);
