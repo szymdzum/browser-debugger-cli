@@ -16,7 +16,7 @@
  *   `requestAnimationFrame` / `setTimeout(0)` callback, `#raf-quiet` and
  *   `#timer-quiet` the same to `div#quiet`, which nothing else changes.
  * - `/self-updating-chat`: a bot appends `li "Bot says N"` to `ul#messages`
- *   every 60 ms; `#send` appends `li "Me: hello"` to it in its click handler;
+ *   (below the buttons, so they do not move) every 60 ms; `#send` appends `li "Me: hello"` to it in its click handler;
  *   `#noop` does nothing.
  */
 
@@ -88,7 +88,7 @@ const TICKER_HTML = `<!doctype html><title>self-updating ticker</title>
 
 /** A chat log a bot writes to, and a send button writing to it too */
 const CHAT_HTML = `<!doctype html><title>self-updating chat</title>
-<section><ul id="messages"></ul><p><button id="send">Send</button></p></section>
+<section><p><button id="send">Send</button></p><ul id="messages"></ul></section>
 <p><button id="noop">Noop</button></p>
 <script>
   const messages = document.getElementById('messages');
