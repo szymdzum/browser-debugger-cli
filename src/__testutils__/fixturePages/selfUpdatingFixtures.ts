@@ -3,8 +3,8 @@
  * watched (#750), served by the fixture server.
  *
  * - `/self-updating-stream`: `#steps` starts a chain appending `p "Step N"` to
- *   `#log` (below the buttons, so they do not move) every 50 ms for 5 s; `#note` appends `p "Note added"` to the same
- *   `#log` in its click handler. `#more` appends 5 `li` to `#items` at once,
+ *   `#log` (below the buttons, so they do not move) every 50 ms for 5 s;
+ *   `#note` appends `p "Note added"` to the same `#log` in its click handler. `#more` appends 5 `li` to `#items` at once,
  *   `#slow` 350 ms later; `#items` changes only then.
  * - `/self-updating-ticker`: a ticker appends a `p[role=status]` to
  *   `aside#ticker` every 50 ms from the load on (keeping the last 5). `#rows`

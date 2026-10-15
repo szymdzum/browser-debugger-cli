@@ -101,6 +101,7 @@ Focus moved to: input#other "Other"                 # a fill's input handler mov
 DOM changed (200 nodes)                             # only when nothing else is reported: 3+ elements added/removed (JSON domChanges)
 ⚠ The mouse was released on button#next, not on ... # the page moved/replaced the clicked element mid-press (JSON releasedOn)
 Shown:         span "Something went wrong"          # text added next to the clicked control, also in shadow roots, or un-hidden by an aria-expanded click (aria-controls / next sibling)
+Also changing: div#log, 4 added (it was ...)          # added by the page itself to a container it was already changing (JSON changingOnItsOwn)
 ⚠ Submit blocked: email: Please include an '@' ...  # the form's validation stopped the submit (click or Enter): fix the named fields
 Errors: Uncaught Error: handler exploded (app.js:3:142)  # console errors/exceptions the action caused
         (+2 from filtered trackers)                       # tracker-host errors hidden; start with --all to list them
@@ -110,6 +111,7 @@ Opened: popup https://idp.test/authorize (bdg page switch 1)          # a tab or
 
 - In `--json`: `navigation`, `messages`, `errors` (`[{ text, source, count }]`, max 3, then `moreErrors`), `downloads`, `opened`, `effect: "none"`, `submitBlocked` (`[{ field, message }]`) and pending work (timers, spinners) are fields on `data`.
 - `shown` lists at most 3 elements; `moreShown` (`(+N more)`) counts the rest (`(+N or more)` and `moreShownPartial` when the page scan ran out of time).
+- `Also changing: div#log, 4 added (it was already changing before the action)` (`changingOnItsOwn`): elements the page added by itself to a container it was already changing (ticker, feed, an earlier action's timers) are counted there, not in `shown`. What your action's own handlers added stays in `shown`; a later result of your action into such a container is only counted, so check it with `bdg dom query`.
 - `errors` covers throws in handlers and their timers, unhandled rejections, `console.error` and the errors of a page the action navigated to; earlier errors and warnings are left out (`bdg console --level error` has them all).
 - Results the page shows later are not waited for: follow up with `bdg dom wait`.
 
