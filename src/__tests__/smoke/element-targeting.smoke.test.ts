@@ -689,7 +689,7 @@ void describe('Key attributes in dom query and dom get', () => {
       output,
       /<img id="logo" src="…\/sl-404\.168b1cce\.jpg" alt="Sauce Labs Backpack">/
     );
-    assert.match(output, /<a id="about" href="\/\/saucelabs\.com\/about\/company">/);
+    assert.match(output, /<a id="about" href="https:\/\/saucelabs\.com\/about\/company">/);
     assert.match(output, /<form id="login" action="\/authenticate" method="post">/);
     assert.match(output, /<input id="user" name="user" placeholder="Username" value="ada">/);
     assert.match(output, /<input id="pass" name="pass" type="password" value="••••">/);
