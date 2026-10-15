@@ -128,7 +128,7 @@ void describe('waitTimeoutError on a page still loading with pending requests (#
     const err = waitTimeoutError({ load: true }, snapshot, 300, loading);
     assert.match(
       err.suggestion,
-      /^The page is still loading; waiting on: GET localhost:8765\/a\.js \(pending 2\.0s\)/
+      /^The page is still loading; waiting on: GET localhost:8765\/a\.js \(pending 2s\)/
     );
     assert.match(err.suggestion, /and 2 more/);
     assert.ok(err.suggestion.includes(pendingRequestsText(loading.pending, 5)), err.suggestion);
