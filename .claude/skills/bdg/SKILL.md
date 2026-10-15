@@ -110,7 +110,7 @@ Opened: popup https://idp.test/authorize (bdg page switch 1)          # a tab or
 ```
 
 - In `--json`: `navigation`, `messages`, `errors` (`[{ text, source, count }]`, max 3, then `moreErrors`), `downloads`, `opened`, `effect: "none"`, `submitBlocked` (`[{ field, message }]`) and pending work (timers, spinners) are fields on `data`.
-- `shown` lists at most 3 elements; `moreShown` (`(+N more)`) counts the rest (`(+N or more)` and `moreShownPartial` when the page scan ran out of time).
+- `shown` lists at most 3 elements; `moreShown` (`(+N more)`) counts the rest (`(+N or more)` and `moreShownPartial` when the page scan ran out of time). Nodes the page adds by itself during an action (an earlier action's timers still running, a ticker or `role=status` region, a feed or chat bot) can appear under `Shown:` and in its `(+N more)` count; check with `bdg dom query` or a second action.
 - `errors` covers throws in handlers and their timers, unhandled rejections, `console.error` and the errors of a page the action navigated to; earlier errors and warnings are left out (`bdg console --level error` has them all).
 - Results the page shows later are not waited for: follow up with `bdg dom wait`.
 
