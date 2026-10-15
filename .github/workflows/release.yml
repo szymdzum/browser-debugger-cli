@@ -28,10 +28,11 @@ on:
 
 permissions: {}
 
+# ubuntu-24.04 is pinned: ubuntu-latest moves to Ubuntu 26 on 2026-10-19 (#779).
 jobs:
   build:
     name: Build and test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       actions: read # read the CI runs of the tagged commit
@@ -108,7 +109,7 @@ jobs:
   publish:
     name: Publish to npm
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: npm
     permissions:
       id-token: write # OIDC token for npm Trusted Publishing (and provenance)
