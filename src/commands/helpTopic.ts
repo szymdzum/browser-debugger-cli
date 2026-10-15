@@ -9,6 +9,7 @@ import { CommandError } from '@/errors/index.js';
 import {
   didYouMeanSuggestion,
   missingSubcommandMessage,
+  quotedArgumentsSuggestion,
   unknownCommandError,
   unknownHelpTopicError,
   usageHelpSuggestion,
@@ -125,6 +126,31 @@ function typedOption(flag: string, argv: string[]): string {
   );
 }
 
+/** Arguments that hold free text, which a shell splits when typed unquoted */
+const FREE_TEXT_ARGUMENTS = new Set([
+  'selector',
+  'selectorOrIndex',
+  'pattern',
+  'script',
+  'value',
+  'text',
+  'search',
+]);
+
+/**
+ * The suggestion for a command given more words than it takes, when the last
+ * argument is free text that was probably typed without quotes.
+ *
+ * @param command - Command the error came from
+ * @returns The quoted command and the help pointer, or undefined for other arguments
+ */
+function excessArgumentsSuggestion(command: Command): string | undefined {
+  const taken = command.registeredArguments;
+  const last = taken.at(-1);
+  if (!last || last.variadic || !FREE_TEXT_ARGUMENTS.has(last.name())) return undefined;
+  return quotedArgumentsSuggestion(commandPath(command), command.args, taken.length);
+}
+
 /**
  * Message and suggestion for a Commander usage error: a did-you-mean for an
  * unknown option or command, otherwise a pointer to the command's `--help`.
@@ -150,6 +176,9 @@ export function usageErrorDetails(
   if (error.code === 'commander.help' || (bareGroup && flag && JSON_FLAGS.includes(flag))) {
     const names = command.commands.map((sub) => sub.name());
     return { message: missingSubcommandMessage(command.name(), names), suggestion: help };
+  }
+  if (error.code === 'commander.excessArguments') {
+    return { message, suggestion: excessArgumentsSuggestion(command) ?? help };
   }
   if (!flag) return { message, suggestion: suggestion ?? help };
   const typed = typedOption(flag, argv);

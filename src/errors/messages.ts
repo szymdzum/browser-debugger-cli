@@ -757,6 +757,33 @@ export function usageHelpSuggestion(path: string): string {
 }
 
 /**
+ * Suggestion for a command given more words than it takes where the last
+ * argument is free text (an unquoted selector, pattern or value): the same
+ * command with the surplus words joined into that argument, then the help.
+ *
+ * @param path - Command path, e.g. "bdg dom a11y query"
+ * @param args - Arguments as typed
+ * @param taken - Number of arguments the command takes
+ * @returns e.g. `Did you mean: bdg dom a11y query "role=button name=Pay"?` and a help line
+ */
+export function quotedArgumentsSuggestion(path: string, args: string[], taken: number): string {
+  const words = [...args.slice(0, taken - 1), args.slice(taken - 1).join(' ')];
+  const written = words.map(doubleQuotedWord).join(' ');
+  return `Did you mean: ${path} ${written}?\n${usageHelpSuggestion(path)}`;
+}
+
+/**
+ * A word in double quotes, or in single quotes when double quotes or shell
+ * expansions inside would change it.
+ *
+ * @param word - Word
+ * @returns The word to write
+ */
+function doubleQuotedWord(word: string): string {
+  return /["$`\\!]/.test(word) ? shellQuote(word) : `"${word}"`;
+}
+
+/**
  * A command group was run without one of its subcommands.
  *
  * @param group - Group name, e.g. "page"
