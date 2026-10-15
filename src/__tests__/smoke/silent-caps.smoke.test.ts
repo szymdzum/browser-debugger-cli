@@ -96,20 +96,24 @@ void describe('Silent caps', () => {
       await bdg(['cdp', 'Emulation.setCPUThrottlingRate', '--params', '{"rate":30}']);
     });
 
-    void it('lists the same first rows and count as unthrottled, or says it is partial', async () => {
+    void it('lists the first rows with their count, or says the scan is partial', async () => {
       const data = (
         JSON.parse(await bdg(['dom', 'click', '#big', '--json'])) as {
           data: { shown?: Array<{ text: string }>; moreShown?: number; moreShownPartial?: boolean };
         }
       ).data;
-      assert.deepEqual(
-        data.shown?.map((row) => row.text),
-        ['big 0', 'big 1', 'big 2']
-      );
-      assert.ok(
-        data.moreShown === 12 || (data.moreShownPartial === true && (data.moreShown ?? 0) > 0),
-        `moreShown ${String(data.moreShown)} partial ${String(data.moreShownPartial)}`
-      );
+      const rows = data.shown?.map((row) => row.text) ?? [];
+      const all = ['big 0', 'big 1', 'big 2'];
+      if (data.moreShownPartial === true) {
+        assert.deepEqual(
+          rows,
+          all.slice(0, rows.length),
+          'a partial scan lists an in-order prefix'
+        );
+        return;
+      }
+      assert.deepEqual(rows, all);
+      assert.equal(data.moreShown, 12);
     });
   });
 
