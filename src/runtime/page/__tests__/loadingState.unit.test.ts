@@ -45,7 +45,7 @@ function fakeCdp(readyState: string | undefined): CDPSender {
     send: () =>
       readyState === undefined
         ? new Promise(() => undefined)
-        : Promise.resolve({ result: { value: readyState } }),
+        : Promise.resolve({ result: { value: { readyState } } }),
   };
 }
 
@@ -122,5 +122,18 @@ void describe('loadingStateOf (#775)', () => {
     );
     assert.equal(state.pending.length, 3);
     assert.equal(state.pendingCount, 5);
+  });
+
+  void it('leaves out requests sent before the current document started', () => {
+    const state = loadingStateOf(
+      'loading',
+      [
+        pending('https://old.test/slow.js', 1_000, 'Script'),
+        pending('https://new.test/app.js', 5_000, 'Script'),
+      ],
+      4_000
+    );
+    assert.equal(state.pendingCount, 1);
+    assert.equal(state.pending[0]?.url, 'https://new.test/app.js');
   });
 });

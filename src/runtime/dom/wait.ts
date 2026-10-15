@@ -139,7 +139,7 @@ export async function waitForCondition(
   }
   const loading =
     last && last.readyState !== 'complete'
-      ? loadingStateOf(last.readyState, pendingRequests())
+      ? loadingStateOf(last.readyState, pendingRequests(), last.documentId)
       : undefined;
   const namedLoading = loading && loading.pendingCount > 0 ? loading : undefined;
   const err = waitTimeoutError(condition, last, params.timeout, namedLoading);

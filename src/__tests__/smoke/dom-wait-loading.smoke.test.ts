@@ -41,6 +41,20 @@ function domWait(args: string[]): ReturnType<typeof runCommand> {
   return runCommand('dom', ['wait', ...args, '--timeout', '500'], { timeout: 60000 });
 }
 
+/**
+ * A page whose head scripts are requested and never answered.
+ *
+ * @param name - Prefix of the script paths
+ * @returns HTML
+ */
+function hangingPage(name: string): string {
+  const scripts = Array.from(
+    { length: HANGING_SCRIPTS },
+    (_, n) => `<script src="/${name}${n}.js?token=${TOKEN}"></script>`
+  ).join('');
+  return `<!doctype html><html><head><title>${name}</title>${scripts}</head><body></body></html>`;
+}
+
 void describe('dom wait timeout on a loading page (#775)', () => {
   let server: http.Server;
   const sockets = new Set<Socket>();
@@ -48,16 +62,15 @@ void describe('dom wait timeout on a loading page (#775)', () => {
 
   before(async () => {
     await cleanupAllSessions();
-    const scripts = Array.from(
-      { length: HANGING_SCRIPTS },
-      (_, n) => `<script src="/hang${n}.js?token=${TOKEN}"></script>`
-    ).join('');
+    const pages: Record<string, string> = {
+      '/page': hangingPage('hang'),
+      '/page2': hangingPage('second'),
+    };
     server = http.createServer((req, res) => {
-      if (req.url !== '/page') return;
+      const page = pages[req.url ?? ''];
+      if (page === undefined) return;
       res.writeHead(200, { 'Content-Type': 'text/html' });
-      res.end(
-        `<!doctype html><html><head><title>hang</title>${scripts}</head><body></body></html>`
-      );
+      res.end(page);
     });
     server.on('connection', (socket) => {
       sockets.add(socket);
@@ -106,5 +119,29 @@ void describe('dom wait timeout on a loading page (#775)', () => {
     assert.equal(result.exitCode, 102, result.stdout + result.stderr);
     const envelope = JSON.parse(result.stdout) as WaitTimeoutEnvelope;
     assert.ok((envelope.pending?.length ?? 0) > 0, result.stdout);
+  });
+
+  void it('names only the requests of the current document after a navigation', async () => {
+    const navigate = await runCommand('page', ['navigate', `${origin}/page2`, '--no-wait'], {
+      timeout: 60000,
+    });
+    assert.equal(navigate.exitCode, 0, navigate.stdout + navigate.stderr);
+    const deadline = Date.now() + 30000;
+    for (;;) {
+      const peek = await runCommand('peek', ['--json'], { timeout: 60000 });
+      const url = (JSON.parse(peek.stdout) as { data: { target: { url: string } } }).data.target
+        .url;
+      if (url.endsWith('/page2')) break;
+      assert.ok(Date.now() < deadline, 'the second page never became current');
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    const result = await domWait(['--load', '--json']);
+    assert.equal(result.exitCode, 102, result.stdout + result.stderr);
+    const envelope = JSON.parse(result.stdout) as WaitTimeoutEnvelope;
+    assert.ok((envelope.pending?.length ?? 0) > 0, result.stdout);
+    assert.ok(
+      envelope.pending?.every((request) => request.url.includes('/second')),
+      result.stdout
+    );
   });
 });
