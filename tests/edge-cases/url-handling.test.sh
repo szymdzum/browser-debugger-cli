@@ -76,7 +76,6 @@ log_success "Test 2 passed: IP address handled"
 # Test 3: URL with query parameters
 log_step "Test 3: URL with query parameters"
 bdg "${BDG_FIXTURE_URL}?foo=bar&baz=qux" --headless || die "URL with query params failed"
-sleep 2
 
 bdg status > /dev/null 2>&1 || die "Session not running"
 log_success "URL with query parameters works"
@@ -88,7 +87,6 @@ log_success "Test 3 passed: Query parameters handled"
 # Test 4: URL with fragment
 log_step "Test 4: URL with fragment (#section)"
 bdg "${BDG_FIXTURE_URL}#section" --headless || die "URL with fragment failed"
-sleep 2
 
 bdg status > /dev/null 2>&1 || die "Session not running"
 log_success "URL with fragment works"
@@ -100,7 +98,6 @@ log_success "Test 4 passed: Fragment handled"
 # Test 5: URL with both query and fragment
 log_step "Test 5: URL with query and fragment"
 bdg "${BDG_FIXTURE_URL}?page=1#top" --headless || die "URL with query+fragment failed"
-sleep 2
 
 bdg status > /dev/null 2>&1 || die "Session not running"
 log_success "URL with query and fragment works"
@@ -112,7 +109,6 @@ log_success "Test 5 passed: Query+fragment handled"
 # Test 6: about:blank
 log_step "Test 6: about:blank"
 bdg "about:blank" --headless || die "about:blank failed"
-sleep 2
 
 bdg status > /dev/null 2>&1 || die "Session not running"
 log_success "about:blank works"
@@ -124,7 +120,6 @@ log_success "Test 6 passed: about:blank handled"
 # Test 7: http:// explicit protocol
 log_step "Test 7: Explicit http:// protocol"
 bdg "$BDG_FIXTURE_URL" --headless || die "http:// URL failed"
-sleep 2
 
 bdg status > /dev/null 2>&1 || die "Session not running"
 log_success "http:// protocol works"
@@ -136,7 +131,6 @@ log_success "Test 7 passed: http:// handled"
 # Test 8: URL without protocol (auto-add http://)
 log_step "Test 8: URL without protocol"
 bdg "${BDG_FIXTURE_URL#http://}" --headless || die "URL without protocol failed"
-sleep 2
 
 bdg status > /dev/null 2>&1 || die "Session not running"
 log_success "URL without protocol works (auto-added http://)"

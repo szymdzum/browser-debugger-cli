@@ -78,9 +78,26 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# The suites run this checkout's build, never a bdg installed elsewhere
+REPO_ROOT="$(cd "$TESTS_DIR/.." && pwd)"
+if [ ! -f "$REPO_ROOT/dist/index.js" ]; then
+  echo "dist/index.js is missing: run npm run build" >&2
+  exit 1
+fi
+SHIM_DIR="$(mktemp -d /tmp/bdg-it-shim-XXXXXX)"
+printf '#!/usr/bin/env bash\nexec node "%s/dist/index.js" "$@"\n' "$REPO_ROOT" > "$SHIM_DIR/bdg"
+chmod +x "$SHIM_DIR/bdg"
+export PATH="$SHIM_DIR:$PATH"
+
 # Local fixture server for the shell suites (no outside network)
 source "$TESTS_DIR/lib/fixtures.sh"
-trap stop_fixture_server EXIT
+stop_all() {
+  stop_fixture_server
+  command rm -rf "$SHIM_DIR"
+}
+trap stop_all EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 if [ "$RUN_INTEGRATION" = true ] || [ "$RUN_ERRORS" = true ] || [ "$RUN_EDGE_CASES" = true ]; then
   start_fixture_server
 fi
