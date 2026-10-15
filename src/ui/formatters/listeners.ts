@@ -9,6 +9,7 @@ import type {
   ListenersResult,
 } from '@/ipc/protocol/domTypes.js';
 import { delegationNotes } from '@/runtime/dom/listenerSummary.js';
+import { escapeOneLine } from '@/ui/formatters/keyAttributes.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import {
   COLLAPSED_LISTENERS_HEADING,
@@ -124,12 +125,16 @@ export function formatListeners(result: ListenersOutput, types?: string[]): stri
   const fmt = new OutputFormatter();
   const collapsed = result.collapsed ?? [];
   if (result.listeners.length === 0 && collapsed.length === 0) {
-    fmt.text(noListenersMessage(result.element, types));
+    fmt.text(noListenersMessage(escapeOneLine(result.element), types));
     if (result.typeSuggestions?.length) fmt.text(eventTypeSuggestion(result.typeSuggestions));
     fmt.tip(NO_LISTENERS_HINT);
   } else {
     fmt.text(
-      listenersHeadline(result.element, listenerCounts(result.listeners, collapsed), result)
+      listenersHeadline(
+        escapeOneLine(result.element),
+        listenerCounts(result.listeners, collapsed),
+        result
+      )
     );
     appendListenerGroups(fmt, result.listeners);
     appendCollapsed(fmt, collapsed);

@@ -10,12 +10,14 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { formatSemanticNodeWithContext } from '@/commands/dom/semanticUtils.js';
+import type { ElementLayout } from '@/ipc/protocol/domTypes.js';
 import type { A11yNode } from '@/types.js';
 import { formatA11yNodeWithContext } from '@/ui/formatters/a11y.js';
 import { formatDomQuery } from '@/ui/formatters/dom.js';
 import type { InspectOutput } from '@/ui/formatters/inspect.js';
 import { formatInspect } from '@/ui/formatters/inspect.js';
 import { inspectHeader } from '@/ui/formatters/inspect.js';
+import { layoutLine } from '@/ui/formatters/layout.js';
 
 /** Value, and how it is written inside `"..."` (300 characters are cut: see `LONG`) */
 const ESCAPES: ReadonlyArray<readonly [string, string, string]> = [
@@ -231,5 +233,19 @@ void describe('dom inspect rows and header text (#734 review)', () => {
       { origin: 'http://127.0.0.1:8765' }
     );
     assert.ok(line.includes('href="/?x=1"'), line);
+  });
+});
+
+void describe('dom layout rows escape the element label (#734 round 2)', () => {
+  void it('writes an id with a quote and a newline on one line', () => {
+    const output = layoutLine({
+      index: 0,
+      element: 'p#z"b\nc.odd',
+      text: 'odd id',
+      bounds: { x: 1, y: 2, width: 3, height: 4 },
+      inViewport: 'hidden',
+    } as unknown as ElementLayout);
+    assert.ok(output.includes('p#z\\"b\\nc.odd'), output);
+    assert.doesNotMatch(output, /z"b\nc/);
   });
 });
