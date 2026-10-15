@@ -1993,20 +1993,21 @@ export function waitTargetRequiredError(): ErrorWithSuggestion {
  * @param condition - What was waited for
  * @param snapshot - Last thing the page reported (none when it never answered)
  * @param timeoutMs - The --timeout
+ * @param loading - Requests the loading page still waits on (none when there are none)
  * @returns Message and suggestion
  */
 export function waitTimeoutError(
   condition: WaitCondition,
   snapshot: WaitSnapshot | undefined,
   timeoutMs: number,
-  _loading?: PageLoadingState
+  loading?: PageLoadingState
 ): ErrorWithSuggestion {
   const seen = snapshot
     ? `last seen: ${waitSnapshotSummary(snapshot, condition)}`
     : 'the page did not answer';
   return {
     message: `Timed out after ${formatDuration(timeoutMs)} waiting for ${waitGoal(condition)} (${seen})`,
-    suggestion: waitTimeoutSuggestion(condition, snapshot),
+    suggestion: waitTimeoutSuggestion(condition, snapshot, loading),
   };
 }
 
@@ -2033,15 +2034,24 @@ function waitGoal(condition: WaitCondition): string {
  *
  * @param condition - What was waited for
  * @param snapshot - Last thing the page reported
+ * @param loading - Requests the loading page still waits on
  * @returns Suggestion
  */
 function waitTimeoutSuggestion(
   condition: WaitCondition,
-  snapshot: WaitSnapshot | undefined
+  snapshot: WaitSnapshot | undefined,
+  loading: PageLoadingState | undefined
 ): string {
   const more = 'allow more time with --timeout <ms>';
   const selector = condition.selector;
   if (snapshot && snapshot.readyState !== 'complete') {
+    if (loading && loading.pending.length > 0) {
+      const full =
+        loading.pendingCount > loading.pending.length
+          ? ` (all of them with ${sessionCommand('bdg peek')})`
+          : '';
+      return `The page is still loading; waiting on: ${pendingRequestsText(loading.pending, loading.pendingCount)}${full}; ${more}`;
+    }
     return `The page is still loading; see the requests it waits on with ${sessionCommand('bdg peek')}, or ${more}`;
   }
   if (

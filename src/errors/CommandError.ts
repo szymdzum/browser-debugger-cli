@@ -21,6 +21,8 @@ export interface ErrorMetadata {
   fallback?: string;
   /** CDP alternative for advanced use cases */
   cdpAlternative?: string;
+  /** Extra fields for the `--json` error envelope (not printed in human output) */
+  errorContext?: Record<string, unknown>;
   /** How the command ran despite failing (e.g. a CDP method sent though bdg's protocol lacks it) */
   warning?: string;
 }

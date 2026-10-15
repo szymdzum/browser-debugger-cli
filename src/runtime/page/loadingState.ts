@@ -93,6 +93,20 @@ export async function readPageLoadingState(
 ): Promise<PageLoadingState | undefined> {
   const readyState = await readDocumentReadyState(cdp);
   if (readyState === undefined || readyState === 'complete') return undefined;
+  return loadingStateOf(readyState, pending);
+}
+
+/**
+ * The loading state for a readyState that is not `complete`.
+ *
+ * @param readyState - `document.readyState`
+ * @param pending - Requests still running (from the session's network telemetry)
+ * @returns The state with the requests to name and how many are running
+ */
+export function loadingStateOf(
+  readyState: string,
+  pending: Iterable<PendingRequest>
+): PageLoadingState {
   const requests = [...pending];
   return {
     readyState,

@@ -25,6 +25,8 @@ import {
   type WaitSnapshot,
 } from '@/runtime/dom/waitCondition.js';
 import { callFunctionInBdgWorld } from '@/runtime/page/bdgWorld.js';
+import { loadingStateOf } from '@/runtime/page/loadingState.js';
+import type { PendingRequest } from '@/telemetry/network.js';
 import type { CDPSender } from '@/telemetry/objectExpander.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { delay, raceTimeout } from '@/utils/async.js';
@@ -97,13 +99,15 @@ const WAIT_SNAPSHOT_JS = `async function (selector, parts, text, previous, slice
  *
  * @param cdp - CDP connection
  * @param params - Condition and timeout
+ * @param pendingRequests - The session's requests still running (named when the page is still loading at the timeout)
  * @returns What the page showed when it was met, and how long it took
  * @throws CommandError (81) for an invalid selector, (102) when the timeout passed;
  *   CDP errors other than a lost page context (a closed connection) as they are
  */
 export async function waitForCondition(
   cdp: CDPSender,
-  params: DomWaitCommand
+  params: DomWaitCommand,
+  pendingRequests: () => Iterable<PendingRequest> = () => []
 ): Promise<DomWaitData> {
   const condition = waitConditionOf(params);
   const started = Date.now();
@@ -133,8 +137,22 @@ export async function waitForCondition(
     confirming = needsGoneConfirmation(snapshot, condition);
     if (confirming) await delay(GONE_CONFIRM_DELAY_MS);
   }
-  const err = waitTimeoutError(condition, last, params.timeout);
-  throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.CDP_TIMEOUT);
+  const loading =
+    last && last.readyState !== 'complete'
+      ? loadingStateOf(last.readyState, pendingRequests())
+      : undefined;
+  const namedLoading = loading && loading.pendingCount > 0 ? loading : undefined;
+  const err = waitTimeoutError(condition, last, params.timeout, namedLoading);
+  throw new CommandError(
+    err.message,
+    {
+      suggestion: err.suggestion,
+      ...(namedLoading && {
+        errorContext: { pending: namedLoading.pending, pendingCount: namedLoading.pendingCount },
+      }),
+    },
+    EXIT_CODES.CDP_TIMEOUT
+  );
 }
 
 /**
