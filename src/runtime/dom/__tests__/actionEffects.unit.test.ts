@@ -201,6 +201,7 @@ void describe('hadNoEffect', () => {
 
   void it('does not claim it after a change, request, dialog, window, console message or navigation', () => {
     assert.equal(hadNoEffect(read({ changes: 1 }), {}, NOTHING_ELSE), false);
+    assert.equal(hadNoEffect(read(), { moreShownPartial: true }, NOTHING_ELSE), false);
     assert.equal(hadNoEffect(read(), {}, { ...NOTHING_ELSE, consoleMessages: 3005 }), false);
     assert.equal(hadNoEffect(read(), {}, { ...NOTHING_ELSE, requests: 1 }), false);
     assert.equal(hadNoEffect(read(), {}, { ...NOTHING_ELSE, dialogs: 1 }), false);
@@ -762,11 +763,7 @@ void describe('pageNavigation page URLs (#623)', () => {
     });
 
     void it('does not flag a complete scan', () => {
-      const effects = effectsOf(
-        undefined,
-        { ...snapshot([]), shownPartial: false },
-        noEvents
-      );
+      const effects = effectsOf(undefined, { ...snapshot([]), shownPartial: false }, noEvents);
       assert.equal(effects.moreShownPartial, undefined);
     });
 

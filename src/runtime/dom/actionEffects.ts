@@ -475,7 +475,7 @@ export function pageNavigation(
 /**
  * Whether an action had no visible effect: the page was read before and
  * after in the same document, it counted no DOM change, nothing made the
- * check uncertain, and no navigation, message, shown element, form submit
+ * check uncertain, and no navigation, message, shown element (or Shown scan cut short), form submit
  * (cancelled or not), pressed button change, request, dialog, new window or
  * console message happened.
  *
@@ -497,6 +497,7 @@ export function hadNoEffect(
     effects.navigation === undefined &&
     (effects.messages ?? []).length === 0 &&
     (effects.shown ?? []).length === 0 &&
+    effects.moreShownPartial === undefined &&
     effects.submitted === undefined &&
     effects.controlChange === undefined &&
     effects.expanded === undefined &&
