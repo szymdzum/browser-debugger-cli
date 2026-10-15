@@ -52,8 +52,7 @@ async function bdg(args: string[]): Promise<string> {
  * @returns Result data
  */
 async function click(selector: string): Promise<ActionData> {
-  return (JSON.parse(await bdg(['dom', 'click', selector, '--json'])) as { data: ActionData })
-    .data;
+  return (JSON.parse(await bdg(['dom', 'click', selector, '--json'])) as { data: ActionData }).data;
 }
 
 /**
@@ -124,7 +123,10 @@ void describe('Self-updating regions in action results (#774)', () => {
       await open(`${fixture.url}${path}`);
       const data = await click('#rows');
       assertAlsoChanging(data, 'aside#t', /^tick \d+$/);
-      assert.ok((data.shown ?? []).some((el) => el.text === 'row 0'), JSON.stringify(data));
+      assert.ok(
+        (data.shown ?? []).some((el) => el.text === 'row 0'),
+        JSON.stringify(data)
+      );
     });
   }
 
