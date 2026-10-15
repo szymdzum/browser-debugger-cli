@@ -93,6 +93,7 @@ Network and console follow the session tab from the switch on (console also list
 ✓ Element Clicked
 Page: navigated to https://app.test/secure (200)    # navigation (or "URL changed ... (same document)")
 New text: "Your password is invalid!" (div#flash)   # alert/status/aria-live messages that appeared
+Also changing: aside#t "tick 51" (changing before the action)  # a region the page kept updating on its own before the action (ticker, poll); not the action's text, not "still changing"
 ⚠ Element Clicked (no visible effect observed ...)  # nothing changed - wrong element or a broken handler
 Form submitted (cancelled by the page): form#login  # the form fired submit; the page handled it in script (not "nothing happened")
 Button changed: disabled, "Sending…"                # the pressed button's own change (a request in flight, or stuck)
