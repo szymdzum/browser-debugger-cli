@@ -97,7 +97,7 @@ const HISTORY_STOP_SCRIPT =
  * logged: actions then work as without it.
  *
  * @param cdp - The page's connection
- * @returns Cleanup that stops it on the page and in later documents
+ * @returns Cleanup that stops it on the page and in later documents, settled once both are answered
  */
 export async function startActionHistory(cdp: CDPConnection): Promise<CleanupFunction> {
   let identifier: string | undefined;
@@ -110,12 +110,15 @@ export async function startActionHistory(cdp: CDPConnection): Promise<CleanupFun
   } catch (error) {
     log.debug(`Action history not started: ${getErrorMessage(error)}`);
   }
-  return () => {
-    const quiet = (error: unknown): void =>
-      log.debug(`Action history not stopped: ${getErrorMessage(error)}`);
-    if (identifier) {
-      cdp.send('Page.removeScriptToEvaluateOnNewDocument', { identifier }).catch(quiet);
+  return async () => {
+    const stops = [
+      ...(identifier ? [cdp.send('Page.removeScriptToEvaluateOnNewDocument', { identifier })] : []),
+      cdp.send('Runtime.evaluate', { expression: HISTORY_STOP_SCRIPT }),
+    ];
+    for (const stop of await Promise.allSettled(stops)) {
+      if (stop.status === 'rejected') {
+        log.debug(`Action history not stopped: ${getErrorMessage(stop.reason)}`);
+      }
     }
-    cdp.send('Runtime.evaluate', { expression: HISTORY_STOP_SCRIPT }).catch(quiet);
   };
 }
