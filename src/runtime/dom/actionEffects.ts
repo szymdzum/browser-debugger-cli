@@ -475,7 +475,7 @@ export function pageNavigation(
 /**
  * Whether an action had no visible effect: the page was read before and
  * after in the same document, it counted no DOM change, nothing made the
- * check uncertain, and no navigation, message, shown element, form submit
+ * check uncertain, and no navigation, message, shown element (or Shown scan cut short), form submit
  * (cancelled or not), pressed button change, request, dialog, new window or
  * console message happened.
  *
@@ -497,6 +497,7 @@ export function hadNoEffect(
     effects.navigation === undefined &&
     (effects.messages ?? []).length === 0 &&
     (effects.shown ?? []).length === 0 &&
+    effects.moreShownPartial === undefined &&
     effects.submitted === undefined &&
     effects.controlChange === undefined &&
     effects.expanded === undefined &&
@@ -763,7 +764,7 @@ function pageWork(watch: Watch, snapshot?: ReadSnapshot, domChanging = false): P
  * @param events - Main-frame navigation events
  * @returns Effects, without empty parts
  */
-function effectsOf(
+export function effectsOf(
   start: StartSnapshot | undefined,
   snapshot: ReadSnapshot | undefined,
   events: NavigationEvents
@@ -782,7 +783,7 @@ function effectsOf(
       ...(more > 0 && { moreMessages: more }),
       ...(shown.length > 0 && { shown }),
       ...(moreShown > 0 && { moreShown }),
-      ...(moreShown > 0 && snapshot?.shownPartial && { moreShownPartial: true }),
+      ...(snapshot?.shownPartial && { moreShownPartial: true }),
       ...pressOutcomes(snapshot),
     };
   } catch (error) {

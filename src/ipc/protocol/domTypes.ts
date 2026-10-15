@@ -169,7 +169,7 @@ export interface ActionEffects {
   shown?: ShownElement[];
   /** How many more elements qualified than `shown` lists */
   moreShown?: number;
-  /** The count in `moreShown` is a minimum: the page stopped looking at its time budget */
+  /** The page stopped looking at its time budget: `moreShown` is a minimum and more may exist, also when `moreShown` is absent */
   moreShownPartial?: boolean;
   /**
    * A form fired `submit` during the action, in the same document (absent

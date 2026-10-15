@@ -12,6 +12,7 @@ import { submitNetworkBusyWarning, submitTimeoutError } from '@/errors/messages.
 import type { TriggeredRequest } from '@/ipc/protocol/domTypes.js';
 import {
   domKeptChanging,
+  effectsOf,
   domLooksBusy,
   hadNoEffect,
   newMessages,
@@ -30,6 +31,7 @@ import {
 import { FIELD_VALUES_JS, MOVED_VALUE_JS } from '@/runtime/dom/reactEventHelpers.js';
 import {
   actionStatusLine,
+  moreShownText,
   newMessageText,
   pageNavigationText,
   releasedElsewhereWarning,
@@ -199,6 +201,7 @@ void describe('hadNoEffect', () => {
 
   void it('does not claim it after a change, request, dialog, window, console message or navigation', () => {
     assert.equal(hadNoEffect(read({ changes: 1 }), {}, NOTHING_ELSE), false);
+    assert.equal(hadNoEffect(read(), { moreShownPartial: true }, NOTHING_ELSE), false);
     assert.equal(hadNoEffect(read(), {}, { ...NOTHING_ELSE, consoleMessages: 3005 }), false);
     assert.equal(hadNoEffect(read(), {}, { ...NOTHING_ELSE, requests: 1 }), false);
     assert.equal(hadNoEffect(read(), {}, { ...NOTHING_ELSE, dialogs: 1 }), false);
@@ -738,6 +741,36 @@ void describe('pageNavigation page URLs (#623)', () => {
     assert.deepEqual(result, {
       url: `https://site.test/app?q=plain#id_token=${MASK}`,
       sameDocument: true,
+    });
+  });
+  void describe('a Shown scan the time budget cut short (#776)', () => {
+    const noEvents = {} as NavigationEvents;
+    const snapshot = (shown: Array<{ text: string; element: string }>): ReadSnapshot =>
+      ({ shown, shownPartial: true, messages: [], fresh: false }) as unknown as ReadSnapshot;
+
+    void it('flags partial with no rows found', () => {
+      const effects = effectsOf(undefined, snapshot([]), noEvents);
+      assert.equal(effects.moreShownPartial, true);
+      assert.equal(effects.shown, undefined);
+      assert.equal(effects.moreShown, undefined);
+    });
+
+    void it('flags partial with one row found', () => {
+      const effects = effectsOf(undefined, snapshot([{ text: 'big 0', element: 'li' }]), noEvents);
+      assert.equal(effects.moreShownPartial, true);
+      assert.equal(effects.shown?.length, 1);
+      assert.equal(effects.moreShown, undefined);
+    });
+
+    void it('does not flag a complete scan', () => {
+      const effects = effectsOf(undefined, { ...snapshot([]), shownPartial: false }, noEvents);
+      assert.equal(effects.moreShownPartial, undefined);
+    });
+
+    void it('words the last Shown row', () => {
+      assert.equal(moreShownText(0, true), '(scan cut short: more may be there)');
+      assert.equal(moreShownText(4, true), '(+4 or more)');
+      assert.equal(moreShownText(4), '(+4 more)');
     });
   });
 });

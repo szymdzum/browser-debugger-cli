@@ -90,6 +90,33 @@ void describe('Silent caps', () => {
     });
   });
 
+  void describe('Shown on /caps-shown under CPU throttling (#776)', () => {
+    before(async () => {
+      await open(`${fixture.url}caps-shown`);
+      await bdg(['cdp', 'Emulation.setCPUThrottlingRate', '--params', '{"rate":30}']);
+    });
+
+    void it('lists the first rows with their count, or says the scan is partial', async () => {
+      const data = (
+        JSON.parse(await bdg(['dom', 'click', '#big', '--json'])) as {
+          data: { shown?: Array<{ text: string }>; moreShown?: number; moreShownPartial?: boolean };
+        }
+      ).data;
+      const rows = data.shown?.map((row) => row.text) ?? [];
+      const all = ['big 0', 'big 1', 'big 2'];
+      if (data.moreShownPartial === true) {
+        assert.deepEqual(
+          rows,
+          all.slice(0, rows.length),
+          'a partial scan lists an in-order prefix'
+        );
+        return;
+      }
+      assert.deepEqual(rows, all);
+      assert.equal(data.moreShown, 12);
+    });
+  });
+
   void describe('console --level on /caps-console', () => {
     before(() => open(`${fixture.url}caps-console`));
 
