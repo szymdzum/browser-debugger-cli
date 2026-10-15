@@ -132,11 +132,7 @@ void describe('Self-updating containers', () => {
     void it('lists only the panels a toggle revealed', async () => {
       await act(['click', '#noop']);
       const data = await act(['click', '#toggle']);
-      assert.deepEqual(
-        shownTexts(data),
-        ['Panel A Panel B Panel C Panel D'],
-        JSON.stringify(data)
-      );
+      assert.deepEqual(shownTexts(data), ['Panel A Panel B Panel C Panel D'], JSON.stringify(data));
       assert.equal(data.changingOnItsOwn?.[0]?.element, 'aside#ticker', JSON.stringify(data));
     });
 
