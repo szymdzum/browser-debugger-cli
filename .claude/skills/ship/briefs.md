@@ -4,7 +4,7 @@ Render a brief with `node .claude/skills/ship/scripts/ship.mjs brief <role> N=<n
 
 | Role | Agent | Model | Runs | Cap (tool calls) |
 |---|---|---|---|---|
-| implementer | `general-purpose` | `sonnet`; `opus` for tier 3 | background | 80 |
+| implementer | `general-purpose` | `sonnet`; `opus` for tier 3 | background | 80, plus 30 per fix round |
 | reviewer | `general-purpose` | `sonnet` | foreground | 25 (tier 1–2), 40 (tier 3) |
 | tester | `general-purpose` | `sonnet` | foreground | 40; 20 for a fix with no new output or flag |
 | verifier | `general-purpose` | `sonnet` | foreground | 60 |

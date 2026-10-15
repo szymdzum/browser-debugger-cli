@@ -562,6 +562,8 @@ async function repeat(argv) {
     ghJson([
       'run',
       'list',
+      '--workflow',
+      'ci.yml',
       '--branch',
       pr.headRefName,
       '--event',
@@ -622,8 +624,8 @@ export function unfinishedRepeat(runs) {
 }
 
 /**
- * Failed jobs with no failed step: the runner died (lost communication, shut
- * down) before a test could fail, so a re-run, not a fix, is the next step.
+ * Failed jobs with no failed step: the runner was lost or shut down, or the
+ * job hit its timeout, before a step could fail; the job log tells which.
  *
  * @param {{ name: string, conclusion: string, steps?: { conclusion: string }[] }[]} jobs
  */
@@ -644,7 +646,7 @@ function printLostJobs(runId, jobs) {
   const lost = jobsLostWithoutResult(jobs);
   if (lost.length)
     console.log(
-      `note: ${lost.join(', ')} failed without a failed step (runner lost or shut down): gh run rerun ${runId} --failed`
+      `note: ${lost.join(', ')} failed without a failed step (runner lost or shut down, or a timeout): read the job log; a lost runner gets gh run rerun ${runId} --failed`
     );
 }
 
