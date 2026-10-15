@@ -266,21 +266,65 @@ export const REVEAL_SNAPSHOT_JS = `(el, press) => {
 }`;
 
 /**
+ * Page-side note of a mutation record that added an element: its parent
+ * (the record's target) gets the time `now` in a map of parents by the time
+ * of their last addition (most recent last, at most {@link MAX_OWN_PARENTS}).
+ * A Map, not a WeakMap: taking the notes over prunes them by time and the cap
+ * drops the least recent, both by iterating; the cap, the pruning and the
+ * idle observer's end bound what it holds.
+ */
+const NOTE_PARENT_JS = `(own, record, now) => {
+  if (record.type !== 'childList') return;
+  const nodes = record.addedNodes;
+  let element = false;
+  for (let i = 0; i < nodes.length && !element; i++) element = nodes[i].nodeType === 1;
+  if (!element) return;
+  own.delete(record.target);
+  own.set(record.target, now);
+  if (own.size > ${MAX_OWN_PARENTS}) own.delete(own.keys().next().value);
+}`;
+
+/**
+ * Page-side idle observer a stopped watch leaves in `window.__bdgIdle`
+ * ({@link EFFECTS_START_SCRIPT}): on the roots the watch observed (the
+ * document and its shadow roots, child lists only) it keeps noting parents
+ * that get elements ({@link NOTE_PARENT_JS}) into `own`, for up to
+ * {@link MAX_WATCH_MS}, until the next watch takes the notes within
+ * {@link OWN_RECENT_MS} over or {@link IDLE_STOP_SCRIPT} stops it. Defined
+ * outside the watch's scope, so it keeps only `own` and `roots` alive.
+ */
+const IDLE_WATCH_JS = `(own, roots) => {
+  const noteParent = ${NOTE_PARENT_JS};
+  const note = (records) => {
+    const now = performance.now();
+    for (const record of records) noteParent(own, record, now);
+  };
+  const idle = new MutationObserver(note);
+  for (const root of roots) idle.observe(root, { subtree: true, childList: true });
+  const end = () => {
+    clearTimeout(expiry);
+    idle.disconnect();
+    if (window.__bdgIdle === handle) delete window.__bdgIdle;
+  };
+  const expiry = setTimeout(end, ${MAX_WATCH_MS});
+  const handle = {
+    stop: end,
+    take: () => {
+      note(idle.takeRecords());
+      end();
+      const since = performance.now() - ${OWN_RECENT_MS};
+      for (const [parent, time] of own) if (time < since) own.delete(parent);
+      return own;
+    }
+  };
+  window.__bdgIdle = handle;
+}`;
+
+/**
  * Page-side container whose added elements count as an action's result:
  * the target's form, search box, dialog or combobox, else its grandparent
  * (its parent when the grandparent is the body).
  */
-/**
- * Page-side note that `parent` got an element added now, in a map of
- * parents by the time of their last addition (most recent last, at most
- * {@link MAX_OWN_PARENTS})
- */
-const NOTE_OWN_JS = `(own, parent) => {
-  own.delete(parent);
-  own.set(parent, performance.now());
-  if (own.size > ${MAX_OWN_PARENTS}) own.delete(own.keys().next().value);
-}`;
-
 const NEAR_SCOPE_JS = `(target) => {
   const container = target.closest(${JSON.stringify(NEAR_CONTAINERS)});
   if (container) return container;
@@ -528,13 +572,13 @@ const OUTCOMES_JS = `(state, focus) => {
  * action's events is dispatched (its handlers and their microtasks: the
  * flag is cleared in a microtask after the event's last listener on
  * `window`, else by a posted message), and notes the parents that got
- * elements before the first event ({@link NOTE_OWN_JS}). Once stopped, the
+ * elements before the first event ({@link NOTE_PARENT_JS}). Once stopped, the
  * watch leaves an idle observer in `window.__bdgIdle` that keeps noting such
  * parents (child lists only) for up to {@link MAX_WATCH_MS}, until the next
  * watch takes its notes over (those within {@link OWN_RECENT_MS}) or
  * {@link IDLE_STOP_SCRIPT} stops it. Evaluates to the URL and the messages.
  */
-export const EFFECTS_START_SCRIPT = `(() => {
+export const EFFECTS_START_SCRIPT = `((watchIdle) => {
   if (window.__bdgEffects) window.__bdgEffects.stop();
   const churnOnly = ${CHURN_ONLY_JS};
   const structural = ${STRUCTURAL_CHANGE_JS};
@@ -548,8 +592,8 @@ export const EFFECTS_START_SCRIPT = `(() => {
     firstEventAt: null, dispatching: false, direct: new WeakSet(), parentOf: new WeakMap(),
     own: window.__bdgIdle ? window.__bdgIdle.take() : new Map()
   };
-  const noteOwn = ${NOTE_OWN_JS};
-  const hasElement = (nodes) => Array.from(nodes).some((node) => node.nodeType === 1);
+  const noteParent = ${NOTE_PARENT_JS};
+  const roots = [];
   const dispatched = new MessageChannel();
   dispatched.port1.onmessage = () => { state.dispatching = false; };
   const listen = EventTarget.prototype.addEventListener;
@@ -584,23 +628,26 @@ export const EFFECTS_START_SCRIPT = `(() => {
   const keep = (list, nodes) => {
     for (const node of nodes) if (node.nodeType === 1 && list.length < ${MAX_TRACKED_NODES}) list.push(node);
   };
-  const noteAdded = (record) => {
-    if (state.targets.size === 0 && hasElement(record.addedNodes)) noteOwn(state.own, record.target);
+  const noteAdded = (record, now) => {
+    if (state.targets.size === 0) noteParent(state.own, record, now);
+    let room = ${MAX_TRACKED_NODES} - state.added.length;
     for (const node of record.addedNodes) {
       if (node.nodeType !== 1) continue;
+      if (room-- <= 0) break;
       state.parentOf.set(node, record.target);
       if (state.dispatching) state.direct.add(node);
     }
   };
   const elementCount = (nodes) => Array.from(nodes).filter((node) => node.nodeType === 1).length;
   const count = (records) => {
+    const now = performance.now();
     let burst = false;
     for (const record of records) {
       if (churnOnly(record, state.targets)) continue;
       state.changes++;
       burst = burst || structural(record);
       if (record.type === 'childList') {
-        noteAdded(record);
+        noteAdded(record, now);
         state.nodes += elementCount(record.addedNodes) + elementCount(record.removedNodes);
         keep(state.added, record.addedNodes);
         keep(state.removed, record.removedNodes);
@@ -612,29 +659,27 @@ export const EFFECTS_START_SCRIPT = `(() => {
   };
   const observer = new MutationObserver(count);
   const options = { subtree: true, childList: true, characterData: true, attributes: true, attributeOldValue: true };
-  const observeTree = (target, root, rootOptions) => {
-    target.observe(root, rootOptions);
-    for (const el of root.querySelectorAll('*')) if (el.shadowRoot) observeTree(target, el.shadowRoot, rootOptions);
+  const observeTree = (root) => {
+    observer.observe(root, options);
+    roots.push(root);
+    for (const el of root.querySelectorAll('*')) if (el.shadowRoot) observeTree(el.shadowRoot);
   };
-  observeTree(observer, document, options);
+  observeTree(document);
   const attachShadow = Element.prototype.attachShadow;
   const watchedAttach = function (init) {
     const root = attachShadow.call(this, init);
     state.changes++;
     observer.observe(root, options);
+    roots.push(root);
     return root;
   };
   Element.prototype.attachShadow = watchedAttach;
   const types = ['pointerdown', 'mousedown', 'click', 'keydown', 'focusin', 'submit', 'mouseover', 'input', 'change', 'copy', 'cut'];
   const pressTypes = ['pointerdown', 'mousedown', 'click', 'keydown', 'submit'];
-  const endDispatch = (event) => {
-    unlisten.call(window, event.type, endDispatch, false);
-    queueMicrotask(() => { state.dispatching = false; });
-  };
+  const endDispatch = () => queueMicrotask(() => { state.dispatching = false; });
   const record = (event) => {
     if (state.firstEventAt === null) state.firstEventAt = performance.now();
     state.dispatching = true;
-    listen.call(window, event.type, endDispatch, false);
     dispatched.port2.postMessage(null);
     if (event.type === 'copy' || event.type === 'cut') state.copied = true;
     const path = event.composedPath().filter((node) => node.nodeType === 1);
@@ -653,47 +698,24 @@ export const EFFECTS_START_SCRIPT = `(() => {
     }
   };
   types.forEach((type) => window.addEventListener(type, record, true));
+  types.forEach((type) => window.addEventListener(type, endDispatch, false));
   state.flush = () => count(observer.takeRecords());
-  const watchIdle = () => {
-    const own = state.own;
-    const noteIdle = (records) => {
-      for (const record of records) if (record.type === 'childList' && hasElement(record.addedNodes)) noteOwn(own, record.target);
-    };
-    const idle = new MutationObserver(noteIdle);
-    const end = () => {
-      clearTimeout(begin);
-      clearTimeout(idleExpiry);
-      idle.disconnect();
-      if (window.__bdgIdle === handle) delete window.__bdgIdle;
-    };
-    const begin = setTimeout(() => observeTree(idle, document, { subtree: true, childList: true }), 0);
-    const idleExpiry = setTimeout(end, ${MAX_WATCH_MS});
-    const handle = {
-      stop: end,
-      take: () => {
-        const since = performance.now() - ${OWN_RECENT_MS};
-        noteIdle(idle.takeRecords());
-        end();
-        for (const [parent, time] of own) if (time < since) own.delete(parent);
-        return own;
-      }
-    };
-    window.__bdgIdle = handle;
-  };
   state.stop = () => {
     if (state.stopped) return;
     state.stopped = true;
     clearTimeout(expiry);
     observer.disconnect();
-    watchIdle();
+    watchIdle(state.own, roots);
+    dispatched.port1.close();
     if (Element.prototype.attachShadow === watchedAttach) Element.prototype.attachShadow = attachShadow;
     types.forEach((type) => window.removeEventListener(type, record, true));
+    types.forEach((type) => window.removeEventListener(type, endDispatch, false));
     state.forms.forEach((form) => unlisten.call(form, 'submit', onSubmit, true));
   };
   const expiry = setTimeout(state.stop, ${MAX_WATCH_MS});
   window.__bdgEffects = state;
   return { href: location.href, messages: (${MESSAGES_JS})(ids) };
-})()`;
+})(${IDLE_WATCH_JS})`;
 
 /**
  * Page-side wait for one turn of the page's timers. A busy or descheduled

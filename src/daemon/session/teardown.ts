@@ -18,11 +18,10 @@ import { isProcessAlive, killChromeProcess, waitForProcessExit } from '@/utils/p
 const CHROME_EXIT_POLL_MS = 50;
 /** Up to 5 s for Chrome to shut down cleanly after Browser.close or SIGTERM */
 const GRACEFUL_EXIT_WAIT_MS = 5000;
-/** How long to wait for the page to stop bdg's idle observer in a Chrome left running */
-const IDLE_STOP_REPLY_MS = 200;
-
 /** How long to wait for Browser.close to answer (Chrome may exit without answering) */
 const BROWSER_CLOSE_REPLY_MS = 500;
+/** How long to wait for the page to stop bdg's idle observer in a Chrome left running */
+const IDLE_STOP_REPLY_MS = 200;
 
 /**
  * The page connection to release, and the Chrome behind it.
