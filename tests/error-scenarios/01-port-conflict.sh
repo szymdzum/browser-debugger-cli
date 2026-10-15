@@ -9,6 +9,9 @@
 
 set -euo pipefail
 
+# Pages come from the local fixture server (tests/run-all-tests.sh starts it)
+: "${BDG_FIXTURE_URL:?BDG_FIXTURE_URL is not set: run via tests/run-all-tests.sh}"
+
 # Cleanup trap to prevent cascade failures
 cleanup() {
   local exit_code=$?
@@ -38,7 +41,7 @@ cleanup_sessions
 
 # Test 1: Start a session (bdg picks a free port)
 log_step "Test 1: Starting first session"
-bdg "https://example.com" --headless || die "Failed to start first session"
+bdg "$BDG_FIXTURE_URL" --headless || die "Failed to start first session"
 sleep 2
 FIRST_PORT=$(jq -r '.port' "$BDG_SESSION_DIR/session.meta.json") || die "session.meta.json has no port"
 
@@ -49,7 +52,7 @@ log_success "First session started successfully"
 # Test 2: Try to start second session (should fail with port conflict)
 log_step "Test 2: Attempting to start second session (should fail)"
 set +e
-SECOND_SESSION_OUTPUT=$(bdg "https://example.com" --headless 2>&1)
+SECOND_SESSION_OUTPUT=$(bdg "$BDG_FIXTURE_URL" --headless 2>&1)
 EXIT_CODE=$?
 set -e
 
@@ -73,7 +76,7 @@ fi
 # Test 3: Try with explicit port that's already in use
 log_step "Test 3: Attempting to start session on the occupied port $FIRST_PORT"
 set +e
-EXPLICIT_PORT_OUTPUT=$(bdg "https://example.com" --headless --port "$FIRST_PORT" 2>&1)
+EXPLICIT_PORT_OUTPUT=$(bdg "$BDG_FIXTURE_URL" --headless --port "$FIRST_PORT" 2>&1)
 EXIT_CODE=$?
 set -e
 
@@ -93,7 +96,7 @@ bdg stop || log_warn "Failed to stop first session"
 sleep 2
 
 # Now try alternative port
-bdg "https://example.com" --headless --port 9223 || die "Failed to start on alternative port"
+bdg "$BDG_FIXTURE_URL" --headless --port 9223 || die "Failed to start on alternative port"
 sleep 2
 
 bdg status > /dev/null 2>&1 || die "Alternative port session not running"

@@ -11,6 +11,9 @@
 
 set -euo pipefail
 
+# Pages come from the local fixture server (tests/run-all-tests.sh starts it)
+: "${BDG_FIXTURE_URL:?BDG_FIXTURE_URL is not set: run via tests/run-all-tests.sh}"
+
 # Cleanup trap to prevent cascade failures
 cleanup() {
   local exit_code=$?
@@ -61,7 +64,7 @@ log_success "Test 1 passed: Network fails gracefully with no session"
 
 # Start session for remaining tests
 log_step "Starting session for network tests"
-bdg "https://example.com" --headless || die "Failed to start session"
+bdg "$BDG_FIXTURE_URL" --headless || die "Failed to start session"
 sleep 3  # Let page load and generate network requests
 
 # Test 2: Basic network listing
@@ -69,7 +72,7 @@ log_step "Test 2: List network requests"
 NETWORK_OUTPUT=$(bdg peek --network 2>&1) || die "Failed to list network requests"
 
 # Should show network requests
-if echo "$NETWORK_OUTPUT" | grep -qi "example.com\|network\|GET\|200"; then
+if echo "$NETWORK_OUTPUT" | grep -qi "127.0.0.1\|network\|GET\|200"; then
   log_success "Network requests found"
 else
   log_warn "Network output may not show expected requests"
@@ -151,11 +154,11 @@ fi
 log_success "Test 6 passed: Limit tested"
 
 # Test 7: Check for specific request in network
-log_step "Test 7: Verify example.com request present"
-if echo "$NETWORK_OUTPUT" | grep -qi "example.com"; then
-  log_success "Found example.com in network requests"
+log_step "Test 7: Verify fixture request present"
+if echo "$NETWORK_OUTPUT" | grep -qi "127.0.0.1"; then
+  log_success "Found fixture page in network requests"
 else
-  log_warn "example.com request not found (may have been filtered)"
+  log_warn "fixture request not found (may have been filtered)"
 fi
 
 log_success "Test 7 passed: Request verification tested"

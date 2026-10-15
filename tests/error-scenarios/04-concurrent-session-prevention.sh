@@ -9,6 +9,9 @@
 
 set -euo pipefail
 
+# Pages come from the local fixture server (tests/run-all-tests.sh starts it)
+: "${BDG_FIXTURE_URL:?BDG_FIXTURE_URL is not set: run via tests/run-all-tests.sh}"
+
 # Load cleanup library
 TESTS_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib"
 source "$TESTS_LIB_DIR/cleanup.sh"
@@ -33,7 +36,7 @@ cleanup_sessions
 
 # Test 1: Start first session
 log_step "Test 1: Starting first session"
-bdg "https://example.com" --headless || die "Failed to start first session"
+bdg "$BDG_FIXTURE_URL" --headless || die "Failed to start first session"
 sleep 2
 
 # Verify first session is running
@@ -44,7 +47,7 @@ log_success "First session running (PID: $FIRST_PID)"
 # Test 2: Attempt to start concurrent session
 log_step "Test 2: Attempting concurrent session (should fail)"
 set +e
-CONCURRENT_OUTPUT=$(bdg "https://example.com" --headless 2>&1)
+CONCURRENT_OUTPUT=$(bdg "$BDG_FIXTURE_URL" --headless 2>&1)
 EXIT_CODE=$?
 set -e
 
@@ -82,7 +85,7 @@ log_step "Test 5: Starting new session after stopping first"
 bdg stop || log_warn "Stop failed"
 sleep 2
 
-bdg "https://example.com" --headless || die "Failed to start new session after stopping"
+bdg "$BDG_FIXTURE_URL" --headless || die "Failed to start new session after stopping"
 sleep 2
 
 NEW_PID=$(cat "$BDG_SESSION_DIR"/daemon.pid 2>/dev/null)
@@ -98,11 +101,11 @@ bdg stop || log_warn "Stop failed"
 sleep 2
 
 # Try to start multiple sessions simultaneously
-(bdg "https://example.com" --headless > /tmp/bdg_start1.log 2>&1) &
+(bdg "$BDG_FIXTURE_URL" --headless > /tmp/bdg_start1.log 2>&1) &
 PID1=$!
-(bdg "https://example.com" --headless > /tmp/bdg_start2.log 2>&1) &
+(bdg "$BDG_FIXTURE_URL" --headless > /tmp/bdg_start2.log 2>&1) &
 PID2=$!
-(bdg "https://example.com" --headless > /tmp/bdg_start3.log 2>&1) &
+(bdg "$BDG_FIXTURE_URL" --headless > /tmp/bdg_start3.log 2>&1) &
 PID3=$!
 
 # Wait for all attempts

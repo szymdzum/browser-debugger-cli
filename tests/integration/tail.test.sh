@@ -10,6 +10,9 @@
 
 set -euo pipefail
 
+# Pages come from the local fixture server (tests/run-all-tests.sh starts it)
+: "${BDG_FIXTURE_URL:?BDG_FIXTURE_URL is not set: run via tests/run-all-tests.sh}"
+
 # Cleanup trap to prevent cascade failures
 cleanup() {
   local exit_code=$?
@@ -58,7 +61,7 @@ log_success "Test 1 passed: Tail handles missing session gracefully"
 
 # Start session for remaining tests
 log_step "Starting session for tail tests"
-bdg "https://example.com" --headless || die "Failed to start session"
+bdg "$BDG_FIXTURE_URL" --headless || die "Failed to start session"
 sleep 5  # Let daemon start and some data accumulate
 
 # Test 2: Basic tail (run for 3 seconds then kill)

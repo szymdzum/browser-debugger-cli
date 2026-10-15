@@ -9,6 +9,9 @@
 
 set -euo pipefail
 
+# Pages come from the local fixture server (tests/run-all-tests.sh starts it)
+: "${BDG_FIXTURE_URL:?BDG_FIXTURE_URL is not set: run via tests/run-all-tests.sh}"
+
 # Cleanup trap to prevent cascade failures
 cleanup() {
   local exit_code=$?
@@ -71,9 +74,8 @@ log_step "Test 5: Valid URL formats should succeed"
 
 # Test various valid formats
 VALID_URLS=(
-  "example.com"
-  "http://example.com"
-  "https://example.com"
+  "${BDG_FIXTURE_URL#http://}"
+  "$BDG_FIXTURE_URL"
 )
 
 for url in "${VALID_URLS[@]}"; do

@@ -9,6 +9,9 @@
 
 set -euo pipefail
 
+# Pages come from the local fixture server (tests/run-all-tests.sh starts it)
+: "${BDG_FIXTURE_URL:?BDG_FIXTURE_URL is not set: run via tests/run-all-tests.sh}"
+
 # Cleanup trap to prevent cascade failures
 cleanup() {
   local exit_code=$?
@@ -37,7 +40,7 @@ cleanup_sessions
 
 # Test 1: Start session and capture daemon PID
 log_step "Test 1: Starting session"
-bdg "https://example.com" --headless || die "Failed to start session"
+bdg "$BDG_FIXTURE_URL" --headless || die "Failed to start session"
 sleep 2
 
 DAEMON_PID=$(cat "$BDG_SESSION_DIR"/daemon.pid 2>/dev/null) || die "daemon.pid not found"
@@ -102,7 +105,7 @@ fi
 
 # Test 6: New session should start after crash
 log_step "Test 6: Starting new session after crash recovery"
-bdg "https://example.com" --headless || die "Failed to start session after crash"
+bdg "$BDG_FIXTURE_URL" --headless || die "Failed to start session after crash"
 sleep 2
 
 NEW_DAEMON_PID=$(cat "$BDG_SESSION_DIR"/daemon.pid 2>/dev/null) || die "daemon.pid not found after recovery"

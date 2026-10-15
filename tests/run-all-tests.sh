@@ -6,6 +6,10 @@
 # 2. Integration tests (command testing)
 # 3. Error scenario tests (edge cases)
 #
+# The shell suites load pages from the local fixture server (started and
+# stopped here, URL in BDG_FIXTURE_URL); they pass offline. The session
+# directory of a failed test is kept (/tmp/bdg-it-*).
+#
 # Usage:
 #   ./run-all-tests.sh              # Run all tests
 #   ./run-all-tests.sh --verbose    # Run all tests with real-time output
@@ -74,6 +78,13 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Local fixture server for the shell suites (no outside network)
+source "$TESTS_DIR/lib/fixtures.sh"
+trap stop_fixture_server EXIT
+if [ "$RUN_INTEGRATION" = true ] || [ "$RUN_ERRORS" = true ] || [ "$RUN_EDGE_CASES" = true ]; then
+  start_fixture_server
+fi
+
 # Create results directory
 mkdir -p "$RESULTS_DIR"
 
@@ -119,6 +130,8 @@ run_test_suite() {
     # and never another test run's
     local session_dir
     session_dir="$(mktemp -d /tmp/bdg-it-XXXXXX)"
+
+    local failed_before=$FAILED_TESTS
 
     # Run test with or without verbose output
     if [ "$VERBOSE" = true ]; then
@@ -166,7 +179,11 @@ run_test_suite() {
     fi
 
     BDG_SESSION_DIR="$session_dir" bdg cleanup --force > /dev/null 2>&1 || true
-    command rm -rf "$session_dir"
+    if [ "$FAILED_TESTS" -gt "$failed_before" ]; then
+      echo -e "${YELLOW}       session dir kept: $session_dir${NC}"
+    else
+      command rm -rf "$session_dir"
+    fi
 
     echo ""
 
