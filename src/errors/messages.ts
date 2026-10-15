@@ -9,7 +9,7 @@ import * as path from 'path';
 
 import type { MissingMethodCause } from '@/cdp/methodTarget.js';
 import { EVAL_FULL_MAX_BYTES } from '@/constants.js';
-import type { DomFrame, PendingRequestInfo } from '@/ipc/protocol/commands.js';
+import type { DomFrame, PageLoadingState, PendingRequestInfo } from '@/ipc/protocol/commands.js';
 import type { InvalidField, OptionNotFound } from '@/ipc/protocol/domTypes.js';
 import type { TabRef } from '@/ipc/protocol/tabTypes.js';
 import {
@@ -1998,7 +1998,8 @@ export function waitTargetRequiredError(): ErrorWithSuggestion {
 export function waitTimeoutError(
   condition: WaitCondition,
   snapshot: WaitSnapshot | undefined,
-  timeoutMs: number
+  timeoutMs: number,
+  _loading?: PageLoadingState
 ): ErrorWithSuggestion {
   const seen = snapshot
     ? `last seen: ${waitSnapshotSummary(snapshot, condition)}`
