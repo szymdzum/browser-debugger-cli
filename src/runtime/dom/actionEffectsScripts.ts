@@ -656,9 +656,10 @@ export const EFFECTS_START_SCRIPT = `(() => {
   state.flush = () => count(observer.takeRecords());
   const watchIdle = () => {
     const own = state.own;
-    const idle = new MutationObserver((records) => {
+    const noteIdle = (records) => {
       for (const record of records) if (record.type === 'childList' && hasElement(record.addedNodes)) noteOwn(own, record.target);
-    });
+    };
+    const idle = new MutationObserver(noteIdle);
     const end = () => {
       clearTimeout(begin);
       clearTimeout(idleExpiry);
@@ -671,7 +672,7 @@ export const EFFECTS_START_SCRIPT = `(() => {
       stop: end,
       take: () => {
         const since = performance.now() - ${OWN_RECENT_MS};
-        for (const record of idle.takeRecords()) if (record.type === 'childList' && hasElement(record.addedNodes)) noteOwn(own, record.target);
+        noteIdle(idle.takeRecords());
         end();
         for (const [parent, time] of own) if (time < since) own.delete(parent);
         return own;
