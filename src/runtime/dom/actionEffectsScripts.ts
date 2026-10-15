@@ -284,12 +284,13 @@ const NEAR_SCOPE_JS = `(target) => {
  * (itself first) that is not a secret's. Only shown ones
  * with visible text count, the outermost of nested ones, and not those
  * whose text a removed element had (a re-render). At most
- * {@link MAX_SHOWN}, within {@link SHOWN_BUDGET_MS}. Returns the
+ * {@link MAX_SHOWN}, within {@link SHOWN_BUDGET_MS} counted from after the
+ * page's layout is brought up to date (on a slow machine that layout alone
+ * can take longer than the budget). Returns the
  * elements, how many more qualified than they list (`cut`) and whether the
  * time budget stopped the scan (`partial`: more may exist, uncounted).
  */
 export const SHOWN_ELEMENTS_JS = `(state) => {
-  const deadline = performance.now() + ${SHOWN_BUDGET_MS};
   const describe = ${ELEMENT_DESCRIPTION_JS};
   const shown = ${SHOWN_JS};
   const visibleText = ${VISIBLE_TEXT_JS};
@@ -325,6 +326,8 @@ export const SHOWN_ELEMENTS_JS = `(state) => {
   if (state.reveal) for (const el of state.reveal.hidden) if (el.isConnected) candidates.add(el);
   const found = [];
   let partial = false;
+  void document.documentElement.offsetHeight;
+  const deadline = performance.now() + ${SHOWN_BUDGET_MS};
   for (const el of candidates) {
     if (performance.now() > deadline) { partial = true; break; }
     if (!shown(el) || removed.has(contentOf(el))) continue;
