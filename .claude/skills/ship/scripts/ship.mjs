@@ -17,6 +17,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
+import { createConnection } from 'node:net';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -531,6 +532,7 @@ async function runWaitLoop(id) {
     if (r.status === 'completed') {
       for (const j of r.jobs) console.log(`${j.conclusion.padEnd(9)} ${j.name}`);
       console.log(`run ${id} on ${r.headSha.slice(0, 10)}: ${r.conclusion}`);
+      printLostJobs(id, r.jobs);
       return r.conclusion === 'success' ? EXIT.ok : EXIT.failed;
     }
     if (Date.now() > deadline) {
@@ -565,10 +567,17 @@ async function repeat(argv) {
       '--event',
       'workflow_dispatch',
       '--json',
-      'databaseId,headSha',
+      'databaseId,headSha,status',
       '--limit',
       '20',
     ]) ?? [];
+  const running = unfinishedRepeat(dispatchRuns());
+  if (running) {
+    console.log(
+      `repeat run ${running.databaseId} is still ${running.status} on ${pr.headRefName}: a second dispatch would queue behind it or cancel a queued one; wait with ship run-wait ${running.databaseId}, then dispatch`
+    );
+    return EXIT.failed;
+  }
   const before = new Set(dispatchRuns().map((r) => r.databaseId));
   run(
     'gh',
@@ -600,6 +609,43 @@ async function repeat(argv) {
     'dispatched, but the run did not show up within 50 s; look with gh run list --event workflow_dispatch'
   );
   return EXIT.failed;
+}
+
+/**
+ * The first repeat run on the branch that hasn't finished: a second dispatch
+ * in the same concurrency group would queue behind it or cancel a queued one.
+ *
+ * @param {{ databaseId: number, status: string }[]} runs workflow_dispatch runs of the branch
+ */
+export function unfinishedRepeat(runs) {
+  return runs.find((r) => r.status !== 'completed') ?? null;
+}
+
+/**
+ * Failed jobs with no failed step: the runner died (lost communication, shut
+ * down) before a test could fail, so a re-run, not a fix, is the next step.
+ *
+ * @param {{ name: string, conclusion: string, steps?: { conclusion: string }[] }[]} jobs
+ */
+export function jobsLostWithoutResult(jobs) {
+  return jobs
+    .filter((j) => j.conclusion === 'failure' && j.name !== 'CI OK')
+    .filter((j) => !(j.steps ?? []).some((s) => s.conclusion === 'failure'))
+    .map((j) => j.name);
+}
+
+/**
+ * Prints the re-run hint for jobs that failed without a failed step.
+ *
+ * @param {string|number} runId
+ * @param {object[]} jobs
+ */
+function printLostJobs(runId, jobs) {
+  const lost = jobsLostWithoutResult(jobs);
+  if (lost.length)
+    console.log(
+      `note: ${lost.join(', ')} failed without a failed step (runner lost or shut down): gh run rerun ${runId} --failed`
+    );
 }
 
 /**
@@ -780,6 +826,7 @@ function ciGates(results, pr, macos) {
   if (ci?.status === 'completed') {
     const jobs = ghJson(['run', 'view', String(ci.databaseId), '--json', 'jobs']).jobs;
     const job = (re) => jobs.find((j) => re.test(j.name));
+    printLostJobs(ci.databaseId, jobs);
     gateLine(
       results,
       job(/^CI OK$/)?.conclusion === 'success',
@@ -1058,9 +1105,10 @@ export function appendSnapshotEntries(file, names) {
  */
 export function parseSnapshotArgs(argv, dirs) {
   if (!argv.length) return { accept: null };
+  if (argv.length === 1 && argv[0] === '--accept-live') return { acceptLive: true };
   const names = argv.slice(1);
   if (argv[0] !== '--accept' || !names.length)
-    return { error: 'snapshot takes no arguments, or --accept <name>…' };
+    return { error: 'snapshot takes no arguments, --accept <name>…, or --accept-live' };
   const bad = names.find((n) => n.includes('\n') || n.includes('\r'));
   if (bad !== undefined) return { error: `name contains a newline: ${JSON.stringify(bad)}` };
   const unsafe = names.find((n) => n === '' || n === '.' || n === '..' || /[\\/]/.test(n));
@@ -1077,18 +1125,59 @@ export function parseSnapshotArgs(argv, dirs) {
 }
 
 /**
+ * True when a Unix socket accepts a connection within the timeout: bdg's
+ * only liveness signal for a session.
+ *
+ * @param {string} path
+ * @param {number} [timeoutMs]
+ * @returns {Promise<boolean>}
+ */
+export function socketAccepts(path, timeoutMs = 1000) {
+  return new Promise((done) => {
+    const socket = createConnection(path);
+    const finish = (ok) => {
+      socket.destroy();
+      done(ok);
+    };
+    socket.once('connect', () => finish(true));
+    socket.once('error', () => finish(false));
+    socket.setTimeout(timeoutMs, () => finish(false));
+  });
+}
+
+/**
+ * `ship snapshot --accept-live`: when the user's own session in ~/.bdg is
+ * live (its daemon.sock accepts a connection), accepts every current ~/.bdg
+ * entry as presence-only, so its log and PID files don't fail gate 8.
+ *
+ * @param {string} dir the ~/.bdg directory
+ */
+async function acceptLiveSession(dir) {
+  if (!existsSync(SNAPSHOT.bdg))
+    return usage('snapshot --accept-live: needs a snapshot from ship snapshot');
+  if (!(await socketAccepts(join(dir, 'daemon.sock'))))
+    return usage(`snapshot --accept-live: no live session in ${dir} (daemon.sock does not accept a connection)`);
+  const names = listDir(dir);
+  appendSnapshotEntries(SNAPSHOT.bdg, names);
+  console.log(`accepted the live session in ~/.bdg: ${names.join(', ')}`);
+  return EXIT.ok;
+}
+
+/**
  * Snapshots ~/.bdg and ~/Downloads at session start, for gate 8. With
  * `--accept <name>…` it appends entries to the matching snapshot instead
  * (a file the user put in ~/Downloads, or their own live session's file in
- * ~/.bdg); it needs an existing snapshot. Any other argument is a usage
- * error and leaves the snapshot alone.
+ * ~/.bdg); `--accept-live` accepts all of a live session in ~/.bdg. Both
+ * need an existing snapshot. Any other argument is a usage error and
+ * leaves the snapshot alone.
  *
  * @param {string[]} [argv]
  */
-function snapshot(argv = []) {
+async function snapshot(argv = []) {
   const dirs = { bdg: join(homedir(), '.bdg'), downloads: join(homedir(), 'Downloads') };
   const parsed = parseSnapshotArgs(argv, dirs);
-  if ('error' in parsed) return usage(`snapshot [--accept <name>…]: ${parsed.error}`);
+  if ('error' in parsed) return usage(`snapshot [--accept <name>… | --accept-live]: ${parsed.error}`);
+  if (parsed.acceptLive) return acceptLiveSession(dirs.bdg);
   if (parsed.accept) {
     if (parsed.accept.some(({ key }) => !existsSync(SNAPSHOT[key])))
       return usage('snapshot --accept <name>…: needs a snapshot from ship snapshot');
@@ -1247,7 +1336,7 @@ function leftoverLines(scope) {
     if (added.length) lines.push(`new in ~/${dir}: ${added.join(', ')}`);
     if (changed.length)
       lines.push(
-        `written to in ~/${dir} since the snapshot: ${changed.join(', ')} (a user's own file: ship snapshot --accept <name>)`
+        `written to in ~/${dir} since the snapshot: ${changed.join(', ')} (a user's own file: ship snapshot --accept <name>; their live session: --accept-live)`
       );
   }
   for (const file of readdirSync('/tmp').filter((f) => /^bdg-.*\.pid$/.test(f))) {
@@ -1497,7 +1586,7 @@ function log(argv) {
 const COMMANDS = {
   snapshot: [
     snapshot,
-    "session start: snapshot ~/.bdg and ~/Downloads (gate 8); --accept <name>… adds a user's own ~/Downloads or ~/.bdg file to the snapshot",
+    "session start: snapshot ~/.bdg and ~/Downloads (gate 8); --accept <name>… adds a user's own ~/Downloads or ~/.bdg file to the snapshot; --accept-live accepts all files of the user's live session in ~/.bdg",
   ],
   worktree: [worktree, '<N> <branch>: agent worktree from origin/main, node_modules linked'],
   brief: [brief, '<role> N=<n> KEY=value…: render a brief with the shared blocks'],
