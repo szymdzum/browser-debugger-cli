@@ -90,6 +90,29 @@ void describe('Silent caps', () => {
     });
   });
 
+  void describe('Shown on /caps-shown under CPU throttling (#776)', () => {
+    before(async () => {
+      await open(`${fixture.url}caps-shown`);
+      await bdg(['cdp', 'Emulation.setCPUThrottlingRate', '--params', '{"rate":30}']);
+    });
+
+    void it('lists the same first rows and count as unthrottled, or says it is partial', async () => {
+      const data = (
+        JSON.parse(await bdg(['dom', 'click', '#big', '--json'])) as {
+          data: { shown?: Array<{ text: string }>; moreShown?: number; moreShownPartial?: boolean };
+        }
+      ).data;
+      assert.deepEqual(
+        data.shown?.map((row) => row.text),
+        ['big 0', 'big 1', 'big 2']
+      );
+      assert.ok(
+        data.moreShown === 12 || (data.moreShownPartial === true && (data.moreShown ?? 0) > 0),
+        `moreShown ${String(data.moreShown)} partial ${String(data.moreShownPartial)}`
+      );
+    });
+  });
+
   void describe('console --level on /caps-console', () => {
     before(() => open(`${fixture.url}caps-console`));
 
