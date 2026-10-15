@@ -14,6 +14,7 @@ import type { A11yNode } from '@/types.js';
 import { formatA11yNodeWithContext } from '@/ui/formatters/a11y.js';
 import { formatDomQuery } from '@/ui/formatters/dom.js';
 import type { InspectOutput } from '@/ui/formatters/inspect.js';
+import { formatInspect } from '@/ui/formatters/inspect.js';
 import { inspectHeader } from '@/ui/formatters/inspect.js';
 
 /** Value, and how it is written inside `"..."` (300 characters are cut: see `LONG`) */
@@ -196,5 +197,39 @@ void describe('dom query names an icon-only button (#645)', () => {
       row({ preview: 'Save', accessibleName: 'Open menu' }),
       '[2] <button class="icon"> Save'
     );
+  });
+});
+
+void describe('dom inspect rows and header text (#734 review)', () => {
+  void it('escapes ids in the parent line and tree rows, and content and placeholder', () => {
+    const header = inspectHeader({
+      element: 'input',
+      content: 'a "b" \\c',
+      placeholder: 'say "hi" back\\slash',
+      visibility: {},
+    } as unknown as InspectOutput);
+    assert.equal(header, 'input "a \\"b\\" \\\\c" placeholder "say \\"hi\\" back\\\\slash"');
+    const text = formatInspect({
+      element: 'span#kid',
+      visibility: {},
+      layout: { display: 'block', parent: { element: 'div#p\nq', display: 'block' } },
+      tree: [{ element: 'li#a\nb', w: 1, h: 1 }],
+    } as unknown as InspectOutput);
+    assert.doesNotMatch(text, /div#p\nq|li#a\nb/);
+    assert.match(text, /div#p\\nq/);
+  });
+
+  void it('shows a same-origin link with a query only as /?x=1', () => {
+    const line = formatDomQuery(
+      {
+        selector: 'a',
+        count: 1,
+        nodes: [
+          { index: 0, nodeId: 1, tag: 'a', attributes: { href: 'http://127.0.0.1:8765?x=1' } },
+        ],
+      },
+      { origin: 'http://127.0.0.1:8765' }
+    );
+    assert.ok(line.includes('href="/?x=1"'), line);
   });
 });

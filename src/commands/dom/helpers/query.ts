@@ -401,7 +401,7 @@ const ELEMENT_DETAILS_FUNCTION = `function (count) {
   const nameOf = (el) => {
     const ids = (el.getAttribute('aria-labelledby') || '').split(/\\s+/).filter(Boolean);
     const root = el.getRootNode();
-    const labelled = ids.map((id) => root.getElementById(id)).filter(Boolean).map((node) => node.textContent).join(' ');
+    const labelled = ids.map((id) => (root.getElementById ? root.getElementById(id) : null)).filter(Boolean).map((node) => node.textContent).join(' ');
     const title = el.querySelector('svg title');
     return clean(labelled) || clean(el.getAttribute('aria-label')) || clean(title && title.textContent);
   };
@@ -687,7 +687,7 @@ function queryNode(
     ...(keys && { attributes: keys }),
     classes,
     ...(preview && { preview }),
-    ...(!preview && !state.sensitive && name && { accessibleName: name }),
+    ...(!preview && !state.sensitive && name && { accessibleName: textPreview(name) }),
     ...(context && { context }),
     ...(inViewport && { inViewport }),
     ...(clippedBy && { clippedBy }),

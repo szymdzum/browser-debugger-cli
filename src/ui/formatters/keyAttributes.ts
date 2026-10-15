@@ -57,7 +57,8 @@ function shortUrl(url: string, origin: string | undefined): string {
   const parsed = /^https?:/i.test(url) ? safeParseUrl(url) : null;
   if (!parsed) return url;
   if (origin !== undefined && parsed.origin === origin) {
-    return cutMiddle(url.replace(SCHEME_AND_HOST, '') || '/', MAX_VALUE_LENGTH);
+    const rest = url.replace(SCHEME_AND_HOST, '');
+    return cutMiddle(rest.startsWith('/') ? rest : `/${rest}`, MAX_VALUE_LENGTH);
   }
   const scheme = `${parsed.protocol}//`;
   return `${scheme}${truncateUrl(url, MAX_VALUE_LENGTH - scheme.length)}`;
@@ -100,11 +101,32 @@ const ID_ESCAPES: Record<string, string> = {
  * @returns Id on one line
  */
 export function shortId(id: string): string {
-  const pieces = Array.from(id, (char) => ID_ESCAPES[char] ?? escapeControlChars(char));
+  const pieces = escapedPieces(id);
   if (pieces.join('').length <= MAX_VALUE_LENGTH) return pieces.join('');
   const head = takeWithin(pieces, Math.ceil((MAX_VALUE_LENGTH - 1) / 2));
   const tail = takeWithin([...pieces].reverse(), Math.floor((MAX_VALUE_LENGTH - 1) / 2));
   return `${head.join('')}…${tail.reverse().join('')}`;
+}
+
+/**
+ * Text with each character written so it cannot be mistaken for another,
+ * not cut (a label's id sits inside a longer label).
+ *
+ * @param text - Text from the page
+ * @returns Text on one line
+ */
+export function escapeOneLine(text: string): string {
+  return escapedPieces(text).join('');
+}
+
+/**
+ * Each character of a text, escaped.
+ *
+ * @param text - Text
+ * @returns One piece per character
+ */
+function escapedPieces(text: string): string[] {
+  return Array.from(text, (char) => ID_ESCAPES[char] ?? escapeControlChars(char));
 }
 
 /**

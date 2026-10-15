@@ -15,7 +15,6 @@
  * ```
  */
 
-import { shortId } from '@/ui/formatters/keyAttributes.js';
 import type {
   InspectContrast,
   InspectBox,
@@ -32,6 +31,7 @@ import type {
 } from '@/ipc/protocol/inspectTypes.js';
 import { containerKind } from '@/runtime/dom/inspectLayoutModel.js';
 import type { IndexSource } from '@/types.js';
+import { escapeOneLine, shortId } from '@/ui/formatters/keyAttributes.js';
 import { joinLines } from '@/ui/formatting.js';
 import {
   inspectCascadeNote,
@@ -85,8 +85,8 @@ export function inspectHeader(data: InspectOutput): string {
   const kind = containerKind(display);
   return [
     headerLabel(data),
-    data.content !== undefined && `"${data.content}"`,
-    data.placeholder !== undefined && `placeholder "${data.placeholder}"`,
+    data.content !== undefined && `"${escapeOneLine(data.content)}"`,
+    data.placeholder !== undefined && `placeholder "${escapeOneLine(data.placeholder)}"`,
     data.rect &&
       `${data.rect.w}x${data.rect.h}${data.rect.content ? ' (content)' : ''}${data.rect.screen ? ` (${data.rect.screen.w}x${data.rect.screen.h} on screen)` : ''} @${data.rect.x},${data.rect.y}${data.rect.in ? ' (fixed: viewport position)' : ''}`,
     kind && `[${kind}]`,
@@ -222,7 +222,7 @@ function parentLine(layout: InspectLayout): string | undefined {
   const offsets = layout.inParent;
   const gaps = Object.entries(layout.siblings ?? {}).map(([side, gap]) => `${side[0]}${gap}`);
   const parentWords = parent && [
-    truncateByLength(parent.element, PARENT_LABEL_MAX),
+    truncateByLength(escapeOneLine(parent.element), PARENT_LABEL_MAX),
     displayWords(parent.display, parent.direction),
     ...containerParts(parent),
     parent.textAlign && `text-align ${parent.textAlign}`,
@@ -465,7 +465,7 @@ function pseudoLines(pseudo: readonly InspectPseudo[] | undefined): string[] {
  */
 function treeRow(node: InspectTreeNode): string {
   return [
-    node.element,
+    escapeOneLine(node.element),
     node.count !== undefined && `×${node.count}`,
     node.contents ? '(contents)' : `${node.w}x${node.h}`,
     node.shadow && '(shadow root)',
