@@ -145,7 +145,12 @@ export const MESSAGE_CHROME_JS = `(node) => {
 /**
  * Page-side list of the messages a page shows: visible elements with an
  * alert/status role, `aria-live`, `<output>`, or a class or id word from
- * {@link MESSAGE_WORDS} (timers, marquees and progress bars left out), with
+ * {@link MESSAGE_WORDS} (timers, marquees and progress bars left out; a
+ * heading or the target of an `aria-labelledby` is no message because of a
+ * word, and with `fresh`, a new document, a word match counts only inside
+ * the first viewport, measured when the page is read, after the navigation's
+ * scroll (a `#fragment` target counts as in view): a footer's `h2#feedback`
+ * is no news), with
  * their text (parts matching {@link MESSAGE_CHROME_JS}, such as the "×"
  * close link, left out). Elements are filtered first, then the first
  * {@link MAX_MESSAGES} kept, and the whole pass stops after
@@ -163,7 +168,7 @@ export const MESSAGE_CHROME_JS = `(node) => {
  * element (a validation message rendered into a re-rendered app root) gets
  * none.
  */
-const MESSAGES_JS = `(ids, marked, churned) => {
+const MESSAGES_JS = `(ids, marked, churned, fresh) => {
   const deadline = performance.now() + ${MESSAGES_BUDGET_MS};
   const description = ${ELEMENT_DESCRIPTION_JS};
   const chrome = ${MESSAGE_CHROME_JS};
@@ -175,9 +180,16 @@ const MESSAGES_JS = `(ids, marked, churned) => {
     return text === el.localName && role ? text + '[role="' + role + '"]' : text;
   };
   const word = /\\b(${MESSAGE_WORDS.join('|')})\\b/i;
+  const heading = (el) => /^h[1-6]$/.test(el.localName) || el.getAttribute('role') === 'heading';
+  const label = (el) => el.id !== '' && document.querySelector('[aria-labelledby~="' + CSS.escape(el.id) + '"]') !== null;
+  const inView = (el) => {
+    const box = el.getBoundingClientRect();
+    return box.bottom > 0 && box.top < innerHeight && box.right > 0 && box.left < innerWidth;
+  };
+  const wordMessage = (el) => (word.test(el.getAttribute('class') || '') || word.test(el.id || '')) &&
+    !heading(el) && !label(el) && (!fresh || inView(el));
   const named = (el) => !/^(timer|marquee|progressbar)$/.test(el.getAttribute('role') || '') &&
-    (el.matches('[role="alert"], [role="status"], [aria-live]:not([aria-live="off"]), output') ||
-      word.test(el.getAttribute('class') || '') || word.test(el.id || ''));
+    (el.matches('[role="alert"], [role="status"], [aria-live]:not([aria-live="off"]), output') || wordMessage(el));
   const inChrome = (node, el) => {
     for (let n = node; n && n !== el; n = n.parentElement) if (chrome(n)) return true;
     return false;
@@ -717,7 +729,7 @@ export const AWAIT_DUE_TIMERS_SCRIPT = 'globalThis.__bdgDueTimers';
  */
 export const EFFECTS_READ_SCRIPT = `((stop, shown, focus) => {
   const state = window.__bdgEffects;
-  if (!state) return { href: location.href, fresh: true, messages: (${MESSAGES_JS})({ map: new WeakMap(), next: 1 }) };
+  if (!state) return { href: location.href, fresh: true, messages: (${MESSAGES_JS})({ map: new WeakMap(), next: 1 }, undefined, undefined, true) };
   if (!state.stopped) state.flush();
   if (stop) {
     state.stop();
