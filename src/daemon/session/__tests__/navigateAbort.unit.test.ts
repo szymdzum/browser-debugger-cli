@@ -12,9 +12,8 @@ import type WebSocket from 'ws';
 
 import { FakeWebSocket } from '@/__testutils__/FakeWebSocket.js';
 import { CDPConnection } from '@/connection/cdp.js';
-import { navigateToTarget } from '@/daemon/session/cdpSetup.js';
 import type { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
-import type { SessionConfig } from '@/daemon/session/types.js';
+import { navigateToTarget } from '@/daemon/session/cdpSetup.js';
 import type { CDPMessage } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 
@@ -43,7 +42,7 @@ void describe('navigateToTarget stop', () => {
       const stop = new AbortController();
       const navigation = navigateToTarget(
         cdp,
-        { url: 'http://localhost:1/slow', port: 9222 } as SessionConfig,
+        { url: 'http://localhost:1/slow', port: 9222 },
         {} as TelemetryStore,
         null,
         createLogger('session'),
