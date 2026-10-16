@@ -6,6 +6,7 @@ import { keyAttributeItems, shortId, withWrittenType } from '@/ui/formatters/key
 import { capForDisplay } from '@/ui/formatters/longValues.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import {
+  FULL_PAGE_SKIPPED_HINT,
   frameLabel,
   framesStillLoadingNote,
   noFramesMessage,
@@ -290,7 +291,7 @@ export function formatDomFrames(data: { frames: DomFrame[]; readyState?: string 
  * // Output: Screenshot saved to ./page.png
  *
  * formatDomScreenshot({ path: './page.png', fullPageSkipped: { reason: 'page_too_tall', ... } });
- * // Output: Screenshot saved to ./page.png (viewport only - page too tall)
+ * // Output: Screenshot saved to ./page.png (viewport only - page too tall; --no-resize captures the full page)
  *
  * // An element whose floated children overflow it
  * // Output: Screenshot saved to ./el.png (grown from 940×37 to 940×285 to include what it paints outside its box (…))
@@ -299,16 +300,15 @@ export function formatDomFrames(data: { frames: DomFrame[]; readyState?: string 
 export function formatDomScreenshot(data: ScreenshotResult): string {
   let output = `Screenshot saved to ${data.path}`;
 
-  if (data.fullPageSkipped && !data.scrolledTo) {
-    output += ' (viewport only - page too tall)';
-  }
+  const viewportOnly = Boolean(data.fullPageSkipped && !data.scrolledTo);
+  if (viewportOnly) output += ` (viewport only - page too tall; ${FULL_PAGE_SKIPPED_HINT})`;
 
   if (data.element?.captured) {
     output += ` (${screenshotGrownNote(data.element.bounds, data.element.captured, data.element.padding)})`;
   }
 
   if (data.resized && data.originalWidth !== undefined && data.originalHeight !== undefined) {
-    output += ` (${screenshotScaledNote(data.originalWidth, data.originalHeight, data.width, data.height)})`;
+    output += ` (${screenshotScaledNote(data.originalWidth, data.originalHeight, data.width, data.height, !viewportOnly)})`;
   }
 
   return output;

@@ -157,7 +157,7 @@ bdg peek --full                 # Console message texts whole
 bdg peek --include-sensitive    # URL tokens as captured (user:pass@ still removed), with a warning
 ```
 
-Page and request URLs are shown without `user:pass@` and with credential parameters as `••••` (see [Check session status](#check-session-status)); `--include-sensitive` shows the parameters.
+Page and request URLs are shown without `user:pass@` and with credential parameters as `••••` (see [Check session status](#check-session-status)); `--include-sensitive` shows the parameters. `peek` console lines end with the source in parentheses (`(app.js:12:5)`, `(http://…/missing.png)` for a failed load, `(bdg-eval:1:9)` for a `dom eval` script), as `bdg console` shows it, so two errors with the same text can be told apart.
 
 Console message texts are cut like `bdg console --list` cuts them: at 200 characters followed by `… N more chars (use --full)` (the compact view also at 2 lines). In `--json` a text over 10000 characters is cut with `truncatedFrom` (its original length). `--full` prints them whole.
 
@@ -231,21 +231,21 @@ The response body is cut at 20000 characters by default, in text (`… 594000 mo
 
 Binary response bodies (images, fonts) are only captured in sessions started with `--all`; in `--json` output they are base64 with `responseBodyBase64: true`.
 
-A response body bdg did not capture is reported with the reason instead (`bodyNotCaptured` in `--json`, `(not captured: …)` in text, the `content.comment` in a HAR): a binary or too large body, a resource skipped by default, a body evicted at the total body budget, or one Chrome no longer had when bdg asked for it (`Chrome no longer had the body (its network buffer evicted it, or the request was cancelled)`, e.g. after several large requests in a row; another error fetching it gives `Chrome did not return the body: <error>`). Responses that have no body (HEAD, 204, 205, 304) get no reason.
+A response body bdg did not capture is reported with the reason instead (`bodyNotCaptured` in `--json`, `(not captured: …)` in text, the `content.comment` in a HAR): a binary or too large body, a resource skipped by default, a body evicted at the total body budget, or one Chrome no longer had when bdg asked for it (`Chrome no longer had the body (its network buffer evicted it, or the request was cancelled)`, e.g. after several large requests in a row; another error fetching it gives `Chrome did not return the body: <error>`). Responses that have no body (HEAD, 204, 205, 304) get no reason. A request body Chrome left out of `Network.requestWillBeSent` (a multipart body with a file part: `hasPostData` is true but there is no `postData`) is reported the same way, as `requestBodyNotCaptured` and `Request Body: (not captured: …)`, so it does not read as a request without a body; bdg does not fetch it (`bdg cdp Network.getRequestPostData --params '{"requestId":"<id>"}'` does, unmasked), and the HAR export has no `postData` for it. `--body --no-body` is accepted (#567): `--no-body` wins and the metadata is printed.
 
 `details network` shows the address Chrome connected to with its port (`Remote Address: 93.184.215.14:443`; `serverIPAddress` and `serverPort` in JSON). Behind a proxy that is the proxy's address. CDP has no proxy flag, so bdg guesses: a loopback address on another port than the URL's (its explicit port, else 80/443) for a host that is not this machine is labelled `127.0.0.1:9000 (loopback; likely a local proxy)`. A host mapped to loopback in `/etc/hosts` (`myapp.test`) is connected to on the URL's port and gets no label; a proxy on another machine cannot be told apart from the server. A header the server sent several times (CDP joins the values with newlines) is listed one value per line, and a value repeated verbatim once, with how often it was sent: `Strict-Transport-Security: max-age=63072000 (sent 2 times)`. `Set-Cookie` lines are all listed, repeated ones too. `--json` keeps the header as CDP reported it.
 
-**Blocked cookies.** A `Set-Cookie` in the response headers is not proof the cookie was stored, and a missing `Cookie` header has no explanation of its own. When Chrome blocked a cookie on the request, `details network` has a `Blocked Cookies` block after the response headers, one line per cookie with what happened and Chrome's reasons:
+**Blocked cookies.** A `Set-Cookie` in the response headers is not proof the cookie was stored, and a missing `Cookie` header has no explanation of its own. When Chrome blocked a cookie on the request, `details network` has a `Blocked Cookies` block after the response headers, one line per cookie with what happened and Chrome's reasons: Known limit (#567): an action result (`dom click`, ...) does not mention a cookie blocked on a request it triggered; run `bdg details network <id>` for the request in `triggeredRequests`.
 
 ```text
 Blocked Cookies:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  nosecure     set rejected: SameSiteNoneInsecure
+  nosecure     set rejected: SameSiteNoneInsecure (SameSite=None cookie without the Secure attribute)
   wrongdomain  set rejected: InvalidDomain
-  tp_lax       not sent: SchemefulSameSiteLax
+  tp_lax       not sent: SchemefulSameSiteLax (SameSite=Lax cookie not sent on a cross-site request (another site, or http vs https of one host))
 ```
 
-`set rejected` is a `Set-Cookie` of the response that Chrome did not store (`SameSiteNoneInsecure`: `SameSite=None` without `Secure`; `InvalidDomain`: a `Domain` the response's host cannot set; `SchemefulSameSiteLax` on a cross-site response; `SyntaxError`, ...); `not sent` is a stored cookie left out of the request (`SameSiteLax`/`SchemefulSameSiteLax`, `SameSiteStrict`, `SameSiteUnspecifiedTreatedAsLax` on a cross-site request, `SecureOnly` over http, `ThirdPartyPhaseout`, ...). JSON has `blockedCookies: [{ name, kind: "set-rejected" | "not-sent", reasons }]`. Cookies that do not apply to the URL (`DomainMismatch`, `PathMismatch`, `NotOnPath`) are left out: a page has dozens of those for its other domains and paths. Only names and reasons are kept, never values (the `Set-Cookie` and `Cookie` headers above still show what the server sent). A request keeps at most 50 blocked cookies; the rest are counted (`(+3 more not kept: bdg keeps 50 per request)`, JSON `blockedCookiesOmitted`). They come from Chrome's `requestWillBeSentExtraInfo.associatedCookies` and `responseReceivedExtraInfo.blockedCookies`. Cookies `document.cookie` could not set involve no request; `bdg console` lists those as Chrome Issues.
+Chrome's raw reason is kept and the common ones (`SameSiteLax`, `SameSiteStrict`, `SchemefulSameSiteLax`/`Strict`, `SameSiteNoneInsecure`, `ThirdPartyPhaseout`, `DomainMismatch`, `SecureOnly`) are followed by a plain-language gloss in parentheses (human output only; `--json` `reasons` stay the raw names). `set rejected` is a `Set-Cookie` of the response that Chrome did not store (`SameSiteNoneInsecure`: `SameSite=None` without `Secure`; `InvalidDomain`: a `Domain` the response's host cannot set; `SchemefulSameSiteLax` on a cross-site response; `SyntaxError`, ...); `not sent` is a stored cookie left out of the request (`SameSiteLax`/`SchemefulSameSiteLax`, `SameSiteStrict`, `SameSiteUnspecifiedTreatedAsLax` on a cross-site request, `SecureOnly` over http, `ThirdPartyPhaseout`, ...). JSON has `blockedCookies: [{ name, kind: "set-rejected" | "not-sent", reasons }]`. Cookies that do not apply to the URL (`DomainMismatch`, `PathMismatch`, `NotOnPath`) are left out: a page has dozens of those for its other domains and paths. Only names and reasons are kept, never values (the `Set-Cookie` and `Cookie` headers above still show what the server sent). A request keeps at most 50 blocked cookies; the rest are counted (`(+3 more not kept: bdg keeps 50 per request)`, JSON `blockedCookiesOmitted`). They come from Chrome's `requestWillBeSentExtraInfo.associatedCookies` and `responseReceivedExtraInfo.blockedCookies`. Cookies `document.cookie` could not set involve no request; `bdg console` lists those as Chrome Issues.
 
 ## DOM Commands
 
@@ -760,6 +760,8 @@ Try: bdg dom eval 'document.querySelector("input")'
 - An awaited or returned promise that does not settle within 20 s exits 102 with "The awaited promise did not settle within 20s" (nothing was busy). A script without a top-level `await` whose result Chrome cannot send (about 256 MiB and more) also exits 102 after about 15 s (the page is asked once a second whether it still answers, and the answer gets 12 s more to arrive; with `--full` the same result exits 81 as over the 50 MiB limit), with "The script ran, but Chrome could not send its result: it is probably too large to send"; return a slice or the `.length`, or keep the data in the page and read it in parts of under 50 MiB with `--full` (`bdg dom eval '(window.data = <expression>, window.data.length)'`, then a string as `bdg dom eval 'window.data.slice(0, 10000000)' --full`: 10 million characters, fewer for multibyte text; a Map by its keys first (`bdg dom eval '[...window.data.keys()]'`), then one value as `bdg dom eval 'window.data.get(KEY).slice(0, 10000000)' --full`; until the page navigates). An object whose strings add up to over 256 MiB (counted on the page in characters, a lower bound; Chrome's own limit is on the serialized answer, so non-ASCII text hits it sooner: about 60 million `é` already exits 102, an object of it after the same wait; also on a page that replaced built-ins) exits 81 in under a second with "The result is too large to send: over 256 MiB" instead of timing out
 - A page that navigates while the script runs (`location.href = …; await …`) exits 83 with "The page navigated while the script ran": the result is lost with the old document. A tab closed while the script runs exits 83 with "The page was closed while the script ran"
 - A returned promise that rejects (`bdg dom eval 'Promise.reject(new Error("x"))'`) exits 91 with its error. Chrome logs it as "Uncaught (in promise)" before bdg attaches its handler, then revokes the report once it does; the console collector drops revoked reports as DevTools does, so the rejection bdg reported leaves no console error. Rejections nothing ever handles stay in `bdg console`; one the page itself handles late is dropped like in DevTools
+- The check whether a script's top-level `const`/`let`/`class` can go in a block compiles it with the daemon's Node V8 (#751): syntax newer than that Node understands (e.g. `using` declarations on Node 22) does not parse there, so the script is sent unwrapped and its top-level `const`/`let` stay on the page as globals.
+- A synchronous `throw` in a script is reported in the eval's own output only (exit 91, the message and the `bdg-eval:L:C` position); unlike an error the page's own code logs, it does not appear in `bdg console` (#751).
 
 **Iframes (`--frame`):**
 
@@ -807,6 +809,8 @@ bdg dom form --brief
 Forms shown in an open dialog (`dialog[open]`, `aria-modal`, a dialog role, or a modal without them: a fixed or absolute overlay with a z-index above 0 or a backdrop whose class names a modal or dialog, or a fixed overlay over half the viewport that has a z-index above 0 or lies over other page content at the viewport centre; static wrappers and fixed app shells holding the whole page are not dialogs) are listed first, marked `(in dialog)`, then other visible forms, then hidden ones, marked `(hidden)` (JSON: `hidden`, `inDialog` on forms and in `otherForms`). Indices follow this order, so `bdg dom fill 0` fills the first field listed. Hidden fields (not rendered or visibility-hidden, also through an ancestor) are now listed, flagged with the status `hidden` (`hidden: true` in JSON; they used to be left out), and a form counts as shown when any of its fields or buttons is; filling one by index works but warns (`The field is hidden; a user could not fill it`), and so does filling a field behind an open modal dialog.
 
 Forms and form-less fields in open shadow roots (nested ones included) are listed too, marked `(in shadow root of <x-login>)` (JSON: `shadowHost` on forms and in `otherForms`); their labels are read in the field's own root, and their indices work with `dom fill`, `dom click` and `dom submit`. A field in a component's shadow root (an `sl-input` in a light DOM form) belongs to the form around the component. Fields in closed shadow roots cannot be listed: a defined custom element whose closed shadow root holds a field is named instead (`Note: <x-vault> has a closed shadow root with form fields; …; reach them with bdg dom a11y query role=textbox, then bdg dom fill <index> <value>`, JSON `closedShadowHosts`; the first 50 custom elements without an open shadow root are checked). Fields of same-origin iframes are not listed: when the main document has no form or field (open shadow roots included), `dom form` exits 89 naming the iframe; otherwise a note names it next to the forms listed (`Note: an iframe holds form fields dom form does not list: <url>; …`, JSON `formsInFrames`).
+
+Known limits of `dom form` (#644): fields outside any `<form>` are listed only when the page has no form (or they sit in a shadow root); once a page has a form, loose fields (a table of inputs next to a search form) are left out, also with `--all`, and `dom query` or `dom a11y query role=textbox` finds them. A label that is not written in the page (no `<label>`, `aria-label`, `aria-labelledby`, placeholder or title) is guessed from the field's `name` (`name=email` is listed as `Email`) and is not marked as guessed. A form's name is guessed too, from its `aria-label`, a heading near it, its fields (a password field makes it `Login`) or the page title, and is not marked as guessed: do not search the page for it, use the form's `id` or `action`. An `<input type="image">` is listed as a submit button named by its `alt`.
 
 Form markup errors Chrome reports (see Chrome Issues under `bdg console`) are shown under the field at fault (`      ⚠ Duplicate id on form fields: labels and autofill reach only the first`, JSON `issues` on the field). Errors of elements that are no listed field, such as a label whose `for` matches no id, are listed after the forms (`Form markup issues (Chrome):`, JSON `formIssues` with `text` and `elements`), and so are errors of fields in forms not shown without `--all` (`• Duplicate id … → Second pet [4] (in form 1, hidden; --all lists it)`, JSON `form`). Elements a single-page app removed since Chrome reported them are left out, and an error with none left is not listed.
 
@@ -1157,6 +1161,7 @@ bdg dom screenshot ./frames --follow
 - Images exceeding 1568px on longest edge are scaled down
 - Tall pages (aspect ratio > 3:1) automatically capture viewport only
 - Use `--no-resize` for full resolution when needed; human output says when an image was scaled (`scaled from 1280×2777 to 723×1568; --no-resize for full size`)
+- A page too tall for a full-page capture (common with `--mobile`) is captured as the viewport only, and the output says so with the way to the full page (`viewport only - page too tall; --no-resize captures the full page`; `fullPageSkipped.reason: page_too_tall` and `warning` in `--json`)
 - Token estimates account for device pixel ratio (Retina displays)
 
 **Emulation during a capture:** a capture may change the page's emulation (a pixel ratio of 1 on a high-DPI or `--mobile` page, which also turns touch off; the viewport and scrollbars for an area beyond the viewport) and puts it back before it ends, however it ends. After a capture beyond the viewport (a full page, an element larger than the viewport), the page is laid out again with its scrollbars, so `innerWidth`/`clientWidth` read as before. That takes two real resizes (the viewport 1 px taller, then back), so the page's `resize` handlers and height-based media queries run; in a `--mobile` session the pixel ratio and touch the capture dropped come back with the session's emulation. Other page commands (`dom`, `page`, `cdp`, from any terminal) wait until it is back (at most 15 s; another screenshot waits until it is done), so none sees the capture's emulation; the wait counts toward the command's 30 s timeout. `status`, `peek` and the telemetry lists do not wait. Ctrl-C on a single capture (not `--follow`, which stops after the current frame) exits 130 at once (SIGTERM 143), also while the element is looked up, with the error envelope under `--json` like any interrupted command (its own message: `Screenshot cancelled`); the daemon then skips the capture if it has not started and only puts the emulation back.
@@ -1274,7 +1279,7 @@ bdg network list --json
 
 **Current page or all pages.** The list keeps the session's requests across navigations, so after leaving a page its 404s are still there (START negative). `--page current` lists only the requests of the page currently loaded (its navigation; requests of another tab before `bdg page switch` count as earlier pages), and `--page all` every request. `--preset errors`, `failed` and `slow` default to `current`, since an earlier page's error read as the current page's; other presets, `--filter` alone and no filter default to `all`. When requests are left out the list ends with `3 requests from earlier pages hidden (--page all)`, and `--json` has `page: "current"` and `hiddenEarlierPages: 3` (`filteredCount` counts the current page). The DSL key `page:current` filters the same way inside `--filter`; `!page:current` keeps only earlier pages. An unknown value exits 81 with a suggestion (`Use current or all (did you mean current?)`).
 
-**Sorting.** `--sort size` (bytes transferred) and `--sort duration` list the largest or slowest first (pending requests last), and `--last n` then keeps the top n: `--sort size --last 5` is the 5 heaviest. `--sort start` orders by start time, with `--last n` keeping the latest n as without `--sort`. The header says the order (`NETWORK REQUESTS (5 largest of 42)`, `(42, slowest first)`), and `--json` has `sort` with `requests` in that order. Sorting comes after the filters, `--type` and `--page`; it does not apply to `--follow` (exit 81). `--follow` streams the requests of every page in capture order: a preset's `current` default does not apply there, and `--page` with `--follow` exits 81.
+**Sorting.** `--sort size` (bytes transferred) and `--sort duration` list the largest or slowest first (pending requests last), and `--last n` then keeps the top n: `--sort size --last 5` is the 5 heaviest. `--sort start` orders by start time, with `--last n` keeping the latest n as without `--sort`. The header says the order (`NETWORK REQUESTS (5 largest of 42)`, `(42, slowest first)`), and `--json` has `sort` with `requests` in that order. Sorting comes after the filters, `--type` and `--page`; it does not apply to `--follow` (exit 81). `--follow` streams the requests of every page in capture order: a preset's `current` default does not apply there, and `--page` with `--follow` exits 81. A sorted list of all pages that includes requests of earlier pages ends with `3 requests from earlier pages included (--page current)` (`earlierPagesIncluded` in `--json`); add `--page current` to list the current page only.
 
 **Columns:** `START` is when the request started, counted from the start of the current page (its document request, the latest main-frame navigation): `+0.0s` for the document, `+1.2s` for a request 1.2 s later, whole seconds from 100 s (`+250s`) and minutes from 1000 s (`+17m`); requests of earlier pages are negative (`-35.2s`). It uses Chrome's own timestamps, so it is exact to the millisecond. `TIME` is how long the request took (`-` while pending). The method column widens for `OPTIONS`. JSON fields behind the column (`bdg network list --json`):
 
@@ -1668,6 +1673,43 @@ jq -s '{traceEvents: [.[] | select(.method == "Tracing.dataCollected") | .params
 ```bash
 bdg cdp HeapProfiler.takeHeapSnapshot --collect HeapProfiler.addHeapSnapshotChunk --timeout 1 --out heap.ndjson
 jq -j '.params.chunk' heap.ndjson > page.heapsnapshot     # load in DevTools Memory panel
+```
+
+### Performance recipes
+
+No `perf` command: most of it is `bdg eval` with a `PerformanceObserver` or raw CDP. For a full audit use Lighthouse or chrome-devtools-mcp. Each command below was run against a page and returns the shape shown.
+
+```bash
+# CDP metrics: empty until the domain is enabled (the empty result says so)
+bdg cdp Performance.enable
+bdg cdp Performance.getMetrics --json     # data.result.metrics: [{"name":"Timestamp","value":…}, …] (36 entries)
+
+# Largest Contentful Paint: value and element (buffered, so it works after the load)
+bdg eval 'new Promise(r => { new PerformanceObserver(l => { const e = l.getEntries().at(-1); r({ lcp: Math.round(e.startTime), el: e.element?.tagName }); }).observe({ type: "largest-contentful-paint", buffered: true }); setTimeout(() => r(null), 3000); })'
+#   {"lcp": 44, "el": "H1"}   (null when the page painted no content)
+
+# Cumulative Layout Shift (0 without shifts)
+bdg eval 'new Promise(r => { new PerformanceObserver(l => r(+l.getEntries().reduce((s, e) => e.hadRecentInput ? s : s + e.value, 0).toFixed(4))).observe({ type: "layout-shift", buffered: true }); setTimeout(() => r(0), 1000); })'
+
+# Long tasks (over 50 ms) and navigation timing
+bdg eval 'new Promise(r => { new PerformanceObserver(l => r(l.getEntries().map(e => ({ start: Math.round(e.startTime), duration: Math.round(e.duration) })))).observe({ type: "longtask", buffered: true }); setTimeout(() => r([]), 500); })'
+bdg eval 'const n = performance.getEntriesByType("navigation")[0]; ({ ttfb: Math.round(n.responseStart), domContentLoaded: Math.round(n.domContentLoadedEventEnd), load: Math.round(n.loadEventEnd) })'
+
+# CPU profile of an interaction: start, act, stop (data.result.profile has nodes, samples, timeDeltas)
+bdg cdp Profiler.enable && bdg cdp Profiler.start
+bdg dom click "#load-orders"
+bdg cdp Profiler.stop --json
+
+# Throttling (undo with latency 0, throughput -1, rate 1)
+bdg cdp Network.emulateNetworkConditions --params '{"offline":false,"latency":200,"downloadThroughput":51200,"uploadThroughput":51200}'
+bdg cdp Emulation.setCPUThrottlingRate --params '{"rate":4}'
+```
+
+A trace that loads in DevTools is collected as events (see [Collecting CDP events](#collecting-cdp-events)):
+
+```bash
+bdg cdp Tracing.start   # ...act...
+bdg cdp Tracing.end --collect Tracing.dataCollected --until Tracing.tracingComplete --out trace.ndjson
 ```
 
 ### Network recipes: mock, block, throttle

@@ -1945,15 +1945,18 @@ export function inspectClosedShadowRootLine(): string {
  * @param originalHeight - Captured height
  * @param width - Image width
  * @param height - Image height
+ * @param withHint - Add the way to full size (left out when the line already names `--no-resize`)
  * @returns e.g. `scaled from 1920×993 to 1568×811; --no-resize for full size`
  */
 export function screenshotScaledNote(
   originalWidth: number,
   originalHeight: number,
   width: number,
-  height: number
+  height: number,
+  withHint = true
 ): string {
-  return `scaled from ${originalWidth}×${originalHeight} to ${width}×${height}; --no-resize for full size`;
+  const note = `scaled from ${originalWidth}×${originalHeight} to ${width}×${height}`;
+  return withHint ? `${note}; --no-resize for full size` : note;
 }
 
 /**
@@ -2296,3 +2299,13 @@ export function cliLoadFailedError(file: string): ErrorWithSuggestion {
 export function capturedFramesMessage(count: number): string {
   return `Captured ${count} ${count === 1 ? 'frame' : 'frames'}`;
 }
+
+/**
+ * Hint on an empty `Performance.getMetrics` result: the domain reports no
+ * metrics until it is enabled.
+ */
+export const PERFORMANCE_METRICS_EMPTY_HINT =
+  'Metrics are empty until the Performance domain is enabled: run bdg cdp Performance.enable first, then Performance.getMetrics again';
+
+/** What to run to capture the full page of a page too tall for a full-page capture */
+export const FULL_PAGE_SKIPPED_HINT = '--no-resize captures the full page';

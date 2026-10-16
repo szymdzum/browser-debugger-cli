@@ -67,7 +67,11 @@ import {
   HEAP_SNAPSHOT_COLLECT_COMMAND,
   TRACING_COLLECT_COMMAND,
 } from '@/ui/messages/cdpEvents.js';
-import { CDP_EXECUTION_HELP, cdpUnlistedMethodWarning } from '@/ui/messages/commands.js';
+import {
+  CDP_EXECUTION_HELP,
+  PERFORMANCE_METRICS_EMPTY_HINT,
+  cdpUnlistedMethodWarning,
+} from '@/ui/messages/commands.js';
 import { formatHint } from '@/ui/messages/hints.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -125,9 +129,23 @@ const METHOD_NOTES: Record<string, string> = {
 };
 
 /**
+ * Whether a `Performance.getMetrics` result lists no metrics.
+ *
+ * @param result - CDP result
+ * @returns True for `{ metrics: [] }`
+ */
+function hasNoMetrics(result: unknown): boolean {
+  const metrics = (result as { metrics?: unknown } | null)?.metrics;
+  return Array.isArray(metrics) && metrics.length === 0;
+}
+
+/**
  * Get contextual hint for a method based on domain notes and result.
  */
 function getMethodHint(methodName: string, result: unknown): string | undefined {
+  if (methodName === 'Performance.getMetrics' && hasNoMetrics(result)) {
+    return PERFORMANCE_METRICS_EMPTY_HINT;
+  }
   if (METHOD_NOTES[methodName]) {
     return METHOD_NOTES[methodName];
   }

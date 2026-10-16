@@ -49,6 +49,7 @@ import { displayTabSwitch, displayUrls } from '@/utils/displayUrl.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 import {
+  countEarlierPages,
   defaultPageScope,
   followConflict,
   pageScopeOption,
@@ -206,6 +207,7 @@ function buildFormatOptions(
     ...(options.sort && { sort: options.sort }),
     ...(result.filterHints && { filterHints: result.filterHints }),
     ...(result.hiddenEarlierPages && { hiddenEarlierPages: result.hiddenEarlierPages }),
+    ...(result.earlierPagesIncluded && { earlierPagesIncluded: result.earlierPagesIncluded }),
     ...(result.pageStart && { pageStart: result.pageStart }),
     evictions: {
       requestsDropped: result.dropped ?? 0,
@@ -354,6 +356,8 @@ interface NetworkListResult {
   page?: 'current';
   /** Requests of earlier pages matching the filters that `--page current` left out (left out when none) */
   hiddenEarlierPages?: number;
+  /** Requests of earlier pages in a `--sort`ed list of all pages (left out when none) */
+  earlierPagesIncluded?: number;
   /** Why a `url:` filter matched nothing (left out otherwise) */
   filterHints?: string[];
   /** Order of `requests` (`--sort`; left out: capture order) */
@@ -470,15 +474,20 @@ export function registerListCommand(networkCmd: Command): void {
           const pageStart = pageStartOf(requests);
           const filterHints =
             scoped.requests.length === 0 ? urlFilterHintsFor(options, requests) : [];
+          const selected = selectRequests(scoped.requests, options.sort, lastN);
+          const earlierPagesIncluded = options.sort
+            ? countEarlierPages(selected, { all: requests, currentNavigationId })
+            : 0;
           return {
             success: true,
             data: {
               ...(filterHints.length > 0 && { filterHints }),
-              requests: selectRequests(scoped.requests, options.sort, lastN),
+              requests: selected,
               totalCount: requests.length,
               filteredCount: scoped.requests.length,
               ...(scope === 'current' && { page: 'current' as const }),
               ...(scoped.hidden > 0 && { hiddenEarlierPages: scoped.hidden }),
+              ...(earlierPagesIncluded > 0 && { earlierPagesIncluded }),
               ...(options.sort && { sort: options.sort }),
               ...(pageStart && { pageStart }),
               ...(pageCrashedAt !== undefined && { pageCrashedAt }),

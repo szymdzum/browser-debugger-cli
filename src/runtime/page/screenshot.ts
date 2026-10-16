@@ -31,6 +31,7 @@ import {
 } from '@/runtime/page/screenshotResize.js';
 import type { ElementBounds, ScreenshotResult, ViewportSize } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { FULL_PAGE_SKIPPED_HINT } from '@/ui/messages/commands.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
 const log = createLogger('dom');
@@ -339,7 +340,7 @@ function tallPageReport(contentSize: Size): Pick<ScreenshotResult, 'fullPageSkip
       originalHeight: contentSize.height,
       aspectRatio,
     },
-    warning: `Full page capture skipped: page too tall (${aspectRatio}:1 aspect ratio). Only viewport captured.`,
+    warning: `Full page capture skipped: page too tall (${aspectRatio}:1 aspect ratio). Only viewport captured; ${FULL_PAGE_SKIPPED_HINT}.`,
   };
 }
 

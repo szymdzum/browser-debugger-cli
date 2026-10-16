@@ -190,7 +190,7 @@ Scripts run like the DevTools console (top-level `await`, last expression is the
 ```bash
 bdg network list                              # Requests of all page loads (--page current: the current one; only --preset errors|failed|slow default to current)
 bdg network list --filter "status-code:>=400 domain:api.*"   # DevTools DSL: status-code:, domain: (host or host:port), url: (part of the URL as shown; masked tokens never match), method:, mime-type:, ! negates; space = AND
-bdg network list --sort size --last 5         # 5 heaviest requests (--sort duration: slowest; --page current|all; DSL page:current)
+bdg network list --sort size --last 5         # 5 heaviest requests (--sort duration: slowest; --page current|all; DSL page:current; a footer says when earlier pages are included)
 bdg details network <id>                      # Headers, timing, body (cut at 20000 chars; --json bodyTruncated/bodyLength); Blocked Cookies: set rejected / not sent + reason
 bdg details network <id> --no-body            # Metadata only; --body prints just the whole raw body (pipe to jq); --body-max <chars>
 bdg network headers <id>                      # Headers only (no id: main document; also bdg network document)
@@ -227,6 +227,7 @@ Some methods are blocked in favour of a command (exit 81, the suggestion names i
 Events (the daemon buffers them; output is kept to ~20000 chars, `--out` writes NDJSON, unredacted and 0600):
 
 ```bash
+# Performance: bdg cdp Performance.enable, then Performance.getMetrics (empty before); LCP/CLS/long tasks via bdg eval with a buffered PerformanceObserver (recipes: docs/CLI_REFERENCE.md, Performance recipes)
 # Trace → DevTools Performance file
 bdg cdp Tracing.start   # ...act...
 bdg cdp Tracing.end --collect Tracing.dataCollected --until Tracing.tracingComplete --out trace.ndjson

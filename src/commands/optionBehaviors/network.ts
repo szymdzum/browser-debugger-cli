@@ -59,7 +59,7 @@ export const NETWORK_BEHAVIORS: BehaviorTable = {
     whenEnabled:
       'size: bytes transferred, largest first; duration: slowest first (pending requests last); start: by start time. With size or duration, --last n keeps the n largest/slowest ("--sort size --last 5" = the 5 heaviest); with start, the latest n',
     automaticBehavior:
-      'Applied after --filter, --preset, --type and --page. The header says the order (5 largest of 42, or 42, slowest first); JSON sort: <key> and requests in that order. Not with --follow (exit 81)',
+      'Applied after --filter, --preset, --type and --page. The header says the order (5 largest of 42, or 42, slowest first); JSON sort: <key> and requests in that order. A list of all pages that includes earlier-page requests ends with a note (JSON earlierPagesIncluded). Not with --follow (exit 81)',
     tokenImpact:
       'Answers "heaviest/slowest request?" in --last n rows instead of listing everything',
   },
@@ -75,7 +75,7 @@ export const NETWORK_BEHAVIORS: BehaviorTable = {
   'details:--no-body': {
     default: 'The response body is shown, cut at 20000 characters',
     whenEnabled:
-      'Leaves the response body out of human and --json output (responseBody and responseBodyBase64 dropped); headers, timing, the request body and why a body was not captured stay',
+      'Leaves the response body out of human and --json output (responseBody and responseBodyBase64 dropped); headers, timing, the request body and why a body was not captured stay. With --body, --no-body wins: the metadata is printed',
     tokenImpact: 'Metadata only: a few KB at most',
   },
   'details:--body-max': {

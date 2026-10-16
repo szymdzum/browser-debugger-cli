@@ -42,7 +42,7 @@ export const PATTERNS: PatternDefinition[] = [
     name: 'runtime_evaluate',
     cdpMethods: ['Runtime.evaluate'],
     threshold: 2,
-    alternative: 'bdg dom eval <javascript>',
+    alternative: 'bdg eval <javascript>',
   },
   {
     name: 'screenshot_with_cdp',

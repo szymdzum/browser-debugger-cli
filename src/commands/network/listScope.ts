@@ -115,9 +115,23 @@ export function scopeToPage(
   page: PageContext
 ): { requests: NetworkRequest[]; hidden: number } {
   if (scope === 'all') return { requests, hidden: 0 };
+  const hidden = countEarlierPages(requests, page);
+  if (hidden === 0) return { requests, hidden: 0 };
   const current = currentNavigationOf(page.all, page.currentNavigationId);
-  const kept = requests.filter((request) => !isPreviousPage(request, current));
-  return { requests: kept, hidden: requests.length - kept.length };
+  return { requests: requests.filter((request) => !isPreviousPage(request, current)), hidden };
+}
+
+/**
+ * Count the requests of earlier pages (and of another tab before a switch)
+ * among `requests`, by the same rule as {@link scopeToPage}.
+ *
+ * @param requests - Requests to count in
+ * @param page - All captured requests and the session's current navigation id
+ * @returns How many of `requests` belong to an earlier page
+ */
+export function countEarlierPages(requests: NetworkRequest[], page: PageContext): number {
+  const current = currentNavigationOf(page.all, page.currentNavigationId);
+  return requests.filter((request) => isPreviousPage(request, current)).length;
 }
 
 /**

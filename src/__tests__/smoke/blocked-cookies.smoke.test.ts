@@ -152,7 +152,7 @@ void describe('Blocked cookies', () => {
 
     const lines = await blockedCookieLines(page.requestId);
     assert.equal(lines.length, 2, lines.join('\n'));
-    assert.match(lines[0] ?? '', /^ {2}nosecure +set rejected: SameSiteNoneInsecure$/);
+    assert.match(lines[0] ?? '', /^ {2}nosecure +set rejected: SameSiteNoneInsecure \(.+\)$/);
     assert.match(lines[1] ?? '', /^ {2}wrongdomain +set rejected: InvalidDomain$/);
   });
 
@@ -165,7 +165,7 @@ void describe('Blocked cookies', () => {
     assert.match(details.blockedCookies?.[0]?.reasons.join() ?? '', /^(Schemeful)?SameSiteLax$/);
 
     const lines = await blockedCookieLines(api.requestId);
-    assert.match(lines.join('\n'), /^ {2}tp_lax +not sent: (Schemeful)?SameSiteLax$/);
+    assert.match(lines.join('\n'), /^ {2}tp_lax +not sent: (Schemeful)?SameSiteLax \(.+\)$/);
   });
 
   void it('leaves out cookies of other sites (DomainMismatch)', () => {

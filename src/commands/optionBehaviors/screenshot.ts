@@ -27,7 +27,7 @@ export const SCREENSHOT_BEHAVIORS: BehaviorTable = {
   'screenshot:--no-resize': {
     default: `Images auto-resized to max ${MAX_EDGE_PX}px longest edge for Claude Vision optimization (~1,600 tokens)`,
     whenDisabled: `Full resolution capture preserved (may use 10,000+ tokens for large pages)`,
-    automaticBehavior: `Pages taller than ${TALL_PAGE_THRESHOLD}:1 aspect ratio automatically use viewport-only capture to prevent unreadable scaled text`,
+    automaticBehavior: `Pages taller than ${TALL_PAGE_THRESHOLD}:1 aspect ratio automatically use viewport-only capture to prevent unreadable scaled text; the output says --no-resize captures the full page`,
     tokenImpact: `Formula: tokens = (width × height) / ${PIXELS_PER_TOKEN}. Default resize targets ~1,600 tokens.`,
   },
   'screenshot:--no-full-page': {

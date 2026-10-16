@@ -141,8 +141,10 @@ const log = createLogger('dom');
  * paints. Unlike Playwright, an element an overflow clip cuts away entirely
  * ({@link CLIPPED_AWAY_JS}, a collapsed accordion) is not visible. Text is the rendered text (`innerText`) of visible elements and the
  * text nodes of hidden ones (display or visibility; not those of
- * `<script>`, `<style>` or `<noscript>`), so text filters match hidden
- * elements like Playwright's and `:visible` decides visibility; button inputs
+ * `<script>`, `<style>` or `<noscript>`; a `<script>` or `<style>` has no
+ * text of its own, and a slot's text leaves out the assigned content that is
+ * not rendered), so text filters match hidden elements like Playwright's and
+ * `:visible` decides visibility; button inputs
  * use their value. Text is read in the flat tree, as `bdg dom query` shows
  * it: the text a web component's open shadow root renders, slotted content
  * in place of its slots. A visible component, slot or element holding either
@@ -161,9 +163,14 @@ export const FILTER_MATCHING_JS = `(shadowRoots) => {
   const flatText = ${FLAT_TEXT_JS};
   const showingDescendant = ${SHOWING_DESCENDANT_JS};
   const clippedAway = ${CLIPPED_AWAY_JS};
+  const textless = /^(script|style)$/;
   const skipped = /^(script|style|noscript|template)$/;
+  const notRendered = (node) => node.nodeType === 1 &&
+    (node.hidden || node.ownerDocument.defaultView.getComputedStyle(node).display === 'none');
   const hiddenText = (el) => {
-    const nodes = el.localName === 'slot' ? el.assignedNodes({ flatten: true }) : (el.shadowRoot || el).childNodes;
+    const nodes = el.localName === 'slot'
+      ? el.assignedNodes({ flatten: true }).filter((node) => !notRendered(node))
+      : (el.shadowRoot || el).childNodes;
     let text = '';
     for (const node of nodes) {
       if (node.nodeType === 3) text += node.data;
@@ -172,6 +179,7 @@ export const FILTER_MATCHING_JS = `(shadowRoots) => {
     return text;
   };
   const textOf = (el) => {
+    if (textless.test(el.localName)) return '';
     if (el.localName === 'input' && /^(submit|button|reset)$/i.test(el.type)) return el.value;
     const rendered = typeof el.innerText === 'string' &&
       (typeof el.checkVisibility !== 'function' || el.checkVisibility({ visibilityProperty: true }));

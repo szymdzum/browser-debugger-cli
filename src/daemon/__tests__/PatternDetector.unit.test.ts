@@ -32,7 +32,7 @@ describe('PatternDetector', () => {
 
       assert.strictEqual(result2.shouldShow, true);
       assert.ok(result2.pattern);
-      assert.ok(result2.pattern.alternative.includes('bdg dom eval'));
+      assert.ok(result2.pattern.alternative.includes('bdg eval'));
     });
 
     test('continues showing hint after threshold until max shows', () => {
@@ -87,7 +87,7 @@ describe('PatternDetector', () => {
       const result = detector.trackCommand('Runtime.evaluate', params);
 
       assert.strictEqual(result.shouldShow, true);
-      assert.strictEqual(result.pattern?.alternative, 'bdg dom eval <javascript>');
+      assert.strictEqual(result.pattern?.alternative, 'bdg eval <javascript>');
     });
 
     test('suggests dom query for a Runtime.evaluate that queries elements', () => {
@@ -160,7 +160,7 @@ describe('PatternDetector', () => {
       const result = detector.trackCommand('RUNTIME.EVALUATE');
 
       assert.strictEqual(result.shouldShow, true);
-      assert.ok(result.pattern?.alternative.includes('bdg dom eval'));
+      assert.ok(result.pattern?.alternative.includes('bdg eval'));
     });
   });
 

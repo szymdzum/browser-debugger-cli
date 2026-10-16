@@ -93,8 +93,8 @@ function peekSection(options: PeekCommandOptions): PeekSection | undefined {
 
 /**
  * The preview with its page URLs as shown: the target, the requests and the
- * tab switch note, without user info and with their tokens masked unless
- * `--include-sensitive`.
+ * tab switch note, without user info and with
+ * their tokens masked unless `--include-sensitive`.
  *
  * @param output - Preview output from the daemon
  * @param includeSensitive - Whether `--include-sensitive` was given
