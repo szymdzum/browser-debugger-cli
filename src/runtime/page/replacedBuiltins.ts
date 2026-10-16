@@ -14,7 +14,7 @@
  * page replaced `Symbol` (iteration does not use it).
  */
 
-import type { Protocol } from '@/connection/typed-cdp.js';
+import { sendTyped, type Protocol } from '@/connection/typed-cdp.js';
 import { releaseObjectGroup } from '@/runtime/page/objectGroups.js';
 import type { CDPSender } from '@/telemetry/objectExpander.js';
 import { createLogger } from '@/ui/logging/index.js';
@@ -103,22 +103,22 @@ export async function findReplacedBuiltins(
   const functionDeclaration = collectorFunction(names);
   const objectGroup = `bdg-builtins-${++checks}`;
   try {
-    const collected = (await (objectId
-      ? cdp.send('Runtime.callFunctionOn', {
+    const collected = await (objectId
+      ? sendTyped(cdp, 'Runtime.callFunctionOn', {
           objectId,
           functionDeclaration,
           objectGroup,
         })
-      : cdp.send('Runtime.evaluate', {
+      : sendTyped(cdp, 'Runtime.evaluate', {
           expression: `(${functionDeclaration})()`,
           objectGroup,
-        }))) as Protocol.Runtime.EvaluateResponse;
+        }));
     const listId = collected.result.objectId;
     if (collected.exceptionDetails || !listId) return [];
-    const { result } = (await cdp.send('Runtime.getProperties', {
+    const { result } = await sendTyped(cdp, 'Runtime.getProperties', {
       objectId: listId,
       ownProperties: true,
-    })) as Protocol.Runtime.GetPropertiesResponse;
+    });
     return replacedNames(names, result);
   } catch (error) {
     log.debug(`Built-ins not checked: ${getErrorMessage(error)}`);

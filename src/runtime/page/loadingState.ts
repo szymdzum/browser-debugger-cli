@@ -7,6 +7,7 @@
  * running.
  */
 
+import { sendTyped } from '@/connection/typed-cdp.js';
 import type { PendingRequestInfo, PageLoadingState } from '@/ipc/protocol/commands.js';
 import type { PendingRequest } from '@/telemetry/network.js';
 import type { CDPSender } from '@/telemetry/objectExpander.js';
@@ -73,12 +74,13 @@ interface DocumentState {
  */
 async function readDocumentState(cdp: CDPSender): Promise<DocumentState | undefined> {
   try {
-    const evaluated = cdp.send('Runtime.evaluate', {
+    const evaluated = sendTyped(cdp, 'Runtime.evaluate', {
       expression: '({ readyState: document.readyState, startedAt: performance.timeOrigin })',
       returnByValue: true,
-    }) as Promise<{ result?: { value?: { readyState?: unknown; startedAt?: unknown } } }>;
+    });
     evaluated.catch(() => undefined);
-    const value = (await raceTimeout(evaluated, READY_STATE_TIMEOUT_MS))?.result?.value;
+    const value = (await raceTimeout(evaluated, READY_STATE_TIMEOUT_MS))?.result?.value as
+      { readyState?: unknown; startedAt?: unknown } | undefined;
     if (typeof value?.readyState !== 'string') return undefined;
     return {
       readyState: value.readyState,

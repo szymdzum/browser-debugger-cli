@@ -16,7 +16,7 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import type { Protocol } from '@/connection/typed-cdp.js';
+import { sendTyped, type Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import type {
   AuthStateContent,
@@ -76,9 +76,9 @@ function framesOf(tree: Protocol.Page.FrameTree): Protocol.Page.Frame[] {
  */
 async function storageKeyOf(cdp: Sender, frameId: string, origin: string): Promise<string> {
   try {
-    const { storageKey } = (await cdp.send('Storage.getStorageKeyForFrame', {
+    const { storageKey } = await sendTyped(cdp, 'Storage.getStorageKeyForFrame', {
       frameId,
-    })) as Protocol.Storage.GetStorageKeyForFrameResponse;
+    });
     return storageKey;
   } catch (error) {
     log.debug(`Storage key of ${origin} not read: ${getErrorMessage(error)}`);
@@ -93,7 +93,7 @@ async function storageKeyOf(cdp: Sender, frameId: string, origin: string): Promi
  * @returns First-party keys and partitioned origins
  */
 async function pageStorage(cdp: Sender): Promise<PageStorage> {
-  const { frameTree } = (await cdp.send('Page.getFrameTree')) as Protocol.Page.GetFrameTreeResponse;
+  const { frameTree } = await sendTyped(cdp, 'Page.getFrameTree');
   const keys = new Map<string, string>();
   const partitioned = new Set<string>();
   for (const frame of framesOf(frameTree)) {
@@ -120,9 +120,9 @@ async function readItems(
   storageKey: string,
   isLocalStorage: boolean
 ): Promise<Record<string, string>> {
-  const { entries } = (await cdp.send('DOMStorage.getDOMStorageItems', {
+  const { entries } = await sendTyped(cdp, 'DOMStorage.getDOMStorageItems', {
     storageId: { storageKey, isLocalStorage },
-  })) as Protocol.DOMStorage.GetDOMStorageItemsResponse;
+  });
   return Object.fromEntries(entries.map(([key = '', value = '']) => [key, value]));
 }
 
@@ -172,7 +172,7 @@ async function writeOrigin(cdp: Sender, storageKey: string, origin: OriginStorag
  * @throws CommandError (83) when a requested origin has no frame in the page
  */
 export async function readAuthState(cdp: Sender, requested?: string[]): Promise<StateSaveData> {
-  const { cookies } = (await cdp.send('Network.getAllCookies')) as { cookies: StateCookie[] };
+  const { cookies } = await sendTyped(cdp, 'Network.getAllCookies');
   const { keys, partitioned } = await pageStorage(cdp);
   const wanted = requested?.length ? [...new Set(requested)] : [...keys.keys()];
   const missing = wanted.filter((origin) => !keys.has(origin));
@@ -196,7 +196,8 @@ export async function readAuthState(cdp: Sender, requested?: string[]): Promise<
   const skipped: SkippedOrigin[] = requested?.length
     ? []
     : [...partitioned].map((origin) => ({ origin, reason: 'partitioned' as const }));
-  return { state: { cookies, origins }, ...(skipped.length && { skipped }) };
+  const stateCookies: StateCookie[] = cookies.map((cookie) => ({ ...cookie }));
+  return { state: { cookies: stateCookies, origins }, ...(skipped.length && { skipped }) };
 }
 
 /**
@@ -385,15 +386,13 @@ async function navigateTab(
   url: string,
   loaded: (frame: Protocol.Page.Frame) => boolean
 ): Promise<Protocol.Page.Frame> {
-  const { errorText } = (await cdp.send('Page.navigate', {
+  const { errorText } = await sendTyped(cdp, 'Page.navigate', {
     url,
-  })) as Protocol.Page.NavigateResponse;
+  });
   if (errorText) throw new Error(`Could not open ${url} to restore its storage: ${errorText}`);
   const deadline = Date.now() + BLANK_DOCUMENT_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    const { frameTree } = (await cdp.send(
-      'Page.getFrameTree'
-    )) as Protocol.Page.GetFrameTreeResponse;
+    const { frameTree } = await sendTyped(cdp, 'Page.getFrameTree');
     if (loaded(frameTree.frame)) return frameTree.frame;
     await delay(BLANK_DOCUMENT_POLL_MS);
   }

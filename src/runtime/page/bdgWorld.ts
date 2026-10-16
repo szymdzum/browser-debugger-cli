@@ -17,7 +17,12 @@
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPProtocolError } from '@/connection/errors.js';
-import type { Protocol } from '@/connection/typed-cdp.js';
+import {
+  sendTyped,
+  type CommandParams,
+  type CommandReturn,
+  type Protocol,
+} from '@/connection/typed-cdp.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
@@ -29,6 +34,9 @@ const log = createLogger('cdp');
  * double, runs scripts in the main world)
  */
 type PageConnection = Pick<CDPConnection, 'send'> & Partial<Pick<CDPConnection, 'on'>>;
+
+/** Commands that can run in bdg's world */
+type WorldMethod = 'Runtime.evaluate' | 'DOM.resolveNode' | 'Runtime.callFunctionOn';
 
 /** Name of bdg's isolated world (shown in DevTools' context selector) */
 export const BDG_WORLD_NAME = 'bdg';
@@ -76,14 +84,12 @@ async function createWorld(cdp: PageConnection): Promise<number | null> {
   const { on } = cdp;
   if (!on) return null;
   try {
-    const { frameTree } = (await cdp.send(
-      'Page.getFrameTree'
-    )) as Protocol.Page.GetFrameTreeResponse;
-    const { executionContextId } = (await cdp.send('Page.createIsolatedWorld', {
+    const { frameTree } = await sendTyped(cdp, 'Page.getFrameTree');
+    const { executionContextId } = await sendTyped(cdp, 'Page.createIsolatedWorld', {
       frameId: frameTree.frame.id,
       worldName: BDG_WORLD_NAME,
       grantUniveralAccess: false,
-    })) as Protocol.Page.CreateIsolatedWorldResponse;
+    });
     const forget = (): void => {
       if (worlds.get(cdp) === created) worlds.delete(cdp);
       stopNavigated();
@@ -113,18 +119,18 @@ async function createWorld(cdp: PageConnection): Promise<number | null> {
  * @param inMainWorld - Sends the command in the main world (by default as it is)
  * @returns The command's result
  */
-async function sendInWorld(
+async function sendInWorld<M extends WorldMethod>(
   cdp: PageConnection,
-  method: string,
-  params: Record<string, unknown>,
-  withContext: (contextId: number) => Record<string, unknown>,
-  inMainWorld: () => Promise<unknown> = () => cdp.send(method, params)
-): Promise<unknown> {
+  method: M,
+  params: CommandParams<M>,
+  withContext: (contextId: number) => CommandParams<M>,
+  inMainWorld: () => Promise<CommandReturn<M>> = () => sendTyped(cdp, method, params)
+): Promise<CommandReturn<M>> {
   for (let attempt = 0; attempt < 2; attempt++) {
     const contextId = await worldContext(cdp);
     if (contextId === null) break;
     try {
-      return await cdp.send(method, withContext(contextId));
+      return await sendTyped(cdp, method, withContext(contextId));
     } catch (error) {
       if (!CONTEXT_GONE.test(getErrorMessage(error))) throw error;
       worlds.delete(cdp);
@@ -146,12 +152,12 @@ export async function evaluateInBdgWorld(
   params: Protocol.Runtime.EvaluateRequest
 ): Promise<Protocol.Runtime.EvaluateResponse> {
   if (params.contextId !== undefined || params.uniqueContextId !== undefined) {
-    return (await cdp.send('Runtime.evaluate', { ...params })) as Protocol.Runtime.EvaluateResponse;
+    return sendTyped(cdp, 'Runtime.evaluate', { ...params });
   }
-  return (await sendInWorld(cdp, 'Runtime.evaluate', { ...params }, (contextId) => ({
+  return sendInWorld(cdp, 'Runtime.evaluate', { ...params }, (contextId) => ({
     ...params,
     contextId,
-  }))) as Protocol.Runtime.EvaluateResponse;
+  }));
 }
 
 /**
@@ -175,13 +181,13 @@ export async function callFunctionInBdgWorld(
   cdp: PageConnection,
   params: PageFunctionCall
 ): Promise<Protocol.Runtime.CallFunctionOnResponse> {
-  return (await sendInWorld(
+  return sendInWorld(
     cdp,
     'Runtime.callFunctionOn',
     { ...params },
     (executionContextId) => ({ ...params, executionContextId }),
     () => callFunctionInMainWorld(cdp, params)
-  )) as Protocol.Runtime.CallFunctionOnResponse;
+  );
 }
 
 /** Chrome's error for a call on an object whose document went away meanwhile */
@@ -203,18 +209,18 @@ async function mainWorldObject(
   objectGroup: string | undefined
 ): Promise<string | undefined> {
   const group = objectGroup !== undefined && { objectGroup };
-  const global = (await cdp.send('Runtime.evaluate', {
+  const global = await sendTyped(cdp, 'Runtime.evaluate', {
     expression: 'this',
     ...group,
-  })) as Protocol.Runtime.EvaluateResponse;
+  });
   if (global.result.objectId) return global.result.objectId;
-  const { root } = (await cdp.send('DOM.getDocument', {
+  const { root } = await sendTyped(cdp, 'DOM.getDocument', {
     depth: 0,
-  })) as Protocol.DOM.GetDocumentResponse;
-  const resolved = (await cdp.send('DOM.resolveNode', {
+  });
+  const resolved = await sendTyped(cdp, 'DOM.resolveNode', {
     nodeId: root.nodeId,
     ...group,
-  })) as Protocol.DOM.ResolveNodeResponse;
+  });
   return resolved.object.objectId;
 }
 
@@ -238,10 +244,10 @@ export async function callFunctionInMainWorld(
   const { objectGroup } = params;
   const objectId = await mainWorldObject(cdp, objectGroup);
   try {
-    return (await cdp.send('Runtime.callFunctionOn', {
+    return await sendTyped(cdp, 'Runtime.callFunctionOn', {
       ...params,
-      objectId,
-    })) as Protocol.Runtime.CallFunctionOnResponse;
+      ...(objectId !== undefined && { objectId }),
+    });
   } catch (error) {
     if (error instanceof CDPProtocolError && OBJECT_GONE.test(error.message)) {
       throw new CDPProtocolError(
@@ -275,20 +281,20 @@ export async function resolveNodeInBdgWorld(
   params: Protocol.DOM.ResolveNodeRequest
 ): Promise<Protocol.DOM.ResolveNodeResponse> {
   if (params.executionContextId !== undefined) {
-    return (await cdp.send('DOM.resolveNode', { ...params })) as Protocol.DOM.ResolveNodeResponse;
+    return sendTyped(cdp, 'DOM.resolveNode', { ...params });
   }
   try {
-    const resolved = (await sendInWorld(
+    const resolved = await sendInWorld(
       cdp,
       'DOM.resolveNode',
       { ...params },
       (executionContextId) => ({ ...params, executionContextId })
-    )) as Protocol.DOM.ResolveNodeResponse;
+    );
     if (await usableInWorld(cdp, resolved.object.objectId)) return resolved;
   } catch (error) {
     log.debug(`Node resolved in the page's world: ${getErrorMessage(error)}`);
   }
-  return (await cdp.send('DOM.resolveNode', { ...params })) as Protocol.DOM.ResolveNodeResponse;
+  return sendTyped(cdp, 'DOM.resolveNode', { ...params });
 }
 
 /**
@@ -301,12 +307,12 @@ export async function resolveNodeInBdgWorld(
  */
 async function usableInWorld(cdp: PageConnection, objectId: string | undefined): Promise<boolean> {
   if (!objectId) return false;
-  const probe = (await cdp.send('Runtime.callFunctionOn', {
+  const probe = await sendTyped(cdp, 'Runtime.callFunctionOn', {
     objectId,
     functionDeclaration:
       'function () { try { return this.isConnected === true; } catch (e) { return false; } }',
     returnByValue: true,
-  })) as Protocol.Runtime.CallFunctionOnResponse;
+  });
   return probe.result.value === true;
 }
 

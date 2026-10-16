@@ -8,8 +8,9 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import { sendTyped } from '@/connection/typed-cdp.js';
 import { VIEWPORT_SIZE_JS } from '@/runtime/dom/elementGeometry.js';
-import { hideHeadlessUserAgent, type BrowserVersion } from '@/runtime/page/userAgent.js';
+import { hideHeadlessUserAgent } from '@/runtime/page/userAgent.js';
 import type { ColorScheme, ViewportSize } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { raceTimeout } from '@/utils/async.js';
@@ -74,7 +75,7 @@ export async function applySessionEmulation(
  */
 async function emulatePhone(cdp: CDPConnection, on: boolean): Promise<void> {
   await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: on, maxTouchPoints: on ? 5 : 1 });
-  const version = (await cdp.send('Browser.getVersion', {})) as BrowserVersion;
+  const version = await sendTyped(cdp, 'Browser.getVersion', {});
   const { userAgent } = version;
   if (!on) {
     if (userAgent.includes('HeadlessChrome')) await hideHeadlessUserAgent(cdp, log, version);
@@ -198,12 +199,13 @@ export async function pageAppearance(cdp: CDPConnection): Promise<PageAppearance
     return { width: Math.round(size.width), height: Math.round(size.height), dark: matchMedia('(prefers-color-scheme: dark)').matches };
   })()`;
   try {
-    const response = (await raceTimeout(
-      cdp.send('Runtime.evaluate', { expression, returnByValue: true }),
+    const response = await raceTimeout(
+      sendTyped(cdp, 'Runtime.evaluate', { expression, returnByValue: true }),
       APPEARANCE_TIMEOUT_MS,
       { onTimeout: () => null }
-    )) as { result?: { value?: { width: number; height: number; dark: boolean } } } | null;
-    const value = response?.result?.value;
+    );
+    const value = response?.result?.value as
+      { width: number; height: number; dark: boolean } | undefined;
     if (!value) return {};
     return {
       viewport: { width: value.width, height: value.height },
