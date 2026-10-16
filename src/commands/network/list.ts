@@ -30,6 +30,7 @@ import {
 import { resolvePreset, FILTER_PRESETS } from '@/telemetry/filterPresets.js';
 import { filterByResourceType } from '@/telemetry/filters.js';
 import type { NetworkRequest } from '@/types.js';
+import { currentNavigationOf, isPreviousPage } from '@/telemetry/pageScope.js';
 import { buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import {
   formatNetworkFollowRows,
@@ -206,6 +207,7 @@ function buildFormatOptions(
     ...(options.sort && { sort: options.sort }),
     ...(result.filterHints && { filterHints: result.filterHints }),
     ...(result.hiddenEarlierPages && { hiddenEarlierPages: result.hiddenEarlierPages }),
+    ...(result.earlierPagesIncluded && { includedEarlierPages: result.earlierPagesIncluded }),
     ...(result.pageStart && { pageStart: result.pageStart }),
     evictions: {
       requestsDropped: result.dropped ?? 0,
@@ -354,6 +356,8 @@ interface NetworkListResult {
   page?: 'current';
   /** Requests of earlier pages matching the filters that `--page current` left out (left out when none) */
   hiddenEarlierPages?: number;
+  /** Requests of earlier pages in a `--sort`ed list of all pages (left out when none) */
+  earlierPagesIncluded?: number;
   /** Why a `url:` filter matched nothing (left out otherwise) */
   filterHints?: string[];
   /** Order of `requests` (`--sort`; left out: capture order) */
@@ -470,15 +474,21 @@ export function registerListCommand(networkCmd: Command): void {
           const pageStart = pageStartOf(requests);
           const filterHints =
             scoped.requests.length === 0 ? urlFilterHintsFor(options, requests) : [];
+          const selected = selectRequests(scoped.requests, options.sort, lastN);
+          const currentPage = currentNavigationOf(requests, currentNavigationId);
+          const earlierPagesIncluded = options.sort
+            ? selected.filter((request) => isPreviousPage(request, currentPage)).length
+            : 0;
           return {
             success: true,
             data: {
               ...(filterHints.length > 0 && { filterHints }),
-              requests: selectRequests(scoped.requests, options.sort, lastN),
+              requests: selected,
               totalCount: requests.length,
               filteredCount: scoped.requests.length,
               ...(scope === 'current' && { page: 'current' as const }),
               ...(scoped.hidden > 0 && { hiddenEarlierPages: scoped.hidden }),
+              ...(earlierPagesIncluded > 0 && { earlierPagesIncluded }),
               ...(options.sort && { sort: options.sort }),
               ...(pageStart && { pageStart }),
               ...(pageCrashedAt !== undefined && { pageCrashedAt }),

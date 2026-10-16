@@ -154,14 +154,39 @@ const BLOCKED_COOKIE_KINDS: Record<BlockedCookie['kind'], string> = {
   'not-sent': 'not sent',
 };
 
+/** Plain-language meaning of Chrome's common blocked-cookie reasons */
+const BLOCKED_COOKIE_GLOSSES: Readonly<Record<string, string>> = {
+  SameSiteLax: 'SameSite=Lax cookie on a cross-site request that is not a top-level navigation',
+  SameSiteStrict: 'SameSite=Strict cookie on a cross-site request',
+  SchemefulSameSiteLax:
+    'SameSite=Lax cookie on a request that is cross-site once the scheme counts (http and https of one host are different sites)',
+  SchemefulSameSiteStrict:
+    'SameSite=Strict cookie on a request that is cross-site once the scheme counts (http and https of one host are different sites)',
+  SameSiteNoneInsecure: 'SameSite=None cookie without the Secure attribute',
+  ThirdPartyPhaseout: 'third-party cookie blocking: a cross-site request may not use this cookie',
+  DomainMismatch: "the cookie's Domain does not match the request host",
+  SecureOnly: 'Secure cookie on a request that is not https',
+};
+
+/**
+ * One blocked-cookie reason with its plain-language meaning, if known.
+ *
+ * @param reason - Chrome's reason
+ * @returns The reason, followed by its meaning in parentheses when known
+ */
+function glossedReason(reason: string): string {
+  const gloss = BLOCKED_COOKIE_GLOSSES[reason];
+  return gloss ? `${reason} (${gloss})` : reason;
+}
+
 /**
  * Why a cookie was blocked, for the `Blocked Cookies` block of `details network`.
  *
  * @param cookie - Blocked cookie
- * @returns e.g. `not sent: SchemefulSameSiteLax`, `set rejected: SyntaxError, UnknownError`
+ * @returns e.g. `not sent: SameSiteLax (SameSite=Lax cookie on a cross-site request …)`, `set rejected: SyntaxError, UnknownError`
  */
 export function blockedCookieReason(cookie: BlockedCookie): string {
-  return `${BLOCKED_COOKIE_KINDS[cookie.kind]}: ${cookie.reasons.join(', ')}`;
+  return `${BLOCKED_COOKIE_KINDS[cookie.kind]}: ${cookie.reasons.map(glossedReason).join(', ')}`;
 }
 
 /**
@@ -259,6 +284,16 @@ export function harExportedMessage(result: HarExportSummary): string {
  */
 export function earlierPagesHiddenNote(count: number): string {
   return `${pluralize(count, 'request')} from earlier pages hidden (--page all)`;
+}
+
+/**
+ * Footer of a sorted `network list` that includes requests of earlier pages.
+ *
+ * @param count - Requests of earlier pages in the list
+ * @returns e.g. `3 requests from earlier pages included (--page current)`
+ */
+export function earlierPagesIncludedNote(count: number): string {
+  return `${pluralize(count, 'request')} from earlier pages included (--page current)`;
 }
 
 /**

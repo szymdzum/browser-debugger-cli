@@ -14,6 +14,7 @@ import { OutputFormatter, truncateUrl } from '@/ui/formatting.js';
 import {
   COOKIE_BLOCKED_MARK,
   earlierPagesHiddenNote,
+  earlierPagesIncludedNote,
   networkEvictedNote,
   trackersExcludedNote,
   type NetworkEvictionCounts,
@@ -33,6 +34,8 @@ export interface NetworkListOptions {
   evictions?: NetworkEvictionCounts;
   /** Order of the list (`--sort`); default: capture order */
   sort?: SortKey;
+  /** Requests of earlier pages in the list (`--sort` with all pages) */
+  includedEarlierPages?: number | undefined;
   /** Requests of earlier pages matching the filters that `--page current` left out */
   hiddenEarlierPages?: number;
 }
@@ -269,6 +272,9 @@ function formatNetworkListHuman(requests: NetworkRequest[], options: NetworkList
     fmt.text(formatRequestLine(request, options, widths));
   }
   if (hiddenNote) fmt.text(hiddenNote);
+  if (options.includedEarlierPages) {
+    fmt.text(earlierPagesIncludedNote(options.includedEarlierPages));
+  }
 
   return fmt.build();
 }

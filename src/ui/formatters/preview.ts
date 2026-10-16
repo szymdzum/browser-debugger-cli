@@ -7,7 +7,11 @@ import {
 import { isPreviousPage } from '@/telemetry/pageScope.js';
 import type { BdgOutput, ConsoleMessage, NetworkRequest } from '@/types.js';
 import { buildSuccessResponse, stringifyEnvelope } from '@/ui/OutputBuilder.js';
-import { capMessageText, formatTimestamp } from '@/ui/formatters/console/shared.js';
+import {
+  capMessageText,
+  formatSourceLocation,
+  formatTimestamp,
+} from '@/ui/formatters/console/shared.js';
 import { capForDisplay } from '@/ui/formatters/longValues.js';
 import {
   failureReason,
@@ -339,7 +343,9 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
       } else {
         const consoleLines = messages.map((msg) => {
           const prefix = msg.type.toUpperCase().padEnd(5);
-          return `${prefix} ${previousPagePrefix(msg, output)}${compactConsoleText(msg.text, options.full)}`;
+          const source = formatSourceLocation(msg.stackTrace);
+          const where = source ? ` (${source})` : '';
+          return `${prefix} ${previousPagePrefix(msg, output)}${compactConsoleText(msg.text, options.full)}${where}`;
         });
         fmt.list(consoleLines, 2);
       }

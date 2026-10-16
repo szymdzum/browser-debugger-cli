@@ -268,7 +268,7 @@ void describe('formatNetworkDetails blocked cookies', () => {
     const output = formatNetworkDetails(request);
     assert.match(output, /Response Headers:[\s\S]*Blocked Cookies:/);
     assert.match(output, /^ {2}tp_lax +not sent: SchemefulSameSiteLax \(.+\)$/m);
-    assert.match(output, /^ {2}nosecure +set rejected: SameSiteNoneInsecure$/m);
+    assert.match(output, /^ {2}nosecure +set rejected: SameSiteNoneInsecure \(.+\)$/m);
     assert.match(output, /^ {2}\(no name\) +set rejected: SyntaxError, UnknownError$/m);
     assert.match(output, /\+3 more not kept: bdg keeps 50 per request/);
   });
