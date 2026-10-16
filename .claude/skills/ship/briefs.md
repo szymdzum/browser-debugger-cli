@@ -40,7 +40,7 @@ Keep the report under ~40 lines; details belong in files or the PR body.
 ## Implementer
 
 <!-- brief:implementer -->
-Implement issue #<N> in bdg (github.com/szymdzum/browser-debugger-cli). Read the issue with its comments (`gh issue view <N> --repo szymdzum/browser-debugger-cli --comments`), then `CLAUDE.md`, then the code it touches: <files and modules worth reading first>.
+Implement issue #<N> in bdg (github.com/szymdzum/browser-debugger-cli). Read the issue with its comments (quoted at the end of this brief), then `CLAUDE.md`, then the code it touches: <files and modules worth reading first>.
 
 **Worktree.** From the main checkout, create yours: `cd <MAIN> && node .claude/skills/ship/scripts/ship.mjs worktree <N> <BRANCH>` (prints `../bdg-<N>`, `node_modules` linked; add `base=OTHER_BRANCH` to build on an unmerged branch, and rebase onto `main` before the final push). Work, build and commit only there. `node_modules` is a symlink to the main checkout: never `npm install` through it; a change to `package-lock.json` runs its own `npm ci` in your worktree.
 
@@ -65,7 +65,7 @@ Implement issue #<N> in bdg (github.com/szymdzum/browser-debugger-cli). Read the
 - Deterministic only: wait for an observable event (a log line, a request, a DOM change, a file), never a fixed sleep. A timing-dependent test asserts exactly the acceptance criterion, no tighter (S13 #777: a CPU-throttled test stricter than the criterion cost two fix rounds). List timing-sensitive smoke files in the report (the orchestrator dispatches the repeat run on your first draft).
 - **Simplify.** Once the tests are green, review your diff against `<BASE>` by hand for reuse, simplification and efficiency; fixes go in a separate `refactor:` commit, then re-run the affected tests. Don't run `/simplify`: it starts background agents. Over 150 product lines the orchestrator runs it in your worktree after the draft PR, leaves its edits uncommitted and asks you to run the affected tests and commit them as `refactor:`.
 - No red commit for docs-only changes, refactors covered by existing tests, or CI/tooling; say which applies.
-- <detection heuristics only, delete otherwise: before the PR, build a false-positive matrix on scratch pages and report the counts: an element that unmounts on press, a label that changes on press, a sibling that slides under the mouse, a page-wide ticker or aria-live region updating on its own, an unrelated toast during the action window, and the user's own result arriving in several chunks (Load more, streamed search results, a slow response); each must stay silent, or for the chunked result reported, unless the issue says otherwise>
+- <detection heuristics only, delete otherwise: before the PR, build a false-positive matrix on scratch pages and report the counts: an element that unmounts on press, a label that changes on press, a sibling that slides under the mouse, a page-wide ticker or aria-live region updating on its own, an unrelated toast during the action window, the user's own result arriving in several chunks (Load more, streamed search results, a slow response), and the user's result in the same box or app root as a self-updating region (a ticker next to the result, a ticker replacing a span, content streamed into a labelled box); each must stay silent, or for the user's result reported, unless the issue says otherwise>
 - <redaction or parsing changes only, delete otherwise: the case matrix, inputs × output surfaces (human, --json, file, log); every cell is a row of the red commit's table test; report the counts>
 
 **Verify.** Every shell call starts with:
@@ -84,6 +84,8 @@ Run `npm run check`, `npm test`, `npm run build` and the affected smoke files (`
 **Budget.** At most 80 tool calls up to the draft PR; each fix round you are resumed for has its own 30. At a cap, stop and report what is left.
 
 **Report.** What changed; decisions with reasons; the red commit (SHA and the failure line); before/after in two lines; test result lines; timing-sensitive smoke files; adjacent fixes; findings outside the scope with command and output. {{report-tail}} The **last line** is exactly `PR <url> HEAD <sha>`; a report without it counts as unfinished.
+
+<ISSUE>
 <!-- /brief -->
 
 ## Reviewer
@@ -98,7 +100,7 @@ ln -s <MAIN>/node_modules /tmp/review-<N>/node_modules
 ```
 Scratch files in `/tmp/review-<N>-work`; remove the worktree at the end (`git -C <MAIN> worktree remove --force /tmp/review-<N>`).
 
-**The change claims** (issue: `gh issue view <N> --repo szymdzum/browser-debugger-cli --comments`):
+**The change claims** (the issue is quoted at the end of this brief):
 - <3–8 bullets: what it claims to do, including design choices>
 
 **Check carefully:**
@@ -141,11 +143,13 @@ They must fail on an assertion about the issue, not on a build or import error; 
 **Report.** The SHA you reviewed (`<HEAD>`), then findings as **blocking / should-fix / nit**, each with file:line and a concrete scenario (inputs → wrong outcome); report every finding you can support, uncertain ones marked as such. Mark each **adjacent** or **older code**:
 {{findings}}
 Then the matrix counts, what you checked and found fine, and under **Not checked** anything from the list above you skipped and why. {{report-tail}}
+
+<ISSUE>
 <!-- /brief -->
 
 ## Tester
 
-Build the branch in its worktree first (`npm run build` in `../bdg-<N>`, Node pinned) and start the fixtures **from that worktree** (`cd ../bdg-<N> && npx tsx src/__testutils__/serveFixtures.ts & echo $! > /tmp/bdg-fixtures-<N>.pid`); pass the URLs it prints. Tasks are goals from the scenarios that touch the change's area (`scenarios.md`), never a description of the change.
+Build the branch in its worktree first (`npm run build` in `../bdg-<N>`, Node pinned) and start the fixtures **from that worktree** with `ship fixtures <N>` (PID file `/tmp/bdg-fixtures-<N>.pid`; `ship merge` stops it); pass the URLs it prints. Tasks are goals from the scenarios that touch the change's area (`scenarios.md`), never a description of the change.
 
 <!-- brief:tester -->
 You are a coding agent who has never used bdg, a CLI for debugging Chrome. Test it on realistic tasks and report what works, what is confusing, and any bugs. You are testing build `<HEAD>`; report that SHA as given (you have no git, don't try to confirm it).

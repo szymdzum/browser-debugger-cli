@@ -70,6 +70,11 @@ One row per merged PR, appended with `ship log <pr> …` right after the merge. 
 | 2026-10-15 | #772 | #585 #645 #734 | 2 | 0/4/4 | 1 | 3 | sonnet | 620k | 3 issues in one PR; /simplify by orchestrator (282 lines); tester found dom layout raw id; round 3 (dom listeners) approved by owner; 2 additive --json fields approved; red commit's inspect tests failed on bad input (fixed in a test commit) |
 | 2026-10-15 | #773 | #750 | 3 | 1/3/6 | 1 | 3 | opus | 1.5M | closed unmerged (#750 a): design approved, 3 approaches; repeats failed approaches 1-2 (Node 26 Linux only for #2), approach 3 blocked by fresh reviewer (stream rule hid user's result); found #776 (scan budget) on the way |
 | 2026-10-15 | #777 | #750 #776 | 2 | 0/3/2 | 0 | 3 | sonnet | 310k | split out of #773 (owner option A); also closes #750 as documented limit; throttled smoke too strict → 9/20 repeat fails, round 3 owner-approved (test = acceptance criterion); macOS repeat job lost its runner once (infra, rerun passed) |
+| 2026-10-15 | #781 | - | 1 | 0/0/2 | - | 0 | sonnet | ~74k | #779 pin ubuntu-24.04 in ci/security/release; trial PR #780 on ubuntu-26.04 fully green (Chrome 155, warm-up 9 s) so #779 closed; release dry_run 38793678277 ok; reviewer nits (README example snippets) left |
+| 2026-10-16 | #784 | #775 | 2 | 0/2/2 | 1 | 2 | sonnet | ~420k | #775 dom wait timeout names pending requests via loadingStateOf/pendingRequestsText, top-level pending/pendingCount (errorContext convention); tester found previous-page requests in the list (adjacent fix: drop requests sent before performance.timeOrigin); smoke rewritten to a never-answering local server; brief written empty first (zsh $S word split), implementer resumed |
+| 2026-10-16 | #783 | #589 | 2 | 0/2/4 | 1 | 3 | sonnet | ~470k | #589 quoted-argument hint for free-text args (a11y query, query, fill value), eval gets 'quote the whole script' (tester: joined script hint was runnable-but-wrong), nodeId documented as backend node id (owner A, rename to #465), a11y describe prints A11y node ID + Backend ID; round 3 approved by owner (label claimed a DOM id that may not exist) |
+| 2026-10-16 | #785 | #694 | 2 | 0/0/2 | 1 | 1 | sonnet | ~330k | #694 tracker-only Errors: row reads on its own; Selector: row for a11y index targets; tester found the row missing on MDN (own '#'-prefix condition dropped ancestor-id paths) + SKILL.md exit 91 / console --all docs fixed; started before #782 merged (one formatter, no conflict yet) |
+| 2026-10-16 | #782 | #774 | 3 | 0/7/9 | 0 | 3 | opus | ~1.6M | #774 design-first (owner accepted): idle-time history observer + churn; Also changing: row/alsoChanging; settle ignores self-updating regions; <search> near container; 3 reviewers (2nd and 3rd fresh) found #app-root demotion, marked-rule mismatch, ticker box swallowing result, replace-span ticker, streamed content in a marked box; round 3 owner-approved; tail of a previous Load more = documented limit (D-B cart too); repeats green Linux+macOS Node 22 and Node 26; overhead ~0.7 us per changed node |
 
 ## Escaped
 
@@ -79,3 +84,14 @@ Bugs found after the merge in behaviour a logged PR changed: the PR, the issue t
 |---|---|---|---|
 | 2026-10-13 | #720 | - (main red, fixed by #724) | reviewer saw the stale-terminate window and rated it a nit; tester never ran a lost eval next to another client; PR CI smoke runs Node 22 only |
 | 2026-10-14 | #732 | - (follow-up test PR) | orchestrator: the reviewer reported the new test file at a different path than claimed and I did not check `git status` in the worktree; `ship merge` noticed the untracked file only after merging |
+
+## Candidates
+
+Process changes seen in one session only (SKILL.md, Keep the books: a second session makes one a rule; a rule that caught nothing in three sessions in a row is removed). Tool bugs don't wait here.
+
+| proposal | seen in | note |
+|---|---|---|
+| No reviewer for a tier 1 PR that only changes runner labels or versions and is verified by CI plus a dispatch; the orchestrator's `git show` is enough | S14 (#781: nits only) | keep the reviewer for workflow logic: S12 #765 found a should-fix there |
+| Two PRs adding different lines to the same formatting function may run in parallel, the later one told to rebase | S14 (#785 next to #782: clean rebase, ~1–2 h saved) | |
+| Remove: repeat runs on timing PRs | caught nothing in S14; caught in S11 (#761) and S13 (#773) | count sessions with no catch: 1 of 3 |
+
