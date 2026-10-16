@@ -238,25 +238,71 @@ describe('HAR Builder', () => {
       assert.equal(content.text, Buffer.from('binary-data').toString('base64'));
     });
 
-    test('uses encodedDataLength for response bodySize', () => {
-      const requests: NetworkRequest[] = [
-        {
-          requestId: 'req-1',
-          url: 'https://example.com',
-          method: 'GET',
-          timestamp: Date.now(),
-          status: 200,
-          responseBody: 'test',
-          encodedDataLength: 1234, // Wire size (compressed)
-          decodedBodyLength: 5678, // Decoded size
-        },
-      ];
+    describe('response bodySize (HAR: body bytes without headers)', () => {
+      const headers = { 'content-type': 'text/html', 'content-encoding': 'br' };
+      const received = (extra: Partial<NetworkRequest>): Entry['response'] => {
+        const har = buildHAR(
+          [
+            {
+              requestId: 'req-1',
+              url: 'https://example.com',
+              method: 'GET',
+              timestamp: Date.now(),
+              status: 200,
+              responseHeaders: headers,
+              encodedDataLength: 1234,
+              decodedBodyLength: 5678,
+              ...extra,
+            },
+          ],
+          baseMetadata
+        );
+        return getFirstEntry(har.log.entries).response;
+      };
 
-      const har = buildHAR(requests, baseMetadata);
-      const response = getFirstEntry(har.log.entries).response;
+      test('uses encodedBodyLength when Chrome sends it', () => {
+        const response = received({ encodedBodyLength: 900 });
+        assert.equal(response.bodySize, 900);
+        assert.equal(response.content.size, 5678);
+      });
 
-      assert.equal(response.bodySize, 1234); // Should use wire size
-      assert.equal(response.content.size, 5678); // Should use decoded size
+      test('without encodedBodyLength takes the headers off the bytes received', () => {
+        const response = received({});
+        assert.ok(response.headersSize > 0);
+        assert.equal(response.bodySize, 1234 - response.headersSize);
+      });
+
+      test('headersSize + bodySize never exceeds the bytes received', () => {
+        for (const encodedDataLength of [0, 10, response0Headers(), 1234]) {
+          const response = received({ encodedDataLength });
+          assert.ok(response.bodySize >= 0);
+          assert.ok(
+            response.headersSize + response.bodySize <=
+              Math.max(encodedDataLength, response.headersSize),
+            `${encodedDataLength}: ${response.headersSize} + ${response.bodySize}`
+          );
+        }
+      });
+
+      test('a revalidation smaller than its headers has bodySize 0, not negative', () => {
+        const response = received({ encodedDataLength: 10 });
+        assert.equal(response.bodySize, 0);
+      });
+
+      test('a 304 has bodySize 0 whatever Chrome reports', () => {
+        assert.equal(received({ status: 304, encodedDataLength: 5000 }).bodySize, 0);
+        assert.equal(received({ status: 304, encodedBodyLength: 5000 }).bodySize, 0);
+      });
+
+      test('a response served from cache has bodySize 0', () => {
+        assert.equal(received({ fromCache: true, encodedBodyLength: 900 }).bodySize, 0);
+        assert.equal(received({ fromCache: true, encodedDataLength: 900 }).bodySize, 0);
+      });
+
+      /** Size of the estimated headers of the response above */
+      function response0Headers(): number {
+        return received({ encodedDataLength: 0 }).headersSize;
+      }
     });
 
     test('calculates response headers size including status line', () => {

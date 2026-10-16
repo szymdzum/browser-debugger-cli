@@ -237,6 +237,23 @@ void describe('Network telemetry contract', () => {
       void cleanup();
     });
 
+    void it('records encodedBodyLength from loadingFinished when Chrome sends it (#796)', async () => {
+      const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests);
+      mockCDP.emit<Protocol.Network.RequestWillBeSentEvent>(
+        'Network.requestWillBeSent',
+        createRequestEvent({ requestId: 'req-body', timestamp: 1000 })
+      );
+      mockCDP.emit<Protocol.Network.LoadingFinishedEvent & { encodedBodyLength: number }>(
+        'Network.loadingFinished',
+        { requestId: 'req-body', timestamp: 1100, encodedDataLength: 1234, encodedBodyLength: 900 }
+      );
+
+      assert.equal(requests[0]?.encodedBodyLength, 900);
+      assert.equal(requests[0]?.encodedDataLength, 1234);
+
+      void cleanup();
+    });
+
     void it("measures durations with Chrome's timestamps and keeps blocked reasons", async () => {
       const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests);
       mockCDP.emit<Protocol.Network.RequestWillBeSentEvent>(
