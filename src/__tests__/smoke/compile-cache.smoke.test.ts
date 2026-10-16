@@ -22,19 +22,37 @@ const ENTRY = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../
 const CACHE_DIR_NAME = 'node-compile-cache';
 
 /**
+ * Count the files below a directory.
+ *
+ * @param dir - Directory to walk
+ * @returns Number of files
+ */
+function countFiles(dir: string): number {
+  return fs
+    .readdirSync(dir, { withFileTypes: true })
+    .reduce(
+      (sum, entry) => sum + (entry.isDirectory() ? countFiles(path.join(dir, entry.name)) : 1),
+      0
+    );
+}
+
+/**
  * Run `bdg --version` with the given temp dir and compile cache settings.
  *
  * @param tmpdir - Value of `TMPDIR`
  * @param disable - Whether to set `NODE_DISABLE_COMPILE_CACHE=1`
+ * @param cacheDir - Value of `NODE_COMPILE_CACHE`, if any
  * @returns Exit code and output
  */
 function runVersion(
   tmpdir: string,
-  disable: boolean
+  disable: boolean,
+  cacheDir?: string
 ): { code: number | null; stdout: string; stderr: string } {
   const env: NodeJS.ProcessEnv = { ...process.env, TMPDIR: tmpdir };
   delete env['NODE_COMPILE_CACHE'];
   delete env['NODE_DISABLE_COMPILE_CACHE'];
+  if (cacheDir !== undefined) env['NODE_COMPILE_CACHE'] = cacheDir;
   if (disable) env['NODE_DISABLE_COMPILE_CACHE'] = '1';
   const result = spawnSync(process.execPath, [ENTRY, '--version'], { encoding: 'utf8', env });
   return { code: result.status, stdout: result.stdout, stderr: result.stderr };
@@ -48,6 +66,16 @@ void describe('Node compile cache', () => {
     const result = runVersion(tmp, false);
     assert.equal(result.code, 0, JSON.stringify(result));
     assert.ok(fs.existsSync(path.join(tmp, CACHE_DIR_NAME)), fs.readdirSync(tmp).join(','));
+    assert.ok(countFiles(path.join(tmp, CACHE_DIR_NAME)) > 0, 'cache dir holds no file');
+  });
+
+  void it('goes to NODE_COMPILE_CACHE when it is set', () => {
+    const tmp = makeTempDir('bdg-cc-');
+    const custom = path.join(makeTempDir('bdg-cc-custom-'), 'cache');
+    const result = runVersion(tmp, false, custom);
+    assert.equal(result.code, 0, JSON.stringify(result));
+    assert.ok(countFiles(custom) > 0, 'custom cache dir holds no file');
+    assert.equal(fs.existsSync(path.join(tmp, CACHE_DIR_NAME)), false);
   });
 
   void it('is not created with NODE_DISABLE_COMPILE_CACHE=1', () => {

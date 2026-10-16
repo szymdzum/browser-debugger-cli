@@ -11,7 +11,9 @@ import { getErrorMessage } from '@/utils/errors.js';
 const log = createLogger('bdg');
 
 /**
- * Turn on Node's compile cache for the modules loaded after this call. Node
+ * Turn on Node's compile cache for the modules loaded after this call. Only
+ * the CLI entry calls it: it loads `dist/cli.js` afterwards. The daemon is one
+ * bundle that loads nothing after its start, so a call there caches nothing. Node
  * itself honours `NODE_COMPILE_CACHE` (cache directory) and
  * `NODE_DISABLE_COMPILE_CACHE` (off). A runtime without the API (Node < 22.1),
  * an unwritable cache directory or any error is ignored: the cache is only
