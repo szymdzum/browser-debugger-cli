@@ -15,10 +15,12 @@ import { test } from 'node:test';
 import {
   appendSnapshotEntries,
   briefProblems,
+  briefVariant,
   formatDesign,
   formatIssue,
   isAgentCommand,
   issueNumbers,
+  mergeCheckStillValid,
   missingLogRows,
   isFixturesCommand,
   isSessionFileName,
@@ -53,6 +55,7 @@ import {
   simplifyVerdict,
   SIMPLIFY_THRESHOLD,
   snapshotChanges,
+  staleDependencies,
   snapshotLines,
   retryTransient,
   run,
@@ -824,8 +827,8 @@ test('simplifyVerdict: a small diff needs nothing, a large one a refactor commit
   const large = SIMPLIFY_THRESHOLD + 1;
   assert.equal(simplifyVerdict(large, ['test: red', 'fix: green'], 'body').ok, false);
   assert.match(simplifyVerdict(large, ['test: red'], '').text, /no refactor: commit/);
-  assert.equal(simplifyVerdict(large, ['test: red', 'refactor: share helper'], '').ok, true);
-  assert.equal(simplifyVerdict(large, ['refactor(dom): x'], '').ok, true);
+  assert.equal(simplifyVerdict(large, ['test: red', 'fix: green', 'refactor: share helper'], '').ok, true);
+  assert.equal(simplifyVerdict(large, ['fix: x', 'refactor(dom): x'], '').ok, true);
   assert.equal(simplifyVerdict(large, ['fix: x'], 'Simplify: Nothing to simplify.').ok, true);
   assert.equal(simplifyVerdict(large, ['fix: refactor: x'], '').ok, false);
 });
@@ -973,4 +976,55 @@ test('missingLogRows lists backup rows whose PR log.md lacks, once each', () => 
   const backup = '| 2026-10-16 | #794 | #661 |\n| 2026-10-16 | #795 | #590 |\n| 2026-10-16 | #795 | #590 | again |\n';
   assert.deepEqual(missingLogRows(log, backup), ['| 2026-10-16 | #795 | #590 | again |']);
   assert.deepEqual(missingLogRows(log, ''), []);
+});
+
+test("simplifyVerdict doesn't count a refactoring PR's own refactor: commits as the /simplify pass", () => {
+  const large = SIMPLIFY_THRESHOLD + 1;
+  const only = simplifyVerdict(large, ['refactor: type the CDP calls of src/runtime/page'], '');
+  assert.equal(only.ok, false);
+  assert.match(only.text, /refactor: commits are the change itself/);
+  assert.equal(simplifyVerdict(large, ['test: red', 'refactor: x'], '').ok, false);
+  assert.equal(simplifyVerdict(large, ['refactor: the change', 'refactor: simplify pass'], '').ok, true);
+});
+
+test('mergeCheckStillValid keeps a result for the same head when main moved around the PR files', () => {
+  const prFiles = ['src/a.ts', 'src/b.ts'];
+  assert.equal(mergeCheckStillValid({ checkedHead: 'h1', laterFiles: ['docs/x.md'] }, 'h1', prFiles), true);
+  assert.equal(mergeCheckStillValid({ checkedHead: 'h1', laterFiles: [] }, 'h1', prFiles), true);
+  assert.equal(mergeCheckStillValid({ checkedHead: 'h1', laterFiles: ['src/a.ts'] }, 'h1', prFiles), false);
+  assert.equal(mergeCheckStillValid({ checkedHead: 'h0', laterFiles: [] }, 'h1', prFiles), false);
+  assert.equal(mergeCheckStillValid({ checkedHead: 'h1', laterFiles: null }, 'h1', prFiles), false);
+  assert.equal(mergeCheckStillValid({ laterFiles: [] }, 'h1', prFiles), false);
+});
+
+test('staleDependencies compares versions only, skips optional packages for other platforms', () => {
+  const lock = {
+    packages: {
+      '': { version: '1.0.0' },
+      'node_modules/typescript': { version: '6.0.3' },
+      'node_modules/prettier': { version: '3.9.10' },
+      'node_modules/@esbuild/win32-x64': { version: '0.25.0', optional: true },
+      'node_modules/knip': { version: '6.41.0' },
+    },
+  };
+  const installed = {
+    packages: {
+      'node_modules/typescript': { version: '6.0.3', libc: ['glibc'] },
+      'node_modules/prettier': { version: '3.9.9' },
+    },
+  };
+  assert.deepEqual(staleDependencies(lock, installed), ['prettier 3.9.9 → 3.9.10', 'knip missing → 6.41.0']);
+  assert.deepEqual(staleDependencies(lock, lock), []);
+});
+
+test('briefVariant: tier 1 drops the red-commit rules, a part says Part of instead of Closes', () => {
+  const { brief } = renderBrief(BRIEFS, 'implementer', { N: '797', MAIN: '/m', BRANCH: 'refactor/x' });
+  assert.match(brief, /Red commit first/);
+  const tier1 = briefVariant(brief, { tier1: true });
+  assert.doesNotMatch(tier1, /Red commit first|<!-- red -->/);
+  assert.match(tier1, /No red commit\*\* \(tier 1/);
+  const part = briefVariant(brief, { part: true });
+  assert.match(part, /`Part of #797` \(not `Closes`/);
+  assert.doesNotMatch(part, /`Closes #797`/);
+  assert.doesNotMatch(briefVariant(brief, {}), /<!-- \/?red -->/);
 });

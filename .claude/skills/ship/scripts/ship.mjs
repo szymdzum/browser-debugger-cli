@@ -682,6 +682,45 @@ function printLostJobs(runId, jobs) {
 }
 
 /**
+ * Packages whose installed version (node_modules/.package-lock.json)
+ * differs from package-lock.json, or that are missing; optional packages
+ * not installed (other platforms) are skipped. Only versions are compared:
+ * a local `npm install` rewrites the lockfile's libc fields.
+ *
+ * @param {{ packages?: Record<string, { version?: string, optional?: boolean }> }} lock
+ * @param {{ packages?: Record<string, { version?: string }> }} installed
+ */
+export function staleDependencies(lock, installed) {
+  const have = installed.packages ?? {};
+  return Object.entries(lock.packages ?? {})
+    .filter(([path]) => path.startsWith('node_modules/'))
+    .filter(([path, entry]) => (have[path] ? have[path].version !== entry.version : !entry.optional))
+    .map(([path, entry]) => `${path.slice('node_modules/'.length)} ${have[path]?.version ?? 'missing'} → ${entry.version}`);
+}
+
+/**
+ * Warns when the main checkout's node_modules don't match package-lock.json
+ * (S16: after three dependabot merges an implementer wrote a dead type
+ * extension against stale types). Every worktree links these node_modules.
+ *
+ * @returns {boolean} true when they match
+ */
+function checkDependencies() {
+  const main = mainCheckout();
+  const read = (file) => JSON.parse(readFileSync(join(main, file), 'utf8'));
+  if (!existsSync(join(main, 'node_modules', '.package-lock.json'))) {
+    console.log('WARN no node_modules in the main checkout: run npm ci there');
+    return false;
+  }
+  const stale = staleDependencies(read('package-lock.json'), read('node_modules/.package-lock.json'));
+  if (!stale.length) return true;
+  console.log(
+    `WARN node_modules in the main checkout don't match package-lock.json (${stale.length}: ${stale.slice(0, 4).join(', ')}${stale.length > 4 ? ', …' : ''}): run npm ci there, not npm install (it rewrites the lockfile's libc fields)`
+  );
+  return false;
+}
+
+/**
  * Fetches a branch of origin and returns its ref, failing with a plain
  * message when the ref is still missing (S15: `origin/main` vanished once
  * from the main checkout mid-session).
@@ -708,6 +747,7 @@ function worktree(argv) {
   const main = mainCheckout();
   const path = resolve(main, '..', `bdg-${name}`);
   const base = keys.base ?? freshOriginRef('main');
+  checkDependencies();
   run('git', ['worktree', 'add', '-q', path, '-b', branch, base]);
   symlinkSync(join(main, 'node_modules'), join(path, 'node_modules'));
   console.log(path);
@@ -927,6 +967,20 @@ function mainGate(results, fixesMain) {
 }
 
 /**
+ * A merge-check result still holds when it was run on this head and the
+ * base has since moved only by commits that leave the PR's files alone
+ * (S16 #804: two re-runs, ~10 min, for unrelated commits on main).
+ *
+ * @param {{ checkedHead?: string, laterFiles: string[] | null }} check head of the recorded run; files the base changed since (null: the recorded base is not an ancestor)
+ * @param {string} head the PR head now
+ * @param {string[]} prFiles
+ */
+export function mergeCheckStillValid(check, head, prFiles) {
+  if (!check.checkedHead || check.checkedHead !== head || check.laterFiles === null) return false;
+  return overlappingFiles(check.laterFiles, prFiles).length === 0;
+}
+
+/**
  * Gate 6: mergeable, and tested against the base branch when the base
  * changed the PR's files since the PR branched off.
  *
@@ -948,13 +1002,17 @@ async function freshBaseGate(results, pr, baseRef, forkPoint, prFiles) {
     return;
   }
   const marker = `/tmp/ship-mc-${pr.number}.ok`;
-  const want = `${run('git', ['rev-parse', baseRef])} ${pr.headRefOid}`;
-  const done = existsSync(marker) && readFileSync(marker, 'utf8').trim() === want;
+  const [checkedBase, checkedHead] = existsSync(marker) ? readFileSync(marker, 'utf8').trim().split(' ') : [];
+  const laterFiles =
+    checkedBase && spawnSync('git', ['merge-base', '--is-ancestor', checkedBase, baseRef]).status === 0
+      ? run('git', ['diff', '--name-only', checkedBase, baseRef]).split('\n').filter(Boolean)
+      : null;
+  const done = mergeCheckStillValid({ checkedHead, laterFiles }, pr.headRefOid, prFiles);
   const files = `${overlap.slice(0, 4).join(', ')}${overlap.length > 4 ? ', …' : ''}`;
   gateLine(
     results,
     done,
-    `6 ${baseRef} changed ${overlap.length} of the PR's files (${files}): ${done ? 'merge-check passed on this base and head' : 'run ship merge-check, or have the implementer rebase'}`
+    `6 ${baseRef} changed ${overlap.length} of the PR's files (${files}): ${done ? `merge-check passed on this head at ${checkedBase.slice(0, 10)}; ${baseRef} since then leaves the PR's files alone` : 'run ship merge-check, or have the implementer rebase'}`
   );
 }
 
@@ -993,7 +1051,9 @@ export function productLines(numstat) {
 /**
  * Gate 1, mechanical part: a product diff over the threshold needs a
  * `refactor:` commit from the /simplify pass, or "nothing to simplify" in
- * the PR body.
+ * the PR body. A `refactor:` commit counts only after an earlier commit
+ * that isn't `test:`: a refactoring PR's own commits are the change, not a
+ * pass over it (S16 #805: its only commit passed the gate, /simplify never ran).
  *
  * @param {number} lines product lines of the PR diff
  * @param {string[]} subjects commit subjects of the PR
@@ -1002,11 +1062,18 @@ export function productLines(numstat) {
 export function simplifyVerdict(lines, subjects, body) {
   const label = `1 /simplify pass (${lines} product lines)`;
   if (lines <= SIMPLIFY_THRESHOLD) return { ok: true, text: `${label}: not needed` };
-  const commit = subjects.find((s) => /^refactor(\([^)]*\))?!?: /.test(s));
+  const isRefactor = (s) => /^refactor(\([^)]*\))?!?: /.test(s);
+  const isTest = (s) => /^test(\([^)]*\))?!?: /.test(s);
+  const commit = subjects.find(
+    (s, i) => isRefactor(s) && subjects.slice(0, i).some((earlier) => !isTest(earlier))
+  );
   if (commit) return { ok: true, text: `${label}: "${commit}"` };
   if (/nothing to simplify/i.test(body ?? ''))
     return { ok: true, text: `${label}: the PR body says nothing to simplify` };
-  return { ok: false, text: `${label}: no refactor: commit and no "nothing to simplify" in the PR body` };
+  const only = subjects.some(isRefactor)
+    ? 'its refactor: commits are the change itself, not a pass over it'
+    : 'no refactor: commit';
+  return { ok: false, text: `${label}: ${only}, and no "nothing to simplify" in the PR body` };
 }
 
 /**
@@ -1239,6 +1306,7 @@ async function snapshot(argv = []) {
     console.log(`accepted: ${parsed.accept.map(({ key, name }) => `${name} (~/${key === 'bdg' ? '.bdg' : 'Downloads'})`).join(', ')}`);
     return EXIT.ok;
   }
+  checkDependencies();
   rmSync(LIVE_MARKER, { force: true });
   writeFileSync(SNAPSHOT.bdg, snapshotLines(listEntries(dirs.bdg)).join('\n'));
   writeFileSync(SNAPSHOT.downloads, snapshotLines(listEntries(dirs.downloads)).join('\n'));
@@ -1399,6 +1467,7 @@ function leftoverLines(scope) {
   if (agentDaemon) lines.push(`an agent's bdg session is live in ~/.bdg: ${agentDaemon}`);
   for (const file of readdirSync('/tmp').filter((f) => /^bdg-.*\.pid$/.test(f))) {
     if (scope && !inScope(file, scope)) continue;
+    if (scope && /^bdg-fixtures-\d+\.pid$/.test(file)) continue;
     const pid = Number(readFileSync(join('/tmp', file), 'utf8').trim());
     if (pid && alive(pid)) lines.push(`live PID ${pid} from /tmp/${file}`);
   }
@@ -1510,7 +1579,11 @@ async function fixtures(argv) {
     await sleep(500);
     const text = readFileSync(logFile, 'utf8');
     if (text.includes('fixtures:')) {
-      console.log(`${text.trim()}\nstop: ship fixtures ${n} --stop (ship merge does it for the PR's numbers)`);
+      const urls = text
+        .split('\n')
+        .filter((line) => line.trim() && !/Ctrl-C/.test(line))
+        .join('\n');
+      console.log(`${urls}\nstop: ship fixtures ${n} --stop (ship merge does it for the PR's numbers)`);
       return EXIT.ok;
     }
     if (!alive(child.pid)) break;
@@ -1823,6 +1896,28 @@ export function briefProblems(text, placeholders) {
   return open.length ? [`placeholders still open: ${open.join(' ')}`] : [];
 }
 
+/** What a tier 1 implementer brief says instead of the red-commit rules */
+const NO_RED_COMMIT =
+  '- **No red commit** (tier 1: docs, CI, tooling, or a refactor under existing tests): the PR body says which applies and names the existing tests that cover the change.\n';
+
+/**
+ * Adjusts a rendered brief: tier 1 drops the red-commit rules (between
+ * `<!-- red -->` markers) for one line saying why there is none; a part of
+ * an issue says `Part of #N`, not `Closes #N`, so the issue stays open
+ * (S16 #805, #806: both edited by hand).
+ *
+ * @param {string} text
+ * @param {{ tier1?: boolean, part?: boolean }} variant
+ */
+export function briefVariant(text, variant) {
+  const withRed = text.replace(/<!-- red -->\n([\s\S]*?)<!-- \/red -->\n/g, (_, rules) =>
+    variant.tier1 ? NO_RED_COMMIT : rules
+  );
+  return variant.part
+    ? withRed.replace(/`Closes #(\d+)`/g, '`Part of #$1` (not `Closes`: this PR does one part, the issue stays open)')
+    : withRed;
+}
+
 /**
  * Issue numbers from `N=786` or `ISSUES=786,459 801`; anything else gives none.
  *
@@ -1870,7 +1965,7 @@ function brief(argv) {
     return problems.length ? EXIT.failed : EXIT.ok;
   }
   if (!positional[0])
-    return usage('brief <implementer|reviewer|tester|verifier|design> N=<n> [ISSUES=<n,n…>] [PR=<pr>] [DESIGN=<file>] ... [--out=<file>] | brief --check=<file>');
+    return usage('brief <implementer|reviewer|tester|verifier|design> N=<n> [ISSUES=<n,n…>] [PR=<pr>] [DESIGN=<file>] [TIER=1] [PART=1] ... [--out=<file>] | brief --check=<file>');
   const { out, ...given } = keys;
   const values = {
     MAIN: mainCheckout(),
@@ -1878,8 +1973,11 @@ function brief(argv) {
     ...(given.PR ? prBriefValues(given.PR) : {}),
     ...given,
   };
-  const { DESIGN: designFile, ISSUES: issueList, ...rest } = values;
-  const { brief: rendered } = renderBrief(briefsText, positional[0], rest);
+  const { DESIGN: designFile, ISSUES: issueList, TIER: tier, PART: part, ...rest } = values;
+  const rendered = briefVariant(renderBrief(briefsText, positional[0], rest).brief, {
+    tier1: tier === '1',
+    part: part === '1',
+  });
   const numbers = issueNumbers(issueList ?? rest.N);
   if (issueList && !numbers.length)
     return usage(`brief: ISSUES=${issueList} must be issue numbers, e.g. ISSUES=786,459`);

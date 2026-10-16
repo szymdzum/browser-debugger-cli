@@ -10,7 +10,7 @@ Render a brief with `node .claude/skills/ship/scripts/ship.mjs brief <role> N=<n
 | verifier | `general-purpose` | `sonnet` | foreground | 60 |
 | design | `general-purpose` | `sonnet` | foreground | 40 |
 
-Placeholders the script can fill: `N` (issue; its text is quoted where a brief has `<ISSUE>`), `ISSUES` (several, comma-separated, for the verifier), `PR` (fills `BASE`, `HEAD`, `RED`, `BRANCH`), `DESIGN` (a design note file, for the design brief), `BRANCH`, `BASE` (merge base or the unmerged branch this PR builds on), `HEAD` (head SHA under review or test), `RED` (red commit SHA), `CAP`, `URLS` (fixture URLs), `DATE`.
+Placeholders the script can fill: `N` (issue; its text is quoted where a brief has `<ISSUE>`), `ISSUES` (several, comma-separated, for the verifier), `PR` (fills `BASE`, `HEAD`, `RED`, `BRANCH`), `DESIGN` (a design note file, for the design brief), `TIER=1` (implementer: no red commit), `PART=1` (implementer: `Part of #N`, not `Closes`), `BRANCH`, `BASE` (merge base or the unmerged branch this PR builds on), `HEAD` (head SHA under review or test), `RED` (red commit SHA), `CAP`, `URLS` (fixture URLs), `DATE`.
 
 ## Shared blocks
 
@@ -59,9 +59,11 @@ Implement issue #<N> in bdg (github.com/szymdzum/browser-debugger-cli). Read the
 {{findings}}
 
 **Tests.**
+<!-- red -->
 - **Red commit first.** Turn the issue's reproduction and each **testable** acceptance criterion into failing tests and commit them alone, before any fix: `test: reproduce #<N>` (bug) or `test: specify #<N>` (feature). Tests, fixture pages and empty skeletons only (a new function's signature throwing `not implemented`, so a unit test can import it); otherwise drive the CLI. A criterion that is a measurement or a doc change gets no test: say how you checked it.
 - Run them on that commit: they must fail **on an assertion about the issue** (or the CLI's real output), not on a build or import error.
 - Then fix vertically: one test, then the code that passes it. Never weaken a red assertion in a fix commit; if one was wrong, fix it in a commit of its own and say why in the report.
+<!-- /red -->
 - A test that passed on its first run is a regression test: say what it protects against.
 - Deterministic only: wait for an observable event (a log line, a request, a DOM change, a file), never a fixed sleep. A timing-dependent test asserts exactly the acceptance criterion, no tighter (S13 #777: a CPU-throttled test stricter than the criterion cost two fix rounds). List timing-sensitive smoke files in the report (the orchestrator dispatches the repeat run on your first draft).
 - **Simplify.** Once the tests are green, review your diff against `<BASE>` by hand for reuse, simplification and efficiency; fixes go in a separate `refactor:` commit, then re-run the affected tests. Don't run `/simplify`: it starts background agents. Over 150 product lines the orchestrator runs it in your worktree after the draft PR, leaves its edits uncommitted and asks you to run the affected tests and commit them as `refactor:`.
