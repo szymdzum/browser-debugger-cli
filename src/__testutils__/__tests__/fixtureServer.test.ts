@@ -60,6 +60,11 @@ void describe('fixture server routing', () => {
     assert.doesNotMatch(body, new RegExp(DEFAULT_TITLE));
   });
 
+  it('answers the browser favicon request without an error', async () => {
+    const { status } = await get('/favicon.ico');
+    assert.equal(status, 204);
+  });
+
   it('keeps recording /beacon queries', async () => {
     const { status } = await get('/beacon?a=1');
     assert.equal(status, 204);

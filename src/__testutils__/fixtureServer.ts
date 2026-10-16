@@ -734,6 +734,11 @@ export async function startFixtureServer(): Promise<FixtureServer> {
       res.end(route === '/frames' ? FRAMES_HTML : FRAME_CHILD_HTML);
       return;
     }
+    if (route === '/favicon.ico') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
     if (route === '/style.css') {
       res.writeHead(200, { 'Content-Type': 'text/css' });
       res.end('body { margin: 0; }');
