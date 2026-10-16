@@ -199,7 +199,7 @@ function buildRequest(req: NetworkRequest): Request {
  * @returns HAR response object
  */
 function buildResponse(req: NetworkRequest): Response {
-  const bodySize = req.encodedDataLength ?? req.decodedBodyLength ?? 0;
+  const headersSize = estimateResponseHeadersSize(req.status, req.responseHeaders);
 
   return {
     status: req.status ?? 0,
@@ -210,9 +210,28 @@ function buildResponse(req: NetworkRequest): Response {
     headers: convertHeaders(req.responseHeaders),
     content: buildContent(req),
     redirectURL: extractRedirectURL(req),
-    headersSize: estimateResponseHeadersSize(req.status, req.responseHeaders),
-    bodySize,
+    headersSize,
+    bodySize: responseBodySize(req, headersSize),
   };
+}
+
+/**
+ * HAR `response.bodySize`: the body as received, content encoding kept,
+ * without the headers `headersSize` counts. A 304 and a response served from
+ * cache have none on the wire (0). `encodedBodyLength` is that size when
+ * Chrome sends it; otherwise it is `encodedDataLength` (headers and framing
+ * included) minus the estimated headers, at least 0 (a revalidation can be
+ * smaller than its headers' estimate).
+ *
+ * @param req - Network request data
+ * @param headersSize - Estimated size of the response headers
+ * @returns Body size in bytes
+ */
+function responseBodySize(req: NetworkRequest, headersSize: number): number {
+  if (req.status === 304 || req.fromCache) return 0;
+  if (req.encodedBodyLength !== undefined) return req.encodedBodyLength;
+  if (req.encodedDataLength !== undefined) return Math.max(0, req.encodedDataLength - headersSize);
+  return req.decodedBodyLength ?? 0;
 }
 
 /**

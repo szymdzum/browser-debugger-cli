@@ -1357,6 +1357,7 @@ bdg network har --include-sensitive full.har
 **Output:**
 - Valid HAR 1.2 format compatible with Chrome DevTools and HAR Viewer
 - Includes all request/response data (URLs, methods, headers, bodies)
+- `response.bodySize` is the body as received (compressed when the server compressed it), without the headers that `headersSize` estimates (#796): Chrome's `encodedBodyLength` when it sends one, otherwise the bytes received minus the estimated headers (at least 0). A 304 or a response served from cache has `bodySize` 0. `content.size` is the decoded body; `network list` SIZE is still the bytes transferred, headers included
 - **Sanitized by default**, like Chrome DevTools' export since Chrome 130. Values become `[redacted]` for:
   - `Authorization`, `Proxy-Authorization`, `Authentication`, `Cookie`, `Set-Cookie`, `X-*-Key`/`X-*-Token`/`X-*-Secret`/`X-*-Auth*` headers, headers with an `api-key`, `apikey`, `token`, `secret`, `jwt`, `subscription-key` or `session(-id)` segment, and headers named like a [secret field](#secret-field-names) (`X-Password`, `X-Pass`, `Sid`, `X-Credential`, `Cookie2`) (`WWW-Authenticate`, `Access-Control-Allow-Credentials`, `Signature-Input` and `Accept-Signature` are kept)
   - every cookie value
