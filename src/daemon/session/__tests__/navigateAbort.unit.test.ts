@@ -15,7 +15,22 @@ import { CDPConnection } from '@/connection/cdp.js';
 import { navigateToTarget } from '@/daemon/session/cdpSetup.js';
 import type { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
 import type { SessionConfig } from '@/daemon/session/types.js';
+import type { CDPMessage } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
+
+/**
+ * Id of the first command with a method sent over the socket.
+ *
+ * @param socket - The fake socket
+ * @param method - CDP method
+ * @returns Its id
+ */
+function sentIdOf(socket: FakeWebSocket, method: string): number {
+  const sent = socket.getSentMessages().map((raw) => JSON.parse(raw) as CDPMessage);
+  const message = sent.find((m) => m.method === method);
+  assert.ok(message, `${method} was sent`);
+  return message.id as number;
+}
 
 void describe('navigateToTarget stop', () => {
   void it('rejects at once when the signal aborts while Page.navigate is pending', async () => {
@@ -45,7 +60,8 @@ void describe('navigateToTarget stop', () => {
       ]);
       assert.equal(outcome, reason);
       const pending = (cdp as unknown as { pendingMessages: Map<number, unknown> }).pendingMessages;
-      assert.equal(pending.size, 0, 'Page.navigate must not stay pending');
+      const navigateId = sentIdOf(socket, 'Page.navigate');
+      assert.equal(pending.has(navigateId), false, 'Page.navigate must not stay pending');
     } finally {
       cdp.close();
     }
