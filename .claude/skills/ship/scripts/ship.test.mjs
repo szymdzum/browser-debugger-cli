@@ -985,6 +985,7 @@ test("simplifyVerdict doesn't count a refactoring PR's own refactor: commits as 
   assert.match(only.text, /refactor: commits are the change itself/);
   assert.equal(simplifyVerdict(large, ['test: red', 'refactor: x'], '').ok, false);
   assert.equal(simplifyVerdict(large, ['refactor: the change', 'refactor: simplify pass'], '').ok, true);
+  assert.equal(simplifyVerdict(large, ["Merge branch 'main' into refactor/x", 'refactor: the change'], '').ok, false);
 });
 
 test('mergeCheckStillValid keeps a result for the same head when main moved around the PR files', () => {
@@ -1015,6 +1016,10 @@ test('staleDependencies compares versions only, skips optional packages for othe
   };
   assert.deepEqual(staleDependencies(lock, installed), ['prettier 3.9.9 → 3.9.10', 'knip missing → 6.41.0']);
   assert.deepEqual(staleDependencies(lock, lock), []);
+  assert.deepEqual(
+    staleDependencies({ packages: { 'node_modules/fsevents': { version: '2.3.3', devOptional: true } } }, { packages: {} }),
+    []
+  );
 });
 
 test('briefVariant: tier 1 drops the red-commit rules, a part says Part of instead of Closes', () => {

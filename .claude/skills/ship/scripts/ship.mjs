@@ -694,7 +694,9 @@ export function staleDependencies(lock, installed) {
   const have = installed.packages ?? {};
   return Object.entries(lock.packages ?? {})
     .filter(([path]) => path.startsWith('node_modules/'))
-    .filter(([path, entry]) => (have[path] ? have[path].version !== entry.version : !entry.optional))
+    .filter(([path, entry]) =>
+      have[path] ? have[path].version !== entry.version : !entry.optional && !entry.devOptional
+    )
     .map(([path, entry]) => `${path.slice('node_modules/'.length)} ${have[path]?.version ?? 'missing'} → ${entry.version}`);
 }
 
@@ -712,7 +714,13 @@ function checkDependencies() {
     console.log('WARN no node_modules in the main checkout: run npm ci there');
     return false;
   }
-  const stale = staleDependencies(read('package-lock.json'), read('node_modules/.package-lock.json'));
+  let stale;
+  try {
+    stale = staleDependencies(read('package-lock.json'), read('node_modules/.package-lock.json'));
+  } catch (error) {
+    console.log(`WARN could not compare node_modules with package-lock.json: ${error.message}`);
+    return false;
+  }
   if (!stale.length) return true;
   console.log(
     `WARN node_modules in the main checkout don't match package-lock.json (${stale.length}: ${stale.slice(0, 4).join(', ')}${stale.length > 4 ? ', …' : ''}): run npm ci there, not npm install (it rewrites the lockfile's libc fields)`
@@ -1064,8 +1072,10 @@ export function simplifyVerdict(lines, subjects, body) {
   if (lines <= SIMPLIFY_THRESHOLD) return { ok: true, text: `${label}: not needed` };
   const isRefactor = (s) => /^refactor(\([^)]*\))?!?: /.test(s);
   const isTest = (s) => /^test(\([^)]*\))?!?: /.test(s);
+  const isMerge = (s) => /^Merge /.test(s);
   const commit = subjects.find(
-    (s, i) => isRefactor(s) && subjects.slice(0, i).some((earlier) => !isTest(earlier))
+    (s, i) =>
+      isRefactor(s) && subjects.slice(0, i).some((earlier) => !isTest(earlier) && !isMerge(earlier))
   );
   if (commit) return { ok: true, text: `${label}: "${commit}"` };
   if (/nothing to simplify/i.test(body ?? ''))
@@ -1119,7 +1129,7 @@ async function gates(argv) {
   const forkPoint = run('git', ['merge-base', baseRef, head]);
   const prFiles = run('git', ['diff', '--name-only', forkPoint, head]).split('\n').filter(Boolean);
 
-  const commits = run('git', ['log', '--reverse', '--format=%H %s', `${forkPoint}..${head}`])
+  const commits = run('git', ['log', '--reverse', '--no-merges', '--format=%H %s', `${forkPoint}..${head}`])
     .split('\n')
     .filter(Boolean)
     .map((l) => ({ sha: l.slice(0, 40), subject: l.slice(41) }));
