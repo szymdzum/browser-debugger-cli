@@ -11,6 +11,7 @@ import * as vm from 'node:vm';
 import { submitNetworkBusyWarning, submitTimeoutError } from '@/errors/messages.js';
 import type { TriggeredRequest } from '@/ipc/protocol/domTypes.js';
 import {
+  alsoChangingOf,
   domKeptChanging,
   effectsOf,
   domLooksBusy,
@@ -135,6 +136,67 @@ void describe('newMessages', () => {
     const long = newMessages([], [seen(1, 'x'.repeat(200))], false).messages[0]?.text ?? '';
     assert.equal(Array.from(long).length, 120);
     assert.ok(long.endsWith('…'));
+  });
+});
+
+void describe('messages changing before the action (#774)', () => {
+  const ticker = { ...seen(1, 'tick 51', 'aside#t'), otherText: '' };
+
+  void it('reports a new text of a message the page was changing apart from New text', () => {
+    const found = newMessages(
+      [{ ...seen(1, 'tick 50', 'aside#t'), otherText: '' }],
+      [ticker],
+      false
+    );
+    assert.deepEqual(found.messages, []);
+    assert.deepEqual(found.alsoChanging, [{ text: 'tick 51', element: 'aside#t' }]);
+  });
+
+  void it('reports a box around a ticker as New text when its other text changed', () => {
+    const box = (text: string, otherText: string): SeenMessage => ({
+      ...seen(2, text, 'div#box'),
+      otherText,
+    });
+    const placed = newMessages([box('67', '')], [box('68 Order placed', 'Order placed')], false);
+    assert.deepEqual(placed.messages, [{ text: '68 Order placed', element: 'div#box' }]);
+    assert.deepEqual(placed.alsoChanging, []);
+    const ticked = newMessages([box('Now: 67', 'Now:')], [box('Now: 68', 'Now:')], false);
+    assert.deepEqual(ticked.messages, []);
+    assert.deepEqual(ticked.alsoChanging, [{ text: 'Now: 68', element: 'div#box' }]);
+  });
+
+  void it('names no element already reported as New text again', () => {
+    const regions = alsoChangingOf([], ['div#box', 'ul#a'], [{ text: 'x', element: 'div#box' }]);
+    assert.deepEqual(regions, [{ element: 'ul#a' }]);
+  });
+
+  void it('names nothing for such a message whose text stayed', () => {
+    const found = newMessages([seen(1, 'tick 51', 'aside#t')], [ticker], false);
+    assert.deepEqual(found.alsoChanging, []);
+  });
+
+  void it('reports every message on a new document as New text', () => {
+    assert.deepEqual(newMessages([], [ticker], true).messages, [
+      { text: 'tick 51', element: 'aside#t' },
+    ]);
+  });
+
+  void it('lists messages first and other elements once, beyond the cap as moreAlsoChanging', () => {
+    const regions = alsoChangingOf(
+      [{ element: 'aside#t', text: 'tick 51' }],
+      ['aside#t', 'ul#a', 'ul#b', 'ul#c']
+    );
+    assert.deepEqual(
+      regions.map((region) => region.element),
+      ['aside#t', 'ul#a', 'ul#b', 'ul#c']
+    );
+    const effects = effectsOf(
+      { href: 'https://shop.test/cart', messages: [] },
+      read({ alsoChanging: ['ul#a', 'ul#b', 'ul#c', 'ul#d'] }),
+      {} as NavigationEvents
+    );
+    assert.equal(effects.alsoChanging?.length, 3);
+    assert.equal(effects.moreAlsoChanging, 1);
   });
 });
 

@@ -13,6 +13,7 @@ import * as vm from 'node:vm';
 import {
   CHURN_ONLY_JS,
   DUE_TIMERS_JS,
+  MARKED_REGIONS_JS,
   LONG_TASKS_READ_SCRIPT,
   MESSAGE_CHROME_JS,
   STALL_READ_SCRIPT,
@@ -133,6 +134,26 @@ void describe('UNCERTAIN_JS', () => {
   void it('gives up when focus moved to an element that may reveal content with CSS', () => {
     const trigger = element('div', { tabindex: '0' });
     assert.equal(uncertain(hitState(trigger, [], { focus: body }), trigger), 'focus');
+  });
+});
+
+void describe('MARKED_REGIONS_JS', () => {
+  const regions = vm.runInNewContext(`(${MARKED_REGIONS_JS})`) as (
+    nodes: FakeNode[]
+  ) => Set<FakeNode>;
+  const box = { textContent: 'Now: tick 5' };
+  const span = { closest: (): FakeNode => box };
+  const list = { closest: (): null => null };
+
+  void it('marks the status box around a marked ticker span, the one set both rules test', () => {
+    const marked = regions([span, list]);
+    assert.ok(marked.has(span) && marked.has(box) && marked.has(list));
+    assert.equal(marked.size, 3);
+  });
+
+  void it('does not mark a message box holding a long text (a container)', () => {
+    const page = { textContent: 'x'.repeat(400) };
+    assert.equal(regions([{ closest: (): FakeNode => page }]).has(page), false);
   });
 });
 

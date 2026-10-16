@@ -17,6 +17,7 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import type {
   ActionEffects,
+  AlsoChanging,
   ControlChange,
   FormSubmit,
   NewMessage,
@@ -51,6 +52,9 @@ const log = createLogger('dom');
 
 /** Messages reported per action */
 const MAX_NEW_MESSAGES = 3;
+
+/** Regions changing before the action reported per action */
+const MAX_ALSO_CHANGING = 3;
 
 /** Shown elements reported per action */
 const MAX_SHOWN_ELEMENTS = 3;
@@ -136,6 +140,12 @@ export interface SeenMessage {
   id: number;
   text: string;
   element: string;
+  /**
+   * For a message the page was changing right before the action (or a box
+   * around such an element): its text without the parts the page put in
+   * place of others on its own (the ticking parts)
+   */
+  otherText?: string;
 }
 
 /** The page before the action */
@@ -177,6 +187,8 @@ export interface ReadSnapshot {
   messages: SeenMessage[];
   /** Whether the page was still working (same document only) */
   settle?: SettleSignals;
+  /** Regions changing before the action with structural changes during it, described */
+  alsoChanging?: string[];
   /** Elements the action showed (when asked for) */
   shown?: ShownElement[];
   /** Elements beyond the page's own cap that also qualified */
@@ -234,20 +246,24 @@ export interface OtherActivity {
  * re-rendered message with the same text is not new) and those whose
  * element changed its text. Texts that tick on their own
  * ({@link TICKING_TEXT}: clocks, counters) are left out; other elements
- * that change on their own (a rotating banner) are not recognised. Each text
+ * the page was changing right before the action are returned apart, as
+ * `alsoChanging` when their text besides the ticking parts (`otherText`) is
+ * what it was before (one whose other text changed is the action's message,
+ * ticker included); others that change on their own (a rotating
+ * banner the action history did not see) are not recognised. Each text
  * is reported once, at most {@link MAX_NEW_MESSAGES}, cut to
  * {@link MAX_MESSAGE_LENGTH} characters.
  *
  * @param before - Messages before the action
  * @param after - Messages after the action
  * @param newDocument - Whether a new document loaded
- * @returns New messages
+ * @returns New messages, and the new texts of messages changing before the action
  */
 export function newMessages(
   before: SeenMessage[],
   after: SeenMessage[],
   newDocument: boolean
-): { messages: NewMessage[]; more: number } {
+): { messages: NewMessage[]; more: number; alsoChanging: AlsoChanging[] } {
   const countTexts = (messages: SeenMessage[]): Map<string, number> => {
     const counts = new Map<string, number>();
     messages.forEach(({ text }) => counts.set(text, (counts.get(text) ?? 0) + 1));
@@ -256,6 +272,9 @@ export function newMessages(
   const beforeCounts = countTexts(before);
   const afterCounts = countTexts(after);
   const textBefore = new Map(before.map((message) => [message.id, message.text]));
+  const otherBefore = new Map(before.map((message) => [message.id, message.otherText]));
+  const changingOnly = (message: SeenMessage): boolean =>
+    message.otherText !== undefined && otherBefore.get(message.id) === message.otherText;
   const isNew = (message: SeenMessage): boolean => {
     if (newDocument) return true;
     const previous = textBefore.get(message.id);
@@ -265,15 +284,18 @@ export function newMessages(
   };
   const reported = new Set<string>();
   const result: NewMessage[] = [];
+  const alsoChanging: AlsoChanging[] = [];
   for (const message of after) {
     if (reported.has(message.text) || TICKING_TEXT.test(message.text)) continue;
     if (!isNew(message)) continue;
     reported.add(message.text);
-    result.push({ text: cutText(message.text), element: message.element });
+    const found = { text: cutText(message.text), element: message.element };
+    (changingOnly(message) && !newDocument ? alsoChanging : result).push(found);
   }
   return {
     messages: result.slice(0, MAX_NEW_MESSAGES),
     more: Math.max(0, result.length - MAX_NEW_MESSAGES),
+    alsoChanging,
   };
 }
 
@@ -771,16 +793,22 @@ export function effectsOf(
 ): ActionEffects {
   const navigation = pageNavigation(start?.href, snapshot, events);
   try {
-    const { messages, more } =
+    const found =
       start && snapshot
         ? newMessages(start.messages, snapshot.messages, snapshot.fresh)
-        : { messages: [], more: 0 };
+        : { messages: [], more: 0, alsoChanging: [] };
+    const { messages, more } = found;
+    const changing = alsoChangingOf(found.alsoChanging, snapshot?.alsoChanging ?? [], messages);
     const shown = shownElements(snapshot?.shown ?? [], messages);
     const moreShown = shownLeftOut(snapshot?.shown ?? [], messages, snapshot?.shownCut);
     return {
       ...(navigation && { navigation }),
       ...(messages.length > 0 && { messages }),
       ...(more > 0 && { moreMessages: more }),
+      ...(changing.length > 0 && { alsoChanging: changing.slice(0, MAX_ALSO_CHANGING) }),
+      ...(changing.length > MAX_ALSO_CHANGING && {
+        moreAlsoChanging: changing.length - MAX_ALSO_CHANGING,
+      }),
       ...(shown.length > 0 && { shown }),
       ...(moreShown > 0 && { moreShown }),
       ...(snapshot?.shownPartial && { moreShownPartial: true }),
@@ -792,6 +820,28 @@ export function effectsOf(
     );
     return { ...(navigation && { navigation }) };
   }
+}
+
+/**
+ * Regions changing before the action that changed during it: messages with
+ * their new text first, then the other elements with structural changes
+ * (one entry per element, none for an element reported as New text).
+ *
+ * @param messages - New texts of messages changing before the action
+ * @param elements - Elements changing before the action with structural changes, described
+ * @param reported - Messages reported as the action's (New text)
+ * @returns All of them, unlimited
+ */
+export function alsoChangingOf(
+  messages: AlsoChanging[],
+  elements: string[],
+  reported: NewMessage[] = []
+): AlsoChanging[] {
+  const named = new Set([...messages, ...reported].map((message) => message.element));
+  return [
+    ...messages,
+    ...elements.filter((element) => !named.has(element)).map((element) => ({ element })),
+  ];
 }
 
 /**
