@@ -3,6 +3,7 @@
  * output (#670), served by the fixture server: `/repeated-requests` has
  * `#fire`, which sends 8 `POST /event?s=0..7` beacons (one query string
  * each) and 2 distinct requests, `GET /api/test` and `POST /api/other`.
+ * `/event` and `/api/other` answer `ok`.
  */
 
 import type { FixtureRoutes } from '@/__testutils__/fixtureRoutes.js';

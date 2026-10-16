@@ -4,8 +4,8 @@
  *
  * Each module there exports `ROUTES: FixtureRoutes` (pathname → HTML, answered
  * 200 `text/html` whatever the query, which the page reads from
- * `location.search`; paths no route claims are 404 except `/`) and documents its pages. Adding a module is enough for the
- * server to serve it: nothing in `fixtureServer.ts` lists them, so PRs that
+ * `location.search`; paths no route claims are 404 except `/`) and documents
+ * its pages. Adding a module is enough for the server to serve it: nothing in `fixtureServer.ts` lists them, so PRs that
  * add fixture pages don't touch a shared file. A module without `ROUTES`, a
  * non-string page or a path two modules claim fails the server start.
  */

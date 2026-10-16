@@ -544,6 +544,20 @@ export interface FixtureServer {
 }
 
 /**
+ * Pathname of a request URL.
+ *
+ * @param url - Raw request target, with its query
+ * @returns The pathname, or undefined when the target does not parse
+ */
+function pathnameOf(url: string | undefined): string | undefined {
+  try {
+    return new URL(url ?? '/', 'http://fixture').pathname;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Start the fixture server on an ephemeral port.
  *
  * @returns Server handle with its URL
@@ -556,7 +570,12 @@ export async function startFixtureServer(): Promise<FixtureServer> {
   const heldDownloads = new Set<http.ServerResponse>();
   const beacons: string[] = [];
   const server = http.createServer((req, res) => {
-    const route = new URL(req.url ?? '/', 'http://fixture').pathname;
+    const route = pathnameOf(req.url);
+    if (route === undefined) {
+      res.writeHead(400, { 'Content-Type': 'text/plain' });
+      res.end('Bad request URL');
+      return;
+    }
     if (req.url?.startsWith('/beacon?')) {
       beacons.push(req.url.slice('/beacon?'.length));
       res.writeHead(204);
@@ -713,6 +732,16 @@ export async function startFixtureServer(): Promise<FixtureServer> {
     if (route === '/frames' || route === '/frame-child') {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(route === '/frames' ? FRAMES_HTML : FRAME_CHILD_HTML);
+      return;
+    }
+    if (route === '/style.css') {
+      res.writeHead(200, { 'Content-Type': 'text/css' });
+      res.end('body { margin: 0; }');
+      return;
+    }
+    if (route === '/forms-jumped') {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end('<!doctype html><title>jumped</title><h1>Jumped</h1>');
       return;
     }
     if (route === '/not-found.png' || route === ISSUE_MISSING_STYLESHEET) {
