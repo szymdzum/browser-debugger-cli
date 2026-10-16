@@ -5,7 +5,13 @@
 import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { formatDomEval, formatDomGet, formatDomQuery } from '@/ui/formatters/dom.js';
+import type { ScreenshotResult } from '@/types.js';
+import {
+  formatDomEval,
+  formatDomGet,
+  formatDomQuery,
+  formatDomScreenshot,
+} from '@/ui/formatters/dom.js';
 
 void describe('formatDomQuery ids', () => {
   const idLine = (id: string): string =>
@@ -321,5 +327,16 @@ void describe('formatDomQuery key attributes', () => {
       line({ index: 0, nodeId: 1, tag: 'button', type: 'button', attributes: { type: 'button' } }),
       /<button type="button">/
     );
+  });
+});
+
+void describe('formatDomScreenshot full page fallback', () => {
+  void it('says --no-resize captures the full page (#567)', () => {
+    const output = formatDomScreenshot({
+      path: './page.png',
+      fullPageSkipped: { reason: 'page_too_tall', originalHeight: 9000, aspectRatio: 5.1 },
+    } as ScreenshotResult);
+    assert.match(output, /viewport only - page too tall/);
+    assert.match(output, /--no-resize/);
   });
 });

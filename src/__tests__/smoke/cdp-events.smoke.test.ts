@@ -208,7 +208,7 @@ void describe('bdg cdp events', () => {
       assert.equal(result.exitCode, 0, result.stderr);
       outputs.push(`${result.stdout}${result.stderr}`);
     }
-    assert.match(outputs[1] ?? '', /Consider using 'bdg dom eval <javascript>'/);
+    assert.match(outputs[1] ?? '', /Consider using 'bdg eval <javascript>'/);
     assert.doesNotMatch(outputs.join('\n'), /bdg dom query/);
   });
 

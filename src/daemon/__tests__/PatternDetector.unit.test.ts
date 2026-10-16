@@ -87,7 +87,7 @@ describe('PatternDetector', () => {
       const result = detector.trackCommand('Runtime.evaluate', params);
 
       assert.strictEqual(result.shouldShow, true);
-      assert.strictEqual(result.pattern?.alternative, 'bdg dom eval <javascript>');
+      assert.strictEqual(result.pattern?.alternative, 'bdg eval <javascript>');
     });
 
     test('suggests dom query for a Runtime.evaluate that queries elements', () => {
