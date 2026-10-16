@@ -1775,6 +1775,7 @@ Things bdg does without being asked, and how to change them:
 - **`BDG_NO_SANDBOX`**: `1`, `true` or `yes` (any case) starts Chrome with `--no-sandbox` where its sandbox cannot work (Docker and root on Linux get it without the variable)
 - **`BDG_IPC_TIMEOUT_MS`**: how long a command waits for the session, in milliseconds (default 45000; quick requests such as `status` wait at most 10000). A whole number from 1 to 2147483647; anything else (`abc`, `0`, `-5`, `1.5`, a larger number) fails the command with exit 81 before it contacts the session. An empty value counts as unset
 - **`BDG_SESSION`**, **`BDG_SESSION_DIR`**: session name and base directory (see Sessions above)
+- **`NODE_COMPILE_CACHE`**, **`NODE_DISABLE_COMPILE_CACHE`**: bdg turns on Node's compile cache (compiled code in `node-compile-cache` under the OS temp dir, 8 to 10 ms faster per command). `NODE_COMPILE_CACHE=<dir>` moves it; `NODE_DISABLE_COMPILE_CACHE=1` turns it off. An unwritable cache directory is ignored and changes no output
 
 A request the running session does not know (it was started by an older bdg than the command or the type is mistyped) fails with exit 90 and the advice to run `bdg stop`, then `bdg <url>` again.
 
