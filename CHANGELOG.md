@@ -7,6 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-10-16
+
+No breaking changes. Two behaviour changes are worth a look before upgrading. A start interrupted by the user now force-kills its Chrome after 500 ms, and HAR `bodySize` has new values. Both are listed first under Changed.
+
+### Added
+
+- **`Also changing:` row in action results** (#782, closes #774). It names a region the page kept changing on its own right before the action: a status ticker, a polled cart badge, a list re-rendered on a timer. Up to 3 regions are listed, then `(+N more)`. In `--json` the row is `alsoChanging: [{ element, text? }]` and `moreAlsoChanging`. A message in such a region now appears there instead of under `New text:`. Its changes no longer mark a finished action `(page still changing)` / `pending.domChanging`.
+- **A click or `pressKey` that opens a pre-rendered `<dialog>` lists it under `Shown:`** (#798, closes #786). This covers `showModal()`, the `open` attribute and `command="show-modal"`, in the light DOM or an open shadow root. Known limits: a dialog opened after an awaited fetch, `import()` or a timer; popovers; `<details>`.
+- **A `dom wait` timeout on a loading page names the requests the page waits on** (#784, closes #775). The wording and the cap of 3 are the same as the start warning. In `--json` the requests are top-level `pending` and `pendingCount`. Requests of a page navigated away from are no longer listed by start, `page navigate` or `dom wait`.
+- **Quoted-argument hint for extra words** (#783, closes #589). A command given more words than it takes, where the last argument is free text, suggests the quoted command. For example `bdg dom a11y query role=button name=Pay` → `Did you mean: bdg dom a11y query 'role=button name=Pay'?`. The exit code stays 81. For `dom eval`, the hint says to quote the whole script.
+- **Performance recipes** in `docs/CLI_REFERENCE.md` (#800, closes #458): LCP, CLS, long tasks, navigation timing, CPU profile and throttling. An empty `Performance.getMetrics` hints that `bdg cdp Performance.enable` must run first.
+- **`network list --sort` says when earlier-page requests are included** (#800, part of #567). In `--json` this is `earlierPagesIncluded`.
+
+### Changed
+
+- **Behaviour change: a start you interrupt force-kills its Chrome after 500 ms** (#804, closes #801). This applies to Ctrl-C, SIGTERM or `bdg stop` while `bdg <url>` is still starting. bdg now sends `Browser.close`, waits up to 500 ms for Chrome to exit, then kills its process group (SIGKILL). Before, it waited up to 5 s, then sent SIGTERM and waited another 5 s.
+  - The command returns in well under a second, with exit 130 or 143 and no session left behind.
+  - A cancelled start may lose profile data Chrome had not written yet, mostly cookies restored with `--state`.
+  - With `--user-data-dir` pointing at a real profile, Chrome may show its "didn't shut down correctly" restore prompt the next time it starts.
+  - Unchanged: a normal `bdg stop`, the end of a session, and a crash or lost connection keep the graceful shutdown. Sessions from `bdg attach` / `--chrome-ws-url` never kill your Chrome.
+- **HAR `response.bodySize` no longer counts the headers** (#803, closes #796). It is now the body as received (content encoding kept). It was Chrome's `encodedDataLength`, so `headersSize + bodySize` counted the headers twice.
+  - bdg uses Chrome's `encodedBodyLength` when Chrome sends it.
+  - Otherwise it computes `encodedDataLength` minus `headersSize`, never below 0. Chrome 155 does not send `encodedBodyLength` yet.
+  - A 304 or a response from cache gives `0`, and a request with no known size gives `-1`, as HAR 1.2 allows.
+  - `content.size` and the `network list` size column are unchanged.
+- **Human output matches the data** (#772, closes #585 #645 #734).
+  - Attribute values are written on one line with `"`, `\` and control characters escaped, cut in the middle at 40 characters.
+  - Same-origin links show as a path, other links in full with their scheme. They used to show as `//host/path`.
+  - `dom query` rows name icon-only buttons (`aria-label`, `aria-labelledby`, SVG `<title>`).
+  - `dom get` lists `invalid` among a field's states.
+  - `dom a11y describe` prints `Name: (none)`.
+  - Ids are escaped in `dom inspect`, `layout`, `audit` and `listeners`.
+  - `--json` and `--raw` are unchanged.
+- **`New text:` after a navigation skips headings and footer blocks** (#799, closes #459). An element matched only by a class or id word such as `feedback` or `notice` is not reported if it is a heading or the target of an `aria-labelledby`. After a navigation, such matches only count in the first viewport.
+- **`Errors:` row when only trackers logged errors** (#785, closes #694). It reads `none from the page (2 from filtered trackers hidden; bdg console --level error)`. a11y index targets show a `Selector:` row.
+- **Every command starts 8–10 ms faster after the first run** (#794, closes #661). The CLI entry turns on Node's module compile cache.
+
+### Fixed
+
+- **Ctrl-C or SIGTERM right after the start's navigation was sent ends the start at once** (#804, closes #801). Before, bdg waited for the page's first response plus 3 s and printed `The daemon … was still shutting down`. `bdg status` then showed a session still ending.
+- **`Shown:` no longer drops elements on a slow machine** (#777, closes #776). The scan budget now starts after the layout it forces.
+- **`dom form`** (#800, closes #644). `<input type="image">` is listed as a submit button. Labels come from `el.labels`, so inputs that share an id no longer get the same label. A button's name follows `aria-labelledby`.
+- **`details network` explains a missing multipart body with a file part** (#800, closes #646). It shows `Request Body: (not captured: …)`; in `--json` this is `requestBodyNotCaptured`.
+- **Text filters ignore content that isn't rendered** (#800, closes #608). A slot's text leaves out unrendered assigned content, and `script:has-text()` / `style:has-text()` no longer match their own source.
+- **Smaller fixes** (#800, part of #567):
+  - The tall-page screenshot fallback names `--no-resize`.
+  - The repeated-`Runtime.evaluate` hint suggests `bdg eval`.
+  - `details network` explains the blocked-cookie reasons in words.
+  - `peek` console lines end with their source.
+
+### Internal
+
+- Smoke tests run in 4 parallel shards, split by recorded run time. Node 24/26 smoke runs nightly only (#808).
+- Linux jobs are pinned to `ubuntu-24.04` (#781, closes #779).
+- Shell suites are hermetic: they use the local fixture server and the built bdg (#771, closes #446). Smoke children drop `NO_COLOR` / `FORCE_COLOR`, and fixture routes 404 on unknown paths (#795, closes #590).
+- `src/runtime/page/` sends its CDP calls through a typed `sendTyped` (#805, part of #797).
+- The URL-linearity unit test measures calibrated CPU time (#806, part of #529).
+- `devtools-protocol` 0.0.1717327 (#790) and other dependency bumps (#788, #789, #791, #792, #793).
+- Ship-skill retros: #778, #787, #802, #810.
+
 ## [0.18.0] - 2026-10-14
 
 ### Breaking
