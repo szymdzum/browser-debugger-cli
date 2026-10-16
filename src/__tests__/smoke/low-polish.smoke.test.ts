@@ -201,4 +201,3 @@ void describe('Low-priority polish', () => {
     }
   });
 });
-});
