@@ -710,13 +710,17 @@ function elementRow(result: ActionTarget): [string, string] {
   return ['Element', `${result.element}${viaLabel}${source}`];
 }
 
+/** A selector that is only an id */
+const BARE_ID_SELECTOR = /^#[^\s>+~,]+$/;
+
 /**
  * Rows naming the element an action hit: the `Element:` row, and for an
  * index into `dom a11y query` results (whose selector is not shown above
  * the element) the unique selector bdg computed for it, so the next command
  * can address it without the index going stale. No selector row when none
- * was computed, or when the selector is an id (`#save`, which the
- * `button#save` descriptor already shows).
+ * was computed, or when the selector is a bare id (`#save`, which the
+ * `button#save` descriptor already shows; a path from an ancestor's id such
+ * as `#nav > mdn-dropdown > button` is shown).
  *
  * @param result - Action result
  * @returns The element row and, for an a11y index, a selector row
@@ -726,7 +730,7 @@ function elementRows(result: ActionTarget): Array<[string, string]> {
   const showSelector =
     result.indexSource?.command === 'dom a11y query' &&
     result.selector !== undefined &&
-    !result.selector.startsWith('#');
+    !BARE_ID_SELECTOR.test(result.selector);
   return showSelector ? [row, ['Selector', result.selector ?? '']] : [row];
 }
 

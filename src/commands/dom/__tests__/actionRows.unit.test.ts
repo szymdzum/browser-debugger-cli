@@ -65,6 +65,15 @@ void describe('Selector: row for an a11y index (#694)', () => {
     assert.equal(lines[at + 1], 'Selector:      html > body > button:nth-of-type(2)');
   });
 
+  void it('shows a path that starts at an ancestor id', () => {
+    const lines = click({
+      selector: '#nav > mdn-dropdown > button',
+      element: 'button.tab "CSS"',
+      indexSource: a11yIndex,
+    });
+    assert.ok(lines.includes('Selector:      #nav > mdn-dropdown > button'), lines.join('\n'));
+  });
+
   void it('adds no row when the element is already named by its id', () => {
     const lines = click({
       selector: '#save',

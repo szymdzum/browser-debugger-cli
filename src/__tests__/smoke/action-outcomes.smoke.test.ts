@@ -109,9 +109,15 @@ void describe('Action outcomes', () => {
     });
 
     void it('shows the unique selector for an a11y index', async () => {
-      await bdg(['dom', 'a11y', 'query', 'role=button']);
-      const output = await bdg(['dom', 'click', '2']);
-      assert.match(output, /^Selector: {6}html > body > .*button:nth-of-type\(\d\)$/m);
+      await bdg(['dom', 'a11y', 'query', 'name=Cancel']);
+      const output = await bdg(['dom', 'click', '0']);
+      assert.match(output, /^Selector: {6}html > body > .*button:nth-of-type\(2\)$/m);
+    });
+
+    void it('shows a path that starts at an ancestor id for a custom element button', async () => {
+      await bdg(['dom', 'a11y', 'query', 'name=Menu']);
+      const output = await bdg(['dom', 'click', '0']);
+      assert.match(output, /^Selector: {6}#nav > x-dd > button$/m);
     });
   });
 
