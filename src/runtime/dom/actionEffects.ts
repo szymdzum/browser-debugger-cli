@@ -140,11 +140,10 @@ export interface SeenMessage {
   id: number;
   text: string;
   element: string;
-  /** The page was changing it right before the action */
-  self?: boolean;
   /**
-   * For a message box around an element the page was changing: its text
-   * without that element's
+   * For a message the page was changing right before the action (or a box
+   * around such an element): its text without the parts the page put in
+   * place of others on its own (the ticking parts)
    */
   otherText?: string;
 }
@@ -248,9 +247,9 @@ export interface OtherActivity {
  * element changed its text. Texts that tick on their own
  * ({@link TICKING_TEXT}: clocks, counters) are left out; other elements
  * the page was changing right before the action are returned apart, as
- * `alsoChanging`: one the page was changing itself (`self`), or a box around
- * such an element whose other text (`otherText`) is what it was before (a
- * box whose other text changed is the action's message, ticker included); others that change on their own (a rotating
+ * `alsoChanging` when their text besides the ticking parts (`otherText`) is
+ * what it was before (one whose other text changed is the action's message,
+ * ticker included); others that change on their own (a rotating
  * banner the action history did not see) are not recognised. Each text
  * is reported once, at most {@link MAX_NEW_MESSAGES}, cut to
  * {@link MAX_MESSAGE_LENGTH} characters.
@@ -275,8 +274,7 @@ export function newMessages(
   const textBefore = new Map(before.map((message) => [message.id, message.text]));
   const otherBefore = new Map(before.map((message) => [message.id, message.otherText]));
   const changingOnly = (message: SeenMessage): boolean =>
-    message.self === true ||
-    (message.otherText !== undefined && otherBefore.get(message.id) === message.otherText);
+    message.otherText !== undefined && otherBefore.get(message.id) === message.otherText;
   const isNew = (message: SeenMessage): boolean => {
     if (newDocument) return true;
     const previous = textBefore.get(message.id);
@@ -800,7 +798,7 @@ export function effectsOf(
         ? newMessages(start.messages, snapshot.messages, snapshot.fresh)
         : { messages: [], more: 0, alsoChanging: [] };
     const { messages, more } = found;
-    const changing = alsoChangingOf(found.alsoChanging, snapshot?.alsoChanging ?? []);
+    const changing = alsoChangingOf(found.alsoChanging, snapshot?.alsoChanging ?? [], messages);
     const shown = shownElements(snapshot?.shown ?? [], messages);
     const moreShown = shownLeftOut(snapshot?.shown ?? [], messages, snapshot?.shownCut);
     return {
@@ -827,14 +825,19 @@ export function effectsOf(
 /**
  * Regions changing before the action that changed during it: messages with
  * their new text first, then the other elements with structural changes
- * (one entry per element).
+ * (one entry per element, none for an element reported as New text).
  *
  * @param messages - New texts of messages changing before the action
  * @param elements - Elements changing before the action with structural changes, described
+ * @param reported - Messages reported as the action's (New text)
  * @returns All of them, unlimited
  */
-export function alsoChangingOf(messages: AlsoChanging[], elements: string[]): AlsoChanging[] {
-  const named = new Set(messages.map((message) => message.element));
+export function alsoChangingOf(
+  messages: AlsoChanging[],
+  elements: string[],
+  reported: NewMessage[] = []
+): AlsoChanging[] {
+  const named = new Set([...messages, ...reported].map((message) => message.element));
   return [
     ...messages,
     ...elements.filter((element) => !named.has(element)).map((element) => ({ element })),

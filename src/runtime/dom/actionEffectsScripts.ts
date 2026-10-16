@@ -114,12 +114,13 @@ const SHOWN_JS = `(el) => !el.closest('[aria-hidden="true"]') && el.getClientRec
  * hidden elements, scripts and styles left out, and parts for which `skip`
  * says so. Stops a little over {@link MAX_MESSAGE_TEXT} characters.
  */
-const VISIBLE_TEXT_JS = `(el, skip) => {
+const VISIBLE_TEXT_JS = `(el, skip, skipText) => {
   let text = '';
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
   while (text.length <= ${MAX_MESSAGE_TEXT} && walker.nextNode()) {
     const parent = walker.currentNode.parentElement;
     if (!parent || /^(script|style|template|noscript)$/.test(parent.localName) || skip(parent)) continue;
+    if (skipText && skipText(walker.currentNode)) continue;
     if (parent.checkVisibility && !parent.checkVisibility({ visibilityProperty: true, opacityProperty: true })) continue;
     text += ' ' + walker.currentNode.data;
   }
@@ -153,15 +154,16 @@ export const MESSAGE_CHROME_JS = `(node) => {
  * `h3[role="alert"]`). Each element gets a number from `ids` that stays the
  * same within the document, so a later snapshot can tell a new element from
  * one that was there. With `marked` (elements the page kept changing before
- * the action, as {@link MARKED_REGIONS_JS} extends them, from the history's
- * own elements `own`), a message that is one of the history's own elements
- * is flagged `self`; a message box marked for a marked element inside it
- * gets `otherText`, its text without those elements, so a read can tell
- * whether anything else in it changed (the action's own message next to a
- * ticker); a message that only sits inside a marked element (a validation
- * message rendered into a re-rendered app root) gets neither.
+ * the action, as {@link MARKED_REGIONS_JS} extends them) and `churned`
+ * (nodes the page put in place of others on its own, see `actionHistory.ts`),
+ * a marked message gets `otherText`, its text without the churned nodes, so
+ * a read can tell whether anything besides the ticking parts changed (the
+ * action's own message next to a ticker, also when the ticker replaces its
+ * `<span>` in the box itself); a message that only sits inside a marked
+ * element (a validation message rendered into a re-rendered app root) gets
+ * none.
  */
-const MESSAGES_JS = `(ids, marked, own) => {
+const MESSAGES_JS = `(ids, marked, churned) => {
   const deadline = performance.now() + ${MESSAGES_BUDGET_MS};
   const description = ${ELEMENT_DESCRIPTION_JS};
   const chrome = ${MESSAGE_CHROME_JS};
@@ -180,8 +182,9 @@ const MESSAGES_JS = `(ids, marked, own) => {
     for (let n = node; n && n !== el; n = n.parentElement) if (chrome(n)) return true;
     return false;
   };
-  const inOwn = (node, el) => {
-    for (let n = node; n && n !== el; n = n.parentElement) if (own.has(n)) return true;
+  const inChurned = (text, el) => {
+    if (churned.has(text)) return true;
+    for (let n = text.parentElement; n && n !== el; n = n.parentElement) if (churned.has(n)) return true;
     return false;
   };
   const found = [];
@@ -199,10 +202,9 @@ const MESSAGES_JS = `(ids, marked, own) => {
         id = ids.next++;
         ids.map.set(m.el, id);
       }
-      const self = Boolean(own) && own.has(m.el);
-      const boxed = !self && Boolean(marked) && marked.has(m.el);
-      const other = boxed ? visibleText(m.el, (node) => inChrome(node, m.el) || inOwn(node, m.el)) : undefined;
-      return { id: id, text: m.text, element: describe(m.el), ...(self && { self: true }), ...(boxed && { otherText: other }) };
+      const boxed = Boolean(marked) && marked.has(m.el);
+      const other = boxed ? visibleText(m.el, (node) => inChrome(node, m.el), (text) => inChurned(text, m.el)) : undefined;
+      return { id: id, text: m.text, element: describe(m.el), ...(boxed && { otherText: other }) };
     });
 }`;
 
@@ -520,9 +522,14 @@ const OUTCOMES_JS = `(state, focus) => {
  * copy/cut events and the scroll position at the first press (a click
  * scrolls its target into view first). Elements the action history
  * (`window.__bdgHistory`, see `actionHistory.ts`) found the page changing on
- * its own right before are `marked` ({@link MARKED_REGIONS_JS}): changes whose target is one of them
- * (exactly, not inside it) make no burst and add no nodes, and those with
- * structural changes are kept in `alsoChanging`. The watch stops itself after
+ * its own right before are `marked` ({@link MARKED_REGIONS_JS}). A change
+ * whose target is one of them (exactly, not inside it) and that only adds or
+ * removes churned nodes (nodes the page put in place of others, extended to
+ * what a marked element gets in place of churned nodes in the same
+ * delivery), changes a churned text or changes the element's attributes
+ * makes no burst and adds no nodes; such elements with structural changes
+ * are kept in `alsoChanging`. Anything else a marked element gets (the
+ * action's result next to a ticker) counts as usual. The watch stops itself after
  * {@link MAX_WATCH_MS}, so a snapshot that ran late (after a navigation,
  * with nobody reading it) leaves nothing behind. Evaluates to the URL and
  * the messages.
@@ -533,10 +540,10 @@ export const EFFECTS_START_SCRIPT = `(() => {
   const structural = ${STRUCTURAL_CHANGE_JS};
   const ids = { map: new WeakMap(), next: 1 };
   const history = window.__bdgHistory;
-  const own = new Set(history ? history.selfUpdating(performance.now()) : []);
-  const marked = (${MARKED_REGIONS_JS})(Array.from(own));
+  const marked = (${MARKED_REGIONS_JS})(history ? history.selfUpdating(performance.now()) : []);
+  const churned = history ? history.churned : new WeakSet();
   const state = {
-    marked: marked, own: own, alsoChanging: new Set(),
+    marked: marked, churned: churned, alsoChanging: new Set(),
     ids: ids, changes: 0, targets: new Set(), path: new Set(), focus: document.activeElement,
     pressScroll: null, copied: false, stopped: false, added: [], removed: [], bursts: [],
     keyTarget: null, loaders: new Set((${LOADERS_JS})()),
@@ -576,12 +583,24 @@ export const EFFECTS_START_SCRIPT = `(() => {
     for (const node of nodes) if (node.nodeType === 1 && list.length < ${MAX_TRACKED_NODES}) list.push(node);
   };
   const elementCount = (nodes) => Array.from(nodes).filter((node) => node.nodeType === 1).length;
+  const replaces = (record) => record.type === 'childList' && marked.has(record.target) &&
+    Array.from(record.removedNodes).some((node) => churned.has(node));
+  const ticking = (record) => {
+    if (!marked.has(record.target)) return false;
+    if (record.type === 'attributes') return true;
+    if (record.type === 'characterData') return churned.has(record.target);
+    return Array.from(record.addedNodes).concat(Array.from(record.removedNodes)).every((node) => churned.has(node));
+  };
   const count = (records) => {
     let burst = false;
+    const replacing = new Set(records.filter(replaces).map((record) => record.target));
+    for (const record of records) {
+      if (record.type === 'childList' && replacing.has(record.target)) record.addedNodes.forEach((node) => churned.add(node));
+    }
     for (const record of records) {
       if (churnOnly(record, state.targets)) continue;
       state.changes++;
-      const own = marked.has(record.target);
+      const own = ticking(record);
       if (!own) burst = burst || structural(record);
       else if (structural(record)) state.alsoChanging.add(record.target);
       if (record.type === 'childList') {
@@ -641,7 +660,7 @@ export const EFFECTS_START_SCRIPT = `(() => {
   };
   const expiry = setTimeout(state.stop, ${MAX_WATCH_MS});
   window.__bdgEffects = state;
-  return { href: location.href, messages: (${MESSAGES_JS})(ids, marked, own) };
+  return { href: location.href, messages: (${MESSAGES_JS})(ids, marked, churned) };
 })()`;
 
 /**
@@ -688,7 +707,7 @@ export const EFFECTS_READ_SCRIPT = `((stop, shown, focus) => {
     fresh: false,
     changes: state.changes + (scrolled ? 1 : 0),
     uncertain: (${UNCERTAIN_JS})(state, document.activeElement),
-    messages: (${MESSAGES_JS})(state.ids, state.marked, state.own),
+    messages: (${MESSAGES_JS})(state.ids, state.marked, state.churned),
     alsoChanging: Array.from(state.alsoChanging).filter((el) => el.isConnected).slice(0, ${MAX_ALSO_CHANGING})
       .map(${ELEMENT_DESCRIPTION_JS}),
     settle: (${SETTLE_JS})(state),

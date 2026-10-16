@@ -45,7 +45,13 @@ const MAX_HOT_ELEMENTS = 64;
  * is not kept alive). `selfUpdating(now)`
  * lists the candidates still in the document changed in at least
  * {@link MIN_IDLE_CHANGES} deliveries within {@link HISTORY_MS} before `now`,
- * the last within {@link HISTORY_RECENT_MS}. Added to new documents, it also
+ * the last within {@link HISTORY_RECENT_MS}. `churned` holds the nodes the
+ * page put in place of others on its own: once the document is parsed, the
+ * nodes added to an element it had changed in an earlier delivery, and text
+ * nodes whose text it changed there (a ticker's replaced `<span>` or text);
+ * the next action's watch adds the ones such an element gets in place of
+ * churned ones, and leaves churned nodes out of the box text it compares
+ * (`otherText`) and of its change count. Added to new documents, it also
  * runs in iframes; only the top frame's history is read (actions watch the
  * top document).
  */
@@ -53,6 +59,7 @@ export const HISTORY_START_SCRIPT = `(() => {
   if (window.__bdgHistory) return true;
   const times = new WeakMap();
   const hot = new Set();
+  const churned = new WeakSet();
   const note = (records) => {
     const watch = window.__bdgEffects;
     if (watch && !watch.stopped) return;
@@ -62,6 +69,11 @@ export const HISTORY_START_SCRIPT = `(() => {
       if (!el) continue;
       let list = times.get(el);
       if (!list) times.set(el, (list = []));
+      const changedEarlier = list.length > 1 || (list.length === 1 && list[0] !== now);
+      if (changedEarlier && document.readyState !== 'loading') {
+        if (record.type === 'characterData') churned.add(record.target);
+        else for (const node of record.addedNodes) churned.add(node);
+      }
       if (list[list.length - 1] === now) continue;
       list.push(now);
       if (list.length > ${TIMES_PER_ELEMENT}) list.shift();
@@ -76,6 +88,7 @@ export const HISTORY_START_SCRIPT = `(() => {
   const observer = new MutationObserver(note);
   observer.observe(document, { subtree: true, childList: true, characterData: true });
   window.__bdgHistory = {
+    churned: churned,
     selfUpdating: (now) => Array.from(hot).filter((el) => {
       const recent = (times.get(el) || []).filter((time) => now - time <= ${HISTORY_MS});
       return el.isConnected && recent.length >= ${MIN_IDLE_CHANGES} &&

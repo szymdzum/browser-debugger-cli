@@ -14,6 +14,11 @@
  * - `/self-status-box`: `div#box[role=status]` holding `span#clk`, whose
  *   number ticks every 100 ms, and an empty `span#res`; `#place` sets
  *   `#res` to "Order placed" (the click's own message next to a ticker).
+ * - `/self-status-replace`: `div#box[role=status]` whose ticker replaces its
+ *   number `<span>` with a new one every 50 ms; `#go` appends
+ *   `<span> Saved!</span>` to the box.
+ * - `/self-status-stream`: the same box; `#go` appends ten `<span>` parts
+ *   ` part 1` … ` part 10` to it, 100 ms apart.
  * - `/self-status-toast`: `#save` shows "Saved" in `div#s[role=status]` 300 ms
  *   after the click; nothing updates on its own.
  * - `/self-status-flash`: submitting `form#f` (`#go`) renders a `.flash`
@@ -69,6 +74,17 @@ const ADD_ROWS = `document.getElementById('rows').addEventListener('click', () =
 /** Replaces the aside's text every 50 ms */
 const TEXT_TICKER = `setInterval(() => { document.getElementById('t').textContent = 'tick ' + (++window.ticks); }, 50);`;
 
+/** A status box whose first child is a ticking number `<span>`, and a button */
+const REPLACING_BOX =
+  '<div id="box" role="status"><span>0</span></div><section><div><button id="go">Go</button></div></section>';
+
+/** Replaces the box's number `<span>` with a new one every 50 ms */
+const REPLACING_TICKER = `setInterval(() => {
+  const span = document.createElement('span');
+  span.textContent = String(++window.ticks);
+  document.getElementById('box').firstElementChild.replaceWith(span);
+}, 50);`;
+
 export const ROUTES: FixtureRoutes = {
   '/self-status-text': page(
     'status text ticker',
@@ -104,6 +120,31 @@ ${ADD_ROWS}`
     `setInterval(() => { document.getElementById('clk').textContent = String(++window.ticks); }, 100);
 document.getElementById('place').addEventListener('click', () => {
   document.getElementById('res').textContent = 'Order placed';
+});`
+  ),
+  '/self-status-replace': page(
+    'ticker replacing its span',
+    REPLACING_BOX,
+    `${REPLACING_TICKER}
+document.getElementById('go').addEventListener('click', () => {
+  const saved = document.createElement('span');
+  saved.textContent = ' Saved!';
+  document.getElementById('box').append(saved);
+});`
+  ),
+  '/self-status-stream': page(
+    'result streamed next to a ticker',
+    REPLACING_BOX,
+    `${REPLACING_TICKER}
+document.getElementById('go').addEventListener('click', () => {
+  let part = 0;
+  const next = () => {
+    const span = document.createElement('span');
+    span.textContent = ' part ' + (++part);
+    document.getElementById('box').append(span);
+    if (part < 10) setTimeout(next, 100);
+  };
+  next();
 });`
   ),
   '/self-status-toast': page(

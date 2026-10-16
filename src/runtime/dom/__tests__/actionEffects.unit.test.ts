@@ -140,10 +140,14 @@ void describe('newMessages', () => {
 });
 
 void describe('messages changing before the action (#774)', () => {
-  const ticker = { ...seen(1, 'tick 51', 'aside#t'), self: true };
+  const ticker = { ...seen(1, 'tick 51', 'aside#t'), otherText: '' };
 
   void it('reports a new text of a message the page was changing apart from New text', () => {
-    const found = newMessages([seen(1, 'tick 50', 'aside#t')], [ticker], false);
+    const found = newMessages(
+      [{ ...seen(1, 'tick 50', 'aside#t'), otherText: '' }],
+      [ticker],
+      false
+    );
     assert.deepEqual(found.messages, []);
     assert.deepEqual(found.alsoChanging, [{ text: 'tick 51', element: 'aside#t' }]);
   });
@@ -159,6 +163,11 @@ void describe('messages changing before the action (#774)', () => {
     const ticked = newMessages([box('Now: 67', 'Now:')], [box('Now: 68', 'Now:')], false);
     assert.deepEqual(ticked.messages, []);
     assert.deepEqual(ticked.alsoChanging, [{ text: 'Now: 68', element: 'div#box' }]);
+  });
+
+  void it('names no element already reported as New text again', () => {
+    const regions = alsoChangingOf([], ['div#box', 'ul#a'], [{ text: 'x', element: 'div#box' }]);
+    assert.deepEqual(regions, [{ element: 'ul#a' }]);
   });
 
   void it('names nothing for such a message whose text stayed', () => {

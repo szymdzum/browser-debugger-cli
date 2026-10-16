@@ -159,6 +159,22 @@ void describe('Self-updating regions in action results (#774)', () => {
     assert.equal(data.alsoChanging, undefined, JSON.stringify(data));
   });
 
+  void it('a result appended next to a ticker that replaces its span is New text', async () => {
+    await open(`${fixture.url}self-status-replace`);
+    const data = await click('#go');
+    const message = (data.messages ?? []).find((found) => found.element === 'div#box');
+    assert.match(message?.text ?? '', /Saved!$/, JSON.stringify(data));
+    assert.equal(data.alsoChanging, undefined, JSON.stringify(data));
+  });
+
+  void it('a result streamed next to a ticker is still changing or complete', async () => {
+    await open(`${fixture.url}self-status-stream`);
+    const data = await click('#go');
+    const message = (data.messages ?? []).find((found) => found.element === 'div#box');
+    const complete = /part 10$/.test(message?.text ?? '');
+    assert.ok(data.settled === false || complete, JSON.stringify(data));
+  });
+
   void it('b a toast the click shows 300 ms later is New text', async () => {
     await open(`${fixture.url}self-status-toast`);
     const data = await click('#save');
