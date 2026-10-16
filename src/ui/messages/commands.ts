@@ -489,6 +489,17 @@ export function hiddenTrackerErrorsText(count: number): string {
 }
 
 /**
+ * The `Errors:` row of an action whose only errors came from filtered
+ * trackers.
+ *
+ * @param count - Errors left out
+ * @returns e.g. `none from the page (2 from filtered trackers hidden; bdg console --level error)`
+ */
+export function onlyTrackerErrorsText(count: number): string {
+  return `none from the page (${count} from filtered trackers hidden; bdg console --level error)`;
+}
+
+/**
  * Line of an action that fired a form submit.
  *
  * @param submitted - The submit

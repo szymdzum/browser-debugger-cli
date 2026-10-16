@@ -74,6 +74,7 @@ import {
   moreShownText,
   formSubmittedText,
   hiddenTrackerErrorsText,
+  onlyTrackerErrorsText,
   newMessageText,
   pageNavigationText,
   shownElementText,
@@ -626,7 +627,7 @@ function formatActionOutput(
     [
       ...actionErrorRows(result.errors ?? []),
       ...(result.moreErrors ? [moreErrorsText(result.moreErrors)] : []),
-      ...(result.hiddenTrackerErrors ? [hiddenTrackerErrorsText(result.hiddenTrackerErrors)] : []),
+      ...hiddenTrackerErrorRows(result),
     ],
     keyWidth
   );
@@ -651,6 +652,20 @@ function formatActionOutput(
     fmt.text(dialogResultText(dialog));
   }
   return fmt;
+}
+
+/**
+ * The tracker-error note of the `Errors:` rows: a tail after page errors, or,
+ * when the trackers were the only ones, a row that says the page had none.
+ *
+ * @param result - Action result
+ * @returns The note as rows (none without hidden errors)
+ */
+function hiddenTrackerErrorRows(result: ActionNotices): string[] {
+  const hidden = result.hiddenTrackerErrors;
+  if (!hidden) return [];
+  const pageErrors = (result.errors?.length ?? 0) > 0 || Boolean(result.moreErrors);
+  return [pageErrors ? hiddenTrackerErrorsText(hidden) : onlyTrackerErrorsText(hidden)];
 }
 
 /**
@@ -695,6 +710,30 @@ function elementRow(result: ActionTarget): [string, string] {
   return ['Element', `${result.element}${viaLabel}${source}`];
 }
 
+/** A selector that is only an id */
+const BARE_ID_SELECTOR = /^#[^\s>+~,]+$/;
+
+/**
+ * Rows naming the element an action hit: the `Element:` row, and for an
+ * index into `dom a11y query` results (whose selector is not shown above
+ * the element) the unique selector bdg computed for it, so the next command
+ * can address it without the index going stale. No selector row when none
+ * was computed, or when the selector is a bare id (`#save`, which the
+ * `button#save` descriptor already shows; a path from an ancestor's id such
+ * as `#nav > mdn-dropdown > button` is shown).
+ *
+ * @param result - Action result
+ * @returns The element row and, for an a11y index, a selector row
+ */
+function elementRows(result: ActionTarget): Array<[string, string]> {
+  const row = elementRow(result);
+  const showSelector =
+    result.indexSource?.command === 'dom a11y query' &&
+    result.selector !== undefined &&
+    !BARE_ID_SELECTOR.test(result.selector);
+  return showSelector ? [row, ['Selector', result.selector ?? '']] : [row];
+}
+
 /**
  * Row naming the list a numeric index refers to, for an output without an
  * element row (which names it otherwise).
@@ -722,7 +761,7 @@ function selectorRows(result: ActionTarget): Array<[string, string]> {
  * Format fill command output for human-readable display.
  */
 function formatFillOutput(result: ActionOutput<FillResult>): string {
-  const details: [string, string][] = [...selectorRows(result), elementRow(result)];
+  const details: [string, string][] = [...selectorRows(result), ...elementRows(result)];
 
   if (result.inputType) details.push(['Input Type', result.inputType]);
   if (result.checked !== undefined) {
@@ -737,12 +776,12 @@ function formatFillOutput(result: ActionOutput<FillResult>): string {
 /**
  * Format click command output for human-readable display.
  */
-function formatClickOutput(result: ActionOutput<ClickResult>): string {
+export function formatClickOutput(result: ActionOutput<ClickResult>): string {
   return formatActionOutput(
     `Element ${POINTER_ACTION_DONE[result.action ?? 'click']}`,
     [
       ...selectorRows(result),
-      elementRow(result),
+      ...elementRows(result),
       ['Method', result.method === 'dom' ? 'DOM events' : 'mouse events'],
       ...(result.scrolledBy
         ? [['Scrolled', pointerScrollText(result.scrolledBy)] as [string, string]]
@@ -759,7 +798,7 @@ function formatClickOutput(result: ActionOutput<ClickResult>): string {
 function formatSubmitOutput(result: ActionOutput<SubmitResult>): string {
   const details: [string, string][] = [
     ...selectorRows(result),
-    ...(result.element !== undefined ? [elementRow(result)] : indexSourceRows(result)),
+    ...(result.element !== undefined ? elementRows(result) : indexSourceRows(result)),
     ['Submit Button', result.clicked ? 'used' : 'none'],
   ];
 
@@ -788,7 +827,7 @@ function formatPressKeyOutput(result: ActionOutput<PressKeyResult>): string {
   const details: [string, string][] = [
     ['Key', result.key ?? 'unknown'],
     ...selectorRows(result),
-    elementRow(result),
+    ...elementRows(result),
   ];
 
   if (result.times && result.times > 1) details.push(['Times', result.times.toString()]);
@@ -803,7 +842,7 @@ function formatPressKeyOutput(result: ActionOutput<PressKeyResult>): string {
 function formatScrollOutput(result: ActionOutput<ScrollResult>): string {
   const details: [string, string][] = [['Scroll Type', result.scrollType]];
   if (result.selector) details.push(...selectorRows(result));
-  details.push(...(result.element ? [elementRow(result)] : indexSourceRows(result)));
+  details.push(...(result.element ? elementRows(result) : indexSourceRows(result)));
   if (result.scrolledTo)
     details.push(['Position', `(${result.scrolledTo.x}, ${result.scrolledTo.y})`]);
   if (result.scrolledBy && (result.scrolledBy.x !== 0 || result.scrolledBy.y !== 0))

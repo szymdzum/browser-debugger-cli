@@ -104,7 +104,9 @@ DOM changed (200 nodes)                             # only when nothing else is 
 Shown:         span "Something went wrong"          # text added next to the clicked control, also in shadow roots, or un-hidden by an aria-expanded click (aria-controls / next sibling)
 ⚠ Submit blocked: email: Please include an '@' ...  # the form's validation stopped the submit (click or Enter): fix the named fields
 Errors: Uncaught Error: handler exploded (app.js:3:142)  # console errors/exceptions the action caused
-        (+2 from filtered trackers)                       # tracker-host errors hidden; start with --all to list them
+        (+2 from filtered trackers)                       # tracker-host errors hidden; start the session with bdg <url> --all to list them
+Errors:        none from the page (2 from filtered trackers hidden; bdg console --level error)  # trackers were the only source
+Selector:      html > body > button:nth-of-type(2)  # after Element:, for an index into dom a11y query results (absent for a bare #id, or when no selector finds only that element: iframe, shadow root)
 Download: report.txt → ~/.bdg/downloads/report.txt (completed, 15 B)  # files go to <session dir>/downloads
 Opened: popup https://idp.test/authorize (bdg page switch 1)          # a tab or window it opened
 ```
@@ -266,7 +268,7 @@ If a command is interrupted, Ctrl-C (exit 130, once Node has started: tens of mi
 | 84 | Session already running | `bdg page navigate <url>` to reuse it, `bdg stop`, or `--session <name>` |
 | 85 | Session busy (starting/stopping) | Retry shortly |
 | 87 | Index out of range, or stale (page changed since the query) | Re-run the query |
-| 91 | Page JavaScript threw: `eval` script, or the page's own code during `dom click`/`fill`/`press` | Fix the script; for an action, check the element's listeners (`bdg dom listeners`) and replaced methods (`bdg dom eval`) |
+| 91 | Page JavaScript threw: `eval` script, or bdg's action script failing on the page's own code (an element whose `dispatchEvent` throws, a replaced method) during `dom click`/`fill`/`press`. A handler that throws while the action works is not 91: the action exits 0 and lists it under `Errors:` | Fix the script; for an action, check the element's listeners (`bdg dom listeners`) and replaced methods (`bdg dom eval`) |
 | 100 | Chrome failed to launch | `bdg cleanup --force`, retry |
 | 101 | CDP connection failure | `bdg cleanup --force`, then restart |
 | 102 | Timeout (CDP, `dom wait`) or no response | Check page load, raise `--timeout` |
