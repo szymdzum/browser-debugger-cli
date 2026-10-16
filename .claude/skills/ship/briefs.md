@@ -8,8 +8,9 @@ Render a brief with `node .claude/skills/ship/scripts/ship.mjs brief <role> N=<n
 | reviewer | `general-purpose` | `sonnet` | foreground | 25 (tier 1–2), 40 (tier 3) |
 | tester | `general-purpose` | `sonnet` | foreground | 40; 20 for a fix with no new output or flag |
 | verifier | `general-purpose` | `sonnet` | foreground | 60 |
+| design | `general-purpose` | `sonnet` | foreground | 40 |
 
-Placeholders the script can fill: `N` (issue), `BRANCH`, `BASE` (merge base or the unmerged branch this PR builds on), `HEAD` (head SHA under review or test), `RED` (red commit SHA), `CAP`, `URLS` (fixture URLs), `DATE`.
+Placeholders the script can fill: `N` (issue; its text is quoted where a brief has `<ISSUE>`), `ISSUES` (several, comma-separated, for the verifier), `PR` (fills `BASE`, `HEAD`, `RED`, `BRANCH`), `DESIGN` (a design note file, for the design brief), `BRANCH`, `BASE` (merge base or the unmerged branch this PR builds on), `HEAD` (head SHA under review or test), `RED` (red commit SHA), `CAP`, `URLS` (fixture URLs), `DATE`.
 
 ## Shared blocks
 
@@ -120,9 +121,9 @@ Scratch files in `/tmp/review-<N>-work`; remove the worktree at the end (`git -C
 **Run** in `/tmp/review-<N>`, every shell call starting with:
 ```
 {{node}}
-export BDG_TEST_SESSION_PARENT=/tmp/rv-<N>-t BDG_TEST_HOME_DIR=/tmp/rv-<N>-h BDG_SESSION_DIR=/tmp/rv-<N>
+export BDG_TEST_SESSION_PARENT=/tmp/rv-<N>-t BDG_TEST_HOME_DIR=/tmp/rv-<N>-h
 ```
-`npm run build`, <the targeted unit tests>, <one targeted smoke test>. Check cheap claims by hand (`node /tmp/review-<N>/dist/index.js …`).
+`npm run build`, <the targeted unit tests>, <one targeted smoke test>. Check cheap claims by hand with the session directory on that command only: `BDG_SESSION_DIR=/tmp/rv-<N> node /tmp/review-<N>/dist/index.js …`. Never export `BDG_SESSION_DIR` in the shell that runs `npm test`: the IPC tests then fail by the dozen (S15: ~22 false failures, twice).
 
 **Red commit.** `git -C <MAIN> log --oneline <BASE>..<HEAD>`: the first commit is `test: …` and holds only tests, fixture pages and `not implemented` skeletons. Run its tests in a worktree of its own:
 ```
@@ -149,7 +150,7 @@ Then the matrix counts, what you checked and found fine, and under **Not checked
 
 ## Tester
 
-Build the branch in its worktree first (`npm run build` in `../bdg-<N>`, Node pinned) and start the fixtures **from that worktree** with `ship fixtures <N>` (PID file `/tmp/bdg-fixtures-<N>.pid`; `ship merge` stops it); pass the URLs it prints. Tasks are goals from the scenarios that touch the change's area (`scenarios.md`), never a description of the change.
+Build the branch in its worktree first (`npm run build` in `../bdg-<N>`, Node pinned) and start the fixtures **from that worktree** with `ship fixtures <N>` (PID file `/tmp/bdg-fixtures-<N>.pid`; `ship merge` stops it); pass the URLs it prints. Tasks are goals from the scenarios that touch the change's area (`scenarios.md`), never a description of the change. Pass the fixture credentials a task needs: the fixture `/login` takes any username with the password `secret` (the herokuapp credentials work only on the real site; S15: a false bug).
 
 <!-- brief:tester -->
 You are a coding agent who has never used bdg, a CLI for debugging Chrome. Test it on realistic tasks and report what works, what is confusing, and any bugs. You are testing build `<HEAD>`; report that SHA as given (you have no git, don't try to confirm it).
@@ -196,7 +197,7 @@ Start the fixtures from that directory when a finding needs them (`cd <MAIN>/../
 
 For each finding: run the reported command (or the closest that makes sense), paste the real output, and name the cause with file:line when a few minutes of reading find it. Classify it: **reproduced** (command, output, exit code), **not reproduced** (what happened instead), **by design** (where the docs or code say so), or **duplicate of** an open issue (`gh issue list --repo szymdzum/browser-debugger-cli --search "<words>"`). Group findings that share a root cause.
 
-Findings:
+Findings (selected issues are quoted at the end of this brief):
 1. <finding as reported, or "issue #N: re-run its recorded command">
 
 **Sweep** (themed sessions only; delete otherwise). The theme is <theme>. Build pages under `/tmp/verify-<DATE>-pages` (serve with `python3 -m http.server <port> & echo $! > /tmp/bdg-verify-<N>-http.pid`) with <the theme's inputs>, run <the theme's commands, human and --json, files and daemon.log>, and grep every output for <the literal markers>. Report each hit as its own finding.
@@ -209,4 +210,36 @@ Findings:
 **Budget.** At most 60 tool calls.
 
 **Report.** The commit; one block per finding with classification, command, output, exit code and cause; then the groups. {{report-tail}}
+
+<ISSUE>
 <!-- /brief -->
+
+## Design review
+
+For a detection heuristic, before any code (SKILL.md, Recurring traps): the implementer writes a design note without code, and a fresh agent checks it on real Chrome. Render with `ship brief design N=<issue> DESIGN=/tmp/design-<N>.md --out=/tmp/design-rev-<N>.md`; prepare `../bdg-verify` as for the verifier.
+
+<!-- brief:design -->
+Review a design for issue #<N> in bdg (github.com/szymdzum/browser-debugger-cli) before any code is written. The design and the issue are quoted at the end of this brief. You decide whether the design works on real pages; you write no product code.
+
+Check every row of the design's false-positive matrix, and add the rows it misses: a change the page makes on its own during the action window, the user's own result arriving in several chunks (Load more, streamed results, a slow response), and the user's result in the same box or app root as a self-updating region. Build each case as a scratch page under `/tmp/design-<N>-pages` (serve with `python3 -m http.server <port> & echo $! > /tmp/bdg-design-<N>-http.pid`) and observe what the page really does in Chrome with bdg from `main`, built at `<MAIN>/../bdg-verify`. Every shell call starts with:
+```
+{{node}}
+export BDG_SESSION_DIR=/tmp/design-<N>
+bdg() { node <MAIN>/../bdg-verify/dist/index.js "$@"; }
+```
+Record what the design's rule would see with `bdg dom eval` (a `MutationObserver`, timings, the elements involved), not by reading the design and guessing. Keep one bdg session at a time.
+
+{{foreground}}
+
+{{forbidden}}
+- No git commands and no repository edits; `bdg stop` at the end.
+
+**Budget.** At most 40 tool calls.
+
+**Report.** The verdict first: go, go with changes, or no-go. Then one line per matrix row: what the page did, what the design would report, what it should report. Then the changes the design needs. {{report-tail}}
+
+<DESIGN>
+
+<ISSUE>
+<!-- /brief -->
+

@@ -15,10 +15,14 @@ import { test } from 'node:test';
 import {
   appendSnapshotEntries,
   briefProblems,
+  formatDesign,
   formatIssue,
   isAgentCommand,
+  issueNumbers,
+  missingLogRows,
   isFixturesCommand,
   isSessionFileName,
+  templatePlaceholders,
   unfilledPlaceholders,
   socketAccepts,
   callTimeout,
@@ -140,9 +144,9 @@ test('renderBrief rejects an unknown role and an unknown block', () => {
   );
 });
 
-test('briefs.md has the four briefs and every block they use', () => {
+test('briefs.md has the five briefs and every block they use', () => {
   const { briefs } = parseBriefs(BRIEFS);
-  assert.deepEqual(Object.keys(briefs).sort(), ['implementer', 'reviewer', 'tester', 'verifier']);
+  assert.deepEqual(Object.keys(briefs).sort(), ['design', 'implementer', 'reviewer', 'tester', 'verifier']);
   for (const role of Object.keys(briefs)) {
     assert.doesNotThrow(() => renderBrief(BRIEFS, role, { N: '1', MAIN: '/m', SHA: 'abc' }), role);
   }
@@ -895,16 +899,46 @@ test('formatIssue quotes title, body and comments between markers; an empty body
   assert.match(formatIssue({ number: 8, title: 't', body: '' }), /\(no description\)/);
 });
 
-test('unfilledPlaceholders ignores the quoted issue and literal placeholders', () => {
-  const text = `Fix <BASE> and <url>\n${formatIssue({ number: 1, title: '<dialog>', body: '<KEY> <x y>' })}\n<scope>`;
-  assert.deepEqual(unfilledPlaceholders(text), ['<BASE>', '<scope>']);
+test('unfilledPlaceholders counts only template placeholders, outside the quoted issue', () => {
+  const placeholders = new Set(['<BASE>', '<scope>', '<KEY>']);
+  const text = `Fix <BASE> and <url> on <dialog>\n${formatIssue({ number: 1, title: '<dialog>', body: '<KEY> <x y>' })}\n<scope> <TMPDIR>`;
+  assert.deepEqual(unfilledPlaceholders(text, placeholders), ['<BASE>', '<scope>']);
 });
 
-test('briefProblems refuses an empty brief and one with open placeholders', () => {
-  assert.match(briefProblems('')[0], /empty or too short/);
+test('templatePlaceholders reads briefs and blocks of the real briefs.md, not HTML or prose', () => {
+  const placeholders = templatePlaceholders(BRIEFS);
+  for (const p of ['<BASE>', '<HEAD>', '<RED>', '<ISSUE>', '<DESIGN>', '<files and modules worth reading first>'])
+    assert.ok(placeholders.has(p), p);
+  for (const p of ['<dialog>', '<TMPDIR>', '<title>', '<role>', '<main>', '<url>', '<!-- /brief -->'])
+    assert.ok(!placeholders.has(p), p);
+});
+
+test('issueNumbers takes one number or a list, nothing that is not all numbers', () => {
+  assert.deepEqual(issueNumbers('786'), ['786']);
+  assert.deepEqual(issueNumbers('786,459 801,786'), ['786', '459', '801']);
+  assert.deepEqual(issueNumbers('s15'), []);
+  assert.deepEqual(issueNumbers(undefined), []);
+});
+
+test('formatDesign quotes the note between markers the placeholder check skips', () => {
+  const note = formatDesign('Rule: watch <dialog open> and <describe(el)>; <!-- /design --> inside');
+  assert.equal(note.match(/<!-- \/design -->/g).length, 1);
+  assert.deepEqual(unfilledPlaceholders(note, new Set(['<dialog open>'])), []);
+});
+
+test('the design brief renders with its blocks and leaves DESIGN and ISSUE for ship brief', () => {
+  const { brief, unfilled } = renderBrief(BRIEFS, 'design', { N: '786', MAIN: '/m' });
+  assert.match(brief, /Review a design for issue #786/);
+  assert.ok(brief.includes('<DESIGN>') && brief.includes('<ISSUE>'));
+  assert.ok(!unfilled.includes('<DESIGN>') && !unfilled.includes('<ISSUE>'));
+});
+
+test('briefProblems refuses an empty brief and one with open placeholders, not HTML in it', () => {
+  const placeholders = new Set(['<RED>']);
+  assert.match(briefProblems('', placeholders)[0], /empty or too short/);
   const filled = 'x'.repeat(300);
-  assert.deepEqual(briefProblems(filled), []);
-  assert.match(briefProblems(`${filled} <RED>`)[0], /placeholders still open: <RED>/);
+  assert.deepEqual(briefProblems(`${filled} <dialog> <h2 id="feedback">`, placeholders), []);
+  assert.match(briefProblems(`${filled} <RED>`, placeholders)[0], /placeholders still open: <RED>/);
 });
 
 test('isSessionFileName knows session files, rotated logs and atomic-write temp files', () => {
@@ -925,11 +959,18 @@ test('isAgentCommand spots a daemon run from an agent worktree, not the main che
 test('formatIssue escapes an end marker inside the issue, so the quote ends only once', () => {
   const text = formatIssue({ number: 3, title: 't', body: 'a <!-- /issue --> <KEY>' });
   assert.equal(text.match(/<!-- \/issue -->/g).length, 1);
-  assert.deepEqual(unfilledPlaceholders(`${text}\n${'x'.repeat(10)}`), []);
+  assert.deepEqual(unfilledPlaceholders(`${text}\n${'x'.repeat(10)}`, new Set(['<KEY>'])), []);
 });
 
 test('isFixturesCommand accepts only the fixture server, never a reused PID', () => {
   assert.equal(isFixturesCommand('node /x/bdg-782/node_modules/.bin/tsx src/__testutils__/serveFixtures.ts'), true);
   assert.equal(isFixturesCommand('/bin/zsh -l'), false);
   assert.equal(isFixturesCommand(''), false);
+});
+
+test('missingLogRows lists backup rows whose PR log.md lacks, once each', () => {
+  const log = '| merged | PR |\n|---|---|\n| 2026-10-16 | #794 | #661 |';
+  const backup = '| 2026-10-16 | #794 | #661 |\n| 2026-10-16 | #795 | #590 |\n| 2026-10-16 | #795 | #590 | again |\n';
+  assert.deepEqual(missingLogRows(log, backup), ['| 2026-10-16 | #795 | #590 | again |']);
+  assert.deepEqual(missingLogRows(log, ''), []);
 });

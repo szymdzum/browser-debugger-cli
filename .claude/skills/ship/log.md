@@ -75,6 +75,11 @@ One row per merged PR, appended with `ship log <pr> …` right after the merge. 
 | 2026-10-16 | #783 | #589 | 2 | 0/2/4 | 1 | 3 | sonnet | ~470k | #589 quoted-argument hint for free-text args (a11y query, query, fill value), eval gets 'quote the whole script' (tester: joined script hint was runnable-but-wrong), nodeId documented as backend node id (owner A, rename to #465), a11y describe prints A11y node ID + Backend ID; round 3 approved by owner (label claimed a DOM id that may not exist) |
 | 2026-10-16 | #785 | #694 | 2 | 0/0/2 | 1 | 1 | sonnet | ~330k | #694 tracker-only Errors: row reads on its own; Selector: row for a11y index targets; tester found the row missing on MDN (own '#'-prefix condition dropped ancestor-id paths) + SKILL.md exit 91 / console --all docs fixed; started before #782 merged (one formatter, no conflict yet) |
 | 2026-10-16 | #782 | #774 | 3 | 0/7/9 | 0 | 3 | opus | ~1.6M | #774 design-first (owner accepted): idle-time history observer + churn; Also changing: row/alsoChanging; settle ignores self-updating regions; <search> near container; 3 reviewers (2nd and 3rd fresh) found #app-root demotion, marked-rule mismatch, ticker box swallowing result, replace-span ticker, streamed content in a marked box; round 3 owner-approved; tail of a previous Load more = documented limit (D-B cart too); repeats green Linux+macOS Node 22 and Node 26; overhead ~0.7 us per changed node |
+| 2026-10-16 | #794 | #661 | 2 | ? | 0 | 1 | sonnet | ~250k | #661 compile cache; tester's bug was older code, filed #801 (row rebuilt from the S15 retro: the logged rows were lost before a commit; review counts not kept) |
+| 2026-10-16 | #795 | #590 | 1 | ? | - | 3 | sonnet | ~430k | #590 smoke env + pathname routes; the 404 change broke one route per round; fixed the linear-URL flake (n vs 4n) (row rebuilt from the S15 retro: the logged rows were lost before a commit; review counts not kept) |
+| 2026-10-16 | #798 | #786 | 2 | ? | 0 | 1 | sonnet | ~420k | #786 design-first, design reviewed on real Chrome, one approach, 0 blocking (row rebuilt from the S15 retro: the logged rows were lost before a commit; review counts not kept) |
+| 2026-10-16 | #799 | #459 | 2 | ? | 0 | 1 | sonnet | ~330k | #459 run parallel to #798 in the same file, clean rebase (row rebuilt from the S15 retro: the logged rows were lost before a commit; review counts not kept) |
+| 2026-10-16 | #800 | #644 #646 #608 #567 #458 | 2 | ? | 1 | 4 | sonnet | ~600k | low-queue polish, 5 areas; a false reviewer nit (peek) gave dead code; tester found a regression (row rebuilt from the S15 retro: the logged rows were lost before a commit; review counts not kept) |
 
 ## Escaped
 
@@ -92,6 +97,10 @@ Process changes seen in one session only (SKILL.md, Keep the books: a second ses
 | proposal | seen in | note |
 |---|---|---|
 | No reviewer for a tier 1 PR that only changes runner labels or versions and is verified by CI plus a dispatch; the orchestrator's `git show` is enough | S14 (#781: nits only) | keep the reviewer for workflow logic: S12 #765 found a should-fix there |
-| Two PRs adding different lines to the same formatting function may run in parallel, the later one told to rebase | S14 (#785 next to #782: clean rebase, ~1–2 h saved) | |
-| Remove: repeat runs on timing PRs | caught nothing in S14; caught in S11 (#761) and S13 (#773) | count sessions with no catch: 1 of 3 |
+| Remove: repeat runs on timing PRs | caught nothing in S14, S15 (S15: a final-head repeat hit a flake that is on `main` too, ~1 h of comparisons); caught in S11 (#761) and S13 (#773) | sessions with no catch: 2 of 3; a third removes it, or keep it only for code that waits on timers |
+| Before relaying a reviewer nit that asks for new code, check the claim in the code | S15 (#800: a false nit about `peek` gave dead code and round 3) | |
+| A change to shared test infrastructure (fixture server, runner) runs the full smoke suite locally before the draft PR | S15 (#795: the 404 change broke `/style.css`, `/forms-jumped`, `/favicon.ico`, one per round) | |
+| A third fix round that only touches tests or removes code needs no owner's yes | S15 (#795 round 3 tests, #800 round 3 removal; the yes came at once both times) | |
+| A polish PR covers at most 2–3 areas | S15 (#800: 5 areas, 4 rounds, ~600k tokens; the low-queue review itself closed 7 issues) | the review step (one verifier, owner decides per row) worked |
+| Tell other threads before a series of merges to `main`, or keep dependabot merges outside ship sessions | S15 (dependabot merges cancelled two push runs) | `ci-wait --push` now follows the newer run (retro S15 PR) |
 

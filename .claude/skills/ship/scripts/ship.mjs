@@ -9,9 +9,11 @@
 
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import {
-  existsSync,
+  appendFileSync,
   closeSync,
+  existsSync,
   lstatSync,
+  mkdirSync,
   openSync,
   readFileSync,
   readdirSync,
@@ -448,6 +450,26 @@ export function writeWithRecheck(write, happened, what) {
  *
  * @param {string[]} argv as for `ciWait`
  */
+/**
+ * The latest push run's commit on main when it contains `sha`, with the
+ * commits that came after it (author and subject): when other merges
+ * (dependabot, another thread) cancel a push run, the waiter follows the
+ * run that now decides `main` (S15). Null when nothing newer contains it.
+ *
+ * @param {string} sha
+ */
+function supersedingPush(sha) {
+  const latest = (ghJson(['run', 'list', '--branch', 'main', '--event', 'push', '--workflow', 'CI', '--json', 'headSha', '--limit', '1']) ?? [])[0];
+  if (!latest || latest.headSha === sha) return null;
+  freshOriginRef('main');
+  if (spawnSync('git', ['merge-base', '--is-ancestor', sha, latest.headSha]).status !== 0) return null;
+  const commits = run('git', ['log', '--first-parent', '--format=%h %an: %s', `${sha}..${latest.headSha}`])
+    .split('\n')
+    .map((line) => `  ${line}`)
+    .join('\n');
+  return { sha: latest.headSha, commits };
+}
+
 async function ciWaitLoop(argv) {
   const { positional, flags } = parseArgs(argv);
   const target = positional[0];
@@ -488,6 +510,13 @@ async function ciWaitLoop(argv) {
         Object.fromEntries(workflows.map((wf) => [wf, runs[wf].conclusion])),
         { push }
       );
+      const next = code === EXIT.superseded && push ? supersedingPush(sha) : null;
+      if (next) {
+        console.log(`${summary}\nsuperseded by ${next.sha.slice(0, 10)}; commits after yours:\n${next.commits}\nwaiting for that run instead`);
+        sha = next.sha;
+        waiterState.subject = sha.slice(0, 10);
+        continue;
+      }
       if (code !== EXIT.ok && pr && prInfo(pr.number).headRefOid !== sha) {
         console.log(`${summary}; superseded: PR #${pr.number} head moved while waiting`);
         return EXIT.superseded;
@@ -653,6 +682,21 @@ function printLostJobs(runId, jobs) {
 }
 
 /**
+ * Fetches a branch of origin and returns its ref, failing with a plain
+ * message when the ref is still missing (S15: `origin/main` vanished once
+ * from the main checkout mid-session).
+ *
+ * @param {string} branch
+ * @returns {string} `origin/<branch>`
+ */
+function freshOriginRef(branch) {
+  run('git', ['fetch', '-q', 'origin', `+refs/heads/${branch}:refs/remotes/origin/${branch}`]);
+  const ok = spawnSync('git', ['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${branch}`]).status === 0;
+  if (!ok) throw new Error(`origin/${branch} is missing even after git fetch origin ${branch}`);
+  return `origin/${branch}`;
+}
+
+/**
  * Creates an agent worktree on a new branch from origin/main with node_modules linked.
  *
  * @param {string[]} argv `<name> <branch>`, optional `base=<ref>`
@@ -663,8 +707,8 @@ function worktree(argv) {
   if (!name || !branch) return usage('worktree <issue number or name> <branch> [base=origin/main]');
   const main = mainCheckout();
   const path = resolve(main, '..', `bdg-${name}`);
-  run('git', ['fetch', '-q', 'origin']);
-  run('git', ['worktree', 'add', '-q', path, '-b', branch, keys.base ?? 'origin/main']);
+  const base = keys.base ?? freshOriginRef('main');
+  run('git', ['worktree', 'add', '-q', path, '-b', branch, base]);
   symlinkSync(join(main, 'node_modules'), join(path, 'node_modules'));
   console.log(path);
   return EXIT.ok;
@@ -728,8 +772,8 @@ function mergeCheck(argv) {
   const [prNumber, ...files] = argv;
   if (!prNumber) return usage('merge-check <pr> [unit or smoke test files...]');
   const pr = prInfo(prNumber);
-  run('git', ['fetch', '-q', 'origin']);
-  const main = run('git', ['rev-parse', `origin/${pr.baseRefName}`]);
+  run('git', ['fetch', '-q', 'origin', `pull/${pr.number}/head`]);
+  const main = run('git', ['rev-parse', freshOriginRef(pr.baseRefName)]);
   const merged = spawnSync('git', ['merge-tree', '--write-tree', main, pr.headRefOid], {
     encoding: 'utf8',
   });
@@ -1001,8 +1045,8 @@ async function gates(argv) {
   const head = pr.headRefOid;
   const results = [];
   console.log(`gates for PR #${pr.number} at ${head.slice(0, 10)} (tier ${tier})`);
-  run('git', ['fetch', '-q', 'origin']);
-  const baseRef = `origin/${pr.baseRefName}`;
+  run('git', ['fetch', '-q', 'origin', `pull/${pr.number}/head`]);
+  const baseRef = freshOriginRef(pr.baseRefName);
   const forkPoint = run('git', ['merge-base', baseRef, head]);
   const prFiles = run('git', ['diff', '--name-only', forkPoint, head]).split('\n').filter(Boolean);
 
@@ -1631,8 +1675,7 @@ function removeBranchWorktree(branch) {
   }
   if (spawnSync('git', ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]).status !== 0)
     return;
-  run('git', ['fetch', '-q', 'origin']);
-  const merged = spawnSync('git', ['merge-base', '--is-ancestor', branch, 'origin/main']);
+  const merged = spawnSync('git', ['merge-base', '--is-ancestor', branch, freshOriginRef('main')]);
   if (merged.status !== 0) {
     console.log(`kept branch ${branch}: origin/main doesn't contain it`);
     return;
@@ -1688,7 +1731,9 @@ export function renderBrief(text, role, values) {
   const insert = (s) => s.replace(/\{\{([\w-]+)\}\}/g, (all, name) => blocks[name] ?? all);
   let brief = insert(insert(briefs[role]));
   for (const [key, value] of Object.entries(values)) brief = brief.split(`<${key}>`).join(value);
-  const unfilled = unfilledPlaceholders(brief).filter((p) => p !== '<ISSUE>');
+  const unfilled = unfilledPlaceholders(brief, templatePlaceholders(text)).filter(
+    (p) => p !== '<ISSUE>' && p !== '<DESIGN>'
+  );
   const unknown = [...new Set(brief.match(/\{\{[\w-]+\}\}/g) ?? [])];
   if (unknown.length) throw new Error(`unknown blocks: ${unknown.join(', ')}`);
   return { brief, unfilled };
@@ -1697,6 +1742,18 @@ export function renderBrief(text, role, values) {
 /** Markers around the quoted issue, so its text is never read as a placeholder */
 const ISSUE_START = '<!-- issue -->';
 const ISSUE_END = '<!-- /issue -->';
+
+/** Quoted text a brief carries verbatim (issues, a design note), skipped by the placeholder check */
+const QUOTED_REGION = /<!-- (issue|design) -->[\s\S]*?<!-- \/\1 -->/g;
+
+/**
+ * A design note as it goes into a design review brief, between markers.
+ *
+ * @param {string} text
+ */
+export function formatDesign(text) {
+  return `<!-- design -->\n## Design\n\n${text.trim().split('<!-- /design -->').join('<!-- /design (quoted) -->')}\n<!-- /design -->`;
+}
 
 /**
  * The issue as it goes into a brief: title, body and every comment, between
@@ -1723,15 +1780,31 @@ export function formatIssue(issue) {
 }
 
 /**
- * Placeholders still open in a brief, ignoring literal ones and the quoted issue.
+ * The placeholders the brief templates use: every `<…>` inside a brief or
+ * a shared block of briefs.md, except literal ones and HTML comments. Only
+ * these count as open; a `<dialog>` or `<TMPDIR>` the orchestrator writes
+ * into a brief does not (S15: a false alarm in almost every brief).
+ *
+ * @param {string} briefsText the contents of briefs.md
+ * @returns {Set<string>}
+ */
+export function templatePlaceholders(briefsText) {
+  const { blocks, briefs } = parseBriefs(briefsText);
+  const found = [...Object.values(blocks), ...Object.values(briefs)].flatMap(
+    (t) => t.match(/<[^<>\n]{2,80}>/g) ?? []
+  );
+  return new Set(found.filter((p) => !LITERAL_PLACEHOLDERS.has(p) && !p.startsWith('<!--')));
+}
+
+/**
+ * Template placeholders still open in a brief, outside its quoted issue or design.
  *
  * @param {string} text
+ * @param {Set<string>} placeholders from templatePlaceholders
  */
-export function unfilledPlaceholders(text) {
-  const outside = text.replace(new RegExp(`${ISSUE_START}[\\s\\S]*?${ISSUE_END}`, 'g'), '');
-  return [...new Set(outside.match(/<[^<>\n]{2,80}>/g) ?? [])].filter(
-    (p) => !LITERAL_PLACEHOLDERS.has(p) && !p.startsWith('<!--')
-  );
+export function unfilledPlaceholders(text, placeholders) {
+  const outside = text.replace(QUOTED_REGION, '');
+  return [...new Set(outside.match(/<[^<>\n]{2,80}>/g) ?? [])].filter((p) => placeholders.has(p));
 }
 
 /**
@@ -1739,12 +1812,23 @@ export function unfilledPlaceholders(text) {
  * An empty brief went out twice in S14 (a `$S brief > file` that zsh didn't split).
  *
  * @param {string} text
+ * @param {Set<string>} placeholders from templatePlaceholders
  * @returns {string[]} problems, none when the brief can be sent
  */
-export function briefProblems(text) {
+export function briefProblems(text, placeholders) {
   if (text.trim().length < 200) return [`the brief is empty or too short (${text.trim().length} characters)`];
-  const open = unfilledPlaceholders(text);
+  const open = unfilledPlaceholders(text, placeholders);
   return open.length ? [`placeholders still open: ${open.join(' ')}`] : [];
+}
+
+/**
+ * Issue numbers from `N=786` or `ISSUES=786,459 801`; anything else gives none.
+ *
+ * @param {string} [list]
+ */
+export function issueNumbers(list) {
+  const parts = (list ?? '').split(/[\s,]+/).filter(Boolean);
+  return parts.length && parts.every((p) => /^\d+$/.test(p)) ? [...new Set(parts)] : [];
 }
 
 /**
@@ -1756,8 +1840,8 @@ export function briefProblems(text) {
  */
 function prBriefValues(prNumber) {
   const pr = prInfo(prNumber);
-  run('git', ['fetch', '-q', 'origin', `pull/${pr.number}/head`, pr.baseRefName]);
-  const base = run('git', ['merge-base', `origin/${pr.baseRefName}`, pr.headRefOid]);
+  run('git', ['fetch', '-q', 'origin', `pull/${pr.number}/head`]);
+  const base = run('git', ['merge-base', freshOriginRef(pr.baseRefName), pr.headRefOid]);
   const red = run('git', ['rev-list', '--reverse', `${base}..${pr.headRefOid}`]).split('\n')[0] ?? '';
   const values = { BASE: base, HEAD: pr.headRefOid, BRANCH: pr.headRefName };
   return red ? { ...values, RED: red } : values;
@@ -1774,13 +1858,17 @@ function prBriefValues(prNumber) {
  */
 function brief(argv) {
   const { positional, keys } = parseArgs(argv);
+  const briefsText = readFileSync(join(SKILL_DIR, 'briefs.md'), 'utf8');
+  const placeholders = templatePlaceholders(briefsText);
   if (keys.check) {
-    const problems = existsSync(keys.check) ? briefProblems(readFileSync(keys.check, 'utf8')) : [`no file ${keys.check}`];
+    const problems = existsSync(keys.check)
+      ? briefProblems(readFileSync(keys.check, 'utf8'), placeholders)
+      : [`no file ${keys.check}`];
     console.log(problems.length ? `FAIL ${keys.check}: ${problems.join('; ')}` : `ok   ${keys.check} is ready to send`);
     return problems.length ? EXIT.failed : EXIT.ok;
   }
   if (!positional[0])
-    return usage('brief <implementer|reviewer|tester|verifier> N=<n> [PR=<pr>] ... [--out=<file>] | brief --check=<file>');
+    return usage('brief <implementer|reviewer|tester|verifier|design> N=<n> [ISSUES=<n,n…>] [PR=<pr>] [DESIGN=<file>] ... [--out=<file>] | brief --check=<file>');
   const { out, ...given } = keys;
   const values = {
     MAIN: mainCheckout(),
@@ -1788,14 +1876,25 @@ function brief(argv) {
     ...(given.PR ? prBriefValues(given.PR) : {}),
     ...given,
   };
-  const { brief: rendered } = renderBrief(readFileSync(join(SKILL_DIR, 'briefs.md'), 'utf8'), positional[0], values);
-  const issue = rendered.includes('<ISSUE>') && /^\d+$/.test(values.N ?? '')
-    ? ghJson(['issue', 'view', values.N, '--json', 'number,title,body,comments'])
-    : null;
-  const text = rendered.split('<ISSUE>').join(issue ? formatIssue(issue) : '(no issue)');
+  const { DESIGN: designFile, ISSUES: issueList, ...rest } = values;
+  const { brief: rendered } = renderBrief(briefsText, positional[0], rest);
+  const numbers = issueNumbers(issueList ?? rest.N);
+  if (issueList && !numbers.length)
+    return usage(`brief: ISSUES=${issueList} must be issue numbers, e.g. ISSUES=786,459`);
+  const issues = rendered.includes('<ISSUE>')
+    ? numbers.map((n) => ghJson(['issue', 'view', n, '--json', 'number,title,body,comments']))
+    : [];
+  if (rendered.includes('<DESIGN>') && !(designFile && existsSync(designFile)))
+    return usage(`brief ${positional[0]}: needs DESIGN=<file> with the design note`);
+  const design = rendered.includes('<DESIGN>') ? formatDesign(readFileSync(designFile, 'utf8')) : '';
+  const text = rendered
+    .split('<ISSUE>')
+    .join(issues.length ? issues.map(formatIssue).join('\n\n') : '(no issue)')
+    .split('<DESIGN>')
+    .join(design);
   if (out) writeFileSync(out, `${text}\n`);
   else console.log(text);
-  const open = unfilledPlaceholders(text);
+  const open = unfilledPlaceholders(text, placeholders);
   if (open.length) console.error(`still to fill: ${open.join(' ')}`);
   if (out) console.error(`written to ${out}; after filling it in: ship brief --check=${out}`);
   return EXIT.ok;
@@ -1824,10 +1923,11 @@ export function insertLogRow(text, row) {
  * @param {string[]} argv `<pr> tier= review=b/s/n tester=bugs rounds= model= tokens= note=`
  */
 function log(argv) {
-  const { positional, keys } = parseArgs(argv);
+  const { positional, keys, flags } = parseArgs(argv);
+  if (flags.has('pending')) return pendingLogRows();
   if (!positional[0])
     return usage(
-      'log <pr> tier=2 review=0/1/2 tester=1 rounds=1 model=sonnet tokens=240k note="…"'
+      'log <pr> tier=2 review=0/1/2 tester=1 rounds=1 model=sonnet tokens=240k note="…" | log --pending'
     );
   const pr = ghJson([
     'pr',
@@ -1841,8 +1941,34 @@ function log(argv) {
   const row = `| ${(pr.mergedAt ?? new Date().toISOString()).slice(0, 10)} | #${pr.number} | ${issues} | ${cell('tier')} | ${cell('review')} | ${cell('tester')} | ${cell('rounds')} | ${cell('model')} | ${cell('tokens')} | ${cell('note')} |`;
   const file = join(SKILL_DIR, 'log.md');
   writeFileSync(file, insertLogRow(readFileSync(file, 'utf8'), row));
-  console.log(row);
+  mkdirSync(dirname(LOG_BACKUP), { recursive: true });
+  appendFileSync(LOG_BACKUP, `${row}\n`);
+  console.log(`${row}\n(also kept in ${LOG_BACKUP}; ship log --pending lists rows log.md lacks)`);
   return EXIT.ok;
+}
+
+/** Every row `ship log` wrote, outside the checkout: S15's rows were lost before the retro PR */
+const LOG_BACKUP = join(homedir(), '.cache', 'ship', 'log-rows.md');
+
+/**
+ * Rows of the backup that log.md doesn't have, matched by their PR cell.
+ *
+ * @param {string} logText
+ * @param {string} backupText
+ */
+export function missingLogRows(logText, backupText) {
+  const pr = (row) => row.split('|')[2]?.trim();
+  const present = new Set(logText.split('\n').filter((l) => l.startsWith('|')).map(pr));
+  const rows = backupText.split('\n').filter((l) => l.startsWith('| '));
+  return [...new Map(rows.map((r) => [pr(r), r])).values()].filter((r) => !present.has(pr(r)));
+}
+
+/** Prints the logged rows log.md has lost, for the retro PR to put back. */
+function pendingLogRows() {
+  const backup = existsSync(LOG_BACKUP) ? readFileSync(LOG_BACKUP, 'utf8') : '';
+  const missing = missingLogRows(readFileSync(join(SKILL_DIR, 'log.md'), 'utf8'), backup);
+  console.log(missing.length ? missing.join('\n') : 'log.md has every logged row');
+  return missing.length ? EXIT.failed : EXIT.ok;
 }
 
 const COMMANDS = {
@@ -1869,7 +1995,10 @@ const COMMANDS = {
   gates: [gates, '<pr> --tier=N [--macos] [--timing] [--repeat=<id>] [--no-issue] [--fixes-main]: mechanical gates'],
   merge: [merge, '<pr> --tier=N [gate flags]: gates, merge on that head, clean up'],
   leftovers: [leftovers, '[--clean]: gate 8; --clean drops PID files of dead processes'],
-  log: [log, '<pr> tier= review= tester= rounds= model= tokens= note=: append to log.md'],
+  log: [
+    log,
+    '<pr> tier= review= tester= rounds= model= tokens= note=: append to log.md (and a backup in ~/.cache/ship); --pending: backup rows log.md lacks',
+  ],
 };
 
 /**
