@@ -14,6 +14,11 @@ import { test } from 'node:test';
 
 import {
   appendSnapshotEntries,
+  briefProblems,
+  formatIssue,
+  isAgentCommand,
+  isSessionFileName,
+  unfilledPlaceholders,
   socketAccepts,
   callTimeout,
   closedIssues,
@@ -875,4 +880,43 @@ test('socketAccepts is true for a listening socket, false for a stale or missing
   writeFileSync(join(dir, 'stale.sock'), '');
   assert.equal(await socketAccepts(join(dir, 'stale.sock')), false);
   assert.equal(await socketAccepts(join(dir, 'missing.sock')), false);
+});
+
+test('formatIssue quotes title, body and comments between markers; an empty body says so', () => {
+  const text = formatIssue({
+    number: 7,
+    title: 'Click on <dialog> is silent',
+    body: 'Steps <here>',
+    comments: [{ author: { login: 'szymdzum' }, createdAt: '2026-10-16T10:00:00Z', body: 'Decision: A' }],
+  });
+  assert.match(text, /^<!-- issue -->\n## Issue #7: Click on <dialog> is silent\n\nSteps <here>/);
+  assert.match(text, /### Comment by szymdzum \(2026-10-16\)\n\nDecision: A\n<!-- \/issue -->$/);
+  assert.match(formatIssue({ number: 8, title: 't', body: '' }), /\(no description\)/);
+});
+
+test('unfilledPlaceholders ignores the quoted issue and literal placeholders', () => {
+  const text = `Fix <BASE> and <url>\n${formatIssue({ number: 1, title: '<dialog>', body: '<KEY> <x y>' })}\n<scope>`;
+  assert.deepEqual(unfilledPlaceholders(text), ['<BASE>', '<scope>']);
+});
+
+test('briefProblems refuses an empty brief and one with open placeholders', () => {
+  assert.match(briefProblems('')[0], /empty or too short/);
+  const filled = 'x'.repeat(300);
+  assert.deepEqual(briefProblems(filled), []);
+  assert.match(briefProblems(`${filled} <RED>`)[0], /placeholders still open: <RED>/);
+});
+
+test('isSessionFileName knows session files, rotated logs and atomic-write temp files', () => {
+  for (const name of ['daemon.sock', 'daemon.log.1', 'last-session.json', 'query-cache.json', 'session.json.123.tmp'])
+    assert.equal(isSessionFileName(name), true, name);
+  for (const name of ['report.har', 'chrome-profile', 'daemon', 'my-session.json'])
+    assert.equal(isSessionFileName(name), false, name);
+});
+
+test('isAgentCommand spots a daemon run from an agent worktree, not the main checkout', () => {
+  const parent = '/Users/me/Developer';
+  assert.equal(isAgentCommand(`node ${parent}/bdg-774/dist/daemon.js`, parent), true);
+  assert.equal(isAgentCommand(`node ${parent}/bdg-verify/dist/daemon.js`, parent), true);
+  assert.equal(isAgentCommand(`node ${parent}/browser-debugger-cli/dist/daemon.js`, parent), false);
+  assert.equal(isAgentCommand('node /opt/homebrew/lib/node_modules/browser-debugger-cli/dist/daemon.js', parent), false);
 });
