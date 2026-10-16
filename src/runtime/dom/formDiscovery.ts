@@ -212,11 +212,20 @@ export const FORM_DISCOVERY_SCRIPT = `
     return cleaned || text.trim();
   }
 
+  // Labels that name the element by for (the ones the browser associates; a
+  // custom control without a labels list falls back to the first label[for])
+  function forLabelsOf(element) {
+    if (element.labels) return Array.from(element.labels).filter(l => !l.contains(element));
+    const first = element.id &&
+      element.getRootNode().querySelector('label[for="' + CSS.escape(element.id) + '"]');
+    return first ? [first] : [];
+  }
+
   // The element labelling a field, in the field's own tree (document or
   // shadow root): label[for], aria-labelledby, wrapping label
   function labelElement(element) {
     const root = element.getRootNode();
-    const labelFor = element.id ? root.querySelector('label[for="' + CSS.escape(element.id) + '"]') : null;
+    const labelFor = forLabelsOf(element)[0];
     const labelledBy = element.getAttribute('aria-labelledby');
     return labelFor || (labelledBy && root.getElementById(labelledBy)) || element.closest('label');
   }
@@ -254,25 +263,27 @@ export const FORM_DISCOVERY_SCRIPT = `
       .replace(/^./, s => s.toUpperCase());
   }
 
-  function extractLabel(element) {
+  // Text of the elements aria-labelledby names, as the accessible name joins
+  // them; a referenced field contributes its value, masked when it is a secret
+  function labelledByText(element) {
+    const ariaLabelledBy = element.getAttribute('aria-labelledby');
+    if (!ariaLabelledBy) return '';
     const root = element.getRootNode();
-    if (element.id) {
-      const labelFor = root.querySelector('label[for="' + CSS.escape(element.id) + '"]');
-      if (labelFor) return cleanLabelText(labelFor.textContent);
-    }
+    return ariaLabelledBy.split(/\\s+/).filter(Boolean)
+      .map(id => root.getElementById(id))
+      .filter(Boolean)
+      .map(labelEl => !isNativeInput(labelEl) ? labelEl.textContent
+        : isSecret(labelEl) ? '${MASKED_VALUE}' : labelEl.value || '')
+      .join(' ');
+  }
+
+  function extractLabel(element) {
+    const forLabels = forLabelsOf(element);
+    if (forLabels.length) return cleanLabelText(forLabels.map(l => l.textContent).join(' '));
     const ariaLabel = element.getAttribute('aria-label');
     if (ariaLabel) return cleanLabelText(ariaLabel);
-    const ariaLabelledBy = element.getAttribute('aria-labelledby');
-    if (ariaLabelledBy) {
-      // Every referenced element, as the accessible name joins them; a
-      // referenced field contributes its value, masked when it is a secret
-      const texts = ariaLabelledBy.split(/\\s+/).filter(Boolean)
-        .map(id => root.getElementById(id))
-        .filter(Boolean)
-        .map(labelEl => !isNativeInput(labelEl) ? labelEl.textContent
-          : isSecret(labelEl) ? '${MASKED_VALUE}' : labelEl.value || '');
-      if (texts.length) return cleanLabelText(texts.join(' '));
-    }
+    const labelledBy = labelledByText(element);
+    if (labelledBy.trim()) return cleanLabelText(labelledBy);
     const wrappingLabel = element.closest('label');
     if (wrappingLabel) {
       const clone = wrappingLabel.cloneNode(true);
@@ -294,8 +305,11 @@ export const FORM_DISCOVERY_SCRIPT = `
   }
 
   function extractButtonLabel(element) {
+    const labelledBy = labelledByText(element).trim();
+    if (labelledBy) return labelledBy;
     const ariaLabel = element.getAttribute('aria-label');
     if (ariaLabel) return ariaLabel.trim();
+    if (element.type === 'image' && element.alt) return element.alt.trim();
     if (element.value && element.type !== 'submit') return element.value;
     const text = element.textContent.trim();
     if (text) return text;
@@ -584,6 +598,7 @@ export const FORM_DISCOVERY_SCRIPT = `
     'input[type="submit"], ' +
     'input[type="button"], ' +
     'input[type="reset"], ' +
+    'input[type="image"], ' +
     '[role="button"]'
   );
   const ownerForm = (el) => composedClosest(el, 'form');
@@ -634,7 +649,7 @@ export const FORM_DISCOVERY_SCRIPT = `
       if (!isShown(el)) continue;
       nodes[idx] = el;
       const type = el.type?.toLowerCase() || 'button';
-      const btnType = type === 'submit' ? 'submit' : type === 'reset' ? 'reset' : 'button';
+      const btnType = type === 'submit' || type === 'image' ? 'submit' : type === 'reset' ? 'reset' : 'button';
       const explicitSubmit = btnType === 'submit' &&
         (el.tagName === 'INPUT' || (el.getAttribute('type') || '').toLowerCase() === 'submit');
       const formDefault = btnType === 'submit' && !explicitSubmit && Boolean(el.form);
