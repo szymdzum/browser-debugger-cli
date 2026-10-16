@@ -757,6 +757,34 @@ export function usageHelpSuggestion(path: string): string {
 }
 
 /**
+ * Suggestion for a command given more words than it takes where the last
+ * argument is free text (an unquoted selector, pattern or value): the same
+ * command with the surplus words joined into that argument, then the help.
+ *
+ * @param path - Command path, e.g. "bdg dom a11y query"
+ * @param args - Arguments as typed
+ * @param taken - Number of arguments the command takes
+ * @returns e.g. `Did you mean: bdg dom a11y query "role=button name=Pay"?` and a help line
+ */
+export function quotedArgumentsSuggestion(path: string, args: string[], taken: number): string {
+  const words = [...args.slice(0, taken - 1), args.slice(taken - 1).join(' ')];
+  const written = words.map(shellWord).join(' ');
+  return `Did you mean: ${path} ${written}?\n${usageHelpSuggestion(path)}`;
+}
+
+/**
+ * Suggestion for a script given as several words: the shell removed the
+ * quotes and spacing inside it, so the script cannot be rebuilt from them.
+ *
+ * @param path - Command path, e.g. "bdg dom eval"
+ * @param words - Number of words the shell passed
+ * @returns Instruction to quote the whole script, then the help pointer
+ */
+export function quoteScriptSuggestion(path: string, words: number): string {
+  return `Quote the whole script as one argument: ${path} '<script>' (the shell split it into ${words} words and removed any quotes inside it)\n${usageHelpSuggestion(path)}`;
+}
+
+/**
  * A command group was run without one of its subcommands.
  *
  * @param group - Group name, e.g. "page"

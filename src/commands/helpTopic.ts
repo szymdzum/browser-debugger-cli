@@ -9,6 +9,8 @@ import { CommandError } from '@/errors/index.js';
 import {
   didYouMeanSuggestion,
   missingSubcommandMessage,
+  quotedArgumentsSuggestion,
+  quoteScriptSuggestion,
   unknownCommandError,
   unknownHelpTopicError,
   usageHelpSuggestion,
@@ -125,6 +127,44 @@ function typedOption(flag: string, argv: string[]): string {
   );
 }
 
+/** Arguments that are free text: the surplus words of an unquoted one were meant as part of it */
+const FREE_TEXT_ARGUMENTS = new Set(['pattern', 'script', 'value', 'text', 'search']);
+
+/** A word that is a selector or an index of its own, not a part of a compound selector */
+const OWN_SELECTOR = /^(?:[#.[]|\d+$)/;
+
+/**
+ * Whether the surplus words are one argument split by the shell: free text,
+ * or the compound selector of `dom query` (`div p`) when no surplus word is a
+ * selector or index of its own (`dom query "#a" "#b"`). Other commands take
+ * one selector or index, so joining could name another element.
+ *
+ * @param command - Command the error came from
+ * @param name - Name of its last argument
+ * @returns Whether to suggest the join
+ */
+function isSplitArgument(command: Command, name: string): boolean {
+  if (FREE_TEXT_ARGUMENTS.has(name)) return true;
+  const surplus = command.args.slice(command.registeredArguments.length);
+  return commandPath(command) === 'bdg dom query' && !surplus.some((w) => OWN_SELECTOR.test(w));
+}
+
+/**
+ * The suggestion for a command given more words than it takes, when the last
+ * argument was probably typed without quotes.
+ *
+ * @param command - Command the error came from
+ * @returns The quoted command and the help pointer, or undefined for other arguments
+ */
+function excessArgumentsSuggestion(command: Command): string | undefined {
+  const taken = command.registeredArguments;
+  const last = taken.at(-1);
+  if (!last || last.variadic || !isSplitArgument(command, last.name())) return undefined;
+  if (last.name() === 'script')
+    return quoteScriptSuggestion(commandPath(command), command.args.length);
+  return quotedArgumentsSuggestion(commandPath(command), command.args, taken.length);
+}
+
 /**
  * Message and suggestion for a Commander usage error: a did-you-mean for an
  * unknown option or command, otherwise a pointer to the command's `--help`.
@@ -150,6 +190,9 @@ export function usageErrorDetails(
   if (error.code === 'commander.help' || (bareGroup && flag && JSON_FLAGS.includes(flag))) {
     const names = command.commands.map((sub) => sub.name());
     return { message: missingSubcommandMessage(command.name(), names), suggestion: help };
+  }
+  if (error.code === 'commander.excessArguments') {
+    return { message, suggestion: excessArgumentsSuggestion(command) ?? help };
   }
   if (!flag) return { message, suggestion: suggestion ?? help };
   const typed = typedOption(flag, argv);

@@ -163,9 +163,9 @@ export function formatA11yNodeWithContext(data: A11yNodeWithContext): string {
     props.push(['Required', 'yes']);
   }
 
-  props.push(['Node ID', node.nodeId]);
-  if (node.backendDOMNodeId && String(node.backendDOMNodeId) !== node.nodeId) {
-    props.push(['DOM Node ID', String(node.backendDOMNodeId)]);
+  props.push(['A11y node ID', node.nodeId]);
+  if (node.backendDOMNodeId) {
+    props.push(['Backend ID', String(node.backendDOMNodeId)]);
   }
 
   fmt.keyValueList(props, 16);

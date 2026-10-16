@@ -29,6 +29,13 @@ export const DOM_READ_BEHAVIORS: BehaviorTable = {
     default: 'Returns first matching element only',
     whenEnabled: 'Returns all matching elements (only works with --raw)',
   },
+  'get:--node-id': {
+    default: 'Reads the element by selector or index',
+    whenEnabled:
+      'Reads the element with this backend node id and prints its raw HTML (implies --raw)',
+    automaticBehavior:
+      'The id is nodeId in --json of dom query/get and backendDOMNodeId in --json of dom a11y describe/query (not the string nodeId of a11y output); it is the backendNodeId of CDP (DOM.resolveNode)',
+  },
   'get:--index': {
     default: 'Returns the first matching element (body without a selector)',
     whenEnabled:

@@ -35,6 +35,7 @@ import {
   EVAL_SCOPE_HELP,
   SELECTOR_OR_INDEX_ARGUMENT,
   QUERY_CLASS_HELP,
+  NODE_ID_HELP,
   SELECTOR_SCOPE_HELP,
 } from '@/commands/shared/commonOptions.js';
 import type {
@@ -77,7 +78,7 @@ export function registerDomCommands(program: Command): void {
       integerOption(0)
     )
     .option('-j, --json', 'Output as JSON')
-    .addHelpText('after', SELECTOR_SCOPE_HELP)
+    .addHelpText('after', `${NODE_ID_HELP}\n${SELECTOR_SCOPE_HELP}`)
     .addHelpText('after', QUERY_CLASS_HELP)
     .action(async (selector: string, options: DomQueryCommandOptions) => {
       await handleDomQuery(selector, options);
@@ -139,7 +140,7 @@ export function registerDomCommands(program: Command): void {
     .addOption(new Option('--nth <n>', 'Alias of --index').argParser(integerOption(0)).hideHelp())
     .option(
       '--node-id <id>',
-      'Get the element with this node id (from dom query/get --raw or a11y describe; implies --raw)',
+      'Get the element with this backend node id (nodeId in --json of dom query/get, backendDOMNodeId in --json of dom a11y describe/query; implies --raw)',
       integerOption(1)
     )
     .option('-j, --json', 'Output as JSON')

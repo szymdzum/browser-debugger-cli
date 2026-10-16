@@ -63,6 +63,13 @@ const SELECTOR_SCOPE = 'searches open shadow roots and same-origin iframes';
 /** Help of a `<selectorOrIndex>` argument */
 export const SELECTOR_OR_INDEX_ARGUMENT = `CSS selector (${SELECTOR_SCOPE}) or numeric index into the last dom query, dom form or dom a11y query list (0-based)`;
 
+/** Help text after `dom query`'s options: what the node id in --json is */
+export const NODE_ID_HELP = `
+nodeId in --json is the backend node id: pass it to CDP as backendNodeId
+(bdg cdp DOM.resolveNode --params '{"backendNodeId":N}') or to dom get --node-id.
+In dom a11y output nodeId is the accessibility node id (a string) and
+backendDOMNodeId is the DOM one.`;
+
 /** Help text after `dom query`'s options: what selectors search and what they cannot */
 export const SELECTOR_SCOPE_HELP = `
 Selectors search the page, open shadow roots and same-origin iframes (nested ones
