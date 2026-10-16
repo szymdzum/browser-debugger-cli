@@ -6,7 +6,8 @@
  * submit button (`#pictured`), a form whose two fields share an id and so
  * have one `<label for>` target (`#dupes`), and a form whose button is named
  * by `aria-labelledby` (`#named`). `/polish-net` POSTs a multipart body with
- * a file part to `/polish-upload` and fetches two missing pages, so the
+ * a file part to `/polish-upload`, POSTs a 1.2 MB body to `/polish-big` and
+ * fetches two missing pages, so the
  * console holds two 404 errors that differ only by URL; its title becomes
  * `done` when all three requests finished.
  */
@@ -38,6 +39,7 @@ Promise.all([
   fetch('/polish-upload', { method: 'POST', body: upload }),
   fetch('/missing-page'),
   fetch('/spa-missing'),
+  fetch('/polish-big', { method: 'POST', body: 'x'.repeat(1200000) }),
 ]).then(() => { document.title = 'done'; });
 </script>`;
 

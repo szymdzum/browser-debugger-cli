@@ -301,7 +301,9 @@ export function formatDomScreenshot(data: ScreenshotResult): string {
   let output = `Screenshot saved to ${data.path}`;
 
   if (data.fullPageSkipped && !data.scrolledTo) {
-    output += ` (viewport only - page too tall; ${FULL_PAGE_SKIPPED_HINT})`;
+    output += data.resized
+      ? ' (viewport only - page too tall)'
+      : ` (viewport only - page too tall; ${FULL_PAGE_SKIPPED_HINT})`;
   }
 
   if (data.element?.captured) {

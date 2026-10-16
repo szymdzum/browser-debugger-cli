@@ -339,4 +339,17 @@ void describe('formatDomScreenshot full page fallback', () => {
     assert.match(output, /viewport only - page too tall/);
     assert.match(output, /--no-resize/);
   });
+
+  void it('names --no-resize once when the image was scaled too', () => {
+    const output = formatDomScreenshot({
+      path: './page.png',
+      fullPageSkipped: { reason: 'page_too_tall', originalHeight: 9000, aspectRatio: 5.1 },
+      resized: true,
+      originalWidth: 980,
+      originalHeight: 2120,
+      width: 725,
+      height: 1568,
+    } as ScreenshotResult);
+    assert.equal(output.match(/--no-resize/g)?.length, 1, output);
+  });
 });

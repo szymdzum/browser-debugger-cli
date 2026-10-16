@@ -116,6 +116,18 @@ void describe('Low-priority polish', () => {
     assert.match(data.item.requestBodyNotCaptured ?? '', /file|multipart/i);
   });
 
+  void it('details network says a body over 1 MB was not captured (#646)', async () => {
+    const list = await bdgData<{ requests: Array<{ requestId: string; url: string }> }>([
+      'network',
+      'list',
+      '--last',
+      '0',
+    ]);
+    const id = list.requests.find((r) => r.url.endsWith('/polish-big'))?.requestId ?? '';
+    assert.ok(id, JSON.stringify(list.requests));
+    assert.match(await bdg(['details', 'network', id]), /\(not captured: .*over 1 MB/);
+  });
+
   void it('peek console lines name the URL of each 404 (#567)', async () => {
     const output = await bdg(['peek', '--console']);
     assert.match(output, /missing-page/);
@@ -149,7 +161,7 @@ void describe('Low-priority polish', () => {
     const dupes = formWith(data, 'first');
     const [first, second] = dupes.fields;
     assert.match(first?.label ?? '', /Name/);
-    assert.doesNotMatch(second?.label ?? '', /Name/);
+    assert.equal(second?.label, 'Phone');
     assert.deepEqual(
       formWith(data, 'q').buttons.map((b) => b.label),
       ['Hover me']

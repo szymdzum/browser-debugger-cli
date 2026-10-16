@@ -92,9 +92,31 @@ function peekSection(options: PeekCommandOptions): PeekSection | undefined {
 }
 
 /**
- * The preview with its page URLs as shown: the target, the requests and the
- * tab switch note, without user info and with their tokens masked unless
- * `--include-sensitive`.
+ * A console message with the URLs of its stack frames as shown (credentials masked
+ * unless `--include-sensitive`).
+ *
+ * @param message - Console message
+ * @param includeSensitive - Whether `--include-sensitive` was given
+ * @returns The message to show
+ */
+function withDisplayedStack<T extends { stackTrace?: Array<{ url: string }> }>(
+  message: T,
+  includeSensitive: boolean
+): T {
+  if (!message.stackTrace) return message;
+  return {
+    ...message,
+    stackTrace: message.stackTrace.map((frame) => ({
+      ...frame,
+      url: displayUrl(frame.url, includeSensitive),
+    })),
+  };
+}
+
+/**
+ * The preview with its page URLs as shown: the target, the requests, the
+ * console stack frames and the tab switch note, without user info and with
+ * their tokens masked unless `--include-sensitive`.
  *
  * @param output - Preview output from the daemon
  * @param includeSensitive - Whether `--include-sensitive` was given
@@ -108,6 +130,11 @@ function shownPreview(output: BdgOutput, includeSensitive: boolean): BdgOutput {
     data: {
       ...output.data,
       ...(output.data.network && { network: displayUrls(output.data.network, includeSensitive) }),
+      ...(output.data.console && {
+        console: output.data.console.map((message) =>
+          withDisplayedStack(message, includeSensitive)
+        ),
+      }),
     },
     ...(tabSwitch && { tabSwitch }),
   };

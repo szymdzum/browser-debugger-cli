@@ -35,12 +35,13 @@ export function bodyEvictedReason(budgetBytes: number): string {
 /**
  * Why a request body is missing although the request had one: Chrome leaves
  * it out of `Network.requestWillBeSent` when it holds a file or blob part
+ * or exceeds the 1 MB `maxPostDataSize` bdg sets
  * (shown by `bdg details network <id>` as `requestBodyNotCaptured`).
  *
  * @returns Reason text
  */
 export function requestBodyOmittedReason(): string {
-  return 'Chrome did not include it in the request event (a multipart body with a file part); bdg does not fetch it';
+  return 'Chrome did not include it in the request event (a body with a file or blob part, or over 1 MB); bdg does not fetch it';
 }
 
 /**
