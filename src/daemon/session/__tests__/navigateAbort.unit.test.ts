@@ -62,6 +62,10 @@ void describe('navigateToTarget stop', () => {
       const pending = (cdp as unknown as { pendingMessages: Map<number, unknown> }).pendingMessages;
       const navigateId = sentIdOf(socket, 'Page.navigate');
       assert.equal(pending.has(navigateId), false, 'Page.navigate must not stay pending');
+      assert.ok(
+        sentIdOf(socket, 'Page.stopLoading') > navigateId,
+        'the navigation is cancelled, or Chrome would hold the teardown commands'
+      );
     } finally {
       cdp.close();
     }
