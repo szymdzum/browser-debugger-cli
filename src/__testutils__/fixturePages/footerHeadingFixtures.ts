@@ -7,7 +7,7 @@
  *   `h2#feedback` ("Help improve the docs"), a `div.invalid-feedback` ("Tell
  *   us what you think") and a `section` labelled by `h3#related-title`
  *   ("Related pages").
- * - `/footer-cookie`: a cookie banner `div.notice` fixed to the bottom of the
+ * - `/footer-cookie`: an `h2#feedback` in view and a cookie banner `div.notice` fixed to the bottom of the
  *   first viewport.
  * - `/footer-field`: `#check` shows `div.invalid-feedback` ("Name is
  *   required") beside the `#name` field on the same page.
@@ -29,7 +29,7 @@ const FOOTER_B_HTML = `<!doctype html><title>footer b</title>
 
 /** Page with a cookie banner fixed to the bottom of the viewport */
 const FOOTER_COOKIE_HTML = `<!doctype html><title>footer cookie</title>
-<main><h1>Cookies</h1><p>Page text</p></main>
+<main><h1>Cookies</h1><h2 id="feedback">Feedback</h2><p>Page text</p></main>
 <div class="notice" style="position:fixed;bottom:0;left:0;right:0;background:#eee">We use cookies</div>`;
 
 /** Same-page validation message shown by a click */
