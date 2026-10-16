@@ -166,24 +166,48 @@ void describe('URLs without credentials stay as they are (#757 review)', () => {
   }
 });
 
-/** Inputs that make a backtracking pattern quadratic */
-const ADVERSARIAL = [
-  ':'.repeat(100_000),
-  `http://x/${':'.repeat(100_000)}`,
-  `x${'a:'.repeat(50_000)}`,
-  '%3A'.repeat(35_000),
-  `http://${'a:/'.repeat(35_000)}`,
-  `http://x/?${'a=b:c&'.repeat(17_000)}`,
+/** Inputs that make a backtracking pattern quadratic, built from a repeat count */
+const ADVERSARIAL: ReadonlyArray<(n: number) => string> = [
+  (n) => ':'.repeat(n * 4),
+  (n) => `http://x/${':'.repeat(n * 4)}`,
+  (n) => `x${'a:'.repeat(n * 2)}`,
+  (n) => '%3A'.repeat(n * 1.4),
+  (n) => `http://${'a:/'.repeat(n * 1.4)}`,
+  (n) => `http://x/?${'a=b:c&'.repeat(n * 0.68)}`,
 ];
 
+/** Repeat count of the shorter input; the longer one has four times as many */
+const BASE_REPEAT = 25_000;
+
+/** A quadratic pattern grows 16x for a 4x longer input, a linear one about 4x */
+const MAX_GROWTH = 8;
+
+/**
+ * Fastest of five runs of a display function.
+ *
+ * @param show - Display function
+ * @param input - URL text
+ * @returns Duration in milliseconds
+ */
+function fastestOfFive(show: (url: string) => string, input: string): number {
+  let best = Infinity;
+  for (let run = 0; run < 5; run++) {
+    const started = performance.now();
+    show(input);
+    best = Math.min(best, performance.now() - started);
+  }
+  return best;
+}
+
 void describe('URL display is linear (#757 review)', () => {
-  for (const input of ADVERSARIAL) {
-    void it(`shows ${input.slice(0, 12)}… (${input.length} chars) within 50 ms`, () => {
+  for (const build of ADVERSARIAL) {
+    const short = build(BASE_REPEAT);
+    const long = build(BASE_REPEAT * 4);
+    void it(`shows ${short.slice(0, 12)}… (${short.length} to ${long.length} chars) in linear time`, () => {
       for (const show of [displayUrl, displayTypedUrl, displayRejectedUrl]) {
-        const started = performance.now();
-        show(input);
-        const took = performance.now() - started;
-        assert.ok(took < 50, `${show.name} took ${took.toFixed(0)} ms`);
+        show(short);
+        const growth = fastestOfFive(show, long) / Math.max(fastestOfFive(show, short), 2);
+        assert.ok(growth < MAX_GROWTH, `${show.name} grew ${growth.toFixed(1)}x for 4x the input`);
       }
     });
   }
