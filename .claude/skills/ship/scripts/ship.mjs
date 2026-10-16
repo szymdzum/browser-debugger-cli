@@ -7,10 +7,12 @@
  * Run `node .claude/skills/ship/scripts/ship.mjs help` for the commands.
  */
 
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import {
   existsSync,
+  closeSync,
   lstatSync,
+  openSync,
   readFileSync,
   readdirSync,
   rmSync,
@@ -1161,6 +1163,7 @@ async function acceptLiveSession(dir) {
     return usage(`snapshot --accept-live: no live session in ${dir} (daemon.sock does not accept a connection)`);
   const names = listDir(dir);
   appendSnapshotEntries(SNAPSHOT.bdg, names);
+  writeFileSync(LIVE_MARKER, `${dir}\n`);
   console.log(`accepted the live session in ~/.bdg: ${names.join(', ')}`);
   return EXIT.ok;
 }
@@ -1190,6 +1193,7 @@ async function snapshot(argv = []) {
     console.log(`accepted: ${parsed.accept.map(({ key, name }) => `${name} (~/${key === 'bdg' ? '.bdg' : 'Downloads'})`).join(', ')}`);
     return EXIT.ok;
   }
+  rmSync(LIVE_MARKER, { force: true });
   writeFileSync(SNAPSHOT.bdg, snapshotLines(listEntries(dirs.bdg)).join('\n'));
   writeFileSync(SNAPSHOT.downloads, snapshotLines(listEntries(dirs.downloads)).join('\n'));
   console.log(`snapshot of ~/.bdg and ~/Downloads in ${SNAPSHOT.bdg}, ${SNAPSHOT.downloads}`);
@@ -1334,13 +1338,19 @@ function leftoverLines(scope) {
       continue;
     }
     const before = parseSnapshot(readFileSync(SNAPSHOT[key], 'utf8'));
-    const { added, changed } = snapshotChanges(before, listEntries(join(homedir(), dir)));
+    const liveAccepted = key === 'bdg' && existsSync(LIVE_MARKER);
+    const entries = listEntries(join(homedir(), dir)).filter(
+      (e) => !liveAccepted || !isSessionFileName(e.name)
+    );
+    const { added, changed } = snapshotChanges(before, entries);
     if (added.length) lines.push(`new in ~/${dir}: ${added.join(', ')}`);
     if (changed.length)
       lines.push(
         `written to in ~/${dir} since the snapshot: ${changed.join(', ')} (a user's own file: ship snapshot --accept <name>; their live session: --accept-live)`
       );
   }
+  const agentDaemon = agentDaemonInBdgHome();
+  if (agentDaemon) lines.push(`an agent's bdg session is live in ~/.bdg: ${agentDaemon}`);
   for (const file of readdirSync('/tmp').filter((f) => /^bdg-.*\.pid$/.test(f))) {
     if (scope && !inScope(file, scope)) continue;
     const pid = Number(readFileSync(join('/tmp', file), 'utf8').trim());
@@ -1351,6 +1361,169 @@ function leftoverLines(scope) {
   );
   if (temp.length) lines.push(`temporary worktrees: ${temp.join(', ')}`);
   return lines;
+}
+
+/** PID file of the fixture server the orchestrator starts for PR or issue N */
+function fixturesPidFile(n) {
+  return `/tmp/bdg-fixtures-${n}.pid`;
+}
+
+/**
+ * True when a command line is the fixture server `ship fixtures` starts.
+ *
+ * @param {string} command
+ */
+export function isFixturesCommand(command) {
+  return command.includes('serveFixtures');
+}
+
+/**
+ * The PID in N's fixtures PID file when that process is alive and is the
+ * fixture server (its command line says so: a PID reused after a crash or
+ * reboot is never signalled), else null.
+ *
+ * @param {string} n
+ */
+function runningFixturesPid(n) {
+  const file = fixturesPidFile(n);
+  if (!existsSync(file)) return null;
+  const pid = Number(readFileSync(file, 'utf8').trim());
+  if (!pid || !alive(pid)) return null;
+  const command = spawnSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8' }).stdout;
+  return isFixturesCommand(command ?? '') ? pid : null;
+}
+
+/**
+ * Stops the orchestrator's fixture server for N (its whole process group:
+ * tsx runs the server in a child) and removes its PID file; a stale file
+ * is only removed.
+ *
+ * @param {string} n
+ * @returns {'stopped' | 'stale' | null} null when there was no PID file
+ */
+function stopFixtures(n) {
+  const file = fixturesPidFile(n);
+  if (!existsSync(file)) return null;
+  const pid = runningFixturesPid(n);
+  if (pid) {
+    try {
+      process.kill(-pid, 'SIGTERM');
+    } catch {
+      process.kill(pid, 'SIGTERM');
+    }
+  }
+  rmSync(file);
+  return pid ? 'stopped' : 'stale';
+}
+
+/**
+ * Starts the fixture servers from a worktree for the tester, with a PID file
+ * `ship merge` knows: it stops them instead of failing gate 8 (S14: two
+ * merges blocked by the orchestrator's own fixtures). Prints the URLs.
+ *
+ * @param {string[]} argv `<N> [dir=<worktree>]` or `<N> --stop`
+ */
+async function fixtures(argv) {
+  const { positional, keys, flags } = parseArgs(argv);
+  const n = positional[0];
+  if (!n || !/^\d+$/.test(n)) return usage('fixtures <N> [dir=<worktree>] | fixtures <N> --stop');
+  if (flags.has('stop')) {
+    const result = stopFixtures(n);
+    console.log(
+      result === 'stopped'
+        ? `stopped the fixtures of #${n}`
+        : result === 'stale'
+          ? `removed a stale PID file of #${n} (no fixture server behind it)`
+          : `no fixtures of #${n} running`
+    );
+    return EXIT.ok;
+  }
+  const logFile = `/tmp/bdg-fixtures-${n}.log`;
+  const pidFile = fixturesPidFile(n);
+  if (runningFixturesPid(n) && existsSync(logFile)) {
+    console.log(readFileSync(logFile, 'utf8').trim());
+    return EXIT.ok;
+  }
+  rmSync(pidFile, { force: true });
+  const dir = keys.dir ?? resolve(mainCheckout(), '..', `bdg-${n}`);
+  const tsx = join(dir, 'node_modules', '.bin', 'tsx');
+  if (!existsSync(tsx)) return usage(`fixtures ${n}: no ${tsx} (is ${dir} a worktree with node_modules linked?)`);
+  const out = openSync(logFile, 'w');
+  const child = spawn(tsx, ['src/__testutils__/serveFixtures.ts'], {
+    cwd: dir,
+    detached: true,
+    stdio: ['ignore', out, out],
+    env: pinnedEnv(),
+  });
+  closeSync(out);
+  child.on('error', (error) => console.log(`FAIL the fixtures of #${n} did not start: ${error.message}`));
+  if (!child.pid) return EXIT.failed;
+  writeFileSync(pidFile, `${child.pid}\n`);
+  child.unref();
+  for (let i = 0; i < 60; i++) {
+    await sleep(500);
+    const text = readFileSync(logFile, 'utf8');
+    if (text.includes('fixtures:')) {
+      console.log(`${text.trim()}\nstop: ship fixtures ${n} --stop (ship merge does it for the PR's numbers)`);
+      return EXIT.ok;
+    }
+    if (!alive(child.pid)) break;
+  }
+  console.log(`FAIL the fixtures of #${n} did not start:\n${readFileSync(logFile, 'utf8').split('\n').slice(-8).join('\n')}`);
+  stopFixtures(n);
+  return EXIT.failed;
+}
+
+/** Marker of an accepted live user session: its known files stay accepted */
+const LIVE_MARKER = '/tmp/ship-accepted-live-session';
+
+/** Files a bdg session writes in its session directory (`src/session/paths.ts` and friends) */
+const SESSION_FILE_NAMES = [
+  'daemon.sock',
+  'daemon.pid',
+  'daemon.log',
+  'session.json',
+  'session.meta.json',
+  'chrome.pid',
+  'port.txt',
+  'port.lock',
+  'last-session.json',
+  'query-cache.json',
+];
+
+/**
+ * True for a file a bdg session writes, including rotated logs and the
+ * `.tmp` files of atomic writes (`daemon.log.1`, `session.json.123.tmp`).
+ *
+ * @param {string} name
+ */
+export function isSessionFileName(name) {
+  return SESSION_FILE_NAMES.some((known) => name === known || name.startsWith(`${known}.`));
+}
+
+/**
+ * True when a daemon command line runs bdg from an agent worktree
+ * (`<parent>/bdg-<N>/…`, `<parent>/bdg-verify/…`), not the user's own bdg.
+ *
+ * @param {string} command
+ * @param {string} parent the directory holding the main checkout and the worktrees
+ */
+export function isAgentCommand(command, parent) {
+  return command.includes(`${parent}/bdg-`);
+}
+
+/**
+ * The command line of a live daemon in ~/.bdg started from an agent worktree,
+ * or null. That is an agent's session in the user's directory (S11), which
+ * gate 8 reports even when the user's live session is accepted.
+ */
+function agentDaemonInBdgHome() {
+  const file = join(homedir(), '.bdg', 'daemon.pid');
+  if (!existsSync(file)) return null;
+  const pid = Number(readFileSync(file, 'utf8').trim());
+  if (!pid || !alive(pid)) return null;
+  const command = spawnSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8' }).stdout.trim();
+  return isAgentCommand(command, dirname(mainCheckout())) ? command : null;
 }
 
 /**
@@ -1381,6 +1554,8 @@ async function merge(argv) {
   const prNumber = argv[0];
   if (!prNumber) return usage('merge <pr> --tier=1|2|3 [--macos] [--timing] [--repeat=<run id>] [--no-issue] [--fixes-main]');
   const pr = prInfo(prNumber);
+  for (const n of [String(pr.number), ...(prIssues(pr.number) ?? [])])
+    if (stopFixtures(n) === 'stopped') console.log(`stopped your fixtures of #${n} (ship fixtures)`);
   if ((await gates(argv)) !== EXIT.ok) {
     console.log('not merged: a gate failed');
     return EXIT.failed;
@@ -1513,31 +1688,116 @@ export function renderBrief(text, role, values) {
   const insert = (s) => s.replace(/\{\{([\w-]+)\}\}/g, (all, name) => blocks[name] ?? all);
   let brief = insert(insert(briefs[role]));
   for (const [key, value] of Object.entries(values)) brief = brief.split(`<${key}>`).join(value);
-  const unfilled = [...new Set(brief.match(/<[^<>\n]{2,80}>/g) ?? [])].filter(
-    (p) => !LITERAL_PLACEHOLDERS.has(p)
-  );
+  const unfilled = unfilledPlaceholders(brief).filter((p) => p !== '<ISSUE>');
   const unknown = [...new Set(brief.match(/\{\{[\w-]+\}\}/g) ?? [])];
   if (unknown.length) throw new Error(`unknown blocks: ${unknown.join(', ')}`);
   return { brief, unfilled };
 }
 
+/** Markers around the quoted issue, so its text is never read as a placeholder */
+const ISSUE_START = '<!-- issue -->';
+const ISSUE_END = '<!-- /issue -->';
+
 /**
- * Prints a rendered brief; the placeholders still to fill go to stderr.
+ * The issue as it goes into a brief: title, body and every comment, between
+ * markers. `gh issue view --comments` prints nothing for an issue without
+ * comments, so briefs quote it instead of asking the agent to fetch it.
  *
- * @param {string[]} argv `<role> KEY=value...`
+ * @param {{ number: number, title: string, body: string, comments?: { author?: { login: string }, createdAt?: string, body: string }[] }} issue
+ */
+export function formatIssue(issue) {
+  const comments = (issue.comments ?? []).map(
+    (c) => `### Comment by ${c.author?.login ?? 'unknown'} (${(c.createdAt ?? '').slice(0, 10)})\n\n${c.body.trim()}`
+  );
+  return [
+    ISSUE_START,
+    `## Issue #${issue.number}: ${issue.title}`,
+    '',
+    (issue.body ?? '').trim() || '(no description)',
+    ...comments.flatMap((c) => ['', c]),
+  ]
+    .join('\n')
+    .split(ISSUE_END)
+    .join('<!-- /issue (quoted) -->')
+    .concat(`\n${ISSUE_END}`);
+}
+
+/**
+ * Placeholders still open in a brief, ignoring literal ones and the quoted issue.
+ *
+ * @param {string} text
+ */
+export function unfilledPlaceholders(text) {
+  const outside = text.replace(new RegExp(`${ISSUE_START}[\\s\\S]*?${ISSUE_END}`, 'g'), '');
+  return [...new Set(outside.match(/<[^<>\n]{2,80}>/g) ?? [])].filter(
+    (p) => !LITERAL_PLACEHOLDERS.has(p) && !p.startsWith('<!--')
+  );
+}
+
+/**
+ * Checks a filled brief before it is sent: not empty, no placeholder left.
+ * An empty brief went out twice in S14 (a `$S brief > file` that zsh didn't split).
+ *
+ * @param {string} text
+ * @returns {string[]} problems, none when the brief can be sent
+ */
+export function briefProblems(text) {
+  if (text.trim().length < 200) return [`the brief is empty or too short (${text.trim().length} characters)`];
+  const open = unfilledPlaceholders(text);
+  return open.length ? [`placeholders still open: ${open.join(' ')}`] : [];
+}
+
+/**
+ * BASE, HEAD, RED and BRANCH of a PR, from its head fetched from GitHub
+ * (the branch need not exist locally). RED stays open when the PR has no
+ * commit past its base, so `brief --check` catches it.
+ *
+ * @param {string} prNumber
+ */
+function prBriefValues(prNumber) {
+  const pr = prInfo(prNumber);
+  run('git', ['fetch', '-q', 'origin', `pull/${pr.number}/head`, pr.baseRefName]);
+  const base = run('git', ['merge-base', `origin/${pr.baseRefName}`, pr.headRefOid]);
+  const red = run('git', ['rev-list', '--reverse', `${base}..${pr.headRefOid}`]).split('\n')[0] ?? '';
+  const values = { BASE: base, HEAD: pr.headRefOid, BRANCH: pr.headRefName };
+  return red ? { ...values, RED: red } : values;
+}
+
+/**
+ * Renders a brief. N=<issue> quotes the issue (title, body, comments);
+ * PR=<pr> fills BASE, HEAD, RED and BRANCH from the PR; explicit KEY=value
+ * wins. With --out=<file> it writes the file instead of printing it; the
+ * placeholders still to fill go to stderr. `brief --check=<file>` refuses an
+ * empty brief or one with open placeholders, before it is sent.
+ *
+ * @param {string[]} argv `<role> KEY=value...` [--out=<file>], or `--check=<file>`
  */
 function brief(argv) {
   const { positional, keys } = parseArgs(argv);
+  if (keys.check) {
+    const problems = existsSync(keys.check) ? briefProblems(readFileSync(keys.check, 'utf8')) : [`no file ${keys.check}`];
+    console.log(problems.length ? `FAIL ${keys.check}: ${problems.join('; ')}` : `ok   ${keys.check} is ready to send`);
+    return problems.length ? EXIT.failed : EXIT.ok;
+  }
   if (!positional[0])
-    return usage('brief <implementer|reviewer|tester|verifier> N=<n> MAIN=<path> ...');
-  const values = { MAIN: mainCheckout(), ROLE: ROLE_TAGS[positional[0]] ?? positional[0], ...keys };
-  const { brief: text, unfilled } = renderBrief(
-    readFileSync(join(SKILL_DIR, 'briefs.md'), 'utf8'),
-    positional[0],
-    values
-  );
-  console.log(text);
-  if (unfilled.length) console.error(`still to fill: ${unfilled.join(' ')}`);
+    return usage('brief <implementer|reviewer|tester|verifier> N=<n> [PR=<pr>] ... [--out=<file>] | brief --check=<file>');
+  const { out, ...given } = keys;
+  const values = {
+    MAIN: mainCheckout(),
+    ROLE: ROLE_TAGS[positional[0]] ?? positional[0],
+    ...(given.PR ? prBriefValues(given.PR) : {}),
+    ...given,
+  };
+  const { brief: rendered } = renderBrief(readFileSync(join(SKILL_DIR, 'briefs.md'), 'utf8'), positional[0], values);
+  const issue = rendered.includes('<ISSUE>') && /^\d+$/.test(values.N ?? '')
+    ? ghJson(['issue', 'view', values.N, '--json', 'number,title,body,comments'])
+    : null;
+  const text = rendered.split('<ISSUE>').join(issue ? formatIssue(issue) : '(no issue)');
+  if (out) writeFileSync(out, `${text}\n`);
+  else console.log(text);
+  const open = unfilledPlaceholders(text);
+  if (open.length) console.error(`still to fill: ${open.join(' ')}`);
+  if (out) console.error(`written to ${out}; after filling it in: ship brief --check=${out}`);
   return EXIT.ok;
 }
 
@@ -1588,10 +1848,17 @@ function log(argv) {
 const COMMANDS = {
   snapshot: [
     snapshot,
-    "session start: snapshot ~/.bdg and ~/Downloads (gate 8); --accept <name>… adds a user's own ~/Downloads or ~/.bdg file to the snapshot; --accept-live accepts all files of the user's live session in ~/.bdg",
+    "session start: snapshot ~/.bdg and ~/Downloads (gate 8); --accept <name>… adds a user's own ~/Downloads or ~/.bdg file to the snapshot; --accept-live accepts all files of the user's live session in ~/.bdg, and its session files written later",
+  ],
+  fixtures: [
+    fixtures,
+    '<N> [dir=<worktree>] | <N> --stop: the fixture servers for a tester, from ../bdg-<N>; ship merge stops them',
   ],
   worktree: [worktree, '<N> <branch>: agent worktree from origin/main, node_modules linked'],
-  brief: [brief, '<role> N=<n> KEY=value…: render a brief with the shared blocks'],
+  brief: [
+    brief,
+    '<role> N=<issue> [PR=<pr>] KEY=value… [--out=<file>]: render a brief (quotes the issue; PR fills BASE/HEAD/RED/BRANCH); --check=<file>: refuse an empty or unfilled brief',
+  ],
   'ci-wait': [ciWait, '<pr> | <sha> --push: wait for CI (+ Security); exit 3 when superseded'],
   repeat: [repeat, '<pr> <smoke files…> [--node=22|24|26]: dispatch the repeat=10 run on the PR head'],
   'run-wait': [
