@@ -2296,3 +2296,13 @@ export function cliLoadFailedError(file: string): ErrorWithSuggestion {
 export function capturedFramesMessage(count: number): string {
   return `Captured ${count} ${count === 1 ? 'frame' : 'frames'}`;
 }
+
+/**
+ * Hint on an empty `Performance.getMetrics` result: the domain reports no
+ * metrics until it is enabled.
+ */
+export const PERFORMANCE_METRICS_EMPTY_HINT =
+  'Metrics are empty until the Performance domain is enabled: run bdg cdp Performance.enable first, then Performance.getMetrics again';
+
+/** What to run to capture the full page of a page too tall for a full-page capture */
+export const FULL_PAGE_SKIPPED_HINT = '--no-resize captures the full page';
