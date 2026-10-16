@@ -737,7 +737,7 @@ function formatFillOutput(result: ActionOutput<FillResult>): string {
 /**
  * Format click command output for human-readable display.
  */
-function formatClickOutput(result: ActionOutput<ClickResult>): string {
+export function formatClickOutput(result: ActionOutput<ClickResult>): string {
   return formatActionOutput(
     `Element ${POINTER_ACTION_DONE[result.action ?? 'click']}`,
     [

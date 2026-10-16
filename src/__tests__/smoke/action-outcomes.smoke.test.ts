@@ -91,6 +91,30 @@ void describe('Action outcomes', () => {
     await fixture.close();
   });
 
+  void describe('tracker errors and index targets on /tracker-rows (#694)', () => {
+    before(() => open(`${fixture.url}tracker-rows`));
+
+    void it('says the page had no errors when only trackers logged', async () => {
+      const output = await bdg(['dom', 'click', '#trk']);
+      assert.match(
+        output,
+        /^Errors: {8}none from the page \(2 from filtered trackers hidden; bdg console --level error\)$/m
+      );
+    });
+
+    void it('keeps the tail after a page error', async () => {
+      const output = await bdg(['dom', 'click', '#mixed']);
+      assert.match(output, /^Errors: {8}app failed/m);
+      assert.match(output, /^ {15}\(\+1 from filtered trackers\)$/m);
+    });
+
+    void it('shows the unique selector for an a11y index', async () => {
+      await bdg(['dom', 'a11y', 'query', 'role=button']);
+      const output = await bdg(['dom', 'click', '2']);
+      assert.match(output, /^Selector: {6}html > body > .*button:nth-of-type\(\d\)$/m);
+    });
+  });
+
   void describe('submits on /submit-blocked', () => {
     before(() => open(`${fixture.url}submit-blocked`));
 
