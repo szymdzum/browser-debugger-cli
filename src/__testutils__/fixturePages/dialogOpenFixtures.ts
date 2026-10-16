@@ -12,7 +12,11 @@
  *   closed and reopened by an interval (`window.dialogTicks` counts the
  *   reopenings), `#already` is open from the start, `#close` closes
  *   `#already`, `#noop` does nothing, `#pop` shows a `popover`, `#sum` is a
- *   `<details>` summary.
+ *   `<details>` summary. `#late` presses nothing itself: the page opens the
+ *   closed `#late-dialog` from a timer 30 ms after the press and records the
+ *   time in `window.lateOpened` (`window.pressedAt` is the press's).
+ *   `#reopen` closes the open `#reopen-dialog` on mousedown and reopens it on
+ *   click.
  */
 
 import type { FixtureRoutes } from '@/__testutils__/fixtureRoutes.js';
@@ -53,9 +57,13 @@ const DIALOG_QUIET_HTML = `<!doctype html><title>dialog quiet</title>
 <button id="close">Close</button>
 <button id="pop" popovertarget="pop-box">Popover</button>
 <details><summary id="sum">Details</summary><p>More text</p></details>
+<button id="late">Late</button>
+<button id="reopen">Reopen</button>
 </main>
 <div id="pop-box" popover>Popover text</div>
 <dialog id="already" open><p>Already open</p></dialog>
+<dialog id="late-dialog"><p>Late dialog</p></dialog>
+<dialog id="reopen-dialog" open><p>Reopened dialog</p></dialog>
 <dialog id="tick-dialog"><p>Ticking dialog</p></dialog>
 <script>
   window.dialogTicks = 0;
@@ -65,6 +73,18 @@ const DIALOG_QUIET_HTML = `<!doctype html><title>dialog quiet</title>
     tick.setAttribute('open', '');
     window.dialogTicks++;
   }, 20);
+  window.lateOpened = null;
+  window.pressedAt = null;
+  document.getElementById('late').addEventListener('pointerdown', () => {
+    window.pressedAt = performance.now();
+    setTimeout(() => {
+      document.getElementById('late-dialog').setAttribute('open', '');
+      window.lateOpened = performance.now();
+    }, 30);
+  });
+  const reopen = document.getElementById('reopen-dialog');
+  document.getElementById('reopen').addEventListener('mousedown', () => reopen.close());
+  document.getElementById('reopen').addEventListener('click', () => reopen.show());
   document.getElementById('close').addEventListener('click', () => document.getElementById('already').close());
 </script>`;
 

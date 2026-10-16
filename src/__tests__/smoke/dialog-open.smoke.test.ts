@@ -159,6 +159,34 @@ void describe('Pre-rendered dialogs in action results (#786)', () => {
     assertNoDialog(data);
   });
 
+  void it('a closed dialog the page opens by itself after the press is not listed', async () => {
+    await open(`${fixture.url}dialog-quiet`);
+    assert.equal(await evaluate('window.lateOpened === null ? 1 : 0'), 1);
+    const data = await act('click', '#late');
+    assert.equal(
+      await evaluate('document.getElementById("late-dialog").open ? 1 : 0'),
+      1,
+      'opened'
+    );
+    assert.equal(
+      await evaluate('window.lateOpened > window.pressedAt ? 1 : 0'),
+      1,
+      'after the press'
+    );
+    assertNoDialog(data);
+  });
+
+  void it('a dialog the page closed earlier in the watch and the click reopened is not listed', async () => {
+    await open(`${fixture.url}dialog-quiet`);
+    const data = await act('click', '#reopen');
+    assert.equal(
+      await evaluate('document.getElementById("reopen-dialog").open ? 1 : 0'),
+      1,
+      'reopened'
+    );
+    assertNoDialog(data);
+  });
+
   for (const id of ['close', 'pop', 'sum']) {
     void it(`click #${id} lists no dialog`, async () => {
       await open(`${fixture.url}dialog-quiet`);
