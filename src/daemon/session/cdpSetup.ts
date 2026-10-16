@@ -15,9 +15,13 @@ import { navigationFailedError } from '@/errors/messages.js';
 import type { LaunchedChrome } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
 import { displayUrl } from '@/utils/displayUrl.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { fetchCDPTargets } from '@/utils/http.js';
 import { normalizeUrl } from '@/utils/url.js';
+
+/** How long to wait for Chrome to answer `Page.stopLoading` (the teardown follows anyway) */
+const STOP_LOADING_REPLY_MS = 500;
 
 /** Connection attempts for a Chrome bdg launched (it may still be starting) */
 const LAUNCHED_CONNECT_ATTEMPTS = 10;
@@ -100,7 +104,9 @@ export const UNREACHABLE_ERRORS =
  * @param telemetryStore - Store whose target info is refreshed
  * @param chrome - Launched Chrome, or null when attached to an external browser
  * @param log - Logger
- * @param signal - The session's stop signal: ends the readiness wait early
+ * @param signal - The session's stop signal: ends the wait for Chrome's answer
+ *   to `Page.navigate` (sent only once the page's first response arrives) and
+ *   the readiness wait early
  * @returns Loader id of the navigation (the main document's request id)
  * @throws CommandError (80) when the URL cannot be reached at all
  */
@@ -114,10 +120,7 @@ export async function navigateToTarget(
 ): Promise<string | undefined> {
   const normalizedUrl = normalizeUrl(config.url);
   log.info(`Navigating to ${displayUrl(normalizedUrl)}...`);
-  const navigation = (await cdp.send('Page.navigate', { url: normalizedUrl })) as {
-    loaderId?: string;
-    errorText?: string;
-  };
+  const navigation = await sendNavigate(cdp, normalizedUrl, log, signal);
   if (navigation.errorText && UNREACHABLE_ERRORS.test(navigation.errorText)) {
     const err = navigationFailedError(
       normalizedUrl,
@@ -144,4 +147,42 @@ export async function navigateToTarget(
     }
   }
   return navigation.loaderId;
+}
+
+/**
+ * Send `Page.navigate` and wait for Chrome's answer, which comes only once
+ * the page's first response arrives. A stop meanwhile ends the wait at once
+ * and cancels the navigation with `Page.stopLoading`: while it is pending,
+ * Chrome holds the page's other commands (`Runtime.evaluate`,
+ * `Network.disable`, ...), so the teardown's would wait for the page too.
+ *
+ * @param cdp - Open CDP connection
+ * @param url - URL to navigate to
+ * @param log - Logger
+ * @param signal - The session's stop signal
+ * @returns Chrome's answer
+ * @throws The signal's reason when it aborts first
+ */
+async function sendNavigate(
+  cdp: CDPConnection,
+  url: string,
+  log: Logger,
+  signal: AbortSignal | undefined
+): Promise<{ loaderId?: string; errorText?: string }> {
+  const cancelNavigation = (): void => {
+    cdp
+      .send('Page.stopLoading', {}, undefined, AbortSignal.timeout(STOP_LOADING_REPLY_MS))
+      .catch((error: unknown) => {
+        log.debug(`Page.stopLoading failed: ${getErrorMessage(error)}`);
+      });
+  };
+  signal?.addEventListener('abort', cancelNavigation, { once: true });
+  try {
+    return (await cdp.send('Page.navigate', { url }, undefined, signal)) as {
+      loaderId?: string;
+      errorText?: string;
+    };
+  } finally {
+    signal?.removeEventListener('abort', cancelNavigation);
+  }
 }

@@ -630,6 +630,8 @@ export class CDPConnection implements CDPEventSource {
    * @param params - Method parameters
    * @param sessionId - Optional session ID for commands sent to specific targets
    *                      (used when controlling specific frames or workers)
+   * @param signal - Stops waiting when it aborts: the command rejects with its
+   *   reason and is forgotten (Chrome may still carry it out)
    * @returns Promise resolving to the command result
    * @throws CDPConnectionError if not connected to browser
    * @throws CDPTimeoutError if command times out (30s)
@@ -637,9 +639,10 @@ export class CDPConnection implements CDPEventSource {
   async send(
     method: string,
     params: Record<string, unknown> = {},
-    sessionId?: string
+    sessionId?: string,
+    signal?: AbortSignal
   ): Promise<unknown> {
-    return this.sendMessage(method, params, sessionId ?? this.defaultSessionId);
+    return this.sendMessage(method, params, sessionId ?? this.defaultSessionId, signal);
   }
 
   /**
@@ -648,17 +651,20 @@ export class CDPConnection implements CDPEventSource {
    * @param method - CDP method name
    * @param params - Method parameters
    * @param sessionId - Session the command is for (none: the socket's own target)
+   * @param signal - Stops waiting for the response when it aborts
    * @returns Promise resolving to the command result
    */
   private sendMessage(
     method: string,
     params: Record<string, unknown>,
-    sessionId: string | undefined
+    sessionId: string | undefined,
+    signal?: AbortSignal
   ): Promise<unknown> {
     const ws = this.ws;
     if (ws?.readyState !== WebSocket.OPEN) {
       return Promise.reject(new CDPConnectionError(NOT_CONNECTED_BROWSER_ERROR));
     }
+    if (signal?.aborted) return Promise.reject(signal.reason as Error);
 
     const id = ++this.messageId;
     const message: CDPMessage = { id, method, params };
@@ -685,16 +691,26 @@ export class CDPConnection implements CDPEventSource {
           `  - Reload page and retry: bdg stop && bdg <url>\n` +
           `  - Use simpler CDP method or reduce data size\n` +
           `  - Check Chrome console: chrome://inspect`;
+        signal?.removeEventListener('abort', onAbort);
         reject(new CDPTimeoutError(errorMessage));
       }, this.config.commandTimeout);
+
+      const onAbort = (): void => {
+        this.pendingMessages.delete(id);
+        clearTimeout(timeout);
+        reject(signal?.reason as Error);
+      };
+      signal?.addEventListener('abort', onAbort, { once: true });
 
       this.pendingMessages.set(id, {
         resolve: (value) => {
           clearTimeout(timeout);
+          signal?.removeEventListener('abort', onAbort);
           resolve(value);
         },
         reject: (error) => {
           clearTimeout(timeout);
+          signal?.removeEventListener('abort', onAbort);
           reject(error);
         },
         timeout,

@@ -47,6 +47,12 @@ const DAEMON_EXIT_TIMEOUT_MS = 15000;
 const INTERRUPTED_START_MAX_MS = 5000;
 
 /**
+ * How soon a start interrupted while its `Page.navigate` is pending must end
+ * (#801: "within about 1 s", with room for the command's own exit).
+ */
+const NAVIGATION_INTERRUPT_MAX_MS = 1500;
+
+/**
  * Wait until a file exists.
  *
  * @param file - File to wait for
@@ -222,27 +228,46 @@ void describe('Startup interruption', () => {
     );
   });
 
-  void it('Ctrl-C on the start command during startup leaves no session', async () => {
-    const ctrlC = new AbortController();
-    const start = await startSlowSession(ctrlC.signal);
-    const daemonPid = await waitForPid('DAEMON_PID');
-    const chromePid = await waitForPid('CHROME_PID');
+  /**
+   * Ctrl-C or SIGTERM on the start command once the daemon has sent
+   * `Page.navigate` for `/slow` (#801): Chrome answers that command only when
+   * the page's first response arrives, 8 s later. The start must still end
+   * at once (no wait for the page, no "still shutting down" wait for the
+   * daemon) and leave no session behind. The test waits for the daemon's
+   * `Navigating to` line, logged right before the command is sent, so the
+   * signal lands while the navigation is pending (#529: it used to land
+   * before or after it, at random).
+   */
+  for (const [signal, exitCode] of [
+    ['SIGINT', 130],
+    ['SIGTERM', 143],
+  ] as const) {
+    void it(`${signal} on the start command while the page has not answered leaves no session`, async () => {
+      fs.rmSync(path.join(getSessionDir(), 'daemon.log'), { force: true });
+      const interrupt = new AbortController();
+      const port = await getFreePort();
+      const start = runCommand(`${fixture.url}slow`, ['--port', String(port), '--headless'], {
+        timeout: 60000,
+        interrupt: interrupt.signal,
+        interruptWith: signal,
+      });
+      const chromePid = await waitForPid('CHROME_PID');
+      await waitForDaemonLog('Navigating to');
+      const interruptedAt = Date.now();
+      interrupt.abort();
 
-    ctrlC.abort();
-
-    assert.equal((await start.result).exitCode, 130);
-    assert.equal(await isDaemonRunning(), false, 'no session may answer once the start exited');
-    assert.equal(
-      await waitForProcessExit(chromePid, DAEMON_EXIT_TIMEOUT_MS),
-      true,
-      'Chrome must exit'
-    );
-    assert.equal(
-      await waitForProcessExit(daemonPid, DAEMON_EXIT_TIMEOUT_MS),
-      true,
-      'daemon must exit after its teardown'
-    );
-  });
+      const result = await start;
+      const tookMs = Date.now() - interruptedAt;
+      assert.equal(result.exitCode, exitCode, result.stderr);
+      assert.doesNotMatch(result.stderr, /still shutting down/);
+      assert.ok(tookMs < NAVIGATION_INTERRUPT_MAX_MS, `start ended ${tookMs} ms after ${signal}`);
+      assert.equal(await isDaemonRunning(), false, 'no session may answer once the start exited');
+      for (const file of ['DAEMON_SOCKET', 'DAEMON_PID', 'CHROME_PID'] as const) {
+        assert.equal(fs.existsSync(getSessionFilePath(file)), false, `${file} must be gone`);
+      }
+      assert.equal(await waitForProcessExit(chromePid), true, 'Chrome must exit');
+    });
+  }
 
   /**
    * Ctrl-C while the daemon is being spawned (#522 item 1): the CLI opens the

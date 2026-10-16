@@ -454,6 +454,18 @@ export class Session {
   }
 
   /**
+   * Whether a user stop (`bdg stop`, Ctrl-C or SIGTERM of the start, its
+   * client gone, the daemon stopped) came while the session was still
+   * starting. A crash or a lost connection during the start is not one: its
+   * Chrome keeps the graceful shutdown.
+   *
+   * @returns True when the teardown ends a cancelled start
+   */
+  private startCancelled(): boolean {
+    return this.stopReason === 'normal' && !this.started;
+  }
+
+  /**
    * Whether stop() has been called.
    *
    * @returns True once the session is stopping
@@ -566,7 +578,8 @@ export class Session {
     external: boolean
   ): Pick<StartOperations, 'terminateChrome' | 'closeConnection' | 'stopCollectors' | 'stopPage'> {
     return {
-      terminateChrome: (chrome) => terminateChrome(chrome, log),
+      terminateChrome: (chrome) =>
+        terminateChrome(chrome, log, { cancelledStart: this.startCancelled() }),
       closeConnection: (chrome) =>
         releaseConnection({
           chrome,
@@ -574,6 +587,7 @@ export class Session {
           external,
           log,
           notify: this.notify,
+          cancelledStart: this.startCancelled(),
         }),
       stopCollectors: (cleanups) => runCleanups(cleanups, log),
       stopPage: () => runCleanups(this.pages.takeCleanups(), log),
