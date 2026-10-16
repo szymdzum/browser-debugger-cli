@@ -454,6 +454,15 @@ export class Session {
   }
 
   /**
+   * Whether a stop came while the session was still starting.
+   *
+   * @returns True when the teardown ends a cancelled start
+   */
+  private startCancelled(): boolean {
+    return this.stopRequested() && !this.started;
+  }
+
+  /**
    * Whether stop() has been called.
    *
    * @returns True once the session is stopping
@@ -566,7 +575,8 @@ export class Session {
     external: boolean
   ): Pick<StartOperations, 'terminateChrome' | 'closeConnection' | 'stopCollectors' | 'stopPage'> {
     return {
-      terminateChrome: (chrome) => terminateChrome(chrome, log),
+      terminateChrome: (chrome) =>
+        terminateChrome(chrome, log, { cancelledStart: this.startCancelled() }),
       closeConnection: (chrome) =>
         releaseConnection({
           chrome,
@@ -574,6 +584,7 @@ export class Session {
           external,
           log,
           notify: this.notify,
+          cancelledStart: this.startCancelled(),
         }),
       stopCollectors: (cleanups) => runCleanups(cleanups, log),
       stopPage: () => runCleanups(this.pages.takeCleanups(), log),

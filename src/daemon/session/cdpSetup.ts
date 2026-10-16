@@ -20,6 +20,9 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { fetchCDPTargets } from '@/utils/http.js';
 import { normalizeUrl } from '@/utils/url.js';
 
+/** How long to wait for Chrome to answer `Page.stopLoading` (the teardown follows anyway) */
+const STOP_LOADING_REPLY_MS = 500;
+
 /** Connection attempts for a Chrome bdg launched (it may still be starting) */
 const LAUNCHED_CONNECT_ATTEMPTS = 10;
 
@@ -167,9 +170,11 @@ async function sendNavigate(
   signal: AbortSignal | undefined
 ): Promise<{ loaderId?: string; errorText?: string }> {
   const cancelNavigation = (): void => {
-    cdp.send('Page.stopLoading').catch((error: unknown) => {
-      log.debug(`Page.stopLoading failed: ${getErrorMessage(error)}`);
-    });
+    cdp
+      .send('Page.stopLoading', {}, undefined, AbortSignal.timeout(STOP_LOADING_REPLY_MS))
+      .catch((error: unknown) => {
+        log.debug(`Page.stopLoading failed: ${getErrorMessage(error)}`);
+      });
   };
   signal?.addEventListener('abort', cancelNavigation, { once: true });
   try {

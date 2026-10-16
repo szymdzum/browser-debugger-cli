@@ -19,6 +19,13 @@ const CHROME_EXIT_POLL_MS = 50;
 const GRACEFUL_EXIT_WAIT_MS = 5000;
 /** How long to wait for Browser.close to answer (Chrome may exit without answering) */
 const BROWSER_CLOSE_REPLY_MS = 500;
+/**
+ * How long a start cancelled by a stop waits for Chrome to exit after
+ * Browser.close before killing it: Chrome's own exit takes 0.1–0.4 s on an
+ * idle machine but seconds on a loaded or cold one, and the stop must not
+ * wait for that (#801).
+ */
+const CANCELLED_START_EXIT_WAIT_MS = 500;
 
 /**
  * The page connection to release, and the Chrome behind it.
@@ -32,6 +39,8 @@ export interface ConnectionRelease {
   external: boolean;
   log: Logger;
   notify: NoticeSink<ChromeNoticeCode>;
+  /** A stop cancelled the start: wait only briefly for Chrome to exit */
+  cancelledStart?: boolean;
 }
 
 /**
@@ -44,7 +53,8 @@ export interface ConnectionRelease {
 export async function releaseConnection(release: ConnectionRelease): Promise<void> {
   const { chrome, cdp, external, log, notify } = release;
   if (!cdp) return;
-  if (chrome) await requestBrowserClose(cdp, chrome.pid, log);
+  const exitWaitMs = release.cancelledStart ? CANCELLED_START_EXIT_WAIT_MS : GRACEFUL_EXIT_WAIT_MS;
+  if (chrome) await requestBrowserClose(cdp, chrome.pid, log, exitWaitMs);
   try {
     cdp.close();
   } catch (error) {
@@ -63,14 +73,20 @@ export async function releaseConnection(release: ConnectionRelease): Promise<voi
  * @param cdp - Open CDP connection
  * @param pid - Chrome's main process id
  * @param log - Logger
+ * @param exitWaitMs - How long to wait for Chrome to exit
  */
-async function requestBrowserClose(cdp: CDPConnection, pid: number, log: Logger): Promise<void> {
+async function requestBrowserClose(
+  cdp: CDPConnection,
+  pid: number,
+  log: Logger,
+  exitWaitMs: number
+): Promise<void> {
   try {
     await raceTimeout(cdp.send('Browser.close'), BROWSER_CLOSE_REPLY_MS);
   } catch (error) {
     log.debug(`Browser.close failed: ${getErrorMessage(error)}`);
   }
-  await waitForProcessExit(pid, GRACEFUL_EXIT_WAIT_MS, { pollMs: CHROME_EXIT_POLL_MS });
+  await waitForProcessExit(pid, exitWaitMs, { pollMs: CHROME_EXIT_POLL_MS });
 }
 
 /**
@@ -87,16 +103,26 @@ async function requestBrowserClose(cdp: CDPConnection, pid: number, log: Logger)
  * Clears chrome.pid once Chrome is confirmed dead; otherwise the file is kept
  * so a later `bdg cleanup` or session start can reap it.
  *
+ * When a stop cancelled the start, the SIGTERM step is skipped: Chrome
+ * already had its grace window after Browser.close, so it is killed at once.
+ *
  * @param chrome - Launched Chrome instance
  * @param log - Logger
+ * @param options - `cancelledStart`: a stop cancelled the start, kill without the SIGTERM wait
  */
-export async function terminateChrome(chrome: LaunchedChrome, log: Logger): Promise<void> {
+export async function terminateChrome(
+  chrome: LaunchedChrome,
+  log: Logger,
+  options: { cancelledStart?: boolean } = {}
+): Promise<void> {
   const pid = chrome.pid;
-  try {
-    process.kill(pid, 'SIGTERM');
-    await waitForProcessExit(pid, GRACEFUL_EXIT_WAIT_MS, { pollMs: CHROME_EXIT_POLL_MS });
-  } catch (error) {
-    log.debug(`SIGTERM to Chrome failed: ${getErrorMessage(error)}`);
+  if (!options.cancelledStart) {
+    try {
+      process.kill(pid, 'SIGTERM');
+      await waitForProcessExit(pid, GRACEFUL_EXIT_WAIT_MS, { pollMs: CHROME_EXIT_POLL_MS });
+    } catch (error) {
+      log.debug(`SIGTERM to Chrome failed: ${getErrorMessage(error)}`);
+    }
   }
   try {
     await chrome.kill();
