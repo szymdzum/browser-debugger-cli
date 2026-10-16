@@ -11,8 +11,10 @@ import { DaemonError } from '@/daemon/errors.js';
 import { IPCServer } from '@/daemon/ipcServer.js';
 import { DAEMON_ALREADY_RUNNING_CODE } from '@/daemon/server/SocketServer.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { enableBdgCompileCache } from '@/utils/compileCache.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
+enableBdgCompileCache();
 dropLauncherHeadlessEnv();
 
 const log = createLogger('daemon');

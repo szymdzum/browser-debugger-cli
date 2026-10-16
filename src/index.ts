@@ -19,6 +19,7 @@ import { createLogger, enableDebugLogging } from '@/ui/logging/index.js';
 import { cliLoadFailedError } from '@/ui/messages/commands.js';
 import { flagArgs, isJsonMode } from '@/utils/cliArgs.js';
 import { getErrorMessage } from '@/utils/errors.js';
+import { enableBdgCompileCache } from '@/utils/compileCache.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 const log = createLogger('bdg');
@@ -102,6 +103,7 @@ async function loadCli(): Promise<() => void> {
   }
 }
 
+enableBdgCompileCache();
 reportInterruptsUntilHandedOver(interruptReporter(isJsonMode()));
 holdStartupForTest('load');
 const runCli = await loadCli();
