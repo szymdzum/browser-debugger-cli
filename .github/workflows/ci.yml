@@ -221,15 +221,15 @@ jobs:
         run: npm test
 
   # Smoke tests with Chrome: Node 22 on PRs and main, 22/24/26 nightly, the
-  # `node` input on dispatch. The files are split into 4 shards that run in
-  # parallel (one shard with all files on dispatch, so a repeat runs the whole
-  # selection). The shell integration suite (against the local fixture server)
+  # `node` input on dispatch. The files are split into 4 shards of about equal
+  # run time that run in parallel (one shard with all files on dispatch, so a
+  # repeat runs the whole selection). The shell integration suite (against the local fixture server)
   # runs after shard 1 on Node 22, but not on dispatches.
   smoke:
     name: Smoke Tests (Chrome) (Node ${{ matrix.node }}, shard ${{ matrix.shard }})
     runs-on: ubuntu-24.04
     needs: build
-    # A shard takes about 5 min. Dispatches get 15 min more per repeat
+    # A shard takes about 4 min. Dispatches get 15 min more per repeat
     # (expressions have no arithmetic, hence the table); other repeat values
     # get GitHub's 6 h maximum. A hung test fails sooner (smoke-selected.sh).
     timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && (fromJSON('{"1":30,"2":45,"3":60,"4":75,"5":90,"6":105,"7":120,"8":135,"9":150,"10":165}')[inputs.repeat] || 360) || 30 }}
@@ -292,12 +292,26 @@ jobs:
           timeout 120 google-chrome-stable --headless=new --user-data-dir="$(mktemp -d)" --dump-dom about:blank > /dev/null
           echo "Chrome warm-up took $(( $(date +%s) - start )) s"
 
-      # The failed tests are also listed in the job summary.
+      # The failed tests are also listed in the job summary. Shards are split
+      # by the run times in scripts/smoke-timings.json; each Node 22 shard
+      # uploads its times (smoke-timings-*) to refresh it with
+      # `node scripts/smoke-shard.mjs --update`.
       - name: Run smoke tests
         if: github.event_name != 'workflow_dispatch'
         env:
           SHARD: ${{ matrix.shard }}
+          SHARD_INTEGRATION: ${{ matrix.node == '22' && '1' || '' }}
+          SMOKE_TIMINGS: ${{ matrix.node == '22' && 'smoke-timings.json' || '' }}
         run: scripts/smoke-selected.sh
+
+      - name: Upload smoke timings
+        if: github.event_name != 'workflow_dispatch' && matrix.node == '22'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: smoke-timings-${{ strategy.job-index }}
+          path: smoke-timings.json
+          if-no-files-found: ignore
+          retention-days: 30
 
       - name: Run selected smoke tests
         if: github.event_name == 'workflow_dispatch'
