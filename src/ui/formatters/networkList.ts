@@ -35,7 +35,7 @@ export interface NetworkListOptions {
   /** Order of the list (`--sort`); default: capture order */
   sort?: SortKey;
   /** Requests of earlier pages in the list (`--sort` with all pages) */
-  includedEarlierPages?: number | undefined;
+  earlierPagesIncluded?: number;
   /** Requests of earlier pages matching the filters that `--page current` left out */
   hiddenEarlierPages?: number;
 }
@@ -272,8 +272,8 @@ function formatNetworkListHuman(requests: NetworkRequest[], options: NetworkList
     fmt.text(formatRequestLine(request, options, widths));
   }
   if (hiddenNote) fmt.text(hiddenNote);
-  if (options.includedEarlierPages) {
-    fmt.text(earlierPagesIncludedNote(options.includedEarlierPages));
+  if (options.earlierPagesIncluded) {
+    fmt.text(earlierPagesIncludedNote(options.earlierPagesIncluded));
   }
 
   return fmt.build();

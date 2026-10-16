@@ -163,6 +163,7 @@ export const FILTER_MATCHING_JS = `(shadowRoots) => {
   const flatText = ${FLAT_TEXT_JS};
   const showingDescendant = ${SHOWING_DESCENDANT_JS};
   const clippedAway = ${CLIPPED_AWAY_JS};
+  const textless = /^(script|style)$/;
   const skipped = /^(script|style|noscript|template)$/;
   const notRendered = (node) => node.nodeType === 1 &&
     (node.hidden || node.ownerDocument.defaultView.getComputedStyle(node).display === 'none');
@@ -178,7 +179,7 @@ export const FILTER_MATCHING_JS = `(shadowRoots) => {
     return text;
   };
   const textOf = (el) => {
-    if (/^(script|style)$/.test(el.localName)) return '';
+    if (textless.test(el.localName)) return '';
     if (el.localName === 'input' && /^(submit|button|reset)$/i.test(el.type)) return el.value;
     const rendered = typeof el.innerText === 'string' &&
       (typeof el.checkVisibility !== 'function' || el.checkVisibility({ visibilityProperty: true }));

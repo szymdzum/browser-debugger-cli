@@ -30,7 +30,6 @@ import {
 import { resolvePreset, FILTER_PRESETS } from '@/telemetry/filterPresets.js';
 import { filterByResourceType } from '@/telemetry/filters.js';
 import type { NetworkRequest } from '@/types.js';
-import { currentNavigationOf, isPreviousPage } from '@/telemetry/pageScope.js';
 import { buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import {
   formatNetworkFollowRows,
@@ -50,6 +49,7 @@ import { displayTabSwitch, displayUrls } from '@/utils/displayUrl.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 import {
+  countEarlierPages,
   defaultPageScope,
   followConflict,
   pageScopeOption,
@@ -207,7 +207,7 @@ function buildFormatOptions(
     ...(options.sort && { sort: options.sort }),
     ...(result.filterHints && { filterHints: result.filterHints }),
     ...(result.hiddenEarlierPages && { hiddenEarlierPages: result.hiddenEarlierPages }),
-    ...(result.earlierPagesIncluded && { includedEarlierPages: result.earlierPagesIncluded }),
+    ...(result.earlierPagesIncluded && { earlierPagesIncluded: result.earlierPagesIncluded }),
     ...(result.pageStart && { pageStart: result.pageStart }),
     evictions: {
       requestsDropped: result.dropped ?? 0,
@@ -475,9 +475,8 @@ export function registerListCommand(networkCmd: Command): void {
           const filterHints =
             scoped.requests.length === 0 ? urlFilterHintsFor(options, requests) : [];
           const selected = selectRequests(scoped.requests, options.sort, lastN);
-          const currentPage = currentNavigationOf(requests, currentNavigationId);
           const earlierPagesIncluded = options.sort
-            ? selected.filter((request) => isPreviousPage(request, currentPage)).length
+            ? countEarlierPages(selected, { all: requests, currentNavigationId })
             : 0;
           return {
             success: true,

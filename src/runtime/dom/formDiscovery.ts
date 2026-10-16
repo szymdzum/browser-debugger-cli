@@ -274,7 +274,8 @@ export const FORM_DISCOVERY_SCRIPT = `
       .filter(Boolean)
       .map(labelEl => !isNativeInput(labelEl) ? labelEl.textContent
         : isSecret(labelEl) ? '${MASKED_VALUE}' : labelEl.value || '')
-      .join(' ');
+      .join(' ')
+      .trim();
   }
 
   function extractLabel(element) {
@@ -283,7 +284,7 @@ export const FORM_DISCOVERY_SCRIPT = `
     const ariaLabel = element.getAttribute('aria-label');
     if (ariaLabel) return cleanLabelText(ariaLabel);
     const labelledBy = labelledByText(element);
-    if (labelledBy.trim()) return cleanLabelText(labelledBy);
+    if (labelledBy) return cleanLabelText(labelledBy);
     const wrappingLabel = element.closest('label');
     if (wrappingLabel) {
       const clone = wrappingLabel.cloneNode(true);
@@ -305,7 +306,7 @@ export const FORM_DISCOVERY_SCRIPT = `
   }
 
   function extractButtonLabel(element) {
-    const labelledBy = labelledByText(element).trim();
+    const labelledBy = labelledByText(element);
     if (labelledBy) return labelledBy;
     const ariaLabel = element.getAttribute('aria-label');
     if (ariaLabel) return ariaLabel.trim();
