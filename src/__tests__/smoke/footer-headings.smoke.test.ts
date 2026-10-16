@@ -94,6 +94,11 @@ void describe('New text after a navigation', () => {
     assert.deepEqual(await clickMessages('#cookie'), ['We use cookies']);
   });
 
+  void it('still reports an alert role below the first viewport after a navigation', async () => {
+    await open('footer-a');
+    assert.deepEqual(await clickMessages('#alert'), ['Session expires soon']);
+  });
+
   void it('still reports a validation message shown on the same page', async () => {
     await open('footer-field');
     assert.deepEqual(await clickMessages('#check'), ['Name is required']);

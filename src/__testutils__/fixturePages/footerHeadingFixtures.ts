@@ -9,6 +9,7 @@
  *   ("Related pages").
  * - `/footer-cookie`: an `h2#feedback` in view and a cookie banner `div.notice` fixed to the bottom of the
  *   first viewport.
+ * - `/footer-alert`: a `p[role=alert]` ("Session expires soon") below the first viewport.
  * - `/footer-field`: `#check` shows `div.invalid-feedback` ("Name is
  *   required") beside the `#name` field on the same page.
  */
@@ -17,7 +18,7 @@ import type { FixtureRoutes } from '@/__testutils__/fixtureRoutes.js';
 
 /** Page that links to the pages below */
 const FOOTER_A_HTML = `<!doctype html><title>footer a</title>
-<main><h1>Start</h1><a id="next" href="/footer-b">Docs</a> <a id="cookie" href="/footer-cookie">Cookies</a></main>`;
+<main><h1>Start</h1><a id="next" href="/footer-b">Docs</a> <a id="cookie" href="/footer-cookie">Cookies</a> <a id="alert" href="/footer-alert">Alert</a></main>`;
 
 /** Static page with headings and a feedback block far below the first viewport */
 const FOOTER_B_HTML = `<!doctype html><title>footer b</title>
@@ -32,6 +33,10 @@ const FOOTER_COOKIE_HTML = `<!doctype html><title>footer cookie</title>
 <main><h1>Cookies</h1><h2 id="feedback">Feedback</h2><p>Page text</p></main>
 <div class="notice" style="position:fixed;bottom:0;left:0;right:0;background:#eee">We use cookies</div>`;
 
+/** Page with an alert far below the first viewport */
+const FOOTER_ALERT_HTML = `<!doctype html><title>footer alert</title>
+<main><h1>Alert</h1><div style="height:4000px">Long article</div><p role="alert">Session expires soon</p></main>`;
+
 /** Same-page validation message shown by a click */
 const FOOTER_FIELD_HTML = `<!doctype html><title>footer field</title>
 <main><label>Name <input id="name"></label><div class="invalid-feedback" id="msg" hidden>Name is required</div>
@@ -42,5 +47,6 @@ export const ROUTES: FixtureRoutes = {
   '/footer-a': FOOTER_A_HTML,
   '/footer-b': FOOTER_B_HTML,
   '/footer-cookie': FOOTER_COOKIE_HTML,
+  '/footer-alert': FOOTER_ALERT_HTML,
   '/footer-field': FOOTER_FIELD_HTML,
 };

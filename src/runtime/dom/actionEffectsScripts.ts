@@ -148,7 +148,9 @@ export const MESSAGE_CHROME_JS = `(node) => {
  * {@link MESSAGE_WORDS} (timers, marquees and progress bars left out; a
  * heading or the target of an `aria-labelledby` is no message because of a
  * word, and with `fresh`, a new document, a word match counts only inside
- * the first viewport: a footer's `h2#feedback` is no news), with
+ * the first viewport, measured when the page is read, after the navigation's
+ * scroll (a `#fragment` target counts as in view): a footer's `h2#feedback`
+ * is no news), with
  * their text (parts matching {@link MESSAGE_CHROME_JS}, such as the "×"
  * close link, left out). Elements are filtered first, then the first
  * {@link MAX_MESSAGES} kept, and the whole pass stops after
