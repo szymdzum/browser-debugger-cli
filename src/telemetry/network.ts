@@ -18,7 +18,11 @@ import type {
   CleanupFunction,
 } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
-import { bodyFetchFailedReason, bodyGoneReason } from '@/ui/messages/networkMessages.js';
+import {
+  bodyFetchFailedReason,
+  bodyGoneReason,
+  requestBodyOmittedReason,
+} from '@/ui/messages/networkMessages.js';
 import { displayUrl } from '@/utils/displayUrl.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { filterDefined } from '@/utils/objects.js';
@@ -161,6 +165,8 @@ function createNetworkRequest(
     sentTime: params.timestamp,
     requestHeaders: params.request.headers,
     ...(params.request.postData !== undefined && { requestBody: params.request.postData }),
+    ...(params.request.postData === undefined &&
+      params.request.hasPostData && { requestBodyNotCaptured: requestBodyOmittedReason() }),
     ...(navigationId !== undefined && { navigationId }),
     ...(params.type !== undefined && { resourceType: params.type }),
   };
