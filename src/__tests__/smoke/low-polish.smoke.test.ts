@@ -188,4 +188,17 @@ void describe('Low-priority polish', () => {
     await bdg(['dom', 'query', 'script:has-text("Fallback")'], 83);
     await bdg(['dom', 'query', 'style:has-text("display")'], 83);
   });
+
+  void it('peek masks a token in a console stack frame URL, as the session records it (#800)', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}polish-token-stack`]);
+    await waitForDone();
+    const human = await bdg(['peek', '--console']);
+    assert.doesNotMatch(human, /tok-S800/);
+    for (const flags of [[], ['--include-sensitive']]) {
+      const json = await bdg(['peek', '--console', '--json', ...flags]);
+      assert.doesNotMatch(json, /tok-S800/, `peek --json ${flags.join(' ')}`);
+      assert.match(json, /app\.js\?token=••••/);
+    }
+  });
+});
 });

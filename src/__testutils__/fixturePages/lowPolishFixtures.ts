@@ -9,7 +9,8 @@
  * a file part to `/polish-upload`, POSTs a 1.2 MB body to `/polish-big` and
  * fetches two missing pages, so the
  * console holds two 404 errors that differ only by URL; its title becomes
- * `done` when all three requests finished.
+ * `done` when all three requests finished. `/polish-token-stack` logs a console
+ * error from a script whose source URL has `?token=tok-S800`.
  */
 
 import type { FixtureRoutes } from '@/__testutils__/fixtureRoutes.js';
@@ -43,7 +44,16 @@ Promise.all([
 ]).then(() => { document.title = 'done'; });
 </script>`;
 
+/** A script whose source URL carries a token, logging an error from it */
+const POLISH_TOKEN_STACK_HTML = `<!doctype html><title>polish token stack</title>
+<script>
+console.error('from a tokened script');
+document.title = 'done';
+//# sourceURL=http://scripts.test/app.js?token=tok-S800
+</script>`;
+
 export const ROUTES: FixtureRoutes = {
   '/polish-forms': POLISH_FORMS_HTML,
   '/polish-net': POLISH_NET_HTML,
+  '/polish-token-stack': POLISH_TOKEN_STACK_HTML,
 };
