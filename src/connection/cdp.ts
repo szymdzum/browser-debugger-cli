@@ -630,6 +630,7 @@ export class CDPConnection implements CDPEventSource {
    * @param params - Method parameters
    * @param sessionId - Optional session ID for commands sent to specific targets
    *                      (used when controlling specific frames or workers)
+   * @param _signal - Not implemented yet (#801)
    * @returns Promise resolving to the command result
    * @throws CDPConnectionError if not connected to browser
    * @throws CDPTimeoutError if command times out (30s)
@@ -637,7 +638,8 @@ export class CDPConnection implements CDPEventSource {
   async send(
     method: string,
     params: Record<string, unknown> = {},
-    sessionId?: string
+    sessionId?: string,
+    _signal?: AbortSignal
   ): Promise<unknown> {
     return this.sendMessage(method, params, sessionId ?? this.defaultSessionId);
   }
