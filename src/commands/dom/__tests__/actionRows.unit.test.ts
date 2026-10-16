@@ -23,7 +23,11 @@ const a11yIndex = {
 
 void describe('Errors: row with tracker errors only (#694)', () => {
   void it('says the page had none and how to see the hidden ones', () => {
-    const lines = click({ selector: '#trk', element: 'button#trk "Track"', hiddenTrackerErrors: 2 });
+    const lines = click({
+      selector: '#trk',
+      element: 'button#trk "Track"',
+      hiddenTrackerErrors: 2,
+    });
     assert.ok(
       lines.includes(
         'Errors:        none from the page (2 from filtered trackers hidden; bdg console --level error)'
@@ -39,7 +43,10 @@ void describe('Errors: row with tracker errors only (#694)', () => {
       errors: [{ text: 'app failed', source: 'http://x/app.js:1:1', count: 1 }],
       hiddenTrackerErrors: 2,
     });
-    assert.ok(lines.some((line) => line.startsWith('Errors:        app failed')), lines.join('\n'));
+    assert.ok(
+      lines.some((line) => line.startsWith('Errors:        app failed')),
+      lines.join('\n')
+    );
     assert.ok(lines.includes('               (+2 from filtered trackers)'), lines.join('\n'));
   });
 });
