@@ -1945,15 +1945,18 @@ export function inspectClosedShadowRootLine(): string {
  * @param originalHeight - Captured height
  * @param width - Image width
  * @param height - Image height
+ * @param withHint - Add the way to full size (left out when the line already names `--no-resize`)
  * @returns e.g. `scaled from 1920×993 to 1568×811; --no-resize for full size`
  */
 export function screenshotScaledNote(
   originalWidth: number,
   originalHeight: number,
   width: number,
-  height: number
+  height: number,
+  withHint = true
 ): string {
-  return `scaled from ${originalWidth}×${originalHeight} to ${width}×${height}; --no-resize for full size`;
+  const note = `scaled from ${originalWidth}×${originalHeight} to ${width}×${height}`;
+  return withHint ? `${note}; --no-resize for full size` : note;
 }
 
 /**

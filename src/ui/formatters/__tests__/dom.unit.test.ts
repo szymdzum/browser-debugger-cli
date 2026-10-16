@@ -350,6 +350,9 @@ void describe('formatDomScreenshot full page fallback', () => {
       width: 725,
       height: 1568,
     } as ScreenshotResult);
-    assert.equal(output.match(/--no-resize/g)?.length, 1, output);
+    assert.equal(
+      output,
+      'Screenshot saved to ./page.png (viewport only - page too tall; --no-resize captures the full page) (scaled from 980×2120 to 725×1568)'
+    );
   });
 });

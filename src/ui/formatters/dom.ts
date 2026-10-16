@@ -300,18 +300,15 @@ export function formatDomFrames(data: { frames: DomFrame[]; readyState?: string 
 export function formatDomScreenshot(data: ScreenshotResult): string {
   let output = `Screenshot saved to ${data.path}`;
 
-  if (data.fullPageSkipped && !data.scrolledTo) {
-    output += data.resized
-      ? ' (viewport only - page too tall)'
-      : ` (viewport only - page too tall; ${FULL_PAGE_SKIPPED_HINT})`;
-  }
+  const viewportOnly = Boolean(data.fullPageSkipped && !data.scrolledTo);
+  if (viewportOnly) output += ` (viewport only - page too tall; ${FULL_PAGE_SKIPPED_HINT})`;
 
   if (data.element?.captured) {
     output += ` (${screenshotGrownNote(data.element.bounds, data.element.captured, data.element.padding)})`;
   }
 
   if (data.resized && data.originalWidth !== undefined && data.originalHeight !== undefined) {
-    output += ` (${screenshotScaledNote(data.originalWidth, data.originalHeight, data.width, data.height)})`;
+    output += ` (${screenshotScaledNote(data.originalWidth, data.originalHeight, data.width, data.height, !viewportOnly)})`;
   }
 
   return output;

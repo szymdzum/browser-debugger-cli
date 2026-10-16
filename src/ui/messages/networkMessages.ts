@@ -160,9 +160,9 @@ const BLOCKED_COOKIE_GLOSSES: Readonly<Record<string, string>> = {
   SameSiteLax: 'SameSite=Lax cookie on a cross-site request that is not a top-level navigation',
   SameSiteStrict: 'SameSite=Strict cookie on a cross-site request',
   SchemefulSameSiteLax:
-    'SameSite=Lax cookie on a request that is cross-site once the scheme counts (http and https of one host are different sites)',
+    'SameSite=Lax cookie not sent on a cross-site request (another site, or http vs https of one host)',
   SchemefulSameSiteStrict:
-    'SameSite=Strict cookie on a request that is cross-site once the scheme counts (http and https of one host are different sites)',
+    'SameSite=Strict cookie not sent on a cross-site request (another site, or http vs https of one host)',
   SameSiteNoneInsecure: 'SameSite=None cookie without the Secure attribute',
   ThirdPartyPhaseout: 'third-party cookie blocking: a cross-site request may not use this cookie',
   DomainMismatch: "the cookie's Domain does not match the request host",
