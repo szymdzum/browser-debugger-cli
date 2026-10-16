@@ -24,7 +24,9 @@ export function enableBdgCompileCache(): void {
   }
   try {
     const result = nodeModule.enableCompileCache();
-    log.debug(`Compile cache status ${result.status}${result.message ? `: ${result.message}` : ''}`);
+    log.debug(
+      `Compile cache status ${result.status}${result.message ? `: ${result.message}` : ''}`
+    );
   } catch (error) {
     log.debug(`Compile cache not enabled: ${getErrorMessage(error)}`);
   }
