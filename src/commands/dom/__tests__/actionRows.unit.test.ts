@@ -13,7 +13,7 @@ import { formatClickOutput } from '@/commands/dom/formInteraction.js';
 type Click = Parameters<typeof formatClickOutput>[0];
 
 const click = (extra: Partial<Click>): string[] =>
-  formatClickOutput({ method: 'mouse', action: 'click', ...extra } as Click).split('\n');
+  formatClickOutput({ method: 'mouse', action: 'click', ...extra }).split('\n');
 
 const a11yIndex = {
   index: 1,

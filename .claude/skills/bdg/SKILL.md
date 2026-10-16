@@ -105,6 +105,8 @@ Shown:         span "Something went wrong"          # text added next to the cli
 ⚠ Submit blocked: email: Please include an '@' ...  # the form's validation stopped the submit (click or Enter): fix the named fields
 Errors: Uncaught Error: handler exploded (app.js:3:142)  # console errors/exceptions the action caused
         (+2 from filtered trackers)                       # tracker-host errors hidden; start with --all to list them
+Errors:        none from the page (2 from filtered trackers hidden; bdg console --level error)  # trackers were the only source
+Selector:      html > body > button:nth-of-type(2)  # after Element:, for an index into dom a11y query results (no row for an #id)
 Download: report.txt → ~/.bdg/downloads/report.txt (completed, 15 B)  # files go to <session dir>/downloads
 Opened: popup https://idp.test/authorize (bdg page switch 1)          # a tab or window it opened
 ```
