@@ -108,7 +108,7 @@ Each scenario has an ID, the task given to the agent, how to set it up, what "wo
 ### S07 Auth state save, stop, `--state`
 
 - **Task:** "Log in, then restart the browser session and continue where you left off without logging in again."
-- **Setup:** real site <https://the-internet.herokuapp.com/login> (`tomsmith` / `SuperSecretPassword!`; the session cookie has no Expires), or a page that stores a token in localStorage and sessionStorage. The smoke fixture is in `src/__tests__/smoke/auth-state.smoke.test.ts`.
+- **Setup:** real site <https://the-internet.herokuapp.com/login> (`tomsmith` / `SuperSecretPassword!`; the session cookie has no Expires), or the fixture `/login` (any username, password `secret`; the herokuapp credentials fail there), or a page that stores a token in localStorage and sessionStorage. The smoke fixture is in `src/__tests__/smoke/auth-state.smoke.test.ts`.
 - **Works:** `bdg state save <file>` → `bdg stop` → `bdg <url> --state <file>` is still logged in; output shows counts and origins, never values; the file is 0600.
 - **Rate:** whether the agent found `state save` / `--state` from help; whether it put the file somewhere safe.
 - **History:** from #454.
