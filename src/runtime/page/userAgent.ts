@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import os from 'node:os';
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import { sendTyped, type Protocol } from '@/connection/typed-cdp.js';
 import { createLogger, type Logger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
@@ -46,10 +47,7 @@ export interface HostPlatform {
 }
 
 /** `Browser.getVersion` fields the metadata is built from */
-export interface BrowserVersion {
-  product: string;
-  userAgent: string;
-}
+export type BrowserVersion = Pick<Protocol.Browser.GetVersionResponse, 'product' | 'userAgent'>;
 
 /** Characters Chrome picks from for its made-up ("GREASE") brand name */
 const GREASE_CHARS = [' ', '(', ':', '-', '.', '/', ')', ';', '=', '?', '_'];
@@ -233,7 +231,7 @@ export async function hideHeadlessUserAgent(
   known?: BrowserVersion
 ): Promise<void> {
   try {
-    const version = known ?? ((await cdp.send('Browser.getVersion')) as BrowserVersion);
+    const version = known ?? (await sendTyped(cdp, 'Browser.getVersion'));
     if (!version.userAgent.includes('HeadlessChrome')) return;
     await cdp.send('Emulation.setUserAgentOverride', {
       userAgent: version.userAgent.replace('HeadlessChrome', 'Chrome'),

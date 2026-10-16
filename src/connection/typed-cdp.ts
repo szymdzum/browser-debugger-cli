@@ -23,7 +23,7 @@ import type { Protocol } from 'devtools-protocol/types/protocol.js';
  * If command has a single parameter (required, or optional when all its
  * fields are), returns its type.
  */
-type CommandParams<T extends keyof ProtocolMapping.Commands> =
+export type CommandParams<T extends keyof ProtocolMapping.Commands> =
   ProtocolMapping.Commands[T]['paramsType'] extends []
     ? Record<string, never>
     : ProtocolMapping.Commands[T]['paramsType'] extends [(infer P)?]
@@ -33,7 +33,7 @@ type CommandParams<T extends keyof ProtocolMapping.Commands> =
 /**
  * Extract return type from a CDP command.
  */
-type CommandReturn<T extends keyof ProtocolMapping.Commands> =
+export type CommandReturn<T extends keyof ProtocolMapping.Commands> =
   ProtocolMapping.Commands[T]['returnType'];
 
 /**
@@ -165,6 +165,25 @@ export class TypedCDPConnection {
   get raw(): CDPConnection {
     return this.cdp;
   }
+}
+
+/**
+ * Send a type-safe CDP command through anything that can send one: a
+ * connection, a session-bound sender or a test double. The params are passed
+ * on as given, so a command sent without any stays without any.
+ *
+ * @param cdp - Anything with a `send`
+ * @param method - CDP method name
+ * @param params - Command parameters (type-checked), if any
+ * @returns Promise resolving to the command's response (type-safe)
+ */
+export async function sendTyped<T extends keyof ProtocolMapping.Commands>(
+  cdp: Pick<CDPConnection, 'send'>,
+  method: T,
+  params?: CommandParams<T>
+): Promise<CommandReturn<T>> {
+  const result = await cdp.send(method, params);
+  return result as CommandReturn<T>;
 }
 
 /**

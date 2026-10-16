@@ -4,6 +4,7 @@
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import { waitForPageReady } from '@/connection/pageReadiness.js';
+import { sendTyped } from '@/connection/typed-cdp.js';
 import { UNREACHABLE_ERRORS } from '@/daemon/session/cdpSetup.js';
 import { CommandError } from '@/errors/index.js';
 import { navigationFailedError, noHistoryEntryError } from '@/errors/messages.js';
@@ -165,9 +166,7 @@ async function startAction(
  * @returns Target id and URL
  */
 async function pageTarget(cdp: CDPSender): Promise<{ targetId: string; url: string }> {
-  const { targetInfo } = (await cdp.send('Target.getTargetInfo', {})) as {
-    targetInfo: { targetId: string; url: string };
-  };
+  const { targetInfo } = await sendTyped(cdp, 'Target.getTargetInfo', {});
   return targetInfo;
 }
 
@@ -181,10 +180,7 @@ async function pageTarget(cdp: CDPSender): Promise<{ targetId: string; url: stri
 export async function pendingNavigationUrl(cdp: CDPSender): Promise<string | undefined> {
   const [target, history] = await Promise.all([
     pageTarget(cdp),
-    cdp.send('Page.getNavigationHistory', {}) as Promise<{
-      currentIndex: number;
-      entries: Array<{ url: string }>;
-    }>,
+    sendTyped(cdp, 'Page.getNavigationHistory', {}),
   ]);
   const committedUrl = history.entries[history.currentIndex]?.url;
   return target.url !== committedUrl ? target.url : undefined;
@@ -197,11 +193,12 @@ export async function pendingNavigationUrl(cdp: CDPSender): Promise<string | und
  * @returns URL and title
  */
 async function currentLocation(cdp: CDPConnection): Promise<{ url: string; title: string }> {
-  const location = (await cdp.send('Runtime.evaluate', {
+  const location = await sendTyped(cdp, 'Runtime.evaluate', {
     expression: '({ url: location.href, title: document.title })',
     returnByValue: true,
-  })) as { result?: { value?: { url: string; title: string } } };
-  return { url: location.result?.value?.url ?? '', title: location.result?.value?.title ?? '' };
+  });
+  const value = location.result?.value as { url?: string; title?: string } | undefined;
+  return { url: value?.url ?? '', title: value?.title ?? '' };
 }
 
 /**
@@ -356,10 +353,7 @@ function nextNavigation(
  * @throws CommandError (80) when the URL cannot be reached
  */
 async function navigateTo(cdp: CDPConnection, url: string): Promise<StartedAction> {
-  const navigation = (await cdp.send('Page.navigate', { url })) as {
-    errorText?: string;
-    loaderId?: string;
-  };
+  const navigation = await sendTyped(cdp, 'Page.navigate', { url });
   if (navigation.errorText === 'net::ERR_ABORTED' && !navigation.loaderId) {
     return { notAPage: true };
   }
@@ -378,10 +372,7 @@ async function navigateTo(cdp: CDPConnection, url: string): Promise<StartedActio
  * @throws CommandError (81) when there is no such entry
  */
 async function goThroughHistory(cdp: CDPConnection, step: -1 | 1): Promise<void> {
-  const history = (await cdp.send('Page.getNavigationHistory', {})) as {
-    currentIndex: number;
-    entries: Array<{ id: number; url: string }>;
-  };
+  const history = await sendTyped(cdp, 'Page.getNavigationHistory', {});
   const index = history.currentIndex + step;
   const entry = history.entries[index];
   const blankStart = index === 0 && entry?.url === 'about:blank';
