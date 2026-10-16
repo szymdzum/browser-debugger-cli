@@ -88,8 +88,14 @@ void describe('HAR response bodySize', () => {
   void it('plain body: bodySize is Content-Length, not the bytes with headers', async () => {
     const { response } = await harEntry('/plain');
     console.log('plain', response);
-    assert.ok(Math.abs(response.bodySize - PLAIN_LENGTH) <= FRAMING_SLACK, `${response.bodySize}`);
-    assert.ok(response.bodySize < PLAIN_LENGTH + response.headersSize);
+    assert.ok(
+      Math.abs(response.bodySize - PLAIN_LENGTH) <= FRAMING_SLACK,
+      `bodySize ${response.bodySize} vs Content-Length ${PLAIN_LENGTH}`
+    );
+    assert.ok(
+      response.bodySize < PLAIN_LENGTH + response.headersSize,
+      `bodySize ${response.bodySize} includes the ${response.headersSize} header bytes`
+    );
   });
 
   void it('gzip body: bodySize is the compressed Content-Length, content.size the decoded one', async () => {

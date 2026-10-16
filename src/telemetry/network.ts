@@ -279,14 +279,6 @@ const TARGET_GONE_ERROR = 'net::ERR_ABORTED (its frame or worker went away)';
  */
 const ABANDONED_REQUEST_GRACE_MS = 5000;
 
-/**
- * `Network.loadingFinished` with the field newer Chrome adds (devtools-protocol
- * 0.0.1717327+): the body size without headers and framing.
- */
-type LoadingFinishedParams = Protocol.Network.LoadingFinishedEvent & {
-  encodedBodyLength?: number;
-};
-
 /** How a request failed (fields of `Network.loadingFailed`) */
 interface RequestFailure {
   /** Chrome's monotonic time of the failure (seconds) */
@@ -579,8 +571,9 @@ export async function startNetworkCollection(
     if (params.encodedDataLength !== undefined) {
       request.encodedDataLength = params.encodedDataLength;
     }
-    const { encodedBodyLength } = params as LoadingFinishedParams;
-    if (encodedBodyLength !== undefined) request.encodedBodyLength = encodedBodyLength;
+    if (params.encodedBodyLength !== undefined) {
+      request.encodedBodyLength = params.encodedBodyLength;
+    }
 
     request.loadingFinishedTime = params.timestamp;
     request.duration = elapsedMs(request, params.timestamp);

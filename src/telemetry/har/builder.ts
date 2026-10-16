@@ -221,17 +221,18 @@ function buildResponse(req: NetworkRequest): Response {
  * cache have none on the wire (0). `encodedBodyLength` is that size when
  * Chrome sends it; otherwise it is `encodedDataLength` (headers and framing
  * included) minus the estimated headers, at least 0 (a revalidation can be
- * smaller than its headers' estimate).
+ * smaller than its headers' estimate). With neither, the size is unknown (-1,
+ * as HAR allows): the decoded length would be wrong for a compressed body.
  *
  * @param req - Network request data
  * @param headersSize - Estimated size of the response headers
- * @returns Body size in bytes
+ * @returns Body size in bytes, or -1 when unknown
  */
 function responseBodySize(req: NetworkRequest, headersSize: number): number {
   if (req.status === 304 || req.fromCache) return 0;
   if (req.encodedBodyLength !== undefined) return req.encodedBodyLength;
   if (req.encodedDataLength !== undefined) return Math.max(0, req.encodedDataLength - headersSize);
-  return req.decodedBodyLength ?? 0;
+  return -1;
 }
 
 /**

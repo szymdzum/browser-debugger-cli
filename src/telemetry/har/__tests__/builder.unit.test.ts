@@ -289,6 +289,23 @@ describe('HAR Builder', () => {
         assert.equal(response.bodySize, 0);
       });
 
+      test('is -1 (unknown) when Chrome gave no encoded size, not the decoded one', () => {
+        const har = buildHAR(
+          [
+            {
+              requestId: 'req-1',
+              url: 'https://example.com',
+              method: 'GET',
+              timestamp: Date.now(),
+              status: 200,
+              decodedBodyLength: 5678,
+            },
+          ],
+          baseMetadata
+        );
+        assert.equal(getFirstEntry(har.log.entries).response.bodySize, -1);
+      });
+
       test('a 304 has bodySize 0 whatever Chrome reports', () => {
         assert.equal(received({ status: 304, encodedDataLength: 5000 }).bodySize, 0);
         assert.equal(received({ status: 304, encodedBodyLength: 5000 }).bodySize, 0);
