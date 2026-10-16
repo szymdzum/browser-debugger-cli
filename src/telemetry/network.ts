@@ -571,6 +571,9 @@ export async function startNetworkCollection(
     if (params.encodedDataLength !== undefined) {
       request.encodedDataLength = params.encodedDataLength;
     }
+    if (params.encodedBodyLength !== undefined) {
+      request.encodedBodyLength = params.encodedBodyLength;
+    }
 
     request.loadingFinishedTime = params.timestamp;
     request.duration = elapsedMs(request, params.timestamp);

@@ -168,7 +168,10 @@ export interface NetworkRequest {
   duration?: number;
   /** For a redirect hop: the URL it redirected to */
   redirectURL?: string;
+  /** Bytes received, headers and framing included (CDP `loadingFinished.encodedDataLength`) */
   encodedDataLength?: number;
+  /** Body bytes as sent, content encoding kept, headers excluded (CDP `loadingFinished.encodedBodyLength`; newer Chrome only) */
+  encodedBodyLength?: number;
   decodedBodyLength?: number;
   /** Address Chrome connected to: the server's, or a proxy's (CDP `remoteIPAddress`) */
   serverIPAddress?: string;
