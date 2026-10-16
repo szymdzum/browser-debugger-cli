@@ -34,6 +34,8 @@ export type ClientResponse<T extends CommandName> = {
   exitCode?: number;
   /** Recovery suggestion forwarded from the handler (present on failure). */
   suggestion?: string;
+  /** Extra `--json` error fields forwarded from the handler (present on failure). */
+  errorContext?: Record<string, unknown>;
   /** The session moved to another tab after its tab closed on its own, and no command reported it yet */
   tabMoved?: TabClosedSwitch;
 };

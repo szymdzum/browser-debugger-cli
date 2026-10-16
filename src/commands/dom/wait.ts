@@ -70,7 +70,7 @@ async function waitFor(
   data?: DomWaitData;
   error?: string;
   exitCode?: number;
-  errorContext?: { suggestion: string };
+  errorContext?: Record<string, unknown>;
 }> {
   const load =
     options.load === true ||
@@ -97,7 +97,12 @@ async function waitFor(
       success: false,
       error: response.error ?? 'Failed to wait',
       exitCode: response.exitCode ?? EXIT_CODES.CDP_CONNECTION_FAILURE,
-      ...(response.suggestion && { errorContext: { suggestion: response.suggestion } }),
+      ...(response.suggestion && {
+        errorContext: {
+          suggestion: response.suggestion,
+          ...(options.json && response.errorContext),
+        },
+      }),
     };
   }
   return { success: true, data: response.data };

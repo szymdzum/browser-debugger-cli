@@ -1111,7 +1111,8 @@ export function createCommandRegistry(
     dom_screenshot: async (cdp, params, abandoned) =>
       takeScreenshot(cdp, params, () => emulation.get().viewport, { abandoned }),
 
-    dom_wait: async (cdp, params) => waitForCondition(cdp, params),
+    dom_wait: async (cdp, params) =>
+      waitForCondition(cdp, params, () => store.pendingNetworkRequests.values()),
 
     page_navigate: async (cdp, params) =>
       interact(

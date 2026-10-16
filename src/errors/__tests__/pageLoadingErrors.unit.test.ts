@@ -11,6 +11,7 @@ import {
   waitTimeoutError,
   withLoadingHint,
 } from '@/errors/messages.js';
+import type { PendingRequestInfo } from '@/ipc/protocol/commands.js';
 
 void describe('loading hints', () => {
   void it('suggests dom wait for the selector, quoted for the shell', () => {
@@ -98,6 +99,48 @@ void describe('waitTimeoutError', () => {
     assert.equal(
       silent.message,
       'Timed out after 1s waiting for #a to be gone (the page did not answer)'
+    );
+  });
+});
+
+void describe('waitTimeoutError on a page still loading with pending requests (#775)', () => {
+  const snapshot = {
+    count: 0,
+    textCount: 0,
+    visibleCount: 0,
+    readyState: 'loading',
+    documentId: 1,
+  };
+  const request = (name: string): PendingRequestInfo => ({
+    method: 'GET',
+    url: `localhost:8765/${name}.js`,
+    resourceType: 'Script',
+    pendingMs: 2000,
+  });
+
+  void it('names the requests like the start warning, with the count past the cap', () => {
+    const loading = {
+      readyState: 'loading',
+      pending: [request('a'), request('b'), request('c')],
+      pendingCount: 5,
+    };
+    const err = waitTimeoutError({ load: true }, snapshot, 300, loading);
+    assert.match(
+      err.suggestion,
+      /^The page is still loading; waiting on: GET localhost:8765\/a\.js \(pending 2s\)/
+    );
+    assert.match(err.suggestion, /and 2 more/);
+    assert.equal(
+      err.suggestion,
+      'The page is still loading; waiting on: GET localhost:8765/a.js (pending 2s), GET localhost:8765/b.js (pending 2s), GET localhost:8765/c.js (pending 2s) and 2 more (all of them with bdg peek); allow more time with --timeout <ms>'
+    );
+  });
+
+  void it('keeps the old text with no pending requests', () => {
+    const err = waitTimeoutError({ load: true }, snapshot, 300);
+    assert.match(
+      err.suggestion,
+      /^The page is still loading; see the requests it waits on with bdg peek/
     );
   });
 });

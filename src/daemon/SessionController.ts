@@ -604,6 +604,7 @@ function describeCommandError(error: unknown): {
   error: string;
   exitCode?: number;
   suggestion?: string;
+  errorContext?: Record<string, unknown>;
 } {
   if (error instanceof CDPProtocolError && error.isRequestError()) {
     const err = cdpRequestRejectedError(error.message);
@@ -629,5 +630,6 @@ function describeCommandError(error: unknown): {
     error: error.message,
     exitCode: error.exitCode,
     ...(typeof suggestion === 'string' && { suggestion }),
+    ...(error.metadata.errorContext && { errorContext: error.metadata.errorContext }),
   };
 }
