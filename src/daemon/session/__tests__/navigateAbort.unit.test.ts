@@ -69,4 +69,29 @@ void describe('navigateToTarget stop', () => {
       cdp.close();
     }
   });
+
+  void it('sends nothing when the signal aborted before the call', async () => {
+    const socket = new FakeWebSocket();
+    const cdp = new CDPConnection(console, () => socket as unknown as WebSocket);
+    const connecting = cdp.connect('ws://localhost:9222/devtools/page/1');
+    socket.simulateOpen();
+    await connecting;
+    try {
+      const reason = new Error('stopped');
+      await assert.rejects(
+        navigateToTarget(
+          cdp,
+          { url: 'http://localhost:1/slow', port: 9222 },
+          {} as TelemetryStore,
+          null,
+          createLogger('session'),
+          AbortSignal.abort(reason)
+        ),
+        (error) => error === reason
+      );
+      assert.deepEqual(socket.getSentMessages(), [], 'neither Page.navigate nor Page.stopLoading');
+    } finally {
+      cdp.close();
+    }
+  });
 });

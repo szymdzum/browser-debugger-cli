@@ -454,12 +454,15 @@ export class Session {
   }
 
   /**
-   * Whether a stop came while the session was still starting.
+   * Whether a user stop (`bdg stop`, Ctrl-C or SIGTERM of the start, its
+   * client gone, the daemon stopped) came while the session was still
+   * starting. A crash or a lost connection during the start is not one: its
+   * Chrome keeps the graceful shutdown.
    *
    * @returns True when the teardown ends a cancelled start
    */
   private startCancelled(): boolean {
-    return this.stopRequested() && !this.started;
+    return this.stopReason === 'normal' && !this.started;
   }
 
   /**
