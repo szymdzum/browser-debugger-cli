@@ -13,7 +13,7 @@ import * as path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { runCommand } from '@/__testutils__/commandRunner.js';
+import { childProcessEnv, runCommand } from '@/__testutils__/commandRunner.js';
 import { cleanupAllSessions } from '@/__testutils__/daemonHelpers.js';
 import {
   getFreePort,
@@ -94,7 +94,11 @@ void describe('Session end', () => {
     await bdg([fixture.url, '--port', String(port), '--headless']);
 
     const follower = spawn('node', [CLI_PATH, 'peek', '-f'], {
-      env: { ...process.env, BDG_SESSION_DIR: ensureTestSessionDir(), HOME: getTestHomeDir() },
+      env: {
+        ...childProcessEnv(),
+        BDG_SESSION_DIR: ensureTestSessionDir(),
+        HOME: getTestHomeDir(),
+      },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let stderr = '';

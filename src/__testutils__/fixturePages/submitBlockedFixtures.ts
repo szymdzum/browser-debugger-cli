@@ -8,7 +8,7 @@
  * submit button whose click handler cancels the click, a form with two
  * invalid fields (`#pair`), one submitted by an `<input type=image>`
  * (`#pictured`), a valid GET form that
- * navigates to `/submit-blocked-done?q=ada` (routes match the whole URL),
+ * navigates to `/submit-blocked-done?q=ada` (routes match the pathname),
  * and `<x-pay>`, whose closed shadow root holds a form with a required
  * field. Every form's `submit` is noted in `window.submitted` (the GET
  * form's too, before it navigates). `/submit-blocked-named` has forms whose
@@ -73,6 +73,6 @@ const SUBMIT_BLOCKED_DONE_HTML = '<!doctype html><title>searched</title><h1>Resu
 /** Blocked submit pages by path */
 export const ROUTES: FixtureRoutes = {
   '/submit-blocked': SUBMIT_BLOCKED_HTML,
-  '/submit-blocked-done?q=ada': SUBMIT_BLOCKED_DONE_HTML,
+  '/submit-blocked-done': SUBMIT_BLOCKED_DONE_HTML,
   '/submit-blocked-named': SUBMIT_BLOCKED_NAMED_HTML,
 };

@@ -17,7 +17,7 @@ import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { runCommand } from '@/__testutils__/commandRunner.js';
+import { childProcessEnv, runCommand } from '@/__testutils__/commandRunner.js';
 import { cleanupAllSessions, isDaemonRunning } from '@/__testutils__/daemonHelpers.js';
 import {
   getFreePort,
@@ -288,6 +288,7 @@ void describe('JSON contract', () => {
 
   void it('exits quietly when the reader closes the pipe early', async () => {
     const child = spawn('node', [CLI_PATH, '--help', '--json', '--full'], {
+      env: childProcessEnv(),
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let stderr = '';

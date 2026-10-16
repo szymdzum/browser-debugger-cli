@@ -544,6 +544,20 @@ export interface FixtureServer {
 }
 
 /**
+ * Pathname of a request URL.
+ *
+ * @param url - Raw request target, with its query
+ * @returns The pathname, or undefined when the target does not parse
+ */
+function pathnameOf(url: string | undefined): string | undefined {
+  try {
+    return new URL(url ?? '/', 'http://fixture').pathname;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Start the fixture server on an ephemeral port.
  *
  * @returns Server handle with its URL
@@ -556,13 +570,19 @@ export async function startFixtureServer(): Promise<FixtureServer> {
   const heldDownloads = new Set<http.ServerResponse>();
   const beacons: string[] = [];
   const server = http.createServer((req, res) => {
+    const route = pathnameOf(req.url);
+    if (route === undefined) {
+      res.writeHead(400, { 'Content-Type': 'text/plain' });
+      res.end('Bad request URL');
+      return;
+    }
     if (req.url?.startsWith('/beacon?')) {
       beacons.push(req.url.slice('/beacon?'.length));
       res.writeHead(204);
       res.end();
       return;
     }
-    if (req.url === '/authenticate' && req.method === 'POST') {
+    if (route === '/authenticate' && req.method === 'POST') {
       let body = '';
       req.on('data', (chunk: Buffer) => (body += chunk.toString()));
       req.on('end', () => {
@@ -573,17 +593,17 @@ export async function startFixtureServer(): Promise<FixtureServer> {
       });
       return;
     }
-    if (req.url === '/login' || req.url === '/secure') {
+    if (route === '/login' || route === '/secure') {
       const page =
-        req.url === '/secure'
+        route === '/secure'
           ? SECURE_HTML
           : LOGIN_HTML.replace('{flash}', loginFailed ? LOGIN_ERROR_FLASH : '');
-      if (req.url === '/login') loginFailed = false;
+      if (route === '/login') loginFailed = false;
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(page);
       return;
     }
-    if (req.url === '/slow') {
+    if (route === '/slow') {
       const timer = setTimeout(() => {
         res.writeHead(200, { 'Content-Type': 'text/html' });
         res.end(html);
@@ -591,22 +611,22 @@ export async function startFixtureServer(): Promise<FixtureServer> {
       req.on('close', () => clearTimeout(timer));
       return;
     }
-    if (req.url === '/interactions') {
+    if (route === '/interactions') {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(interactionsHtml);
       return;
     }
-    if (req.url === '/pixel.png') {
+    if (route === '/pixel.png') {
       res.writeHead(200, { 'Content-Type': 'image/png' });
       res.end(PIXEL_PNG);
       return;
     }
-    if (req.url === '/har-secrets') {
+    if (route === '/har-secrets') {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(HAR_SECRETS_HTML);
       return;
     }
-    if (req.url === '/har-login') {
+    if (route === '/har-login') {
       req.resume();
       res.writeHead(200, {
         'Content-Type': 'application/json',
@@ -617,7 +637,7 @@ export async function startFixtureServer(): Promise<FixtureServer> {
       );
       return;
     }
-    if (req.url === '/cookie') {
+    if (route === '/cookie') {
       res.writeHead(200, {
         'Content-Type': 'text/plain',
         'Set-Cookie': ['fixture_session=abc; Path=/; HttpOnly', 'fixture_theme=dark; Path=/'],
@@ -625,106 +645,121 @@ export async function startFixtureServer(): Promise<FixtureServer> {
       res.end('cookies set');
       return;
     }
-    if (req.url === '/redirect') {
+    if (route === '/redirect') {
       res.writeHead(302, { Location: '/' });
       res.end();
       return;
     }
-    if (req.url === '/missing-page' || req.url === '/spa-missing') {
+    if (route === '/missing-page' || route === '/spa-missing') {
       res.writeHead(404, { 'Content-Type': 'text/html' });
-      res.end(req.url === '/missing-page' ? MISSING_PAGE_HTML : SPA_MISSING_HTML);
+      res.end(route === '/missing-page' ? MISSING_PAGE_HTML : SPA_MISSING_HTML);
       return;
     }
-    if (req.url === '/error-page') {
+    if (route === '/error-page') {
       res.writeHead(500, { 'Content-Type': 'text/html' });
       res.end('<h1>Internal error</h1>');
       return;
     }
-    if (req.url === '/deep' || req.url === '/deep-frame') {
+    if (route === '/deep' || route === '/deep-frame') {
       res.writeHead(200, { 'Content-Type': 'text/html' });
-      res.end(req.url === '/deep' ? DEEP_HTML : DEEP_FRAME_HTML);
+      res.end(route === '/deep' ? DEEP_HTML : DEEP_FRAME_HTML);
       return;
     }
-    if (req.url === '/never.js' || req.url === '/authenticate-hanging') return;
-    if (req.url === '/hanging-login') {
+    if (route === '/never.js' || route === '/authenticate-hanging') return;
+    if (route === '/hanging-login') {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(HANGING_LOGIN_HTML);
       return;
     }
-    if (req.url === '/hanging' || req.url === '/dynamic-loading') {
+    if (route === '/hanging' || route === '/dynamic-loading') {
       res.writeHead(200, { 'Content-Type': 'text/html' });
-      res.end(req.url === '/hanging' ? HANGING_HTML : DYNAMIC_LOADING_HTML);
+      res.end(route === '/hanging' ? HANGING_HTML : DYNAMIC_LOADING_HTML);
       return;
     }
-    if (req.url === '/hanging-head') {
+    if (route === '/hanging-head') {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(HANGING_HEAD_HTML);
       return;
     }
-    if (req.url === '/cross-frame' || req.url?.startsWith('/cross-frame-child')) {
+    if (route === '/cross-frame' || route.startsWith('/cross-frame-child')) {
       res.writeHead(200, { 'Content-Type': 'text/html' });
-      res.end(req.url === '/cross-frame' ? CROSS_FRAME_HTML : CROSS_FRAME_CHILD_HTML);
+      res.end(route === '/cross-frame' ? CROSS_FRAME_HTML : CROSS_FRAME_CHILD_HTML);
       return;
     }
-    if (req.url === '/effects') {
+    if (route === '/effects') {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(EFFECTS_HTML);
       return;
     }
-    if (req.url === '/layout') {
+    if (route === '/layout') {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(LAYOUT_HTML);
       return;
     }
-    const page = pages.get(req.url ?? '');
+    const page = pages.get(route);
     if (page !== undefined) {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(page);
       return;
     }
-    if (req.url === '/eval-frames') {
+    if (route === '/eval-frames') {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(EVAL_FRAMES_HTML);
       return;
     }
-    if (req.url === '/forms') {
+    if (route === '/forms') {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(FORMS_HTML);
       return;
     }
-    if (req.url === '/attributes') {
+    if (route === '/attributes') {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(ATTRIBUTES_HTML);
       return;
     }
-    if (req.url === '/repeated-headers') {
+    if (route === '/repeated-headers') {
       res.setHeader('Content-Type', 'application/json');
       res.setHeader('X-Repeated', ['max-age=63072000', 'max-age=63072000']);
       res.writeHead(200);
       res.end('{}');
       return;
     }
-    if (req.url === '/frame-origins' || req.url === '/framework-listeners') {
+    if (route === '/frame-origins' || route === '/framework-listeners') {
       res.writeHead(200, { 'Content-Type': 'text/html' });
-      res.end(req.url === '/frame-origins' ? FRAME_ORIGINS_HTML : FRAMEWORK_LISTENERS_HTML);
+      res.end(route === '/frame-origins' ? FRAME_ORIGINS_HTML : FRAMEWORK_LISTENERS_HTML);
       return;
     }
-    if (req.url === '/frames' || req.url === '/frame-child') {
+    if (route === '/frames' || route === '/frame-child') {
       res.writeHead(200, { 'Content-Type': 'text/html' });
-      res.end(req.url === '/frames' ? FRAMES_HTML : FRAME_CHILD_HTML);
+      res.end(route === '/frames' ? FRAMES_HTML : FRAME_CHILD_HTML);
       return;
     }
-    if (req.url === '/not-found.png' || req.url === ISSUE_MISSING_STYLESHEET) {
+    if (route === '/favicon.ico') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+    if (route === '/style.css') {
+      res.writeHead(200, { 'Content-Type': 'text/css' });
+      res.end('body { margin: 0; }');
+      return;
+    }
+    if (route === '/forms-jumped') {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end('<!doctype html><title>jumped</title><h1>Jumped</h1>');
+      return;
+    }
+    if (route === '/not-found.png' || route === ISSUE_MISSING_STYLESHEET) {
       res.writeHead(404, { 'Content-Type': 'text/plain' });
       res.end('missing');
       return;
     }
-    if (req.url === '/downloads') {
+    if (route === '/downloads') {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(DOWNLOADS_HTML);
       return;
     }
-    if (req.url === '/report-download') {
+    if (route === '/report-download') {
       res.writeHead(200, {
         'Content-Type': 'text/plain',
         'Content-Disposition': `attachment; filename="${REPORT_DOWNLOAD_NAME}"`,
@@ -732,7 +767,7 @@ export async function startFixtureServer(): Promise<FixtureServer> {
       res.end(REPORT_DOWNLOAD_BODY);
       return;
     }
-    if (req.url === '/slow-download') {
+    if (route === '/slow-download') {
       res.writeHead(200, {
         'Content-Type': 'application/octet-stream',
         'Content-Disposition': `attachment; filename="${SLOW_DOWNLOAD_NAME}"`,
@@ -743,13 +778,13 @@ export async function startFixtureServer(): Promise<FixtureServer> {
       res.on('close', () => heldDownloads.delete(res));
       return;
     }
-    if (req.url === '/slow-download/release') {
+    if (route === '/slow-download/release') {
       heldDownloads.forEach((held) => held.end(Buffer.alloc(SLOW_DOWNLOAD_HALF_BYTES, 'b')));
       res.writeHead(204);
       res.end();
       return;
     }
-    if (req.url === '/api/delayed') {
+    if (route === '/api/delayed') {
       const timer = setTimeout(() => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ status: 'ok' }));
@@ -757,18 +792,23 @@ export async function startFixtureServer(): Promise<FixtureServer> {
       req.on('close', () => clearTimeout(timer));
       return;
     }
-    if (req.url === '/large-body') {
+    if (route === '/large-body') {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(LARGE_BODY);
       return;
     }
-    if (req.url === '/api/test') {
+    if (route === '/api/test') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ status: 'ok' }));
       return;
     }
-    res.writeHead(200, { 'Content-Type': 'text/html' });
-    res.end(html);
+    if (route === '/') {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(html);
+      return;
+    }
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end(`No fixture page at ${route}`);
   });
 
   const echo = new WebSocketServer({ server, path: '/ws' });

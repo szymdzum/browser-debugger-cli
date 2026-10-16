@@ -13,6 +13,17 @@ import { fileURLToPath } from 'url';
 import { assertDistFresh } from './distFreshness.js';
 import { ensureTestSessionDir, getTestHomeDir } from './testHome.js';
 
+/**
+ * Environment for a bdg child process: the parent's without `NO_COLOR` and
+ * `FORCE_COLOR`, which together make Node print a warning to stderr.
+ *
+ * @returns Copy of `process.env` without the colour variables
+ */
+export function childProcessEnv(): NodeJS.ProcessEnv {
+  const { NO_COLOR: _noColor, FORCE_COLOR: _forceColor, ...env } = process.env;
+  return env;
+}
+
 export interface CommandResult {
   exitCode: number;
   stdout: string;
@@ -76,7 +87,7 @@ export async function runCommand(
 
     const child = spawn('node', [cliPath, command, ...args], {
       env: {
-        ...process.env,
+        ...childProcessEnv(),
         BDG_SESSION_DIR: testSessionDir,
         HOME: testHomeDir,
         CI: '1',

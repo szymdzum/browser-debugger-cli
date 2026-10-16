@@ -66,8 +66,8 @@ const POPUP_HTML = `<!doctype html><title>popup</title><h1 id="popup">Popup</h1>
 
 /** Pages by path */
 export const ROUTES: FixtureRoutes = {
-  [URL_CREDS_PATH]: URL_CREDS_HTML,
+  '/url-creds': URL_CREDS_HTML,
   '/url-creds-landing': LANDING_HTML,
-  [URL_CREDS_POPUP_PATH]: POPUP_HTML,
-  [URL_CREDS_API_PATH]: '{"ok":true}',
+  '/url-creds-popup': POPUP_HTML,
+  '/url-creds-api': '{"ok":true}',
 };

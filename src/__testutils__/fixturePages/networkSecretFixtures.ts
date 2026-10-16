@@ -11,8 +11,7 @@
  * to `/har-login` (a JSON response with `access_token` and `refresh_token`,
  * and a `har_session` cookie); and a JSON WebSocket message with a `token`
  * and a plain-text `Bearer` message to the echo server at `/ws`. The title
- * becomes `done` when both echoes came back. `/net-form`, `/net-json` and `/net-upload` get the fixture server's
- * default page.
+ * becomes `done` when both echoes came back. `/net-form`, `/net-json` and `/net-upload` answer `ok`.
  *
  * Every secret value ends in {@link NETWORK_SECRET_MARKER}, assembled in the
  * script so the page source holds none.
@@ -63,4 +62,7 @@ fetch('/net-form', {
 /** Network secret pages by path */
 export const ROUTES: FixtureRoutes = {
   '/net-secrets': NET_SECRETS_HTML,
+  '/net-form': 'ok',
+  '/net-json': 'ok',
+  '/net-upload': 'ok',
 };
