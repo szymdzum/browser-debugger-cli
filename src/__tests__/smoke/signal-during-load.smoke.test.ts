@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 
 import type { Readable } from 'node:stream';
 
+import { childProcessEnv } from '@/__testutils__/commandRunner.js';
 import { makeTempDir, removeTempDirs } from '@/__testutils__/tempDirs.js';
 
 /** Compiled CLI entry */
@@ -54,7 +55,7 @@ function signalDuringStartup(
 ): Promise<GatedRun> {
   const child = spawn(process.execPath, [CLI_PATH, ...args], {
     env: {
-      ...process.env,
+      ...childProcessEnv(),
       BDG_SESSION_DIR: makeTempDir('bdg-startup-interrupt-'),
       BDG_TEST_STARTUP_GATE: point,
     },

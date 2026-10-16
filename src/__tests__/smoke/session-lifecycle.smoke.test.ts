@@ -124,7 +124,7 @@ void describe('Session Lifecycle Smoke Tests', () => {
     const firstResult = await startSession();
     assert.equal(firstResult.exitCode, 0, `First session start failed: ${firstResult.stderr}`);
 
-    const secondResult = await startSession(`${fixture.url}other`);
+    const secondResult = await startSession(`${fixture.url}?other=1`);
 
     assert.notEqual(secondResult.exitCode, 0);
     assert.ok(

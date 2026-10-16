@@ -15,4 +15,8 @@ const REPEATED_REQUESTS_HTML = `<!doctype html><title>repeated requests</title>
   fetch('/api/other', { method: 'POST', body: 'y' });
 ">Fire</button>`;
 
-export const ROUTES: FixtureRoutes = { '/repeated-requests': REPEATED_REQUESTS_HTML };
+export const ROUTES: FixtureRoutes = {
+  '/repeated-requests': REPEATED_REQUESTS_HTML,
+  '/event': 'ok',
+  '/api/other': 'ok',
+};
