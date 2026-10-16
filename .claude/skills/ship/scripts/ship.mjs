@@ -772,6 +772,7 @@ function mergeCheck(argv) {
   const [prNumber, ...files] = argv;
   if (!prNumber) return usage('merge-check <pr> [unit or smoke test files...]');
   const pr = prInfo(prNumber);
+  run('git', ['fetch', '-q', 'origin', `pull/${pr.number}/head`]);
   const main = run('git', ['rev-parse', freshOriginRef(pr.baseRefName)]);
   const merged = spawnSync('git', ['merge-tree', '--write-tree', main, pr.headRefOid], {
     encoding: 'utf8',
@@ -1044,7 +1045,7 @@ async function gates(argv) {
   const head = pr.headRefOid;
   const results = [];
   console.log(`gates for PR #${pr.number} at ${head.slice(0, 10)} (tier ${tier})`);
-  run('git', ['fetch', '-q', 'origin']);
+  run('git', ['fetch', '-q', 'origin', `pull/${pr.number}/head`]);
   const baseRef = freshOriginRef(pr.baseRefName);
   const forkPoint = run('git', ['merge-base', baseRef, head]);
   const prFiles = run('git', ['diff', '--name-only', forkPoint, head]).split('\n').filter(Boolean);
@@ -1878,6 +1879,8 @@ function brief(argv) {
   const { DESIGN: designFile, ISSUES: issueList, ...rest } = values;
   const { brief: rendered } = renderBrief(briefsText, positional[0], rest);
   const numbers = issueNumbers(issueList ?? rest.N);
+  if (issueList && !numbers.length)
+    return usage(`brief: ISSUES=${issueList} must be issue numbers, e.g. ISSUES=786,459`);
   const issues = rendered.includes('<ISSUE>')
     ? numbers.map((n) => ghJson(['issue', 'view', n, '--json', 'number,title,body,comments']))
     : [];
@@ -1885,10 +1888,10 @@ function brief(argv) {
     return usage(`brief ${positional[0]}: needs DESIGN=<file> with the design note`);
   const design = rendered.includes('<DESIGN>') ? formatDesign(readFileSync(designFile, 'utf8')) : '';
   const text = rendered
-    .split('<DESIGN>')
-    .join(design)
     .split('<ISSUE>')
-    .join(issues.length ? issues.map(formatIssue).join('\n\n') : '(no issue)');
+    .join(issues.length ? issues.map(formatIssue).join('\n\n') : '(no issue)')
+    .split('<DESIGN>')
+    .join(design);
   if (out) writeFileSync(out, `${text}\n`);
   else console.log(text);
   const open = unfilledPlaceholders(text, placeholders);
