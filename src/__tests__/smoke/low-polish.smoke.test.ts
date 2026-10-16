@@ -126,7 +126,7 @@ void describe('Low-priority polish', () => {
     const output = await bdg(['cdp', 'Performance.getMetrics']);
     assert.match(output, /bdg cdp Performance\.enable/);
     const json = await runCommand('cdp', ['Performance.getMetrics', '--json'], { timeout: 60000 });
-    assert.match(json.stdout, /Performance\.enable/);
+    assert.match(json.stderr, /Performance\.enable/);
   });
 
   void it('the Runtime.evaluate pattern hint suggests bdg eval (#567)', async () => {
