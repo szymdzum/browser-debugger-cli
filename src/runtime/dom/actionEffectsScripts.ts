@@ -315,7 +315,8 @@ const NEAR_SCOPE_JS = `(target) => {
  * elements hidden before it that are shown now ({@link REVEAL_SNAPSHOT_JS}).
  * The container is searched through shadow roots. After a click on an
  * element with `aria-expanded`, the elements it un-hid among those it names
- * with `aria-controls` and its next sibling count too. Background widgets
+ * with `aria-controls` and its next sibling count too, and so do the
+ * pre-rendered dialogs the press opened (`openedDialogs`, anywhere). Background widgets
  * elsewhere on the page do not count. A dialog with no text is listed by its
  * name: the `aria-label`, placeholder or title of the first element in it
  * (itself first) that is not a secret's. Only shown ones
@@ -361,6 +362,7 @@ export const SHOWN_ELEMENTS_JS = `(state) => {
   const removed = new Set(state.removed.map(contentOf));
   const candidates = new Set(state.added.filter((node) => node.isConnected && near(node)));
   if (state.reveal) for (const el of state.reveal.hidden) if (el.isConnected) candidates.add(el);
+  for (const el of state.openedDialogs) if (el.isConnected && el.hasAttribute('open')) candidates.add(el);
   const found = [];
   let partial = false;
   void document.documentElement.offsetHeight;
@@ -529,7 +531,12 @@ const OUTCOMES_JS = `(state, focus) => {
  * delivery), changes a churned text or changes the element's attributes
  * makes no burst and adds no nodes; such elements with structural changes
  * are kept in `alsoChanging`. Anything else a marked element gets (the
- * action's result next to a ticker) counts as usual. The watch stops itself after
+ * action's result next to a ticker) counts as usual. A `<dialog>` whose `open`
+ * attribute appears during a press event's dispatch (`dispatching`: set by
+ * the capture listener of each press event, cleared by a 0 ms timer that
+ * each press event reschedules) and that was closed at the start (its first
+ * `open` change of the watch) is kept in `openedDialogs`, for `Shown:`. The
+ * watch stops itself after
  * {@link MAX_WATCH_MS}, so a snapshot that ran late (after a navigation,
  * with nobody reading it) leaves nothing behind. Evaluates to the URL and
  * the messages.
@@ -548,8 +555,9 @@ export const EFFECTS_START_SCRIPT = `(() => {
     pressScroll: null, copied: false, stopped: false, added: [], removed: [], bursts: [],
     keyTarget: null, loaders: new Set((${LOADERS_JS})()),
     pressTarget: null, submits: [], forms: [], control: null, keyClick: null, enterField: null,
-    nodes: 0, expandable: null, inputTarget: null
+    nodes: 0, expandable: null, inputTarget: null, openedDialogs: [], dispatching: false, dispatchTimer: 0
   };
+  const dialogsSeen = new WeakSet();
   const listen = EventTarget.prototype.addEventListener;
   const unlisten = EventTarget.prototype.removeEventListener;
   const controlLabel = ${CONTROL_LABEL_JS};
@@ -591,6 +599,14 @@ export const EFFECTS_START_SCRIPT = `(() => {
     if (record.type === 'characterData') return churned.has(record.target);
     return Array.from(record.addedNodes).concat(Array.from(record.removedNodes)).every((node) => churned.has(node));
   };
+  const noteDialogOpen = (record) => {
+    const dialog = record.target;
+    if (record.attributeName !== 'open' || dialog.localName !== 'dialog' || dialogsSeen.has(dialog)) return;
+    dialogsSeen.add(dialog);
+    if (record.oldValue === null && state.dispatching && state.openedDialogs.length < ${MAX_TRACKED_NODES}) {
+      state.openedDialogs.push(dialog);
+    }
+  };
   const count = (records) => {
     let burst = false;
     const replacing = new Set(records.filter(replaces).map((record) => record.target));
@@ -600,6 +616,7 @@ export const EFFECTS_START_SCRIPT = `(() => {
     for (const record of records) {
       if (churnOnly(record, state.targets)) continue;
       state.changes++;
+      if (record.type === 'attributes') noteDialogOpen(record);
       const own = ticking(record);
       if (!own) burst = burst || structural(record);
       else if (structural(record)) state.alsoChanging.add(record.target);
@@ -638,6 +655,11 @@ export const EFFECTS_START_SCRIPT = `(() => {
     if (path[0] && !state.inputTarget && event.type === 'input') state.inputTarget = path[0];
     path.forEach((node) => state.path.add(node));
     if (!state.pressScroll && pressTypes.includes(event.type)) state.pressScroll = [scrollX, scrollY];
+    if (pressTypes.includes(event.type)) {
+      state.dispatching = true;
+      clearTimeout(state.dispatchTimer);
+      state.dispatchTimer = setTimeout(() => { state.dispatching = false; }, 0);
+    }
     if (event.type === 'submit') onSubmit(event);
     else if (path[0] && pressTypes.includes(event.type)) {
       try {
@@ -653,6 +675,7 @@ export const EFFECTS_START_SCRIPT = `(() => {
     if (state.stopped) return;
     state.stopped = true;
     clearTimeout(expiry);
+    clearTimeout(state.dispatchTimer);
     observer.disconnect();
     if (Element.prototype.attachShadow === watchedAttach) Element.prototype.attachShadow = attachShadow;
     types.forEach((type) => window.removeEventListener(type, record, true));
