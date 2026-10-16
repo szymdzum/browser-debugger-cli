@@ -880,12 +880,14 @@ function ciGates(results, pr, macos) {
       job(/^CI OK$/)?.conclusion === 'success',
       `5 required check CI OK: ${job(/^CI OK$/)?.conclusion ?? 'missing'}`
     );
-    if (macos)
+    if (macos) {
+      const shards = jobs.filter((j) => /macOS/.test(j.name)).map((j) => j.conclusion);
       gateLine(
         results,
-        job(/macOS/)?.conclusion === 'success',
-        `5 macOS smoke: ${job(/macOS/)?.conclusion ?? 'missing'}`
+        shards.length > 0 && shards.every((c) => c === 'success'),
+        `5 macOS smoke: ${shards.join(', ') || 'missing'}`
       );
+    }
   }
   if (pr.baseRefName === 'main') {
     const sec = latestRun(head, 'Security', 'pull_request');

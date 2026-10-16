@@ -220,15 +220,16 @@ jobs:
       - name: Run contract tests
         run: npm test
 
-  # Smoke tests with Chrome: Node 22 on PRs, 22/24/26 on main and nightly,
-  # the `node` input on dispatch.
-  # The shell integration suite (against the local fixture server) runs after
-  # the smoke tests, but not on dispatches.
+  # Smoke tests with Chrome: Node 22 on PRs and main, 22/24/26 nightly, the
+  # `node` input on dispatch. The files are split into 4 shards of about equal
+  # run time that run in parallel (one shard with all files on dispatch, so a
+  # repeat runs the whole selection). The shell integration suite (against the local fixture server)
+  # runs after shard 1 on Node 22, but not on dispatches.
   smoke:
-    name: Smoke Tests (Chrome) (Node ${{ matrix.node }})
+    name: Smoke Tests (Chrome) (Node ${{ matrix.node }}, shard ${{ matrix.shard }})
     runs-on: ubuntu-24.04
     needs: build
-    # A full run takes about 10 min. Dispatches get 15 min more per repeat
+    # A shard takes about 4 min. Dispatches get 15 min more per repeat
     # (expressions have no arithmetic, hence the table); other repeat values
     # get GitHub's 6 h maximum. A hung test fails sooner (smoke-selected.sh).
     timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && (fromJSON('{"1":30,"2":45,"3":60,"4":75,"5":90,"6":105,"7":120,"8":135,"9":150,"10":165}')[inputs.repeat] || 360) || 30 }}
@@ -237,7 +238,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ${{ fromJSON(github.event_name == 'pull_request' && '["22"]' || github.event_name == 'workflow_dispatch' && format('["{0}"]', inputs.node || '22') || '["22","24","26"]') }}
+        node: ${{ fromJSON(github.event_name == 'schedule' && '["22","24","26"]' || github.event_name == 'workflow_dispatch' && format('["{0}"]', inputs.node || '22') || '["22"]') }}
+        shard: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '["1/1"]' || '["1/4","2/4","3/4","4/4"]') }}
 
     steps:
       - name: Checkout code
@@ -290,10 +292,26 @@ jobs:
           timeout 120 google-chrome-stable --headless=new --user-data-dir="$(mktemp -d)" --dump-dom about:blank > /dev/null
           echo "Chrome warm-up took $(( $(date +%s) - start )) s"
 
-      # The failed tests are also listed in the job summary.
+      # The failed tests are also listed in the job summary. Shards are split
+      # by the run times in scripts/smoke-timings.json; each Node 22 shard
+      # uploads its times (smoke-timings-*) to refresh it with
+      # `node scripts/smoke-shard.mjs --update`.
       - name: Run smoke tests
         if: github.event_name != 'workflow_dispatch'
+        env:
+          SHARD: ${{ matrix.shard }}
+          SHARD_INTEGRATION: ${{ matrix.node == '22' && '1' || '' }}
+          SMOKE_TIMINGS: ${{ matrix.node == '22' && 'smoke-timings.json' || '' }}
         run: scripts/smoke-selected.sh
+
+      - name: Upload smoke timings
+        if: github.event_name != 'workflow_dispatch' && matrix.node == '22'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: smoke-timings-${{ strategy.job-index }}
+          path: smoke-timings.json
+          if-no-files-found: ignore
+          retention-days: 30
 
       - name: Run selected smoke tests
         if: github.event_name == 'workflow_dispatch'
@@ -305,14 +323,14 @@ jobs:
         run: scripts/smoke-selected.sh
 
       - name: Run integration tests
-        if: github.event_name != 'workflow_dispatch' && matrix.node == '22'
+        if: github.event_name != 'workflow_dispatch' && matrix.node == '22' && matrix.shard == '1/4'
         run: ./tests/run-all-tests.sh --integration
 
       - name: Upload session logs
         if: failure() || cancelled() || github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: smoke-logs-linux-node${{ matrix.node }}
+          name: smoke-logs-linux-node${{ matrix.node }}-${{ strategy.job-index }}
           path: |
             /tmp/bdg-test-*/**/daemon.log*
             /tmp/bdg-test-*/**/chrome-err.log
@@ -327,8 +345,9 @@ jobs:
   # macOS smoke (the platform bdg is mostly used on), with the runner's Google
   # Chrome. On main, nightly and dispatch, and on PRs that touch timing-sensitive
   # paths (changes.timing). Not part of CI OK: it gives signal without blocking.
+  # Sharded as the Linux smoke job.
   smoke-macos:
-    name: Smoke Tests (macOS, Chrome) (Node ${{ inputs.node || '22' }})
+    name: Smoke Tests (macOS, Chrome) (Node ${{ inputs.node || '22' }}, shard ${{ matrix.shard }})
     runs-on: macos-latest
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || needs.changes.outputs.timing == 'true')
@@ -336,6 +355,10 @@ jobs:
     timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && (fromJSON('{"1":30,"2":45,"3":60,"4":75,"5":90,"6":105,"7":120,"8":135,"9":150,"10":165}')[inputs.repeat] || 360) || 30 }}
     env:
       BDG_TEST_KEEP_DIRS: '1'
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '["1/1"]' || '["1/4","2/4","3/4","4/4"]') }}
 
     steps:
       - name: Checkout code
@@ -382,6 +405,8 @@ jobs:
       # The failed tests are also listed in the job summary.
       - name: Run smoke tests
         if: github.event_name != 'workflow_dispatch'
+        env:
+          SHARD: ${{ matrix.shard }}
         run: scripts/smoke-selected.sh
 
       - name: Run selected smoke tests
@@ -397,7 +422,7 @@ jobs:
         if: failure() || cancelled() || github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: smoke-logs-macos
+          name: smoke-logs-macos-${{ strategy.job-index }}
           path: |
             /tmp/bdg-test-*/**/daemon.log*
             /tmp/bdg-test-*/**/chrome-err.log
