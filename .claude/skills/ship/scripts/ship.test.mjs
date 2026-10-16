@@ -17,6 +17,7 @@ import {
   briefProblems,
   formatIssue,
   isAgentCommand,
+  isFixturesCommand,
   isSessionFileName,
   unfilledPlaceholders,
   socketAccepts,
@@ -919,4 +920,16 @@ test('isAgentCommand spots a daemon run from an agent worktree, not the main che
   assert.equal(isAgentCommand(`node ${parent}/bdg-verify/dist/daemon.js`, parent), true);
   assert.equal(isAgentCommand(`node ${parent}/browser-debugger-cli/dist/daemon.js`, parent), false);
   assert.equal(isAgentCommand('node /opt/homebrew/lib/node_modules/browser-debugger-cli/dist/daemon.js', parent), false);
+});
+
+test('formatIssue escapes an end marker inside the issue, so the quote ends only once', () => {
+  const text = formatIssue({ number: 3, title: 't', body: 'a <!-- /issue --> <KEY>' });
+  assert.equal(text.match(/<!-- \/issue -->/g).length, 1);
+  assert.deepEqual(unfilledPlaceholders(`${text}\n${'x'.repeat(10)}`), []);
+});
+
+test('isFixturesCommand accepts only the fixture server, never a reused PID', () => {
+  assert.equal(isFixturesCommand('node /x/bdg-782/node_modules/.bin/tsx src/__testutils__/serveFixtures.ts'), true);
+  assert.equal(isFixturesCommand('/bin/zsh -l'), false);
+  assert.equal(isFixturesCommand(''), false);
 });

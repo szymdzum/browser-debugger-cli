@@ -10,6 +10,7 @@
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import {
   existsSync,
+  closeSync,
   lstatSync,
   openSync,
   readFileSync,
@@ -1368,17 +1369,43 @@ function fixturesPidFile(n) {
 }
 
 /**
- * Stops the orchestrator's fixture server for N (its whole process group:
- * tsx runs the server in a child) and removes its PID file.
+ * True when a command line is the fixture server `ship fixtures` starts.
+ *
+ * @param {string} command
+ */
+export function isFixturesCommand(command) {
+  return command.includes('serveFixtures');
+}
+
+/**
+ * The PID in N's fixtures PID file when that process is alive and is the
+ * fixture server (its command line says so: a PID reused after a crash or
+ * reboot is never signalled), else null.
  *
  * @param {string} n
- * @returns {boolean} true when a PID file was there
+ */
+function runningFixturesPid(n) {
+  const file = fixturesPidFile(n);
+  if (!existsSync(file)) return null;
+  const pid = Number(readFileSync(file, 'utf8').trim());
+  if (!pid || !alive(pid)) return null;
+  const command = spawnSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8' }).stdout;
+  return isFixturesCommand(command ?? '') ? pid : null;
+}
+
+/**
+ * Stops the orchestrator's fixture server for N (its whole process group:
+ * tsx runs the server in a child) and removes its PID file; a stale file
+ * is only removed.
+ *
+ * @param {string} n
+ * @returns {'stopped' | 'stale' | null} null when there was no PID file
  */
 function stopFixtures(n) {
   const file = fixturesPidFile(n);
-  if (!existsSync(file)) return false;
-  const pid = Number(readFileSync(file, 'utf8').trim());
-  if (pid && alive(pid)) {
+  if (!existsSync(file)) return null;
+  const pid = runningFixturesPid(n);
+  if (pid) {
     try {
       process.kill(-pid, 'SIGTERM');
     } catch {
@@ -1386,7 +1413,7 @@ function stopFixtures(n) {
     }
   }
   rmSync(file);
-  return true;
+  return pid ? 'stopped' : 'stale';
 }
 
 /**
@@ -1401,23 +1428,36 @@ async function fixtures(argv) {
   const n = positional[0];
   if (!n || !/^\d+$/.test(n)) return usage('fixtures <N> [dir=<worktree>] | fixtures <N> --stop');
   if (flags.has('stop')) {
-    console.log(stopFixtures(n) ? `stopped the fixtures of #${n}` : `no fixtures of #${n} running`);
+    const result = stopFixtures(n);
+    console.log(
+      result === 'stopped'
+        ? `stopped the fixtures of #${n}`
+        : result === 'stale'
+          ? `removed a stale PID file of #${n} (no fixture server behind it)`
+          : `no fixtures of #${n} running`
+    );
     return EXIT.ok;
   }
   const logFile = `/tmp/bdg-fixtures-${n}.log`;
   const pidFile = fixturesPidFile(n);
-  if (existsSync(pidFile) && alive(Number(readFileSync(pidFile, 'utf8').trim()))) {
+  if (runningFixturesPid(n) && existsSync(logFile)) {
     console.log(readFileSync(logFile, 'utf8').trim());
     return EXIT.ok;
   }
+  rmSync(pidFile, { force: true });
   const dir = keys.dir ?? resolve(mainCheckout(), '..', `bdg-${n}`);
+  const tsx = join(dir, 'node_modules', '.bin', 'tsx');
+  if (!existsSync(tsx)) return usage(`fixtures ${n}: no ${tsx} (is ${dir} a worktree with node_modules linked?)`);
   const out = openSync(logFile, 'w');
-  const child = spawn(join(dir, 'node_modules', '.bin', 'tsx'), ['src/__testutils__/serveFixtures.ts'], {
+  const child = spawn(tsx, ['src/__testutils__/serveFixtures.ts'], {
     cwd: dir,
     detached: true,
     stdio: ['ignore', out, out],
     env: pinnedEnv(),
   });
+  closeSync(out);
+  child.on('error', (error) => console.log(`FAIL the fixtures of #${n} did not start: ${error.message}`));
+  if (!child.pid) return EXIT.failed;
   writeFileSync(pidFile, `${child.pid}\n`);
   child.unref();
   for (let i = 0; i < 60; i++) {
@@ -1515,7 +1555,7 @@ async function merge(argv) {
   if (!prNumber) return usage('merge <pr> --tier=1|2|3 [--macos] [--timing] [--repeat=<run id>] [--no-issue] [--fixes-main]');
   const pr = prInfo(prNumber);
   for (const n of [String(pr.number), ...(prIssues(pr.number) ?? [])])
-    if (stopFixtures(n)) console.log(`stopped your fixtures of #${n} (ship fixtures)`);
+    if (stopFixtures(n) === 'stopped') console.log(`stopped your fixtures of #${n} (ship fixtures)`);
   if ((await gates(argv)) !== EXIT.ok) {
     console.log('not merged: a gate failed');
     return EXIT.failed;
@@ -1675,8 +1715,11 @@ export function formatIssue(issue) {
     '',
     (issue.body ?? '').trim() || '(no description)',
     ...comments.flatMap((c) => ['', c]),
-    ISSUE_END,
-  ].join('\n');
+  ]
+    .join('\n')
+    .split(ISSUE_END)
+    .join('<!-- /issue (quoted) -->')
+    .concat(`\n${ISSUE_END}`);
 }
 
 /**
@@ -1746,7 +1789,7 @@ function brief(argv) {
     ...given,
   };
   const { brief: rendered } = renderBrief(readFileSync(join(SKILL_DIR, 'briefs.md'), 'utf8'), positional[0], values);
-  const issue = /^\d+$/.test(values.N ?? '')
+  const issue = rendered.includes('<ISSUE>') && /^\d+$/.test(values.N ?? '')
     ? ghJson(['issue', 'view', values.N, '--json', 'number,title,body,comments'])
     : null;
   const text = rendered.split('<ISSUE>').join(issue ? formatIssue(issue) : '(no issue)');
