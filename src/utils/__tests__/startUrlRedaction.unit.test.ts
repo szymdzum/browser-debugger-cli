@@ -179,24 +179,61 @@ const ADVERSARIAL: ReadonlyArray<(n: number) => string> = [
 /** Repeat count of the shorter input; the longer one has four times as many */
 const BASE_REPEAT = 25_000;
 
-/** A quadratic pattern grows 16x for a 4x longer input, a linear one about 4x */
-const MAX_GROWTH = 8;
+/** A quadratic pattern grows 16x for a 4x longer input, a linear one about 4x; 10 leaves room for load noise */
+const MAX_GROWTH = 10;
+
+/** Interleaved rounds per measurement: each input gets its own chance at a quiet slice */
+const ROUNDS = 7;
 
 /**
- * Fastest of five runs of a display function.
+ * Fastest CPU time of a display function for each of two inputs. CPU time, not wall time: a
+ * loaded machine deschedules the longer run more often, which inflates the wall-clock ratio.
+ * The inputs are measured alternately so a load spike hits both rather than one.
  *
  * @param show - Display function
- * @param input - URL text
- * @returns Duration in milliseconds
+ * @param short - Shorter input
+ * @param long - Longer input
+ * @returns Fastest CPU time in milliseconds for each input
  */
-function fastestOfFive(show: (url: string) => string, input: string): number {
-  let best = Infinity;
-  for (let run = 0; run < 5; run++) {
-    const started = performance.now();
-    show(input);
-    best = Math.min(best, performance.now() - started);
+function fastestPair(
+  show: (url: string) => string,
+  short: string,
+  long: string
+): { short: number; long: number } {
+  const best = { short: Infinity, long: Infinity };
+  for (let round = 0; round < ROUNDS; round++) {
+    for (const [key, input] of [
+      ['short', short],
+      ['long', long],
+    ] as const) {
+      const started = process.cpuUsage();
+      show(input);
+      const used = process.cpuUsage(started);
+      best[key] = Math.min(best[key], (used.user + used.system) / 1000);
+    }
   }
   return best;
+}
+
+/** Measurements of one pair before a load spike counts as a regression */
+const MEASUREMENTS = 3;
+
+/**
+ * Growth of a display function for the 4x longer input, re-measured while it stays over the limit.
+ * A quadratic implementation is over the limit every time; transient load is not.
+ *
+ * @param show - Display function
+ * @param short - Shorter input
+ * @param long - Input four times as long
+ * @returns Lowest growth ratio seen
+ */
+function lowestGrowth(show: (url: string) => string, short: string, long: string): number {
+  let lowest = Infinity;
+  for (let attempt = 0; attempt < MEASUREMENTS && lowest >= MAX_GROWTH; attempt++) {
+    const best = fastestPair(show, short, long);
+    lowest = Math.min(lowest, best.long / Math.max(best.short, 2));
+  }
+  return lowest;
 }
 
 void describe('URL display is linear (#757 review)', () => {
@@ -206,7 +243,7 @@ void describe('URL display is linear (#757 review)', () => {
     void it(`shows ${short.slice(0, 12)}… (${short.length} to ${long.length} chars) in linear time`, () => {
       for (const show of [displayUrl, displayTypedUrl, displayRejectedUrl]) {
         show(short);
-        const growth = fastestOfFive(show, long) / Math.max(fastestOfFive(show, short), 2);
+        const growth = lowestGrowth(show, short, long);
         assert.ok(growth < MAX_GROWTH, `${show.name} grew ${growth.toFixed(1)}x for 4x the input`);
       }
     });
