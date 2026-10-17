@@ -2,12 +2,14 @@ import { Option, type Command } from 'commander';
 
 import { runCommand, type CommandResult } from '@/commands/shared/CommandRunner.js';
 import { includeSensitiveOption, jsonOption } from '@/commands/shared/commonOptions.js';
+import { createErrorResult } from '@/commands/shared/dataFetcher.js';
 import type { DetailsCommandOptions } from '@/commands/shared/optionTypes.js';
 import { integerOption } from '@/commands/shared/validation.js';
 import type { DetailsResult } from '@/commands/types.js';
 import { CommandError } from '@/errors/index.js';
 import {
   conflictingOptionsError,
+  detailsUsageError,
   networkOnlyDetailsOptionError,
   responseBodyMissingError,
 } from '@/errors/messages.js';
@@ -265,14 +267,34 @@ async function runDetails(options: DetailsCommandOptions): Promise<void> {
  * @returns Failed command result
  */
 function usageFailure(error: string): CommandResult<never> {
-  return {
-    success: false,
-    error,
-    exitCode: EXIT_CODES.INVALID_ARGUMENTS,
-    errorContext: {
-      suggestion: 'Usage: bdg network details <requestId> or bdg console details <index>',
-    },
-  };
+  const err = detailsUsageError(error);
+  return createErrorResult(err.message, EXIT_CODES.INVALID_ARGUMENTS, err.suggestion);
+}
+
+/** What `network details` and `console details` say about themselves */
+const DETAILS_SUBCOMMANDS = {
+  network: {
+    description: 'Get detailed information for a specific request',
+    idHelp: 'Request ID (from network list)',
+  },
+  console: {
+    description: 'Get detailed information for a specific console message',
+    idHelp: 'Message index (from console)',
+  },
+} as const;
+
+/**
+ * Add the options of a details command: `--json`, the response body
+ * options when it can show network requests, `--include-sensitive`.
+ *
+ * @param command - Command to add them to
+ * @param withBody - Whether to add `--body`, `--no-body`, `--body-max`
+ * @returns The command
+ */
+function addDetailsOptions(command: Command, withBody: boolean): Command {
+  command.addOption(jsonOption());
+  if (withBody) addBodyOptions(command);
+  return command.addOption(includeSensitiveOption());
 }
 
 /**
@@ -283,21 +305,9 @@ function usageFailure(error: string): CommandResult<never> {
  * @param type - What it shows details of
  */
 export function registerDetailsSubcommand(parent: Command, type: 'network' | 'console'): void {
-  const command = parent
-    .command('details')
-    .description(
-      type === 'network'
-        ? 'Get detailed information for a specific request'
-        : 'Get detailed information for a specific console message'
-    )
-    .argument(
-      '<id>',
-      type === 'network' ? 'Request ID (from network list)' : 'Message index (from console)'
-    )
-    .addOption(jsonOption());
-  if (type === 'network') addBodyOptions(command);
-  command
-    .addOption(includeSensitiveOption())
+  const { description, idHelp } = DETAILS_SUBCOMMANDS[type];
+  const command = parent.command('details').description(description).argument('<id>', idHelp);
+  addDetailsOptions(command, type === 'network')
     .action(async (id: string, options: DetailsCommandOptions) => {
       const inherited = parent.opts<Pick<DetailsCommandOptions, 'json' | 'includeSensitive'>>();
       await runDetails({
@@ -341,11 +351,8 @@ export function registerDetailsCommand(program: Command): void {
     .command('details')
     .description('Get detailed information for a specific request or console message')
     .argument('<type>', 'Type of item: "network" or "console"')
-    .argument('<id>', 'Request ID (for network) or index (for console)')
-    .addOption(jsonOption());
-  addBodyOptions(command);
-  command
-    .addOption(includeSensitiveOption())
+    .argument('<id>', 'Request ID (for network) or index (for console)');
+  addDetailsOptions(command, true)
     .action(async (type: string, id: string, options: DetailsCommandOptions) => {
       await runDetails({ ...options, type: type as 'network' | 'console', id });
     });

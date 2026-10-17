@@ -3476,6 +3476,19 @@ export function responseBodyMissingError(requestId: string, reason: string): Err
 }
 
 /**
+ * A details command given an unknown type or an empty id.
+ *
+ * @param error - What is wrong
+ * @returns Error with the usage of `network details` and `console details`
+ */
+export function detailsUsageError(error: string): ErrorWithSuggestion {
+  return {
+    message: error,
+    suggestion: 'Usage: bdg network details <requestId> or bdg console details <index>',
+  };
+}
+
+/**
  * A `details` option that applies to network requests only.
  *
  * @param flag - The option
