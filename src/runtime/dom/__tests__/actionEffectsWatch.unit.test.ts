@@ -296,6 +296,50 @@ void describe('watchActionEffects', () => {
     watch.dispose();
   });
 
+  void describe('a Shown list that could not be scanned says so (#529)', () => {
+    const collectShown = (cdp: FakeCdp): Promise<CollectedEffects> =>
+      watchActionEffects(cdp.connection).collect({
+        dialogs: 0,
+        consoleMessages: () => 0,
+        detectNoEffect: false,
+        reportShown: true,
+      });
+
+    void it('flags partial when the snapshot before the action failed to run', async () => {
+      const effects = await collectShown(new FakeCdp(Promise.resolve(undefined), [QUIET]));
+      assert.equal(effects.shown, undefined);
+      assert.equal(effects.moreShownPartial, true, 'rows may have been added unobserved');
+    });
+
+    void it('flags partial when the read after the action failed to run', async () => {
+      const effects = await collectShown(new FakeCdp(Promise.resolve(START), [undefined]));
+      assert.equal(effects.shown, undefined);
+      assert.equal(effects.moreShownPartial, true);
+    });
+
+    void it('flags partial when the read got no answer', async () => {
+      const effects = await collectShown(new FakeCdp(Promise.resolve(START), [NO_ANSWER]));
+      assert.equal(effects.moreShownPartial, true);
+    });
+
+    void it('flags nothing when the scan ran and found nothing', async () => {
+      const effects = await collectShown(
+        new FakeCdp(Promise.resolve(START), [{ ...QUIET, shown: [], shownPartial: false }])
+      );
+      assert.equal(effects.moreShownPartial, undefined);
+    });
+
+    void it('flags nothing when the action did not ask for Shown', async () => {
+      const cdp = new FakeCdp(Promise.resolve(START), [undefined]);
+      const effects = await watchActionEffects(cdp.connection).collect({
+        dialogs: 0,
+        consoleMessages: () => 0,
+        detectNoEffect: false,
+      });
+      assert.equal(effects.moreShownPartial, undefined);
+    });
+  });
+
   void it('marks a page that did not answer before the read as busy, without reading', async () => {
     const cdp = new FakeCdp(Promise.resolve(START), [QUIET], true, false);
     const watch = watchActionEffects(cdp.connection);

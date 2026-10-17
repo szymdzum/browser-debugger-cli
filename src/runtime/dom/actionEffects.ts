@@ -610,20 +610,22 @@ export function watchActionEffects(cdp: CDPConnection): ActionEffectsWatch {
  */
 async function collectEffects(watch: Watch, options: CollectOptions): Promise<CollectedEffects> {
   const start = await awaitStart(watch);
-  if (!start) {
-    return { ...effectsOf(undefined, undefined, watch.listener.events), work: pageWork(watch) };
-  }
+  const effectsFrom = (snapshot: ReadSnapshot | undefined): ActionEffects => ({
+    ...effectsOf(start, snapshot, watch.listener.events),
+    ...(shownUnscanned(watch, options, start, snapshot) && { moreShownPartial: true as const }),
+  });
+  if (!start) return { ...effectsFrom(undefined), work: pageWork(watch) };
   const read = {
     reportShown: options.reportShown === true,
     focus: options.reportFocusMove === true,
   };
   let snapshot = await readPage(watch, { ...read, stop: false });
-  let effects = effectsOf(start, snapshot, watch.listener.events);
+  let effects = effectsFrom(snapshot);
   const quiet = (): boolean => hadNoEffect(snapshot, effects, activityOf(watch, options));
   if (options.detectNoEffect && quiet()) {
     await delay(NO_EFFECT_RECHECK_MS);
     snapshot = await readPage(watch, { ...read, stop: true });
-    effects = effectsOf(start, snapshot, watch.listener.events);
+    effects = effectsFrom(snapshot);
     if (quiet()) effects = { ...effects, effect: 'none' };
   }
   const domChanging = options.detectUnsettled === true && (await stillChanging(watch, snapshot));
@@ -633,6 +635,33 @@ async function collectEffects(watch: Watch, options: CollectOptions): Promise<Co
     ...(domChanges !== undefined && { domChanges }),
     work: pageWork(watch, snapshot, domChanging),
   };
+}
+
+/**
+ * Whether an empty Shown list cannot be trusted: Shown was asked for in the
+ * same document, but the snapshot before the action or the read after it
+ * did not run (the page script failed or got no answer), so rows the action
+ * added may have gone unobserved or unscanned. A navigation shows a new page
+ * instead of a list.
+ *
+ * @param watch - The action's watch
+ * @param options - What collecting lists
+ * @param start - Snapshot before the action, if taken
+ * @param snapshot - Read after the action, if taken
+ * @returns True to report the list as possibly incomplete
+ */
+function shownUnscanned(
+  watch: Watch,
+  options: CollectOptions,
+  start: StartSnapshot | undefined,
+  snapshot: ReadSnapshot | undefined
+): boolean {
+  return (
+    options.reportShown === true &&
+    (start === undefined || snapshot === undefined) &&
+    !watch.listener.navigationPending() &&
+    watch.listener.events.document === undefined
+  );
 }
 
 /**
