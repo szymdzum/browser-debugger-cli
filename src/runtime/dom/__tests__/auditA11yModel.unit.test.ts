@@ -1,0 +1,158 @@
+/**
+ * Unit tests for the accessibility-tree rules of `bdg dom audit a11y` (#455).
+ */
+
+import * as assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+
+import type { Protocol } from '@/connection/typed-cdp.js';
+import { activeModal, findAxHits } from '@/runtime/dom/auditA11yModel.js';
+
+type AxNode = Protocol.Accessibility.AXNode;
+
+/**
+ * An accessibility node.
+ *
+ * @param id - Node id (also its backend id)
+ * @param role - Role
+ * @param name - Accessible name
+ * @param childIds - Children
+ * @param level - Heading level
+ * @returns Node
+ */
+function ax(id: number, role: string, name = '', childIds: number[] = [], level?: number): AxNode {
+  return {
+    nodeId: String(id),
+    ignored: false,
+    role: { type: 'role', value: role },
+    name: { type: 'computedString', value: name },
+    childIds: childIds.map(String),
+    backendDOMNodeId: id,
+    ...(level !== undefined && {
+      properties: [{ name: 'level', value: { type: 'integer', value: level } }],
+    }),
+  };
+}
+
+void describe('findAxHits', () => {
+  void it('flags unnamed images and controls, not named ones', () => {
+    const hits = findAxHits(
+      [
+        ax(1, 'RootWebArea', 'p', [2, 3, 4, 5]),
+        ax(2, 'image'),
+        ax(3, 'image', 'A cat'),
+        ax(4, 'button'),
+        ax(5, 'textbox', 'Email'),
+      ],
+      { page: false }
+    );
+    assert.deepEqual(
+      hits.map((hit) => [hit.rule, hit.backendNodeId]),
+      [
+        ['img-alt', 2],
+        ['control-name', 4],
+      ]
+    );
+  });
+
+  void it('leaves out an unnamed image inside a named button or link', () => {
+    const hits = findAxHits(
+      [
+        ax(1, 'RootWebArea', 'p', [2, 4]),
+        ax(2, 'button', 'Go', [3]),
+        ax(3, 'image'),
+        ax(4, 'image'),
+      ],
+      { page: false }
+    );
+    assert.deepEqual(
+      hits.map((hit) => hit.backendNodeId),
+      [4]
+    );
+  });
+
+  void it('flags a skipped heading level, a second h1 and a missing h1 and main', () => {
+    const page = findAxHits(
+      [
+        ax(1, 'RootWebArea', 'p', [2, 3, 4]),
+        ax(2, 'heading', 'A', [], 1),
+        ax(3, 'heading', 'B', [], 1),
+        ax(4, 'heading', 'C', [], 4),
+      ],
+      { page: true }
+    );
+    assert.deepEqual(
+      page.map((hit) => [hit.rule, hit.reason.kind]),
+      [
+        ['heading-order', 'extra-h1'],
+        ['heading-order', 'skipped-level'],
+        ['landmarks', 'no-main'],
+      ]
+    );
+    const none = findAxHits([ax(1, 'RootWebArea', 'p', [2]), ax(2, 'heading', 'A', [], 2)], {
+      page: true,
+    });
+    assert.ok(none.some((hit) => hit.reason.kind === 'no-h1'));
+  });
+
+  void it('summarizes text outside landmarks as one hit, none for text inside main', () => {
+    const outside = findAxHits(
+      [
+        ax(1, 'RootWebArea', 'p', [2, 4]),
+        ax(2, 'paragraph', '', [3]),
+        ax(3, 'StaticText', 'loose'),
+        ax(4, 'main', '', [5]),
+        ax(5, 'StaticText', 'inside'),
+      ],
+      { page: true }
+    );
+    assert.deepEqual(
+      outside.filter((hit) => hit.rule === 'landmarks').map((hit) => hit.reason),
+      [{ kind: 'outside-landmark', holders: 1 }]
+    );
+  });
+
+  void it('leaves out an unnamed image anywhere inside a named button', () => {
+    const hits = findAxHits(
+      [
+        ax(1, 'RootWebArea', 'p', [2]),
+        ax(2, 'button', 'Menu', [3]),
+        ax(3, 'generic', '', [4]),
+        ax(4, 'image'),
+      ],
+      { page: false }
+    );
+    assert.deepEqual(hits, []);
+  });
+
+  void it('reports no page structure while a modal hides the page, and names the modal', () => {
+    const hidden = {
+      ...ax(2, 'main'),
+      ignored: true,
+      ignoredReasons: [{ name: 'activeAriaModalDialog' }],
+    };
+    const dialog = {
+      ...ax(3, 'dialog', 'Consent'),
+      properties: [{ name: 'modal', value: { type: 'boolean', value: true } }],
+    };
+    const nodes = [ax(1, 'RootWebArea', 'p', [2, 3]), hidden, dialog] as AxNode[];
+    assert.deepEqual(findAxHits(nodes, { page: true }), []);
+    assert.deepEqual(activeModal(nodes), { backendNodeId: 3 });
+    assert.equal(activeModal([ax(1, 'RootWebArea', 'p')]), undefined);
+  });
+
+  void it('does not count a skip link as text outside landmarks', () => {
+    const link = {
+      ...ax(2, 'link', 'Skip', [3]),
+      properties: [{ name: 'url', value: { type: 'string', value: 'http://x/p#main' } }],
+    };
+    const root = {
+      ...ax(1, 'RootWebArea', 'p', [2, 4]),
+      properties: [{ name: 'url', value: { type: 'string', value: 'http://x/p' } }],
+    };
+    const nodes = [root, link, ax(3, 'StaticText', 'Skip'), ax(4, 'main')] as AxNode[];
+    assert.deepEqual(findAxHits(nodes, { page: true }), [
+      { rule: 'heading-order', reason: { kind: 'no-h1' } },
+    ]);
+  });
+});

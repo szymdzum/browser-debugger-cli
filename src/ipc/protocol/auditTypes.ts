@@ -2,11 +2,48 @@
  * Types of `bdg dom audit` (page-wide checks) and `bdg css search`.
  */
 
+import type { PageLoadingState } from '@/ipc/protocol/commands.js';
+
 /** A check `dom audit` can run */
-export type AuditCheck = 'contrast' | 'overflow' | 'layers' | 'animations';
+export type AuditCheck = 'contrast' | 'overflow' | 'layers' | 'animations' | 'a11y';
 
 /** Every check, in the order they are shown */
-export const AUDIT_CHECKS: readonly AuditCheck[] = ['contrast', 'overflow', 'layers', 'animations'];
+export const AUDIT_CHECKS: readonly AuditCheck[] = [
+  'contrast',
+  'overflow',
+  'layers',
+  'animations',
+  'a11y',
+];
+
+/** A rule of the `a11y` check, in the order they are shown */
+export type A11yRuleId =
+  'img-alt' | 'control-name' | 'heading-order' | 'landmarks' | 'duplicate-id' | 'aria-reference';
+
+/** Every a11y rule */
+export const A11Y_RULES: readonly A11yRuleId[] = [
+  'img-alt',
+  'control-name',
+  'heading-order',
+  'landmarks',
+  'duplicate-id',
+  'aria-reference',
+];
+
+/** One element an a11y rule flags */
+export interface AuditA11yElement {
+  /** Selector for `bdg dom a11y describe` / `bdg dom get` (`<tag#id>`, not a selector, plus a note in `detail` when none finds it alone: iframes, shadow roots) */
+  element: string;
+  detail: string;
+}
+
+/** What one a11y rule found */
+export interface AuditA11yRule {
+  id: A11yRuleId;
+  /** Elements flagged (the list may be shorter: `--limit`) */
+  count: number;
+  elements: AuditA11yElement[];
+}
 
 /** Text below the contrast level */
 export interface AuditContrastItem {
@@ -48,6 +85,8 @@ export interface AuditResult {
   walked: number;
   /** The walk stopped at its cap: the page has more elements */
   capped?: true;
+  /** The document had not finished loading: the findings cover what was there */
+  loading?: PageLoadingState;
   contrast?: {
     level: 'AA' | 'AAA';
     /** Text holders checked */
@@ -96,6 +135,13 @@ export interface AuditResult {
   }>;
   /** Visible `<canvas>` elements: scripts may animate them, which `animations` cannot see */
   canvases?: number;
+  a11y?: {
+    rules: AuditA11yRule[];
+    /** A modal dialog hides the rest of the page from screen readers: only it was checked, and the page-structure rules (headings, landmarks) report nothing */
+    modal?: { element: string };
+    /** The accessibility tree or the id scan hit its cap: the page has more */
+    truncated?: true;
+  };
 }
 
 /** A stylesheet line where `css search` found the text */

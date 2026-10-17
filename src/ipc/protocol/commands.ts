@@ -446,7 +446,7 @@ export interface DomLayoutCommand {
 export type DomLayoutData = LayoutResult;
 
 /**
- * dom_audit: page-wide checks (contrast, overflow, layers, animations).
+ * dom_audit: page-wide checks (contrast, overflow, layers, animations, a11y).
  */
 export interface DomAuditCommand {
   checks: AuditCheck[];

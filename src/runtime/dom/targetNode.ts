@@ -492,7 +492,7 @@ function namesCacheKey(params: { selector?: string; listIndex?: number }): boole
  * tree, shadow roots included). An element in a frame gets none, as the top
  * page's search finds elements of every frame.
  */
-const NODE_SELECTOR_FUNCTION = `function () {
+export const NODE_SELECTOR_FUNCTION = `function () {
   const deepQuery = ${DEEP_QUERY_JS};
   const finds = (selector, expected) => {
     try {

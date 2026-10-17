@@ -110,6 +110,13 @@ export const DOM_READ_BEHAVIORS: BehaviorTable = {
       'One walk over the rendered elements (open shadow roots included, at most 20000; capped says when it stopped). Findings are sorted weakest first; --limit (default 20) lists that many per check and the rest are counted. Overflow leaves out content inside horizontal scrollers and visually-hidden 1px text; identical findings are grouped (×N). Contrast is approximate (approximate: …) when something is painted behind or on top of text in view (hit-tested), or for text out of view whose ancestors paint nothing below body (only its ancestors were checked). Canvas animations cannot be listed; visible canvas elements are counted (canvases)',
     tokenImpact: 'About one line per finding; --limit bounds it',
   },
+  'audit:--limit': {
+    default: 'Lists the first 20 findings per check',
+    whenEnabled: 'Lists that many per check (1 to 500); the rest are counted',
+    automaticBehavior:
+      'For the a11y check the limit applies per rule (img-alt, control-name, heading-order, landmarks, duplicate-id, aria-reference); count is always the total. Each listed element costs a few page calls to build its selector (seconds at --limit 500 on thousands of findings); 0 is not accepted, and findings never change the exit code',
+    tokenImpact: 'About one line per finding; a11y adds the rule header and one describe hint',
+  },
   'layout:--index': {
     default:
       'Reports every match of the selector (human output lists the first 20, JSON up to 100 plus an omitted count); a numeric argument reports that cached query element',

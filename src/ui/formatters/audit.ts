@@ -4,7 +4,14 @@
 
 import type { AuditResult, CssSearchResult } from '@/ipc/protocol/auditTypes.js';
 import { escapeOneLine } from '@/ui/formatters/keyAttributes.js';
-import { auditCanvasNote, auditUncertainContrastNote } from '@/ui/messages/commands.js';
+import {
+  A11Y_RULE_HINTS,
+  a11yModalNote,
+  a11yTruncatedNote,
+  auditCanvasNote,
+  auditUncertainContrastNote,
+  pageLoadingWarning,
+} from '@/ui/messages/commands.js';
 import { truncateByLength } from '@/utils/strings.js';
 
 /** Width of the text quoted in a finding */
@@ -22,9 +29,13 @@ export function formatAudit(data: AuditResult): string {
     data.overflow && overflowSection(data.overflow),
     data.layers && layersSection(data.layers),
     data.animations && animationsSection(data.animations, data.canvases),
+    data.a11y && a11ySection(data.a11y),
   ].filter((section): section is string[] => section !== undefined);
   const capped = data.capped ? [`(stopped after ${data.walked} elements; the page has more)`] : [];
-  return [...sections.flatMap((lines) => [...lines, '']), ...capped].join('\n').trimEnd();
+  const loading = data.loading ? [`⚠ ${pageLoadingWarning(data.loading)}`] : [];
+  return [...sections.flatMap((lines) => [...lines, '']), ...capped, ...loading]
+    .join('\n')
+    .trimEnd();
 }
 
 /**
@@ -126,6 +137,35 @@ function animationsSection(
         `  ${animation.name} on ${escapeOneLine(animation.element)}${times(animation.count)} (${animation.type}, ${typeof animation.duration === 'number' ? `${animation.duration}ms` : animation.duration}, ${animation.iterations === 'infinite' ? 'infinite' : `${animation.iterations}x`}${animation.scrollDriven ? ', scroll-driven' : ''})`
     ),
     ...note,
+  ];
+}
+
+/**
+ * The a11y section: the rules with findings, their elements and one pointer
+ * to describe them.
+ *
+ * @param a11y - A11y findings
+ * @returns Lines
+ */
+function a11ySection(a11y: NonNullable<AuditResult['a11y']>): string[] {
+  const failing = a11y.rules.filter((rule) => rule.count > 0);
+  const total = failing.reduce((sum, rule) => sum + rule.count, 0);
+  const modal = a11y.modal ? [`⚠ ${a11yModalNote(a11y.modal.element)}`] : [];
+  const note = a11y.truncated ? [`  ${a11yTruncatedNote()}`] : [];
+  if (total === 0)
+    return [...modal, `A11y: no issues (${a11y.rules.length} rules checked)`, ...note];
+  return [
+    ...modal,
+    `A11y: ${total} ${total === 1 ? 'issue' : 'issues'} in ${failing.length} of ${a11y.rules.length} rules`,
+    ...failing.flatMap((rule) => [
+      `  ${rule.id}: ${rule.count} (${A11Y_RULE_HINTS[rule.id]})`,
+      ...rule.elements.map((item) => `    ${escapeOneLine(item.element)}  ${item.detail}`),
+      ...(rule.count > rule.elements.length
+        ? [`    (+${rule.count - rule.elements.length} more; --limit to list them)`]
+        : []),
+    ]),
+    ...note,
+    `  Describe one: bdg dom a11y describe <element>`,
   ];
 }
 

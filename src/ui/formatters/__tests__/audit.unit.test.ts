@@ -68,4 +68,14 @@ void describe('formatAudit', () => {
       /canvas/
     );
   });
+
+  void it('says when the page had not finished loading', () => {
+    const output = formatAudit({
+      checks: ['layers'],
+      walked: 22,
+      layers: [],
+      loading: { readyState: 'interactive', pending: [], pendingCount: 0 },
+    });
+    assert.match(output, /\n⚠ The page is still loading \(document\.readyState: interactive\)/);
+  });
 });
