@@ -289,6 +289,12 @@ export interface ConsoleMessage {
   truncatedFrom?: number;
 }
 
+/** A main-frame navigation of the session: the page loaded and the id its console messages carry */
+export interface PageNavigation {
+  navigationId: number;
+  url: string;
+}
+
 /**
  * A Chrome Issue (DevTools Issues panel) of the page currently loaded: one of
  * the kinds that make a page look or behave wrong without a console message.

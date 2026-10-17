@@ -4,7 +4,7 @@
  */
 
 import { MAX_CONSOLE_TEXT_LENGTH } from '@/constants.js';
-import type { ConsoleMessage } from '@/types.js';
+import type { ConsoleMessage, PageNavigation } from '@/types.js';
 import { capForDisplay } from '@/ui/formatters/longValues.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 
@@ -30,6 +30,8 @@ export function formatConsoleFollowLines(
     streamNavigationId?: number;
     currentNavigationId?: number;
     full?: boolean | undefined;
+    navigations?: PageNavigation[];
+    includeSensitive?: boolean | undefined;
   } = {}
 ): string {
   const fmt = new OutputFormatter();
