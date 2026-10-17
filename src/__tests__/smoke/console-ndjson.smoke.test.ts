@@ -136,15 +136,11 @@ void describe('console --follow --ndjson', () => {
   });
 
   void it('needs --follow, and cannot be combined with --json', async () => {
-    const alone = await runCommand('console', ['--ndjson', '--json'], {
-      timeout: COMMAND_TIMEOUT_MS,
-    });
-    assert.equal(alone.exitCode, 81, alone.stdout);
-    const envelope = JSON.parse(alone.stdout) as { success: boolean; suggestion?: string };
-    assert.equal(envelope.success, false);
     const plain = await runCommand('console', ['--ndjson'], { timeout: COMMAND_TIMEOUT_MS });
-    assert.equal(plain.exitCode, 81, plain.stderr);
-    assert.match(plain.stderr, /--follow/);
+    assert.equal(plain.exitCode, 81, plain.stdout);
+    const envelope = JSON.parse(plain.stdout) as { success: boolean; suggestion?: string };
+    assert.equal(envelope.success, false);
+    assert.match(envelope.suggestion ?? '', /--follow/);
     const both = await runCommand('console', ['--follow', '--ndjson', '--json'], {
       timeout: COMMAND_TIMEOUT_MS,
     });
