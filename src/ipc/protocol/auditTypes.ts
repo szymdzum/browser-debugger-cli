@@ -3,10 +3,44 @@
  */
 
 /** A check `dom audit` can run */
-export type AuditCheck = 'contrast' | 'overflow' | 'layers' | 'animations';
+export type AuditCheck = 'contrast' | 'overflow' | 'layers' | 'animations' | 'a11y';
 
 /** Every check, in the order they are shown */
-export const AUDIT_CHECKS: readonly AuditCheck[] = ['contrast', 'overflow', 'layers', 'animations'];
+export const AUDIT_CHECKS: readonly AuditCheck[] = [
+  'contrast',
+  'overflow',
+  'layers',
+  'animations',
+  'a11y',
+];
+
+/** A rule of the `a11y` check, in the order they are shown */
+export type A11yRuleId =
+  'img-alt' | 'control-name' | 'heading-order' | 'landmarks' | 'duplicate-id';
+
+/** Every a11y rule */
+export const A11Y_RULES: readonly A11yRuleId[] = [
+  'img-alt',
+  'control-name',
+  'heading-order',
+  'landmarks',
+  'duplicate-id',
+];
+
+/** One element an a11y rule flags */
+export interface AuditA11yElement {
+  /** Selector for `bdg dom a11y describe` / `bdg dom get` (`tag#id` for an element in an iframe) */
+  element: string;
+  detail: string;
+}
+
+/** What one a11y rule found */
+export interface AuditA11yRule {
+  id: A11yRuleId;
+  /** Elements flagged (the list may be shorter: `--limit`) */
+  count: number;
+  elements: AuditA11yElement[];
+}
 
 /** Text below the contrast level */
 export interface AuditContrastItem {
@@ -96,6 +130,11 @@ export interface AuditResult {
   }>;
   /** Visible `<canvas>` elements: scripts may animate them, which `animations` cannot see */
   canvases?: number;
+  a11y?: {
+    rules: AuditA11yRule[];
+    /** The accessibility tree or the id scan hit its cap: the page has more */
+    truncated?: true;
+  };
 }
 
 /** A stylesheet line where `css search` found the text */
