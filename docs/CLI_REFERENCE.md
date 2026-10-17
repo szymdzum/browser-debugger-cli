@@ -1928,7 +1928,7 @@ Old spellings are hidden from `--help`, `--help --json` and "Did you mean" sugge
 | `bdg dom eval` | deprecated | `bdg eval` (same options) |
 | `bdg dom pressKey` | deprecated | `bdg dom press-key` (same options) |
 | `bdg network getCookies` | deprecated | `bdg network cookies` (same options) |
-| `bdg details` | deprecated | `bdg network details <id>` for `bdg network details <id>`, `bdg console details <n>` for `bdg details console <n>` (same options, output and exit codes); the warning names both |
+| `bdg details` | deprecated | `bdg network details <id>` for `bdg details network <id>`, `bdg console details <n>` for `bdg details console <n>` (same options, output and exit codes); the warning names both |
 | `bdg console --history` | deprecated | `bdg console --page all`; `-H` is the short form (with `--page current` it exits 81) |
 | `bdg tail` | deprecated | `bdg peek --follow` (same options) |
 | `bdg cleanup --aggressive` | deprecated | `bdg cleanup --force` |
