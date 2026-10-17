@@ -1,7 +1,7 @@
 /**
  * Which browser built-ins a page replaced (polyfills, old frameworks,
  * anti-bot scripts). Scripts that must run in the page's own world (actions,
- * `dom eval` results) depend on them.
+ * `eval` results) depend on them.
  *
  * The check does not trust the page: a small page script only collects the
  * functions (plain property reads and the page's
@@ -34,7 +34,7 @@ const ITERATOR_KEY = '@@iterator';
 /**
  * Counter giving each check its own object group for the collected functions
  * (released after it): checks of concurrent commands (an interaction and a
- * `dom eval`) must not free each other's.
+ * `eval`) must not free each other's.
  */
 let checks = 0;
 

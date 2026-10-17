@@ -40,7 +40,7 @@ export interface VerboseOptions {
 
 /**
  * Options for element selection by index.
- * Used by DOM interaction commands (fill, click, submit, pressKey).
+ * Used by DOM interaction commands (fill, click, submit, press-key).
  */
 export interface IndexOptions {
   /** 0-based index for selecting nth element matching selector */
@@ -268,7 +268,7 @@ export interface SubmitCommandOptions extends BaseOptions, IndexOptions, DialogO
 }
 
 /**
- * Options for pressKey command.
+ * Options for press-key command.
  * Note: Commander parses --no-wait as boolean flag.
  */
 export interface PressKeyCommandOptions

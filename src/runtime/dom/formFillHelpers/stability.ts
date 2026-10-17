@@ -1,7 +1,7 @@
 /**
  * Post-action network-stability wait.
  *
- * Used around fill/click/hover/pressKey/scroll: tracks in-flight requests
+ * Used around fill/click/hover/press-key/scroll: tracks in-flight requests
  * from before the action runs (so a request its handler sends synchronously
  * is seen), then waits until no request has been pending for
  * ACTION_NETWORK_IDLE_MS, giving up after ACTION_STABILITY_TIMEOUT_MS.

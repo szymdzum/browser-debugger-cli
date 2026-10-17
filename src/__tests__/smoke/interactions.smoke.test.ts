@@ -452,7 +452,10 @@ void describe('DOM interactions', () => {
   });
 
   void it('rejects inputs a user could not perform', async () => {
-    assert.match(await bdg(['dom', 'press-key', '#menu', 'a'], 81), /cannot receive keyboard focus/);
+    assert.match(
+      await bdg(['dom', 'press-key', '#menu', 'a'], 81),
+      /cannot receive keyboard focus/
+    );
     await bdg(['dom', 'press-key', '#name', 'a', '--modifiers', 'bogus'], 81);
     assert.match(await bdg(['dom', 'fill', '#agree', 'maybe'], 81), /Expected true or false/);
     await bdg(['dom', 'fill', '#agree', 'yes']);

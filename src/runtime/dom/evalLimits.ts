@@ -1,12 +1,12 @@
 /**
- * Time limits of `bdg dom eval` and the busy-page recovery. Production values
+ * Time limits of `bdg eval` and the busy-page recovery. Production values
  * are fixed; the test suites shorten them through `BDG_TEST_EVAL_*`
  * environment variables (not a user feature) so the timeout paths do not take
  * their full production time. The daemon and the CLI read the limits through
  * these functions, so a value is accepted or ignored the same way everywhere.
  */
 
-/** How long a `bdg dom eval` script may run before V8 terminates it */
+/** How long a `bdg eval` script may run before V8 terminates it */
 const EVAL_TIMEOUT_DEFAULT_MS = 20_000;
 
 /** Time after the limit within which a failed evaluate counts as V8 terminating it */

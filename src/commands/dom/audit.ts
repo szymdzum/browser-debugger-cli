@@ -1,6 +1,6 @@
 /**
  * `bdg dom audit [check...]` - page-wide checks without a screenshot or
- * `dom eval`: text below a WCAG contrast level, what makes the page scroll
+ * `eval`: text below a WCAG contrast level, what makes the page scroll
  * sideways and cut-off text and scaled images, fixed and sticky layers, and
  * running animations.
  */

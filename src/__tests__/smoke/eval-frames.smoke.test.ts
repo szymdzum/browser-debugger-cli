@@ -170,12 +170,7 @@ void describe('eval --frame', () => {
       'top:false',
     ]);
     assert.equal(byId.get('inner')?.parentIndex, byId.get('sd')?.index);
-    const sandboxed = await runJson<{ result: unknown }>([
-      'eval',
-      'origin',
-      '--frame',
-      'sb',
-    ]);
+    const sandboxed = await runJson<{ result: unknown }>(['eval', 'origin', '--frame', 'sb']);
     assert.equal(sandboxed.data?.result, 'null');
   });
 
@@ -194,21 +189,11 @@ void describe('eval --frame', () => {
     assert.equal(stale.exitCode, EXIT_CODES.STALE_CACHE);
     assert.match(stale.error ?? '', /Frame index 0 is stale/);
     assert.match(stale.suggestion ?? '', /Re-run bdg dom frames/);
-    const byName = await runJson<{ result: unknown }>([
-      'eval',
-      'window.name',
-      '--frame',
-      'cross',
-    ]);
+    const byName = await runJson<{ result: unknown }>(['eval', 'window.name', '--frame', 'cross']);
     assert.equal(byName.data?.result, 'cross', 'names still work');
 
     assert.deepEqual(await names(), ['first', 'shadowed', 'cross', 'last']);
-    const fresh = await runJson<{ result: unknown }>([
-      'eval',
-      'window.name',
-      '--frame',
-      '0',
-    ]);
+    const fresh = await runJson<{ result: unknown }>(['eval', 'window.name', '--frame', '0']);
     assert.equal(fresh.exitCode, 0, fresh.error);
     assert.equal(fresh.data?.result, 'first');
   });

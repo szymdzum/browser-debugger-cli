@@ -3,7 +3,7 @@
  * listeners, served by the fixture server: `/frame-order` has iframes whose
  * frame tree order differs from their document order (one in an open shadow
  * root, one cross-origin and out of process) and `addFirst()` inserts one
- * before them; `/rejections` rejects promises for `dom eval` and, from a
+ * before them; `/rejections` rejects promises for `eval` and, from a
  * timer, without a handler; `/nested-react` mounts a React-like root inside
  * another (stub fibers); `/preact-listeners` has handlers behind a
  * Preact-like event proxy.

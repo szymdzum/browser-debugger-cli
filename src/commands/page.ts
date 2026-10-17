@@ -107,7 +107,7 @@ function formatPageResult(result: PageNavigationResult): string {
 
 /**
  * Whether a URL is a `javascript:` URL, which runs a script instead of
- * loading a page (bdg points to `dom eval`; other schemes load normally).
+ * loading a page (bdg points to `eval`; other schemes load normally).
  *
  * @param url - URL given
  * @returns True for the javascript scheme

@@ -104,11 +104,9 @@ void describe('eval --full cap', () => {
   });
 
   void it('returns an object under the cap exactly as formatted', async () => {
-    const result = await runCommand(
-      'eval',
-      [`({ a: [1, 2.5, 'é'], b: { c: null } })`, '--full'],
-      { timeout: 60000 }
-    );
+    const result = await runCommand('eval', [`({ a: [1, 2.5, 'é'], b: { c: null } })`, '--full'], {
+      timeout: 60000,
+    });
     assert.equal(result.exitCode, 0, result.stderr);
     const expected =
       '{\n  "a": [\n    1,\n    2.5,\n    "é"\n  ],\n  "b": {\n    "c": null\n  }\n}\n';

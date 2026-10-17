@@ -845,7 +845,7 @@ function formatSubmitOutput(result: ActionOutput<SubmitResult>): string {
 }
 
 /**
- * Format pressKey command output for human-readable display.
+ * Format press-key command output for human-readable display.
  */
 function formatPressKeyOutput(result: ActionOutput<PressKeyResult>): string {
   const details: [string, string][] = [

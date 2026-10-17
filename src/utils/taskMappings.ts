@@ -36,7 +36,7 @@ export const TASK_MAPPINGS: Record<string, TaskMapping> = {
   },
 
   execute_javascript: {
-    commands: ['dom eval'],
+    commands: ['eval'],
     description: 'Execute arbitrary JavaScript in page context',
     cdpAlternative: 'Runtime.evaluate',
   },
@@ -67,7 +67,7 @@ export const TASK_MAPPINGS: Record<string, TaskMapping> = {
   },
 
   press_key: {
-    commands: ['dom pressKey'],
+    commands: ['dom press-key'],
     description: 'Press keyboard key on element (Enter, Tab, Escape, etc.)',
     cdpAlternative: 'Input.dispatchKeyEvent',
   },
@@ -106,7 +106,7 @@ export const TASK_MAPPINGS: Record<string, TaskMapping> = {
   },
 
   get_cookies: {
-    commands: ['network getCookies'],
+    commands: ['network cookies'],
     description: 'Get all cookies for current page',
     cdpAlternative: 'Network.getAllCookies',
   },

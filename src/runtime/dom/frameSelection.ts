@@ -1,5 +1,5 @@
 /**
- * Which iframe a `bdg dom eval --frame` value names.
+ * Which iframe a `bdg eval --frame` value names.
  */
 
 import { CommandError } from '@/errors/index.js';

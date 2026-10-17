@@ -6,7 +6,7 @@
  *   its own text: `#modal` (`showModal()`), `#attr` (`setAttribute('open')`),
  *   `#shadow` (`showModal()` on a dialog in the open shadow root of `x-host`),
  *   `#fade` (`open` on a dialog that fades in from opacity 0) and `#key`
- *   (opens on click, for `pressKey` Enter). `#secret` opens a dialog holding
+ *   (opens on click, for `press-key` Enter). `#secret` opens a dialog holding
  *   only a password field.
  * - `/dialog-quiet`: effects that must not report a dialog. `#tick-dialog` is
  *   closed and reopened by an interval (`window.dialogTicks` counts the

@@ -142,9 +142,8 @@ void describe('Long values', () => {
   });
 
   void it('--full returns the full values byte for byte', async () => {
-    const html = (
-      await bdgJson<{ result: string }>(['eval', 'document.body.outerHTML', '--full'])
-    ).result;
+    const html = (await bdgJson<{ result: string }>(['eval', 'document.body.outerHTML', '--full']))
+      .result;
     assert.ok(html.length > DOM_LENGTH);
     assert.equal(await bdg(['dom', 'get', 'body', '--raw', '--full']), `${html}\n`);
     assert.equal(await bdg(['eval', 'document.body.outerHTML', '--full']), `${html}\n`);

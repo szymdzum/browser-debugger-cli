@@ -34,7 +34,7 @@ export function compiles(source: string, label: string): boolean {
 }
 
 /**
- * Whether a `bdg dom eval` script waits at its top level (REPL mode lets a
+ * Whether a `bdg eval` script waits at its top level (REPL mode lets a
  * script `await` outside an async function, and Chrome then answers only once
  * the promise settles). The script is compiled as the body of an async
  * function, where `await` is a keyword as in REPL mode, and as a class static

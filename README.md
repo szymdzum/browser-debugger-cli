@@ -35,7 +35,7 @@ No Playwright script written up front. The agent runs one command, reads what th
 ### Reuse the browser's login from the shell
 
 ```console
-$ bdg network getCookies
+$ bdg network cookies
 1 Cookie:
 
 [0] tp_lax
@@ -58,7 +58,7 @@ eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZGEifQ.demo
 `HttpOnly` cookies are included, even though the page's own JavaScript can't read them. Log in once in the browser, then reuse the session from the shell:
 
 ```bash
-COOKIES=$(bdg network getCookies --json | jq -r '[.data[] | "\(.name)=\(.value)"] | join("; ")')
+COOKIES=$(bdg network cookies --json | jq -r '[.data[] | "\(.name)=\(.value)"] | join("; ")')
 curl -H "Cookie: $COOKIES" localhost:3000/api/me
 ```
 

@@ -1,5 +1,5 @@
 /**
- * Iframes of the page for `bdg dom frames` and `bdg dom eval --frame`.
+ * Iframes of the page for `bdg dom frames` and `bdg eval --frame`.
  *
  * Works on a short-lived second connection to the page target, so enabling
  * Runtime (which replays the page's console messages) and attaching to
@@ -744,7 +744,7 @@ export async function frameContextLostError(
 }
 
 /**
- * Evaluate a `bdg dom eval` script in one iframe, like {@link evaluateScript}
+ * Evaluate a `bdg eval` script in one iframe, like {@link evaluateScript}
  * does in the page.
  *
  * @param page - The session's connection

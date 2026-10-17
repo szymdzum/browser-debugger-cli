@@ -66,10 +66,7 @@ void describe('page that replaces built-ins', () => {
       click,
       /the page replaced built-ins bdg's scripts use \(Element\.prototype\.querySelectorAll/
     );
-    assert.match(
-      await bdg(['eval', 'document.getElementById("go").textContent']),
-      /Clicked/
-    );
+    assert.match(await bdg(['eval', 'document.getElementById("go").textContent']), /Clicked/);
   });
 
   void it('keeps eval in the page world', async () => {
@@ -101,10 +98,7 @@ void describe('page whose replaced built-ins break action scripts', () => {
       /input;change;/
     );
     await bdg(['dom', 'click', '#go']);
-    assert.match(
-      await bdg(['eval', 'document.getElementById("go").textContent']),
-      /Clicked/
-    );
+    assert.match(await bdg(['eval', 'document.getElementById("go").textContent']), /Clicked/);
   });
 
   void it('names the replaced built-ins and the error when a page API throws', async () => {
@@ -154,10 +148,7 @@ void describe('page that removes globalThis', () => {
     assert.match(await bdg(['dom', 'press-key', '#name', 'Tab']), /Key: +Tab/);
     assert.match(await bdg(['dom', 'scroll', '#go']), /button#go/);
     await bdg(['dom', 'click', '#go']);
-    assert.match(
-      await bdg(['eval', 'document.getElementById("go").textContent']),
-      /Clicked/
-    );
+    assert.match(await bdg(['eval', 'document.getElementById("go").textContent']), /Clicked/);
   });
 });
 

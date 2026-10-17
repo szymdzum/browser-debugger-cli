@@ -282,9 +282,9 @@ const UNHANDLED_REJECTION_TEXT = 'Uncaught (in promise)';
  * Unhandled promise rejections that may still be revoked: Chrome reports a
  * rejection without a handler at the end of the task, and revokes the
  * report (`Runtime.exceptionRevoked`) when a handler is attached later, as
- * DevTools does by removing the message. `bdg dom eval` attaches its
+ * DevTools does by removing the message. `bdg eval` attaches its
  * handler only after the evaluation returns, so this is what keeps
- * `bdg dom eval 'Promise.reject(…)'` out of the console; a rejection
+ * `bdg eval 'Promise.reject(…)'` out of the console; a rejection
  * nothing ever handles stays.
  */
 class RevocableRejections {

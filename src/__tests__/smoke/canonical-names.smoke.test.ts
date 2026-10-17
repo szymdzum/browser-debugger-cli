@@ -68,7 +68,8 @@ void describe('canonical command names (#465)', () => {
 
   void it('dom eval still evaluates, with the warning', async () => {
     const result = await bdg(['dom', 'eval', 'document.title', '--json']);
-    assert.ok(JSON.parse(result.stdout).data.result !== undefined);
+    const { data } = JSON.parse(result.stdout) as { data: { result: unknown } };
+    assert.ok(data.result !== undefined);
     assert.match(result.stdout, /"warnings":\["\\"bdg dom eval\\" is deprecated/);
   });
 

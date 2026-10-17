@@ -87,7 +87,7 @@ import { findSimilar } from '@/utils/suggestions.js';
 const DOMAIN_NOTES: Record<string, string> = {
   Audits:
     'Event-based domain. Results arrive via events (e.g., Audits.issueAdded), not method responses. ' +
-    "For contrast checking, use: bdg dom eval 'getComputedStyle(el).color'",
+    "For contrast checking, use: bdg eval 'getComputedStyle(el).color'",
   Overlay:
     'Visual debugging domain. Methods like highlightNode show overlays but return empty. ' +
     'Use Overlay.hideHighlight to clear.',
@@ -380,7 +380,7 @@ export function isBareDomain(method: string, options: CdpCommandOptions): boolea
 /**
  * The page exception a method reported in its result (`Runtime.evaluate`,
  * `Runtime.callFunctionOn`, ... answer a script that threw with
- * `exceptionDetails`), as an error result like `dom eval`'s (exit 91).
+ * `exceptionDetails`), as an error result like `eval`'s (exit 91).
  *
  * @param result - Method result
  * @returns Error result, or undefined when the result has no exception

@@ -282,7 +282,7 @@ export function screenshotInterruptedError(signal: 'SIGINT' | 'SIGTERM'): ErrorW
 /**
  * What an interrupted command may already have done: sent an action to the
  * page (`sent`: what, e.g. `click`), run a script the daemon then stopped
- * on the page (`stopped`: `dom eval`), changed the session itself
+ * on the page (`stopped`: `eval`), changed the session itself
  * (`session`: `stop` or `cleanup`), or a file it writes (`file`: what kind;
  * `writing`: its path once the write has started, absent before). A sent
  * call or stopped script that also writes a file (`bdg cdp --out`) carries
@@ -776,7 +776,7 @@ export function quotedArgumentsSuggestion(path: string, args: string[], taken: n
  * Suggestion for a script given as several words: the shell removed the
  * quotes and spacing inside it, so the script cannot be rebuilt from them.
  *
- * @param path - Command path, e.g. "bdg dom eval"
+ * @param path - Command path, e.g. "bdg eval"
  * @param words - Number of words the shell passed
  * @returns Instruction to quote the whole script, then the help pointer
  */
@@ -1224,12 +1224,12 @@ export function scrollOptionsError(problem: keyof typeof SCROLL_PROBLEMS): Error
   return { message, suggestion };
 }
 
-/** The key groups `dom pressKey` accepts, listed when no key name is close to the input */
+/** The key groups `dom press-key` accepts, listed when no key name is close to the input */
 const KEY_GROUPS_SUGGESTION =
   "Keys: Enter, NumpadEnter, Tab, Escape, Space, Backspace, Delete, ArrowUp/Down/Left/Right, Home, End, PageUp, PageDown, F1-F12, Shift, Control, Alt, Meta, a-z, A-Z, 0-9, punctuation and shifted symbols (. , - _ / ; ' [ ] \\ = ` ! @ ? ...), or a DOM code name (Period, Minus)";
 
 /**
- * A key name `dom pressKey` does not know (or an empty one).
+ * A key name `dom press-key` does not know (or an empty one).
  *
  * @param keyName - Key as given
  * @param similar - Similar key names
@@ -1326,12 +1326,12 @@ export function optionRequiresError(option: string, required: string): ErrorWith
 }
 
 /**
- * `bdg page navigate javascript:…`: scripts run with dom eval.
+ * `bdg page navigate javascript:…`: scripts run with eval.
  */
 export function javascriptNavigationError(): ErrorWithSuggestion {
   return {
     message: 'page navigate opens pages; it does not run javascript: URLs',
-    suggestion: `Run the script in the page instead: bdg dom eval '...'`,
+    suggestion: `Run the script in the page instead: bdg eval '...'`,
   };
 }
 
@@ -1613,7 +1613,7 @@ export function frameMappingError(
   };
   return {
     message: `Cannot place the element's cross-origin iframe in the page: ${reasons[problem]}`,
-    suggestion: `Act inside the frame instead: ${sessionCommand('bdg dom frames')}, then ${sessionCommand('bdg dom eval --frame <n> \'document.querySelector("…").click()\'')}`,
+    suggestion: `Act inside the frame instead: ${sessionCommand('bdg dom frames')}, then ${sessionCommand('bdg eval --frame <n> \'document.querySelector("…").click()\'')}`,
   };
 }
 
@@ -1755,7 +1755,7 @@ function closedShadowRootsPlace(hosts: string[]): string {
  * Where selectors do not reach (open shadow roots and same-origin iframes are
  * searched), and how to reach an element there instead: a closed shadow
  * root's through the accessibility tree, a cross-origin iframe's with
- * `dom eval --frame`. When the page was checked, only what it has is named
+ * `eval --frame`. When the page was checked, only what it has is named
  * (nothing when it has none of them), and a closed host check that stopped
  * before the end of the page without finding one says so.
  *
@@ -1765,7 +1765,7 @@ function closedShadowRootsPlace(hosts: string[]): string {
  */
 export function unreachableElementsNote(selector: string, unsearched?: UnsearchedContent): string {
   const script = `document.querySelector(${JSON.stringify(selector)})`.replaceAll("'", `'\\''`);
-  const framesHelp = `For an element in a cross-origin iframe: ${sessionCommand('bdg dom frames')}, then ${sessionCommand(`bdg dom eval --frame <n> '${script}'`)}`;
+  const framesHelp = `For an element in a cross-origin iframe: ${sessionCommand('bdg dom frames')}, then ${sessionCommand(`bdg eval --frame <n> '${script}'`)}`;
   if (!unsearched) {
     return joinLines(
       'Closed shadow roots, cross-origin iframes and <object>/<embed> documents are not searched.',
@@ -2333,7 +2333,7 @@ export function actionScriptFailedError(
 ): ErrorWithSuggestion {
   const message = `The page's own code threw during the ${action}: ${exception}`;
   const cause = `An event listener or a method the page replaced on the element (focus, click, dispatchEvent) threw: check`;
-  const inspect = `or inspect its methods with ${sessionCommand("bdg dom eval '…'")}`;
+  const inspect = `or inspect its methods with ${sessionCommand("bdg eval '…'")}`;
   if (Number.isInteger(listIndex) && (listIndex ?? -1) >= 0) {
     return {
       message,
@@ -2368,7 +2368,7 @@ export function actionBrokenByPageError(
       : '';
   return {
     message: `The page replaced built-ins bdg's ${action} script uses (${replaced.join(', ')}), and the script failed: ${exception}`,
-    suggestion: `The page blocks or changes these APIs (an anti-bot script or an old library).${fill} If the page still lets scripts act, use ${sessionCommand("bdg dom eval '…'")}`,
+    suggestion: `The page blocks or changes these APIs (an anti-bot script or an old library).${fill} If the page still lets scripts act, use ${sessionCommand("bdg eval '…'")}`,
   };
 }
 
@@ -2526,7 +2526,7 @@ export function keyPressFailedError(cause: string): ErrorWithSuggestion {
 }
 
 /**
- * A `bdg dom eval` script ran too long and was terminated.
+ * A `bdg eval` script ran too long and was terminated.
  *
  * @param timeoutMs - Time limit in ms
  * @returns Error with suggestion
@@ -2577,17 +2577,17 @@ export function navigationPendingError(url: string): ErrorWithSuggestion {
 }
 
 /**
- * `dom eval` given an empty script (often a shell variable that was not set).
+ * `eval` given an empty script (often a shell variable that was not set).
  */
 export function emptyScriptError(): ErrorWithSuggestion {
   return {
     message: 'The script is empty',
-    suggestion: `Pass an expression, e.g. bdg dom eval 'document.title'`,
+    suggestion: `Pass an expression, e.g. bdg eval 'document.title'`,
   };
 }
 
 /**
- * A promise returned by `dom eval` that did not settle in time.
+ * A promise returned by `eval` that did not settle in time.
  *
  * @param timeoutMs - Time waited
  * @param resultMayBeUnsent - The script may have finished, its result too large to send
@@ -2606,7 +2606,7 @@ export function promiseTimeoutError(
 }
 
 /**
- * A `dom eval` result Chrome could not send (about 256 MiB and more).
+ * A `eval` result Chrome could not send (about 256 MiB and more).
  *
  * @returns Error naming the likely cause and a way to read the data that works
  */
@@ -2614,11 +2614,11 @@ export function resultNotSentError(): ErrorWithSuggestion {
   return {
     message:
       'The script ran, but Chrome could not send its result: it is probably too large to send',
-    suggestion: `Return a slice or the .length instead. To read all of it, keep it in the page (bdg dom eval '(window.data = <expression>, window.data.length)') and read parts of under ${formatMiB(EVAL_FULL_MAX_BYTES, 0)} with --full: a string as bdg dom eval 'window.data.slice(0, 10000000)' (10 million characters; fewer for multibyte text), a Map by its keys first (bdg dom eval '[...window.data.keys()]'), then one value as bdg dom eval 'window.data.get(KEY).slice(0, 10000000)' (until the page navigates)`,
+    suggestion: `Return a slice or the .length instead. To read all of it, keep it in the page (bdg eval '(window.data = <expression>, window.data.length)') and read parts of under ${formatMiB(EVAL_FULL_MAX_BYTES, 0)} with --full: a string as bdg eval 'window.data.slice(0, 10000000)' (10 million characters; fewer for multibyte text), a Map by its keys first (bdg eval '[...window.data.keys()]'), then one value as bdg eval 'window.data.get(KEY).slice(0, 10000000)' (until the page navigates)`,
   };
 }
 
-/** How to get a smaller `dom eval` result */
+/** How to get a smaller `eval` result */
 const SMALLER_RESULT_SUGGESTION =
   'Return a smaller part of the value (a slice of a string or array, a few keys of an object) or a count (.length)';
 
@@ -2626,7 +2626,7 @@ const SMALLER_RESULT_SUGGESTION =
 const TOO_LARGE_SUGGESTION = `${SMALLER_RESULT_SUGGESTION}, or drop --full to get the first 20000 characters`;
 
 /**
- * `dom eval --full` given a result over its size cap.
+ * `eval --full` given a result over its size cap.
  *
  * @param size - Size of the result in bytes, or counted so far; Infinity when it was too large to measure (JSON text past V8's string limit)
  * @param cap - The cap, in the same unit
@@ -2642,34 +2642,34 @@ export function evalResultTooLargeError(
   const suggestion = exact ? TOO_LARGE_SUGGESTION : SMALLER_RESULT_SUGGESTION;
   if (!Number.isFinite(size)) {
     return {
-      message: `The result is too large to measure (over 512 MiB), over the ${limit} limit of dom eval --full`,
+      message: `The result is too large to measure (over 512 MiB), over the ${limit} limit of eval --full`,
       suggestion,
     };
   }
   const shown = formatMiB(size) === formatMiB(cap) ? `${size} bytes` : formatMiB(size);
   return {
     message: exact
-      ? `The result is ${shown}, over the ${limit} limit of dom eval --full`
-      : `The result is over the ${limit} limit of dom eval --full (copying stopped at ${shown})`,
+      ? `The result is ${shown}, over the ${limit} limit of eval --full`
+      : `The result is over the ${limit} limit of eval --full (copying stopped at ${shown})`,
     suggestion,
   };
 }
 
 /**
- * `dom eval --full` whose result Chrome could not send, so it is over the cap.
+ * `eval --full` whose result Chrome could not send, so it is over the cap.
  *
  * @param cap - The cap, in bytes
  * @returns Error naming the cap and how to get a smaller result
  */
 export function evalResultUnsentFullError(cap: number): ErrorWithSuggestion {
   return {
-    message: `The result is over the ${formatMiB(cap, 0)} limit of dom eval --full (Chrome could not send it)`,
+    message: `The result is over the ${formatMiB(cap, 0)} limit of eval --full (Chrome could not send it)`,
     suggestion: SMALLER_RESULT_SUGGESTION,
   };
 }
 
 /**
- * `dom eval` (without `--full`) given a result Chrome cannot send.
+ * `eval` (without `--full`) given a result Chrome cannot send.
  *
  * @param counted - Size counted on the page when it stopped, in bytes
  * @param cap - The most Chrome sends, in bytes
@@ -2687,7 +2687,7 @@ export function evalResultNotSendableError(counted: number, cap: number): ErrorW
 const LIST_FRAMES_HINT = 'List frames: bdg dom frames';
 
 /**
- * `dom eval --frame` given an empty frame.
+ * `eval --frame` given an empty frame.
  */
 export function emptyFrameError(): ErrorWithSuggestion {
   return {
@@ -2697,7 +2697,7 @@ export function emptyFrameError(): ErrorWithSuggestion {
 }
 
 /**
- * `dom eval --frame` matching no iframe.
+ * `eval --frame` matching no iframe.
  *
  * @param query - Requested frame
  * @param frames - Frames of the page
@@ -2713,7 +2713,7 @@ export function frameNotFoundError(query: string, frames: DomFrame[]): ErrorWith
 }
 
 /**
- * A `dom eval --frame` index that names another frame (or none) than when
+ * A `eval --frame` index that names another frame (or none) than when
  * `bdg dom frames` listed it.
  *
  * @param index - Requested index
@@ -2727,7 +2727,7 @@ export function staleFrameIndexError(index: number): ErrorWithSuggestion {
 }
 
 /**
- * `dom eval --frame` matching more than one iframe.
+ * `eval --frame` matching more than one iframe.
  *
  * @param query - Requested frame
  * @param candidates - Matching frames
@@ -2755,7 +2755,7 @@ export function frameNotReadyError(url: string): ErrorWithSuggestion {
 }
 
 /**
- * The iframe a `dom eval --frame` script ran in navigated before it finished.
+ * The iframe a `eval --frame` script ran in navigated before it finished.
  *
  * @param url - Frame URL when the script started
  */
@@ -2768,7 +2768,7 @@ export function frameNavigatedDuringEvalError(url: string): ErrorWithSuggestion 
 }
 
 /**
- * The iframe a `dom eval --frame` script ran in was removed (or vanished
+ * The iframe a `eval --frame` script ran in was removed (or vanished
  * before it started).
  *
  * @param url - Frame URL when the script started
@@ -2781,7 +2781,7 @@ export function frameRemovedDuringEvalError(url: string): ErrorWithSuggestion {
 }
 
 /**
- * The page (its tab) was closed while a `dom eval` script ran.
+ * The page (its tab) was closed while a `eval` script ran.
  */
 export function pageClosedDuringEvalError(): ErrorWithSuggestion {
   return {
@@ -2791,7 +2791,7 @@ export function pageClosedDuringEvalError(): ErrorWithSuggestion {
 }
 
 /**
- * The iframe a `dom eval --frame` script ran in went away, and bdg could not
+ * The iframe a `eval --frame` script ran in went away, and bdg could not
  * tell whether it navigated or was removed.
  *
  * @param url - Frame URL when the script started
@@ -2804,7 +2804,7 @@ export function frameLostDuringEvalError(url: string): ErrorWithSuggestion {
 }
 
 /**
- * The page navigated while a `dom eval` script ran (e.g. it set
+ * The page navigated while a `eval` script ran (e.g. it set
  * `location.href` and then awaited).
  */
 export function pageNavigatedDuringEvalError(): ErrorWithSuggestion {
@@ -2819,7 +2819,7 @@ export function pageNavigatedDuringEvalError(): ErrorWithSuggestion {
 const REDECLARED_PATTERN = /^SyntaxError: Identifier '([\w$]+)' has already been declared/;
 
 /**
- * Tip for a name declared twice: `dom eval` runs a script in a block, so
+ * Tip for a name declared twice: `eval` runs a script in a block, so
  * only the script itself, or a `var`/function of it meeting the page's own
  * top-level `let`/`const`/`class`, can declare a name again.
  *
@@ -2875,8 +2875,8 @@ export function scriptExecutionError(
   } else if (/^SyntaxError\b/.test(errorMessage)) {
     lines.push('');
     lines.push('Tips:');
-    lines.push("  - Use single quotes around script: bdg dom eval '...'");
-    lines.push('  - For complex scripts, read them from a file: bdg dom eval "$(cat script.js)"');
+    lines.push("  - Use single quotes around script: bdg eval '...'");
+    lines.push('  - For complex scripts, read them from a file: bdg eval "$(cat script.js)"');
     lines.push('  - Escape inner quotes: \\" or use opposite quote style');
   }
 

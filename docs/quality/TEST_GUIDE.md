@@ -70,7 +70,7 @@ tests/
 
 The `integration`, `error-scenarios` and `edge-cases` scripts load pages from the local fixture server (`src/__testutils__/serveFixtures.ts`), which `run-all-tests.sh` starts on a free port and stops on exit; its URL is in `BDG_FIXTURE_URL`. They need no outside network. The session directory of a failed script is kept (`/tmp/bdg-it-*`, listed in the output; CI uploads their logs). A script run on its own needs `BDG_FIXTURE_URL` exported.
 
-Smoke tests run `dist/index.js` and refuse to start when a product file under `src/` is newer than it ("run npm run build"). The check is skipped on CI. The `dom eval` smoke tests shorten the eval timeout paths with `BDG_TEST_EVAL_TIMEOUT_MS` and `BDG_TEST_EVAL_GRACE_MS` (whole ms from 100 up to the production value, anything else is ignored); set them before the session starts, as the daemon reads them.
+Smoke tests run `dist/index.js` and refuse to start when a product file under `src/` is newer than it ("run npm run build"). The check is skipped on CI. The `eval` smoke tests shorten the eval timeout paths with `BDG_TEST_EVAL_TIMEOUT_MS` and `BDG_TEST_EVAL_GRACE_MS` (whole ms from 100 up to the production value, anything else is ignored); set them before the session starts, as the daemon reads them.
 
 ## Test Coverage
 

@@ -205,7 +205,7 @@ export function detectScriptQuoteDamage(script: string, errorMessage: string): S
       damaged: true,
       type: 'unquoted-argument',
       details: `${method}(${argument}) - quotes stripped by shell`,
-      suggestion: `Try: ${sessionCommand(`bdg dom eval '${fixedScript}'`)}`,
+      suggestion: `Try: ${sessionCommand(`bdg eval '${fixedScript}'`)}`,
     };
   }
   return noDamage();

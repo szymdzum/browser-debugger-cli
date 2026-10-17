@@ -15,7 +15,7 @@ docker build -f Dockerfile.local -t bdg:local .
 
 docker run --rm bdg:local sh -c '
   bdg https://example.com --headless --json
-  bdg dom eval "document.title" --json
+  bdg eval "document.title" --json
   bdg stop
 '
 ```

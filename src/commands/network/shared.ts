@@ -1,7 +1,7 @@
 /**
  * Shared utilities and helper commands for network subcommands.
  *
- * Contains getCookies and headers commands, plus shared data fetching utilities.
+ * Contains cookies and headers commands, plus shared data fetching utilities.
  */
 
 import type { Command } from 'commander';
