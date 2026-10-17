@@ -850,7 +850,8 @@ export const A11Y_RULE_HINTS: Readonly<Record<A11yRuleId, string>> = {
 /** Examples line of `dom audit a11y --help`: what it checks and does not */
 export const A11Y_AUDIT_RULES_HELP = `Rules of the a11y check (not a full WCAG engine; it reads the computed accessibility tree):
   img-alt        images without an accessible name (alt="" and aria-hidden are fine)
-  control-name   inputs, selects, buttons and links without a name (icon-only buttons)
+  control-name   inputs, selects, buttons and links without a name (icon-only buttons);
+                 a placeholder counts as a name, as Chrome computes it
   heading-order  no h1, more than one h1, skipped levels
   landmarks      no main landmark; text outside any landmark
   duplicate-id   repeated ids; aria-labelledby/describedby naming no element`;

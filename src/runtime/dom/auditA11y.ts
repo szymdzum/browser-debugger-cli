@@ -20,12 +20,16 @@ import { NODE_SELECTOR_FUNCTION, selectorOfNode } from '@/runtime/dom/targetNode
 import { callFunctionInBdgWorld } from '@/runtime/page/bdgWorld.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { a11yDetail, a11yNoSelectorNote } from '@/ui/messages/commands.js';
+import { ConcurrencyLimiter } from '@/utils/concurrency.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
 const log = createLogger('dom');
 
 /** Frames whose tree is read, at most */
 const A11Y_FRAME_CAP = 20;
+
+/** Selector lookups in flight at once (each is a few page calls) */
+const SELECTOR_LOOKUPS = 8;
 
 /** Selector of a finding about the page as a whole */
 const PAGE_ELEMENT = 'body';
@@ -156,24 +160,29 @@ async function elementLabel(cdp: CDPConnection, backendNodeId: number): Promise<
  * @param hit - Hit
  * @returns Selector, or `tag#id` (and a note) for an element no selector finds alone
  */
-async function hitElement(cdp: CDPConnection, hit: A11yHit): Promise<AuditA11yElement> {
+async function hitElement(
+  cdp: CDPConnection,
+  hit: A11yHit,
+  lookups: ConcurrencyLimiter
+): Promise<AuditA11yElement> {
   const detail = a11yDetail(hit.reason);
   if (hit.backendNodeId === undefined) return { element: PAGE_ELEMENT, detail };
-  const selector = await selectorOfNode(cdp, hit.backendNodeId);
+  const backendNodeId = hit.backendNodeId;
+  const selector = await lookups.run(() => selectorOfNode(cdp, backendNodeId));
   return selector
     ? { element: selector, detail }
-    : unselectable(await elementLabel(cdp, hit.backendNodeId), detail);
+    : unselectable(await elementLabel(cdp, backendNodeId), detail);
 }
 
 /**
  * An element no selector finds alone: its label, and a note saying so.
  *
- * @param label - `tag#id` or `tag`
+ * @param label - `tag#id` or `tag`, shown as `<tag#id>` so it is not taken for a selector
  * @param detail - What the rule found
  * @returns The listed element
  */
 function unselectable(label: string, detail: string): AuditA11yElement {
-  return { element: label, detail: `${detail} ${a11yNoSelectorNote()}` };
+  return { element: `<${label}>`, detail: `${detail} ${a11yNoSelectorNote()}` };
 }
 
 /**
@@ -215,11 +224,12 @@ export async function auditA11y(
         ? { element: issue.selector, detail: a11yDetail(issue.reason) }
         : unselectable(issue.tag + (issue.id ? `#${issue.id}` : ''), a11yDetail(issue.reason))
     );
+    const lookups = new ConcurrencyLimiter(SELECTOR_LOOKUPS);
     const ruleEntry = async (id: A11yRuleId): Promise<AuditA11yRule> => {
       if (id === 'duplicate-id') return { id, count: ids?.total ?? 0, elements: idElements };
       const ruleHits = hits.filter((hit) => hit.rule === id);
       const elements = await Promise.all(
-        ruleHits.slice(0, limit).map((hit) => hitElement(cdp, hit))
+        ruleHits.slice(0, limit).map((hit) => hitElement(cdp, hit, lookups))
       );
       return { id, count: ruleHits.length, elements };
     };

@@ -29,7 +29,7 @@ export const A11Y_RULES: readonly A11yRuleId[] = [
 
 /** One element an a11y rule flags */
 export interface AuditA11yElement {
-  /** Selector for `bdg dom a11y describe` / `bdg dom get` (`tag#id` plus a note in `detail` when none finds it alone: iframes, shadow roots) */
+  /** Selector for `bdg dom a11y describe` / `bdg dom get` (`<tag#id>`, not a selector, plus a note in `detail` when none finds it alone: iframes, shadow roots) */
   element: string;
   detail: string;
 }

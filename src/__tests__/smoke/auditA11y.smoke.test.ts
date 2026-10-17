@@ -81,7 +81,13 @@ void describe('dom audit a11y', () => {
     const names = (id: string): string[] => (rules.get(id)?.elements ?? []).map((e) => e.element);
     assert.equal(rules.get('img-alt')?.count, 2, 'the image and the one in the iframe');
     assert.ok(names('img-alt').includes('#pic'));
-    assert.equal(rules.get('control-name')?.count, 3, 'input, icon button, input in shadow root');
+    assert.equal(rules.get('control-name')?.count, 4, 'input, icon button, two in the shadow root');
+    assert.ok(
+      rules
+        .get('control-name')
+        ?.elements.some((e) => e.element === '<button>' && /no unique selector/.test(e.detail)),
+      'an element no selector finds alone is not given as a selector'
+    );
     assert.ok(names('control-name').includes('#plain'));
     assert.ok(names('control-name').includes('#icon'));
     assert.ok(names('control-name').includes('#shadowed'));

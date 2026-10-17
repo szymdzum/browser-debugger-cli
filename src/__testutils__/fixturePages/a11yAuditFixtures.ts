@@ -25,7 +25,7 @@ const A11Y_BAD_HTML = `<!doctype html><title>a11y bad</title>
 <p id="ghosted" aria-labelledby="ghost">described by nothing</p>
 <div id="host"></div>
 <iframe srcdoc="<img id='framed' src='y.png'>"></iframe>
-<script>document.getElementById('host').attachShadow({ mode: 'open' }).innerHTML = '<input id="shadowed" type="text">';</script>`;
+<script>document.getElementById('host').attachShadow({ mode: 'open' }).innerHTML = '<input id="shadowed" type="text"><button><svg width="10" height="10"></svg></button>';</script>`;
 
 /** Only correct variants, all inside one landmark */
 const A11Y_GOOD_HTML = `<!doctype html><title>a11y good</title>
@@ -48,6 +48,8 @@ const A11Y_GOOD_HTML = `<!doctype html><title>a11y good</title>
 <input type="hidden" name="token" value="abc">
 <button>Save</button>
 <a href="/somewhere">Read more</a>
+<img src="/missing.png" alt="Logo">
+<input type="text" placeholder="Search here">
 <label for="pw">Password</label><input id="pw" type="password" value="hunter2">
 </main>`;
 
