@@ -40,21 +40,23 @@ const SHORT_LOOP_MS = 3_000;
 
 /**
  * How long a lost result's answer gets after the page answered the check
- * (production: 12 s). It only affects lost-answer timing; the lost-result
+ * (production: 12 s). 3 s keeps the other client's script running about 3 s
+ * before the lost answer can arrive. It only affects lost-answer timing; the lost-result
  * tests rely on it being well under the 20 s eval limit ({@link LOST_MS}).
  */
-const UNSENT_GRACE_MS = '1000';
+const UNSENT_GRACE_MS = '3000';
 
 /**
- * Bound for an eval whose result is lost: about 1 s check + 1 s grace (about 3 s
- * on Linux, 7-10 s on macOS), well under the 20 s limit it would fall back to
+ * Bound for an eval whose result is lost: about 1 s check + 3 s grace (about 6 s
+ * on Linux, up to 12 s on macOS), well under the 20 s limit it would fall back to
  * (about 25 s with overhead) if the lost-result check never fired
  */
 const LOST_MS = 18_000;
 
 /**
  * How long another client's script runs while an eval's result is lost: it
- * starts 2 s into that eval and outlasts its answer
+ * starts as soon as the lost eval's timer fires (right after the 300 MB
+ * string is built, before the lost answer can arrive) and outlasts its answer
  */
 const OTHER_LOOP_MS = 8_000;
 
@@ -326,7 +328,7 @@ void describe('Interrupted dom eval', () => {
       const lostStartedAt = Date.now();
       let lostEndedAt = 0;
       const lost = startEval(
-        `setTimeout(() => { const r = new XMLHttpRequest(); r.open('GET', '/beacon?${armed}', false); r.send(); }, 2000); 'x'.repeat(300e6)`,
+        `setTimeout(() => { const r = new XMLHttpRequest(); r.open('GET', '/beacon?${armed}', false); r.send(); }, 300); 'x'.repeat(300e6)`,
         undefined,
         { extra: full ? ['--full'] : [] }
       ).finally(() => {
