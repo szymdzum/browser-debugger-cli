@@ -502,6 +502,7 @@ async function ciWaitLoop(argv) {
   let workflows = ['CI', 'Security'];
   if (!push) {
     pr = prInfo(target);
+    if (flags.has('head') || keys.head === '') return usage('ci-wait <pr> --head=<sha>: give the SHA after =');
     sha = keys.head ? await waitForHead(pr.number, keys.head) : pr.headRefOid;
     if (!sha) return EXIT.timeout;
     if (pr.baseRefName !== 'main') workflows = ['CI'];
@@ -782,8 +783,10 @@ export function isFormatChecked(file) {
  * @param {string} path the PR's worktree
  */
 function finishSimplify(path) {
-  const edited = run('git', ['-C', path, 'diff', '--name-only'])
-    .split('\n')
+  const edited = [
+    ...run('git', ['-C', path, 'diff', '--name-only', 'HEAD']).split('\n'),
+    ...run('git', ['-C', path, 'ls-files', '--others', '--exclude-standard']).split('\n'),
+  ]
     .filter((f) => isFormatChecked(f) && existsSync(join(path, f)));
   const results = [];
   if (edited.length) results.push(step(`prettier --write (${edited.length} files)`, `npx prettier --write ${edited.map((f) => `'${f}'`).join(' ')}`, path));
@@ -1140,6 +1143,9 @@ export function productLines(numstat) {
     }, 0);
 }
 
+/** What a release PR may change (S12 #770, S19 #830): --release refuses anything else */
+const RELEASE_FILES = ['CHANGELOG.md', 'package.json', 'package-lock.json'];
+
 /**
  * A release PR's version check: package.json's version at the head, and the
  * PR title naming the same `vX.Y.Z` (S19: #830 went through bare gh because
@@ -1149,7 +1155,12 @@ export function productLines(numstat) {
  * @param {string} title PR title
  */
 export function releaseVersion(packageJson, title) {
-  const version = JSON.parse(packageJson).version;
+  let version;
+  try {
+    version = JSON.parse(packageJson).version;
+  } catch {
+    return { ok: false, text: 'no readable package.json at the head' };
+  }
   const named = /v(\d+\.\d+\.\d+(?:-[\w.]+)?)/.exec(title ?? '')?.[1];
   if (!named) return { ok: false, text: `the title names no vX.Y.Z (package.json has ${version})` };
   return named === version
@@ -1262,8 +1273,10 @@ async function gates(argv) {
   await freshBaseGate(results, pr, baseRef, forkPoint, prFiles);
   const release = flags.has('release');
   if (release) {
-    const version = releaseVersion(run('git', ['show', `${head}:package.json`]), pr.title);
+    const version = releaseVersion(spawnSync('git', ['show', `${head}:package.json`], { encoding: 'utf8' }).stdout, pr.title);
+    const other = prFiles.filter((f) => !RELEASE_FILES.includes(f));
     gateLine(results, prFiles.includes('CHANGELOG.md'), '7 release: CHANGELOG.md changed');
+    gateLine(results, other.length === 0, `7 release: only ${RELEASE_FILES.join(', ')} changed${other.length ? ` (also ${other.join(', ')})` : ''}`);
     gateLine(results, version.ok, `7 release: ${version.text}`);
   } else gateLine(results, !prFiles.includes('CHANGELOG.md'), '7 CHANGELOG.md untouched');
   const parts = partOfIssues(pr.body);

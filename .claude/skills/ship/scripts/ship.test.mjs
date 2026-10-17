@@ -1073,6 +1073,7 @@ test('releaseVersion matches package.json to the vX.Y.Z in a release PR title', 
   assert.match(releaseVersion(pkg, 'chore: release v0.21.0').text, /package.json 0.20.0, title v0.21.0/);
   assert.match(releaseVersion(pkg, 'chore: release').text, /names no vX.Y.Z/);
   assert.equal(releaseVersion(JSON.stringify({ version: '1.0.0-rc.1' }), 'release v1.0.0-rc.1').ok, true);
+  assert.match(releaseVersion('', 'release v1.0.0').text, /no readable package.json/);
 });
 
 test('isFormatChecked follows npm run format:check, never the ship scripts', () => {
