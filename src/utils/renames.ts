@@ -114,6 +114,14 @@ export const RENAMES: readonly RenameEntry[] = [
     stage: 'deprecated',
     takesValue: true,
   },
+  {
+    kind: 'option',
+    command: 'dom get',
+    old: '--nth',
+    new: '--index',
+    stage: 'deprecated',
+    takesValue: true,
+  },
   { kind: 'option', command: '', old: '--all', new: '--capture-all', stage: 'deprecated' },
   {
     kind: 'option',

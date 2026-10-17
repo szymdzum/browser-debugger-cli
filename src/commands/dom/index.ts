@@ -138,7 +138,9 @@ export function registerDomCommands(program: Command): void {
     )
     .option('--all', 'Get all matches (only with --raw)')
     .option('--index <n>', 'Element index if selector matches multiple (0-based)', integerOption(0))
-    .addOption(new Option('--nth <n>', 'Alias of --index').argParser(integerOption(0)).hideHelp())
+    .addOption(
+      new Option('--nth <n>', 'Old spelling of --index').argParser(integerOption(0)).hideHelp()
+    )
     .option(
       '--node-id <id>',
       'Get the element with this backend node id (backendNodeId in --json of dom query and dom get --raw, backendDOMNodeId in --json of dom a11y describe/query; implies --raw)',
