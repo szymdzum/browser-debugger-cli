@@ -78,6 +78,13 @@ void describe('console ndjson stream', () => {
     ]);
   });
 
+  void it('prints a page record without url for a page the session has no record of', () => {
+    const record: unknown = JSON.parse(
+      createConsoleNdjson().next([message('q', 9)], pages, 9)[0] as string
+    );
+    assert.deepEqual(record, { type: 'page', navigationId: 9 });
+  });
+
   void it('prints the page record of a page that logged nothing, once, at the end of the poll', () => {
     const stream = createConsoleNdjson();
     stream.next([message('a', 1)], pages, 1);
@@ -108,6 +115,17 @@ void describe('console ndjson stream', () => {
 });
 
 void describe('console follow separator', () => {
+  void it('keeps a URL with a line break, escape or bidi override on the separator line', () => {
+    const navigations = [{ navigationId: 2, url: 'https://a.test/p\nFAKE\u202e\u001b[2J' }];
+    const text = formatConsoleFollowLines([], {
+      streamNavigationId: 1,
+      currentNavigationId: 2,
+      navigations,
+    });
+    assert.equal(text.split('\n').length, 1, text);
+    assert.ok(!text.includes('\u202e') && !text.includes(String.fromCharCode(27)), text);
+  });
+
   void it('names the URL of the new page', () => {
     const text = formatConsoleFollowLines([message('left', 1), message('right', 2)], {
       streamNavigationId: 1,

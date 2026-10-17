@@ -6,11 +6,22 @@
 import { MAX_CONSOLE_TEXT_LENGTH } from '@/constants.js';
 import type { ConsoleMessage, PageNavigation } from '@/types.js';
 import { capForDisplay } from '@/ui/formatters/longValues.js';
-import { OutputFormatter } from '@/ui/formatting.js';
+import { escapeControlChars, OutputFormatter } from '@/ui/formatting.js';
 import { displayUrl } from '@/utils/displayUrl.js';
 
 import { pagesEntered } from './pages.js';
 import { formatSourceLocation, formatTimestamp } from './shared.js';
+
+/**
+ * Page-controlled text on one line: control and bidi characters escaped,
+ * newlines and tabs too.
+ *
+ * @param text - Text from the page
+ * @returns Text without line breaks
+ */
+function singleLine(text: string): string {
+  return escapeControlChars(text).replace(/[\n\t]/g, (c) => (c === '\n' ? '\\n' : '\\t'));
+}
 
 /**
  * Lines of the console stream: the new messages since the last poll, with
@@ -49,7 +60,8 @@ export function formatConsoleFollowLines(
       onPage,
       navigationId
     )) {
-      const page = url === undefined ? '' : `: ${displayUrl(url, options.includeSensitive)}`;
+      const page =
+        url === undefined ? '' : `: ${singleLine(displayUrl(url, options.includeSensitive))}`;
       fmt.text(`── Next page${page} (navigation #${id}) ──`);
     }
     onPage = navigationId;

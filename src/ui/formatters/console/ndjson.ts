@@ -31,7 +31,7 @@ export interface ConsoleNdjsonStream {
  * Start a console NDJSON stream. A `page` record names a navigation of the
  * session (`navigationId`, `url`); one comes before the first message of each
  * page, for every page the session visited since the previous poll (also one
- * that logged nothing), and for the page loaded now when the poll has no
+ * that logged nothing; `url` is absent for a page the session has no record of), and for the page loaded now when the poll has no
  * message for it. The first poll starts with the page of its first message,
  * else the page loaded now. A message record is the message as `console --json`
  * lists it, its level in `level` (`type` tells the kind of record).
@@ -48,9 +48,8 @@ export function createConsoleNdjson(
       const lines: string[] = [];
       const moveTo = (navigationId: number): void => {
         for (const { url, ...page } of pagesEntered(navigations, onPage, navigationId)) {
-          if (url === undefined) continue;
-          const shown = displayUrl(url, options.includeSensitive);
-          lines.push(JSON.stringify({ type: 'page', ...page, url: shown }));
+          const shown = url === undefined ? {} : { url: displayUrl(url, options.includeSensitive) };
+          lines.push(JSON.stringify({ type: 'page', ...page, ...shown }));
         }
         onPage = navigationId;
       };
