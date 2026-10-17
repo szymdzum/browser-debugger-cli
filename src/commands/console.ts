@@ -255,7 +255,7 @@ async function runFollowMode(options: ConsoleCommandOptions, lastN: number): Pro
   const cursor = createFollowCursor(options, lastN);
   const newCrash = newPageCrashes();
   const ndjson = options.ndjson ? createConsoleNdjson(options) : undefined;
-  if (ndjson && options.includeSensitive) console.error(includeSensitiveWarning());
+  if (options.includeSensitive) console.error(includeSensitiveWarning());
   let streamNavigationId: number | undefined;
   let started = false;
   const showConsole = async (): Promise<FollowPoll> => {

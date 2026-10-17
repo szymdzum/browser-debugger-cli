@@ -19,6 +19,7 @@ bdg dom inspect "button.primary"        # Box, layout, font, colors + contrast, 
 bdg dom fill "input[name='email']" "a@b.co"
 bdg dom click "button[type='submit']"   # Prints what changed: navigation, new text, or no effect
 bdg console --level error               # Anything thrown?
+bdg console --follow --ndjson           # Tail console output: one JSON record per line ({type:"page",navigationId,url} per page, {type:"message",level,text,…} per message)
 bdg network list --preset errors        # 4xx/5xx of the current page (--page all: earlier pages too)
 bdg stop                                # Only when completely done
 ```
