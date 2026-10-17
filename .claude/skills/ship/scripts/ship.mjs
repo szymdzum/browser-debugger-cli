@@ -1160,16 +1160,18 @@ async function gates(argv) {
   mainGate(results, flags.has('fixes-main'));
   await freshBaseGate(results, pr, baseRef, forkPoint, prFiles);
   gateLine(results, !prFiles.includes('CHANGELOG.md'), '7 CHANGELOG.md untouched');
+  const parts = partOfIssues(pr.body);
   if (flags.has('no-issue')) console.log('ok   7 PR body closes an issue: skipped (--no-issue)');
   else {
     const closed = closedIssues(pr.body);
+    const named = [...closed.map((n) => `#${n}`), ...parts.map((n) => `part of #${n}`)];
     gateLine(
       results,
-      closed.length > 0,
-      `7 PR body closes an issue: ${closed.length ? `#${closed.join(', #')}` : 'no "Closes #<N>" (add it, or --no-issue for a PR with no issue)'}`
+      named.length > 0,
+      `7 PR body names its issue: ${named.length ? named.join(', ') : 'no "Closes #<N>" or "Part of #<N>" (add one, or --no-issue for a PR with no issue)'}`
     );
   }
-  const scope = [String(pr.number), ...(prIssues(pr.number) ?? [])];
+  const scope = [...new Set([String(pr.number), ...(prIssues(pr.number) ?? []), ...parts])];
   const left = leftoverLines(scope);
   gateLine(
     results,
@@ -1195,6 +1197,21 @@ export function closedIssues(body) {
   const ref = `(?:#|https://github\\.com/${REPO}/issues/)(\\d+)(?![\\w/-])`;
   const keyword = '\\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\\s+';
   const found = [...text.matchAll(new RegExp(keyword + ref, 'gi'))];
+  return [...new Set(found.map((m) => m[1]))];
+}
+
+/**
+ * Issue numbers a PR body names with `Part of #N` (a PR that does one part
+ * of an issue, which stays open), as strings; fenced code is ignored. S17:
+ * five PRs made by `ship brief … PART=1` failed gate 7 and needed
+ * `--no-issue`, which hides a missing issue entirely.
+ *
+ * @param {string} [body]
+ */
+export function partOfIssues(body) {
+  const text = (body ?? '').replace(/^ {0,3}(`{3,}|~{3,})[\s\S]*?(^ {0,3}\1[`~]*[ \t]*$|(?![\s\S]))/gm, '');
+  const ref = `(?:#|https://github\\.com/${REPO}/issues/)(\\d+)(?![\\w/-])`;
+  const found = [...text.matchAll(new RegExp(`\\bpart of:?\\s+${ref}`, 'gi'))];
   return [...new Set(found.map((m) => m[1]))];
 }
 
@@ -1477,7 +1494,7 @@ function leftoverLines(scope) {
   if (agentDaemon) lines.push(`an agent's bdg session is live in ~/.bdg: ${agentDaemon}`);
   for (const file of readdirSync('/tmp').filter((f) => /^bdg-.*\.pid$/.test(f))) {
     if (scope && !inScope(file, scope)) continue;
-    if (scope && /^bdg-fixtures-\d+\.pid$/.test(file)) continue;
+    if (scope && /^bdg-fixtures-[\w.-]+\.pid$/.test(file)) continue;
     const pid = Number(readFileSync(join('/tmp', file), 'utf8').trim());
     if (pid && alive(pid)) lines.push(`live PID ${pid} from /tmp/${file}`);
   }
@@ -1486,6 +1503,21 @@ function leftoverLines(scope) {
   );
   if (temp.length) lines.push(`temporary worktrees: ${temp.join(', ')}`);
   return lines;
+}
+
+/**
+ * The `ship fixtures` names that belong to these PR or issue numbers: the
+ * number itself and a name the number starts with (`529a` for #529, S17's
+ * two PRs for one issue).
+ *
+ * @param {string[]} numbers
+ * @param {string[]} tmpEntries the names in /tmp
+ */
+export function fixtureNamesFor(numbers, tmpEntries) {
+  const names = tmpEntries
+    .map((f) => /^bdg-fixtures-([\w.-]+)\.pid$/.exec(f)?.[1])
+    .filter((name) => name && numbers.some((n) => new RegExp(`^${n}(?:[a-z][\\w-]*)?$`).test(name)));
+  return [...new Set([...numbers, ...names])];
 }
 
 /** PID file of the fixture server the orchestrator starts for PR or issue N */
@@ -1551,7 +1583,8 @@ function stopFixtures(n) {
 async function fixtures(argv) {
   const { positional, keys, flags } = parseArgs(argv);
   const n = positional[0];
-  if (!n || !/^\d+$/.test(n)) return usage('fixtures <N> [dir=<worktree>] | fixtures <N> --stop');
+  if (!n || !/^[A-Za-z0-9][\w.-]*$/.test(n))
+    return usage('fixtures <N or name, e.g. 529a> [dir=<worktree>] | fixtures <N or name> --stop');
   if (flags.has('stop')) {
     const result = stopFixtures(n);
     console.log(
@@ -1683,8 +1716,9 @@ async function merge(argv) {
   const prNumber = argv[0];
   if (!prNumber) return usage('merge <pr> --tier=1|2|3 [--macos] [--timing] [--repeat=<run id>] [--no-issue] [--fixes-main]');
   const pr = prInfo(prNumber);
-  for (const n of [String(pr.number), ...(prIssues(pr.number) ?? [])])
-    if (stopFixtures(n) === 'stopped') console.log(`stopped your fixtures of #${n} (ship fixtures)`);
+  const numbers = [String(pr.number), ...(prIssues(pr.number) ?? []), ...partOfIssues(pr.body)];
+  for (const n of fixtureNamesFor(numbers, readdirSync('/tmp')))
+    if (stopFixtures(n) === 'stopped') console.log(`stopped your fixtures of ${n} (ship fixtures)`);
   if ((await gates(argv)) !== EXIT.ok) {
     console.log('not merged: a gate failed');
     return EXIT.failed;
@@ -1815,6 +1849,8 @@ export function renderBrief(text, role, values) {
     throw new Error(`no brief "${role}"; known: ${Object.keys(briefs).join(', ')}`);
   const insert = (s) => s.replace(/\{\{([\w-]+)\}\}/g, (all, name) => blocks[name] ?? all);
   let brief = insert(insert(briefs[role]));
+  if (values.NAME && values.N)
+    brief = brief.split('#<N>').join(`#${values.N}`).split('<N>').join(values.NAME);
   for (const [key, value] of Object.entries(values)) brief = brief.split(`<${key}>`).join(value);
   const unfilled = unfilledPlaceholders(brief, templatePlaceholders(text)).filter(
     (p) => p !== '<ISSUE>' && p !== '<DESIGN>'

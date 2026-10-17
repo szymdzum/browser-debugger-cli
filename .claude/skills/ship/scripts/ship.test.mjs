@@ -16,6 +16,7 @@ import {
   appendSnapshotEntries,
   briefProblems,
   briefVariant,
+  fixtureNamesFor,
   formatDesign,
   formatIssue,
   isAgentCommand,
@@ -49,6 +50,7 @@ import {
   parseArgs,
   parseBriefs,
   parseSnapshot,
+  partOfIssues,
   parseSnapshotArgs,
   productLines,
   renderBrief,
@@ -1032,4 +1034,30 @@ test('briefVariant: tier 1 drops the red-commit rules, a part says Part of inste
   assert.match(part, /`Part of #797` \(not `Closes`/);
   assert.doesNotMatch(part, /`Closes #797`/);
   assert.doesNotMatch(briefVariant(brief, {}), /<!-- \/?red -->/);
+});
+
+test('partOfIssues reads "Part of #N" in any case, not fenced code or other numbers', () => {
+  assert.deepEqual(partOfIssues('Part of #529. Also part of: #809'), ['529', '809']);
+  assert.deepEqual(partOfIssues('part of https://github.com/szymdzum/browser-debugger-cli/issues/465'), ['465']);
+  assert.deepEqual(partOfIssues('```\nPart of #1\n```\nCloses #2 #3'), []);
+  assert.deepEqual(partOfIssues('part of #12a'), []);
+});
+
+test('renderBrief with NAME suffixes every path but keeps #N for the issue', () => {
+  const { brief } = renderBrief(BRIEFS, 'implementer', { N: '529', NAME: '529a', MAIN: '/m', BRANCH: 'fix/529a' });
+  assert.match(brief, /Implement issue #529 /);
+  assert.match(brief, /worktree 529a fix\/529a/);
+  assert.match(brief, /\.\.\/bdg-529a/);
+  assert.match(brief, /\/tmp\/bt-529a /);
+  assert.doesNotMatch(brief, /bdg-529[^a]|bt-529[^a]|#529a/);
+  const { brief: review } = renderBrief(BRIEFS, 'reviewer', { N: '529', NAME: '529b', MAIN: '/m', HEAD: 'h', BASE: 'b', RED: 'r', BRANCH: 'x' });
+  assert.match(review, /\/tmp\/review-529b/);
+  assert.match(review, /\/tmp\/red-529b/);
+  assert.match(review, /issue #529;/);
+});
+
+test('fixtureNamesFor finds the fixtures of a number and of names it starts', () => {
+  const tmp = ['bdg-fixtures-529a.pid', 'bdg-fixtures-529b.pid', 'bdg-fixtures-5290.pid', 'bdg-fixtures-812.pid', 'other.pid'];
+  assert.deepEqual(fixtureNamesFor(['812', '529'], tmp), ['812', '529', '529a', '529b']);
+  assert.deepEqual(fixtureNamesFor(['77'], tmp), ['77']);
 });
