@@ -178,8 +178,8 @@ void describe('typos suggest the new name, never the old', () => {
   const TYPOS: Array<{ argv: string[]; suggests: RegExp }> = [
     { argv: ['dom', 'presskey'], suggests: /Did you mean:? press-key/ },
     { argv: ['dom', 'press_key'], suggests: /Did you mean:? press-key/ },
-    { argv: ['network', 'get-cookies'], suggests: /Did you mean:? cookies/ },
-    { argv: ['network', 'getcookies'], suggests: /Did you mean:? cookies/ },
+    { argv: ['network', 'get-cookies'], suggests: /Did you mean:? (bdg network )?cookies/ },
+    { argv: ['network', 'getcookies'], suggests: /Did you mean:? (bdg network )?cookies/ },
     { argv: ['dom', 'evl'], suggests: /Did you mean:? (bdg )?eval/ },
     { argv: ['evl', 'x'], suggests: /Did you mean:? (bdg )?eval/ },
   ];
