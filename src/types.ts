@@ -2,6 +2,7 @@ import type { Protocol } from '@/connection/typed-cdp.js';
 import type { PageLoadingState } from '@/ipc/protocol/commands.js';
 import type { DownloadInfo, FormIssue } from '@/ipc/protocol/domTypes.js';
 import type { TabRef, TabSwitchInfo } from '@/ipc/protocol/tabTypes.js';
+import type { NavigationEvent } from '@/telemetry/navigation.js';
 
 /**
  * Standard response envelope for all bdg command JSON output.
@@ -289,6 +290,9 @@ export interface ConsoleMessage {
   truncatedFrom?: number;
 }
 
+/** A main-frame navigation of the session: the page loaded and the id its console messages carry */
+export type PageNavigation = Pick<NavigationEvent, 'navigationId' | 'url'>;
+
 /**
  * A Chrome Issue (DevTools Issues panel) of the page currently loaded: one of
  * the kinds that make a page look or behave wrong without a console message.
@@ -342,6 +346,8 @@ export interface BdgOutput {
   };
   /** Navigation id of the page currently loaded (live previews) */
   currentNavigationId?: number;
+  /** Every main-frame navigation of the session (console previews) */
+  navigations?: PageNavigation[];
   /** Fetch interception is on: pending requests may be paused by it (live previews; absent when off) */
   fetchInterception?: true;
   /** When the page's renderer crashed (epoch ms), while it is not loaded again */

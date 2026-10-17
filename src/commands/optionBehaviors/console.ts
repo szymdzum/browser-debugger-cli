@@ -2,7 +2,12 @@
  * Option behaviors of `bdg console`.
  */
 
-import { FOLLOW_BEHAVIOR, type BehaviorTable } from '@/commands/optionBehaviors/shared.js';
+import {
+  FOLLOW_BEHAVIOR,
+  MASKED_URL_DEFAULT,
+  MASKED_URL_ENABLED,
+  type BehaviorTable,
+} from '@/commands/optionBehaviors/shared.js';
 
 /** Behaviors by registry key */
 export const CONSOLE_BEHAVIORS: BehaviorTable = {
@@ -41,5 +46,19 @@ export const CONSOLE_BEHAVIORS: BehaviorTable = {
     whenEnabled:
       "Streams new messages as they come (the last --last at start); a page logged on before it was left is printed in full, then the navigation separator, then the new page's messages (--level applies to all)",
     automaticBehavior: FOLLOW_BEHAVIOR,
+  },
+  'console:--ndjson': {
+    default:
+      'Off: --follow prints text lines, --follow --json one envelope per batch of new messages',
+    whenEnabled:
+      'With --follow: one JSON object per line, no envelope. {"type":"message","level",…} per console message (the fields of console --json messages[]; the level is "level"), {"type":"page","navigationId","url"} (url absent for a page the session has no record of) before the first message of each page, for the current page at start, for a page that logged nothing and for every page passed between two polls. New contract in 0.x; in 1.0 this becomes the --follow --json shape',
+    automaticBehavior:
+      'Without --follow, or together with --json: exit 81 with the --json error envelope. Errors before the stream starts are that envelope too; Ctrl-C and SIGTERM exit 130 and 143 with no trailing record; a page crash is noted on stderr. Page URLs are masked like every output (--include-sensitive shows the tokens)',
+  },
+  'console:--include-sensitive': {
+    default: `${MASKED_URL_DEFAULT} (the --follow separator and --ndjson page records)`,
+    whenEnabled: `${MASKED_URL_ENABLED}; stderr gets the warning once (the stream itself has no extra record)`,
+    automaticBehavior:
+      'Only --follow prints page URLs (the separator, --ndjson page records); the other console views show none',
   },
 };

@@ -200,7 +200,7 @@ Follow modes (`peek --follow`, `console --follow`, `network list --follow`, `dom
 - Ctrl-C exits 130 and SIGTERM 143, as shells expect, after the mode's stop line on stderr (`Stopped following preview`, `Captured 4 frames`). No `Interrupted` envelope is printed, with `--json` either: each NDJSON line is already a whole envelope.
 - With `--json` they print one whole `BdgResponse` envelope per update, one per line (NDJSON), so a script can parse each line as it comes.
 - `peek --json --follow` prints a line every refresh; `console` and `network list` only when something new arrived. Their first line carries the backlog (`--last`; default 10 for `peek`, 100 for `console` and `network list`). `dom screenshot --follow` prints one envelope per frame and has no backlog.
-- `console --follow` prints what a page logged before a navigation took it away (the four errors a click logged and the reload that followed), then a `── Next page (navigation #N) ──` separator, then the new page's lines, each message once, also when the session drops old messages meanwhile; `--level` applies to all of them. The backlog at start is the current page's (`--history`: every page's).
+- `console --follow` prints what a page logged before a navigation took it away (the four errors a click logged and the reload that followed), then a `── Next page: <url> (navigation #N) ──` separator (the URL as every output shows it: no `user:pass@`, query and fragment tokens masked unless `--include-sensitive`), then the new page's lines, each message once, also when the session drops old messages meanwhile; `--level` applies to all of them. The backlog at start is the current page's (`--history`: every page's).
 - They stop with exit 83 when the session they follow ends (`The session ended; stopped following`), so a follower running in the background finds out.
 - Other failures (a busy page, a timeout) are retried: reported once in text, and as one error line per refresh with `--json`.
 
@@ -1520,6 +1520,9 @@ bdg console -f
 # JSON output with summary statistics
 bdg console --json
 
+# Stream one JSON record per line (new contract, see below)
+bdg console --follow --ndjson
+
 # Message texts whole
 bdg console --list --full
 ```
@@ -1537,6 +1540,24 @@ bdg console --list --full
 - **Objects automatically expanded** with nested structure visible
 
 Use `--history` to see messages from all page loads during the session.
+
+**Streaming records (`--follow --ndjson`):**
+
+`bdg console --follow --ndjson` prints one JSON object per line, with no envelope: a `page` record each time the stream is on another page, before the first message of that page, and a `message` record per console message. `--level`, `--history`, `--last`, `--full` and `--include-sensitive` apply as with `--follow`.
+
+- `{"type":"page","navigationId":N,"url":"…"}`: the URL is masked like every page URL (`--include-sensitive` shows the tokens; `user:pass@` is always removed). The stream starts with the record of the current page (of the first message's page with `--history`); `url` is absent for a page the session has no record of; a page that logged nothing still gets its record, and so does each page the session passed through between two polls. A batch that spans two pages is split by the record in the right place.
+- `{"type":"message","level":"error","text":"…","timestamp":…,"navigationId":N,…}`: the fields of an entry of `console --json` `messages[]`, with the message's level as `level` (`type` names the kind of record).
+- Usage errors (`--ndjson` without `--follow`, or together with `--json`: exit 81) and errors before the stream starts (no session: 83) are the one-line `--json` envelope with its exit code. Ctrl-C and SIGTERM end the stream with 130 / 143, no trailing record. A page crash is reported on stderr.
+- `--follow --json` is unchanged in 0.x (one envelope per batch of new messages); in 1.0 the `--ndjson` shape becomes the `--follow --json` shape and the batch envelope stays behind a flag for one minor.
+
+```text
+$ bdg console --follow --ndjson
+{"type":"page","navigationId":1,"url":"http://localhost:8080/ndjson-start"}
+{"type":"message","level":"log","text":"start message","timestamp":1760000000000,"navigationId":1}
+{"type":"page","navigationId":2,"url":"http://localhost:8080/ndjson-quiet?token=••••"}
+{"type":"page","navigationId":3,"url":"http://localhost:8080/ndjson-end"}
+{"type":"message","level":"log","text":"end message","timestamp":1760000009000,"navigationId":3}
+```
 
 **Chrome Issues:**
 

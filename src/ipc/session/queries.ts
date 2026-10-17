@@ -87,6 +87,8 @@ export interface PeekRequest extends IPCMessage {
   only?: 'network' | 'console';
   /** Include request/response headers in network items. */
   withHeaders?: boolean;
+  /** Also return the main-frame navigations with an id above this one (-1: all) */
+  navigationsAfter?: number;
   /** Put a move of the session to another tab that no command reported yet on the response */
   tabMove?: boolean;
 }

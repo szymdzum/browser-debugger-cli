@@ -26,6 +26,7 @@ export { LEVEL_MAP } from './console/shared.js';
 export { formatConsoleChronological, lastMessages } from './console/chronological.js';
 export { formatConsoleFollowLines } from './console/follow.js';
 export { buildConsoleJsonOutput } from './console/json.js';
+export { createConsoleNdjson } from './console/ndjson.js';
 export { formatConsoleSummary } from './console/summarize.js';
 
 /**

@@ -291,6 +291,9 @@ export class SessionController {
           lastN: request.lastN ?? 10,
           ...(request.only && { only: request.only }),
           ...(request.withHeaders && { withHeaders: true }),
+          ...(request.navigationsAfter !== undefined && {
+            navigationsAfter: request.navigationsAfter,
+          }),
         }),
         QUERY_TIMEOUT_MS,
         'Peek'
@@ -325,6 +328,7 @@ export class SessionController {
               }),
             },
             currentNavigationId: data.currentNavigationId,
+            ...(data.navigations && { navigations: data.navigations }),
             ...(data.fetchInterception && { fetchInterception: data.fetchInterception }),
             ...(data.pageCrashedAt !== undefined && { pageCrashedAt: data.pageCrashedAt }),
             ...(data.downloads && { downloads: data.downloads }),

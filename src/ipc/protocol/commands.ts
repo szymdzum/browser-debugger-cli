@@ -47,6 +47,7 @@ import type {
   ColorScheme,
   NetworkRequest,
   PageIssue,
+  PageNavigation,
   ScreenshotResult,
   ViewportSize,
 } from '@/types.js';
@@ -63,6 +64,8 @@ export interface SessionPeekCommand {
   only?: PeekSection;
   /** Include request/response headers in network items (for header filters). */
   withHeaders?: boolean;
+  /** Also return the main-frame navigations with an id above this one (-1: all) */
+  navigationsAfter?: number;
 }
 
 /** Data kinds returned by peek. */
@@ -106,6 +109,8 @@ export interface SessionPeekData {
   }>;
   /** Navigation id of the page currently loaded. */
   currentNavigationId: number;
+  /** Main-frame navigations with an id above `navigationsAfter` (only when it is asked) */
+  navigations?: PageNavigation[];
   /** Fetch interception is on: pending requests may be paused by it (absent when off) */
   fetchInterception?: true;
   /** When the page's renderer crashed (epoch ms), while it is not loaded again */
