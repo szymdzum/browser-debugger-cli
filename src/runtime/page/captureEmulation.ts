@@ -15,7 +15,7 @@
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import { TypedCDPConnection } from '@/connection/typed-cdp.js';
-import { evaluateInBdgWorld } from '@/runtime/page/bdgWorld.js';
+import { callFunctionInBdgWorld, evaluateInBdgWorld } from '@/runtime/page/bdgWorld.js';
 import { viewportOverride } from '@/runtime/page/emulation.js';
 import type { ViewportSize } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
@@ -74,6 +74,9 @@ export async function scrollPosition(cdp: CDPConnection): Promise<ScrollPosition
   return { x: x ?? 0, y: y ?? 0 };
 }
 
+/** Page script reading the window's size with its scrollbars */
+const WINDOW_SIZE_JS = '[window.innerWidth, window.innerHeight]';
+
 /**
  * The emulation changes of one capture, undone by {@link restore}.
  */
@@ -82,6 +85,7 @@ export class CaptureEmulation {
   private metricsChanged = false;
   private scrollbarsHidden = false;
   private beyondViewport: Size | undefined;
+  private windowWithoutOverride: Size | undefined;
   private scrolledFrom: ScrollPosition | undefined;
 
   /**
@@ -117,12 +121,15 @@ export class CaptureEmulation {
    * beyond the viewport hides them, and without this the page would widen by
    * the scrollbar and centered content move after it was measured. The
    * viewport is overridden at the visible size (CSS px, pixel ratio 1; still
-   * a phone in a phone session).
+   * a phone in a phone session). Without a session viewport, the window's
+   * size is read first: the restore waits for the page to have it back.
    *
    * @param view - Visible viewport size
    */
   async keepLayoutWithoutScrollbars(view: Size): Promise<void> {
-    const phone = this.sessionViewport()?.mobile;
+    const session = this.sessionViewport();
+    const phone = session?.mobile;
+    if (!session) this.windowWithoutOverride ??= await this.readWindowOrNone();
     this.scrollbarsHidden = true;
     await this.cdp.send('Emulation.setScrollbarsHidden', { hidden: true });
     this.metricsChanged = true;
@@ -215,8 +222,12 @@ export class CaptureEmulation {
    * Chrome lays the page out again, with its scrollbars, only when the
    * viewport's size changes, and a capture beyond the viewport left it laid
    * out without them (#514). Each change is waited for in the page, so the
-   * next command reads the size put back, not the taller one. The size is put
-   * back even when the window could not be read or the taller one not sent.
+   * next command reads the size put back, not the taller one: the window's
+   * size without an override when it was read before the capture (clearing
+   * the override, Chrome first lays the page out at the capture's own
+   * override again, #529), else any size other than the taller one. The size
+   * is put back even when the window could not be read or the taller one not
+   * sent.
    *
    * @param viewport - Session's viewport, if any
    * @param view - Visible viewport size, used when the page does not answer
@@ -230,11 +241,13 @@ export class CaptureEmulation {
         'Emulation.setDeviceMetricsOverride',
         viewportOverride({ ...size, height: size.height + 1 })
       );
-      taller = await windowResizedFrom(this.connection, before);
+      taller = await waitForWindow(this.connection, 'leave', before);
     } finally {
       await this.applySessionMetrics(viewport);
     }
-    if (taller) await windowResizedFrom(this.connection, taller);
+    const restored = viewport ? undefined : this.windowWithoutOverride;
+    if (restored) await waitForWindow(this.connection, 'reach', restored);
+    else if (taller) await waitForWindow(this.connection, 'leave', taller);
   }
 
   /**
@@ -267,14 +280,27 @@ export class CaptureEmulation {
    * @returns Width and height in CSS px
    */
   private async windowSize(viewport: Size): Promise<Size> {
-    const [width, height] = await evaluatePair(
-      this.connection,
-      '[window.innerWidth, window.innerHeight]'
-    );
+    const [width, height] = await evaluatePair(this.connection, WINDOW_SIZE_JS);
     return {
       width: Math.round(width ?? viewport.width),
       height: Math.round(height ?? viewport.height),
     };
+  }
+
+  /**
+   * The window's size, as {@link windowSize} reads it, when the page answers.
+   *
+   * @returns Width and height in CSS px, undefined when the page did not answer
+   */
+  private async readWindowOrNone(): Promise<Size | undefined> {
+    try {
+      const [width, height] = await evaluatePair(this.connection, WINDOW_SIZE_JS);
+      if (width === undefined || height === undefined) return undefined;
+      return { width: Math.round(width), height: Math.round(height) };
+    } catch (error) {
+      log.debug(`Screenshot: reading the window's size failed: ${getErrorMessage(error)}`);
+      return undefined;
+    }
   }
 }
 
@@ -292,55 +318,62 @@ function roundSize(size: Size): Size {
 /** How long the page is watched for a metrics change to reach it */
 const RESIZE_WAIT_MS = 1000;
 
-/**
- * Wait until the page's window (`innerWidth`/`innerHeight`) is no longer the
- * given size: Chrome answers a metrics change before the page has it, and on
- * Linux a command right after could still read the old size.
- *
- * @param cdp - Session connection
- * @param size - Size the window had
- * @returns The new size, undefined when it did not change within
- *   {@link RESIZE_WAIT_MS} or the page did not answer (its script failed,
- *   e.g. a navigation or terminated scripts, counts as no change)
- */
-async function windowResizedFrom(cdp: CDPConnection, size: Size): Promise<Size | undefined> {
-  try {
-    return await readResize(cdp, size);
-  } catch (error) {
-    log.debug(
-      `Screenshot restore: waiting for the window to resize failed: ${getErrorMessage(error)}`
-    );
-    return undefined;
-  }
-}
+/** What a wait for the window waits for: leaving a size, or reaching one */
+type WindowWait = 'leave' | 'reach';
 
 /**
- * The page side of {@link windowResizedFrom}.
- *
- * @param cdp - Session connection
- * @param size - Size the window had
- * @returns The new size, undefined when it did not change in time
+ * Page function: resolves with the window's size (`innerWidth`,
+ * `innerHeight`) once it left (`leave` true) or reached the given size, with
+ * null when that did not happen within `waitMs`.
  */
-async function readResize(cdp: CDPConnection, size: Size): Promise<Size | undefined> {
-  const expression = `new Promise((resolve) => {
-    const end = Date.now() + ${RESIZE_WAIT_MS};
+const WAIT_FOR_WINDOW = `function (leave, width, height, waitMs) {
+  return new Promise((resolve) => {
+    const end = Date.now() + waitMs;
     const check = () => {
-      if (innerWidth !== ${size.width} || innerHeight !== ${size.height}) resolve([innerWidth, innerHeight]);
+      const same = innerWidth === width && innerHeight === height;
+      if (same !== leave) resolve([innerWidth, innerHeight]);
       else if (Date.now() > end) resolve(null);
       else setTimeout(check, 10);
     };
     check();
-  })`;
-  const response = await evaluateInBdgWorld(cdp, {
-    expression,
-    returnByValue: true,
-    awaitPromise: true,
   });
-  const value = response.result.value as unknown;
-  if (!Array.isArray(value)) {
-    log.debug(`Screenshot restore: the window stayed ${size.width}x${size.height}`);
+}`;
+
+/**
+ * Wait until the page's window (`innerWidth`/`innerHeight`) left or reached
+ * the given size: Chrome answers a metrics change before the page has it, and
+ * on Linux a command right after could still read the old size.
+ *
+ * @param cdp - Session connection
+ * @param wait - Leave the size, or reach it
+ * @param size - The size
+ * @returns The window's size then, undefined when that did not happen within
+ *   {@link RESIZE_WAIT_MS} or the page did not answer (its script failed,
+ *   e.g. a navigation or terminated scripts, counts as not happening)
+ */
+async function waitForWindow(
+  cdp: CDPConnection,
+  wait: WindowWait,
+  size: Size
+): Promise<Size | undefined> {
+  try {
+    const response = await callFunctionInBdgWorld(cdp, {
+      functionDeclaration: WAIT_FOR_WINDOW,
+      arguments: [wait === 'leave', size.width, size.height, RESIZE_WAIT_MS].map((value) => ({
+        value,
+      })),
+      returnByValue: true,
+      awaitPromise: true,
+    });
+    const value = response.result.value as unknown;
+    if (!Array.isArray(value)) {
+      log.debug(`Screenshot restore: the window did not ${wait} ${size.width}x${size.height}`);
+      return undefined;
+    }
+    const [width, height] = value as number[];
+    return { width: width ?? size.width, height: height ?? size.height };
+  } catch (error) {
+    log.debug(`Screenshot restore: waiting for the window failed: ${getErrorMessage(error)}`);
     return undefined;
   }
-  const [width, height] = value as number[];
-  return { width: width ?? size.width, height: height ?? size.height };
 }

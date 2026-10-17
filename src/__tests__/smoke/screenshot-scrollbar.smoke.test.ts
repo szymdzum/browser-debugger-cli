@@ -7,12 +7,14 @@
  * window size, the visible width and height (`clientWidth` is `innerWidth`
  * minus the scrollbar), the pixel ratio and touch. Each read happens right
  * after the screenshot command exited, with no polling: the daemon runs page
- * commands only once the capture's restore is done (#537).
+ * commands only once the capture's restore is done (#537). On a page without
+ * a classic scrollbar (macOS overlay scrollbars) the scrollbar checks have
+ * nothing to check and skip; anywhere else such a page fails them.
  */
 
 import * as assert from 'node:assert/strict';
 import * as path from 'node:path';
-import { after, before, describe, it } from 'node:test';
+import { after, before, describe, it, type TestContext } from 'node:test';
 
 import { runCommand } from '@/__testutils__/commandRunner.js';
 import { cleanupAllSessions } from '@/__testutils__/daemonHelpers.js';
@@ -29,6 +31,9 @@ const PAGE_METRICS_JS =
 
 /** Whether the page's vertical scrollbar takes space */
 const SHOWS_SCROLLBAR_JS = 'document.documentElement.clientWidth < innerWidth';
+
+/** Width the page's vertical scrollbar takes, in CSS px */
+const SCROLLBAR_WIDTH_JS = 'innerWidth - document.documentElement.clientWidth';
 
 /** Makes the page scroll: a box in view and a column taller than the viewport */
 const TALL_PAGE_JS = `document.body.insertAdjacentHTML('beforeend', '<div id="box" style="width: 200px; height: 100px; margin: auto"></div><div id="tall" style="width: 400px; height: 2000px; margin: auto"></div>'); 1`;
@@ -103,11 +108,31 @@ function scrollablePageSession(startArgs: string[] = []): () => FixtureServer {
 
 after(removeTempDirs);
 
+/**
+ * Skip a scrollbar check on a page whose scrollbar takes no space, measured
+ * before any capture: only macOS has such (overlay) scrollbars, so anywhere
+ * else the page must show one.
+ *
+ * @param t - The test
+ * @param scrollbarWidth - Scrollbar width before any capture, in CSS px
+ * @returns Whether the test was skipped
+ */
+function skipWithoutScrollbar(t: TestContext, scrollbarWidth: number): boolean {
+  if (scrollbarWidth > 0) return false;
+  assert.equal(process.platform, 'darwin', 'the fixture page shows no scrollbar');
+  t.skip('the page has no classic scrollbar (macOS overlay scrollbars): nothing to check');
+  return true;
+}
+
 void describe('Screenshot layout: desktop', () => {
   scrollablePageSession();
+  let scrollbarWidth = 0;
+  before(async () => {
+    scrollbarWidth = Number(await evaluate(SCROLLBAR_WIDTH_JS));
+  });
 
-  void it('a full-page capture leaves the scrollbar as it was, also the second time', async () => {
-    assert.equal(await evaluate(SHOWS_SCROLLBAR_JS), true, 'the fixture page shows no scrollbar');
+  void it('a full-page capture leaves the scrollbar as it was, also the second time', async (t) => {
+    if (skipWithoutScrollbar(t, scrollbarWidth)) return;
     assert.equal(await captureKeepsLayout([]), 'full_page');
     assert.equal(await captureKeepsLayout(['--no-resize']), 'full_page');
   });
@@ -118,7 +143,8 @@ void describe('Screenshot layout: desktop', () => {
     assert.equal(await captureKeepsLayout(['#tall']), 'element');
   });
 
-  void it('a full-page capture under page emulate --viewport leaves its layout as it was', async () => {
+  void it('a full-page capture under page emulate --viewport leaves its layout as it was', async (t) => {
+    if (skipWithoutScrollbar(t, scrollbarWidth)) return;
     await bdg(['page', 'emulate', '--viewport', '1600x900']);
     try {
       assert.equal(await captureKeepsLayout([]), 'full_page');
