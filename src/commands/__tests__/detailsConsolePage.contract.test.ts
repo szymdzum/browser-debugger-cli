@@ -192,7 +192,10 @@ void describe('console --page', () => {
   void it('-H with --page current is a conflict (exit 81); -H with --page all is not', async () => {
     const conflict = await runCli(['console', '-H', '--page', 'current']);
     assert.equal(conflict.status, EXIT_CODES.INVALID_ARGUMENTS, conflict.stderr);
-    assert.match(conflict.stderr, /--history cannot be combined with --page current/);
+    assert.match(
+      conflict.stderr,
+      /"bdg console --history" and "bdg console --page current" are the same option/
+    );
     const same = await runCli(['console', '-H', '--page', 'all']);
     assert.notEqual(same.status, EXIT_CODES.INVALID_ARGUMENTS, same.stderr);
   });

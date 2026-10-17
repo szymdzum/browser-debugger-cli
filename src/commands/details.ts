@@ -307,8 +307,8 @@ function addDetailsOptions(command: Command, withBody: boolean): Command {
 export function registerDetailsSubcommand(parent: Command, type: 'network' | 'console'): void {
   const { description, idHelp } = DETAILS_SUBCOMMANDS[type];
   const command = parent.command('details').description(description).argument('<id>', idHelp);
-  addDetailsOptions(command, type === 'network')
-    .action(async (id: string, options: DetailsCommandOptions) => {
+  addDetailsOptions(command, type === 'network').action(
+    async (id: string, options: DetailsCommandOptions) => {
       const inherited = parent.opts<Pick<DetailsCommandOptions, 'json' | 'includeSensitive'>>();
       await runDetails({
         ...options,
@@ -319,7 +319,8 @@ export function registerDetailsSubcommand(parent: Command, type: 'network' | 'co
         type,
         id,
       });
-    });
+    }
+  );
 }
 
 /**
@@ -352,8 +353,9 @@ export function registerDetailsCommand(program: Command): void {
     .description('Get detailed information for a specific request or console message')
     .argument('<type>', 'Type of item: "network" or "console"')
     .argument('<id>', 'Request ID (for network) or index (for console)');
-  addDetailsOptions(command, true)
-    .action(async (type: string, id: string, options: DetailsCommandOptions) => {
+  addDetailsOptions(command, true).action(
+    async (type: string, id: string, options: DetailsCommandOptions) => {
       await runDetails({ ...options, type: type as 'network' | 'console', id });
-    });
+    }
+  );
 }

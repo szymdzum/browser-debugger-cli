@@ -200,8 +200,8 @@ void describe('an option row with a value', () => {
     assert.equal(same.opts?.['mode'], 'all');
     await assertRenameError(
       ['run', '--legacy', '--mode', 'other'],
-      '--legacy cannot be combined with --mode other',
-      'Use one of them: drop --legacy or --mode other'
+      '"bdg run --legacy" and "bdg run --mode other" are the same option, given different values',
+      'Give it once, as "bdg run --mode other", or the same value to both'
     );
   });
 });
