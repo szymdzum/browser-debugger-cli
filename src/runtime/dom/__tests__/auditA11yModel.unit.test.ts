@@ -79,7 +79,7 @@ void describe('findAxHits', () => {
     assert.ok(none.some((hit) => hit.reason.kind === 'no-h1'));
   });
 
-  void it('counts text outside landmarks once per holder, none inside main', () => {
+  void it('summarizes text outside landmarks as one hit, none for text inside main', () => {
     const outside = findAxHits(
       [
         ax(1, 'RootWebArea', 'p', [2, 4]),
@@ -91,8 +91,8 @@ void describe('findAxHits', () => {
       { page: true }
     );
     assert.deepEqual(
-      outside.map((hit) => [hit.rule, hit.reason.kind, hit.backendNodeId]),
-      [['landmarks', 'outside-landmark', 2]]
+      outside.filter((hit) => hit.rule === 'landmarks').map((hit) => hit.reason),
+      [{ kind: 'outside-landmark', holders: 1 }]
     );
   });
 });
