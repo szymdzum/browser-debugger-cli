@@ -10,11 +10,9 @@
 
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import * as fs from 'node:fs';
-import * as os from 'node:os';
-import * as path from 'node:path';
-import { after, describe, it } from 'node:test';
+import { describe, it } from 'node:test';
 
+import { ensureTestSessionDir } from '@/__testutils__/testHome.js';
 import { generateCompactHelp, generateMachineReadableHelp } from '@/commands/helpJson.js';
 import { buildProgram } from '@/program.js';
 import type { BdgResponse } from '@/types.js';
@@ -26,10 +24,7 @@ interface Run {
   stderr: string;
 }
 
-const sessionDir = fs.mkdtempSync(
-  path.join(process.env['BDG_TEST_SESSION_PARENT'] ?? os.tmpdir(), 'bdg-465-renames-')
-);
-after(() => fs.rmSync(sessionDir, { recursive: true, force: true }));
+const sessionDir = ensureTestSessionDir();
 
 /**
  * Run the CLI from source in an empty session dir (no session).
