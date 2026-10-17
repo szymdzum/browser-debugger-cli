@@ -765,6 +765,12 @@ export function createCommandRegistry(
         },
         activeTelemetry: store.activeTelemetry,
         currentNavigationId: store.getCurrentNavigationId?.() ?? 0,
+        ...(params.only === 'console' && {
+          navigations: store.navigationEvents.map(({ navigationId, url }) => ({
+            navigationId,
+            url,
+          })),
+        }),
         ...(store.fetchInterceptionEnabled && { fetchInterception: true as const }),
         ...(store.pageCrashedAt !== undefined && { pageCrashedAt: store.pageCrashedAt }),
         network: recentNetwork,

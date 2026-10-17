@@ -325,6 +325,7 @@ export class SessionController {
               }),
             },
             currentNavigationId: data.currentNavigationId,
+            ...(data.navigations && { navigations: data.navigations }),
             ...(data.fetchInterception && { fetchInterception: data.fetchInterception }),
             ...(data.pageCrashedAt !== undefined && { pageCrashedAt: data.pageCrashedAt }),
             ...(data.downloads && { downloads: data.downloads }),

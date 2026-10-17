@@ -29,6 +29,30 @@ export function stoppedFollowingConsoleMessage(): string {
 }
 
 /**
+ * Error for `console --ndjson` without `--follow`.
+ *
+ * @returns Message and suggestion
+ */
+export function ndjsonNeedsFollow(): { message: string; suggestion: string } {
+  return {
+    message: '--ndjson streams console messages and needs --follow',
+    suggestion: 'Add --follow: bdg console --follow --ndjson',
+  };
+}
+
+/**
+ * Error for `console --ndjson` together with `--json`.
+ *
+ * @returns Message and suggestion
+ */
+export function ndjsonConflictsWithJson(): { message: string; suggestion: string } {
+  return {
+    message: '--ndjson and --json are two output formats: use one',
+    suggestion: 'One record per line: bdg console --follow --ndjson',
+  };
+}
+
+/**
  * Note under a console list whose indices skip messages: the indices are
  * positions in the session's message list (what `bdg details console <n>`
  * takes), and the messages in between were left out by the filters.

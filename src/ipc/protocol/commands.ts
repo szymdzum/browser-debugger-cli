@@ -106,6 +106,8 @@ export interface SessionPeekData {
   }>;
   /** Navigation id of the page currently loaded. */
   currentNavigationId: number;
+  /** Every main-frame navigation of the session (only with `only: 'console'`) */
+  navigations?: Array<{ navigationId: number; url: string }>;
   /** Fetch interception is on: pending requests may be paused by it (absent when off) */
   fetchInterception?: true;
   /** When the page's renderer crashed (epoch ms), while it is not loaded again */

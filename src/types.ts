@@ -348,6 +348,8 @@ export interface BdgOutput {
   };
   /** Navigation id of the page currently loaded (live previews) */
   currentNavigationId?: number;
+  /** Every main-frame navigation of the session (console previews) */
+  navigations?: PageNavigation[];
   /** Fetch interception is on: pending requests may be paused by it (live previews; absent when off) */
   fetchInterception?: true;
   /** When the page's renderer crashed (epoch ms), while it is not loaded again */

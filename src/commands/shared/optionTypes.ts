@@ -461,6 +461,10 @@ export interface ConsoleCommandOptions extends BaseOptions {
   level?: ConsoleLevel;
   /** Message texts whole instead of cut */
   full?: boolean;
+  /** With --follow: one JSON record per line */
+  ndjson?: boolean;
+  /** Page URLs with their query and fragment tokens */
+  includeSensitive?: boolean;
 }
 
 /**

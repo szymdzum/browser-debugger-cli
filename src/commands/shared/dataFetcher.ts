@@ -13,7 +13,13 @@ import {
   IPCTimeoutError,
 } from '@/ipc/transport/IPCError.js';
 import { isConnectionError } from '@/ipc/utils/errors.js';
-import type { BdgOutput, ConsoleMessage, NetworkRequest, PageIssue } from '@/types.js';
+import type {
+  BdgOutput,
+  ConsoleMessage,
+  NetworkRequest,
+  PageIssue,
+  PageNavigation,
+} from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import type { NetworkEvictionCounts } from '@/ui/messages/networkMessages.js';
 import { noActiveSessionMessage } from '@/ui/messages/sessionCommand.js';
@@ -189,6 +195,7 @@ export async function fetchConsoleMessages(tabMove = false): Promise<
   FetchResult<{
     messages: ConsoleMessage[];
     currentNavigationId: number | undefined;
+    navigations: PageNavigation[];
     dropped: number;
     pageCrashedAt: number | undefined;
     tabSwitch: TabSwitchInfo | undefined;
@@ -203,6 +210,7 @@ export async function fetchConsoleMessages(tabMove = false): Promise<
     data: {
       messages: result.data.console,
       currentNavigationId: result.data.output.currentNavigationId,
+      navigations: result.data.output.navigations ?? [],
       dropped: result.data.output.totals?.consoleDropped ?? 0,
       pageCrashedAt: result.data.output.pageCrashedAt,
       tabSwitch: result.data.output.tabSwitch,

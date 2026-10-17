@@ -7,6 +7,7 @@ import { MAX_CONSOLE_TEXT_LENGTH } from '@/constants.js';
 import type { ConsoleMessage, PageNavigation } from '@/types.js';
 import { capForDisplay } from '@/ui/formatters/longValues.js';
 import { OutputFormatter } from '@/ui/formatting.js';
+import { displayUrl } from '@/utils/displayUrl.js';
 
 import { formatSourceLocation, formatTimestamp } from './shared.js';
 
@@ -18,7 +19,8 @@ import { formatSourceLocation, formatTimestamp } from './shared.js';
  * are cut like `console --list` cuts them.
  *
  * @param messages - New messages
- * @param options - `header` the first time; `streamNavigationId` the page
+ * @param options - `header` the first time; `navigations` the session's pages
+ *   (the separator names the new page's URL, masked unless `includeSensitive`); `streamNavigationId` the page
  *   the stream was on at the last poll (no separators without it);
  *   `currentNavigationId` the page loaded now; `full` to print the texts whole
  * @returns Text to print (empty when there is nothing new)
@@ -41,7 +43,9 @@ export function formatConsoleFollowLines(
   }
   let onPage = options.streamNavigationId;
   const moveTo = (navigationId: number): void => {
-    fmt.text(`── Next page (navigation #${navigationId}) ──`);
+    const url = options.navigations?.find((page) => page.navigationId === navigationId)?.url;
+    const page = url === undefined ? '' : `: ${displayUrl(url, options.includeSensitive)}`;
+    fmt.text(`── Next page${page} (navigation #${navigationId}) ──`);
     onPage = navigationId;
   };
   for (const msg of messages) {

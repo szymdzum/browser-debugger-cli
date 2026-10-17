@@ -5,7 +5,7 @@
 import { Option, type Command } from 'commander';
 
 import { runCommand } from '@/commands/shared/CommandRunner.js';
-import { jsonOption } from '@/commands/shared/commonOptions.js';
+import { includeSensitiveOption, jsonOption } from '@/commands/shared/commonOptions.js';
 import { noteFollowConnected } from '@/commands/shared/daemonErrorHandler.js';
 import { fetchConsoleMessages, createErrorResult } from '@/commands/shared/dataFetcher.js';
 import {
@@ -18,12 +18,14 @@ import { handleValidationError } from '@/commands/shared/handleValidationError.j
 import type { ConsoleCommandOptions } from '@/commands/shared/optionTypes.js';
 import { consoleLevelOption, positiveIntRule } from '@/commands/shared/validation.js';
 import { MAX_CONSOLE_JSON_TEXT_LENGTH, MAX_CONSOLE_TEXT_LENGTH } from '@/constants.js';
+import { CommandError } from '@/errors/index.js';
 import type { TabSwitchInfo } from '@/ipc/protocol/tabTypes.js';
 import type { ConsoleMessage, PageIssue } from '@/types.js';
 import { buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import {
   buildConsoleJsonOutput,
   formatConsole,
+  createConsoleNdjson,
   formatConsoleFollowLines,
   LEVEL_MAP,
   lastMessages,
@@ -35,8 +37,12 @@ import {
 import { pageCrashedNote } from '@/ui/messages/commands.js';
 import {
   followingConsoleMessage,
+  ndjsonConflictsWithJson,
+  ndjsonNeedsFollow,
   stoppedFollowingConsoleMessage,
 } from '@/ui/messages/consoleMessages.js';
+import { includeSensitiveWarning } from '@/ui/messages/networkMessages.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 const MIN_LAST = 0;
 const MAX_LAST = 10000;
@@ -220,6 +226,24 @@ function buildFormatOptions(
 }
 
 /**
+ * Reject `--ndjson` without `--follow` (nothing to stream) and together with
+ * `--json` (two output formats).
+ *
+ * @param options - Command options
+ * @throws CommandError with exit code 81
+ */
+function checkNdjson(options: ConsoleCommandOptions): void {
+  if (!options.ndjson) return;
+  const problem = options.json ? ndjsonConflictsWithJson() : !options.follow && ndjsonNeedsFollow();
+  if (!problem) return;
+  throw new CommandError(
+    problem.message,
+    { suggestion: problem.suggestion },
+    EXIT_CODES.INVALID_ARGUMENTS
+  );
+}
+
+/**
  * Stream console messages: the last `lastN` at start, then each new message
  * once (like `tail -f`), with a separator when the page navigates and a
  * warning (JSON `pageCrashedAt`) once when the page crashes.
@@ -230,19 +254,27 @@ function buildFormatOptions(
 async function runFollowMode(options: ConsoleCommandOptions, lastN: number): Promise<void> {
   const cursor = createFollowCursor(options, lastN);
   const newCrash = newPageCrashes();
+  const ndjson = options.ndjson ? createConsoleNdjson(options) : undefined;
+  if (ndjson && options.includeSensitive) console.error(includeSensitiveWarning());
   let streamNavigationId: number | undefined;
   let started = false;
   const showConsole = async (): Promise<FollowPoll> => {
     const result = await fetchConsoleMessages();
     if (!result.success) {
-      return followFetchFailure(result, { json: options.json, retryIntervalMs: 1000 });
+      return followFetchFailure(result, {
+        json: options.json === true || options.ndjson === true,
+        retryIntervalMs: 1000,
+      });
     }
     noteFollowConnected();
 
-    const { messages, currentNavigationId } = result.data;
+    const { messages, currentNavigationId, navigations } = result.data;
     const crashedAt = newCrash(result.data.pageCrashedAt);
     const backlog = cursor.next(messages, currentNavigationId, result.data.dropped);
-    if (options.json) {
+    if (ndjson) {
+      for (const line of ndjson.next(backlog, navigations, currentNavigationId)) console.log(line);
+      if (crashedAt !== undefined) console.error(pageCrashedNote(crashedAt));
+    } else if (options.json) {
       if (!started || backlog.length > 0 || crashedAt !== undefined) {
         const data = buildConsoleJsonOutput(backlog, {
           list: true,
@@ -256,6 +288,8 @@ async function runFollowMode(options: ConsoleCommandOptions, lastN: number): Pro
       const text = formatConsoleFollowLines(backlog, {
         header: !started,
         full: options.full,
+        navigations,
+        includeSensitive: options.includeSensitive,
         ...(streamNavigationId !== undefined && { streamNavigationId }),
         ...(currentNavigationId !== undefined && { currentNavigationId }),
       });
@@ -418,11 +452,20 @@ export function registerConsoleCommand(program: Command): void {
         `Print message texts whole (default: the first ${MAX_CONSOLE_TEXT_LENGTH} characters, ${MAX_CONSOLE_JSON_TEXT_LENGTH} in JSON)`
       ).default(false)
     )
+    .addOption(
+      new Option(
+        '--ndjson',
+        'With --follow: one JSON object per line, a {"type":"message",…} record per console message and a {"type":"page","navigationId":N,"url":"…"} record per page, before its first message (instead of --json\'s batch envelopes; excludes --json)'
+      ).default(false)
+    )
+    .addOption(includeSensitiveOption())
     .addOption(jsonOption())
     .action(async (options: ConsoleCommandOptions) => {
       let lastN: number;
+      const jsonErrors = options.json === true || options.ndjson === true;
 
       try {
+        checkNdjson(options);
         lastN = positiveIntRule({
           name: '--last',
           min: MIN_LAST,
@@ -430,7 +473,7 @@ export function registerConsoleCommand(program: Command): void {
           default: DEFAULT_LAST,
         }).validate(options.last);
       } catch (error) {
-        handleValidationError(error, options.json ?? false);
+        handleValidationError(error, jsonErrors);
       }
 
       if (options.follow) {
