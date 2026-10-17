@@ -1667,6 +1667,40 @@ export function snapshotChanges(before, current) {
   return { added, changed };
 }
 
+/**
+ * True when a PID was reused: the process now holding it started after
+ * the PID file was written (`cmd & echo $! > file` writes it right after
+ * the start; 10 s slack). S20: two stale review PID files from S16 named
+ * macOS system daemons, which "kill only PIDs read back from your files"
+ * would have killed.
+ *
+ * @param {number} startedAtMs start time of the process holding the PID
+ * @param {number} fileMtimeMs
+ */
+export function pidReused(startedAtMs, fileMtimeMs) {
+  return Number.isFinite(startedAtMs) && startedAtMs > fileMtimeMs + 10_000;
+}
+
+/**
+ * The PID a PID file names when that process is alive and is the one the
+ * file was written for, else null.
+ *
+ * @param {string} file
+ */
+function livePidOf(file) {
+  let pid;
+  let mtimeMs;
+  try {
+    pid = Number(readFileSync(file, 'utf8').trim());
+    mtimeMs = lstatSync(file).mtimeMs;
+  } catch {
+    return null;
+  }
+  if (!pid || !alive(pid)) return null;
+  const started = spawnSync('ps', ['-o', 'lstart=', '-p', String(pid)], { encoding: 'utf8' }).stdout?.trim();
+  return pidReused(Date.parse(started ?? ''), mtimeMs) ? null : pid;
+}
+
 /** True when the process with this PID is alive */
 function alive(pid) {
   try {
@@ -1739,8 +1773,8 @@ function leftoverLines(scope) {
   for (const file of readdirSync('/tmp').filter((f) => /^bdg-.*\.pid$/.test(f))) {
     if (scope && !inScope(file, scope)) continue;
     if (scope && /^bdg-fixtures-[\w.-]+\.pid$/.test(file)) continue;
-    const pid = Number(readFileSync(join('/tmp', file), 'utf8').trim());
-    if (pid && alive(pid)) lines.push(`live PID ${pid} from /tmp/${file}`);
+    const pid = livePidOf(join('/tmp', file));
+    if (pid) lines.push(`live PID ${pid} from /tmp/${file}`);
   }
   const temp = tempWorktrees(run('git', ['worktree', 'list', '--porcelain'])).filter(
     (p) => !scope || inScope(p, scope)
@@ -1932,7 +1966,8 @@ function orphanWorktreeProcesses(scope) {
   const pidFiles = new Set(
     readdirSync('/tmp')
       .filter((f) => /^bdg-.*\.pid$/.test(f))
-      .map((f) => Number(readFileSync(join('/tmp', f), 'utf8').trim()))
+      .map((f) => livePidOf(join('/tmp', f)))
+      .filter(Boolean)
   );
   const ps = spawnSync('ps', ['-axo', 'pid=,ppid=,command='], { encoding: 'utf8' }).stdout ?? '';
   return worktreeOrphans(ps, parent, scope, pidFiles).map(
@@ -2004,8 +2039,7 @@ function leftovers(argv) {
   const { flags } = parseArgs(argv);
   if (flags.has('clean')) {
     for (const file of readdirSync('/tmp').filter((f) => /^bdg-.*\.pid$/.test(f))) {
-      const pid = Number(readFileSync(join('/tmp', file), 'utf8').trim());
-      if (!pid || !alive(pid)) rmSync(join('/tmp', file));
+      if (!livePidOf(join('/tmp', file))) rmSync(join('/tmp', file));
     }
   }
   const lines = leftoverLines();

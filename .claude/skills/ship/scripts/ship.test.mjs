@@ -53,6 +53,7 @@ import {
   parseArgs,
   parseBriefs,
   parseSnapshot,
+  pidReused,
   partOfIssues,
   parseSnapshotArgs,
   productLines,
@@ -1171,4 +1172,12 @@ test('worktreeOrphans walks up the parents: npx & echo $! covers the server belo
     '  300     1 node /dev/browser-debugger-cli/../bdg-455/dist/index.js',
   ].join('\n');
   assert.deepEqual(worktreeOrphans(ps, '/dev', ['455'], new Set([200])).map((p) => p.pid), [300]);
+});
+
+test('pidReused: a process that started after its PID file was written holds a reused PID', () => {
+  const written = Date.parse('2026-10-17T20:59:00Z');
+  assert.equal(pidReused(Date.parse('2026-10-17T23:15:22Z'), written), true);
+  assert.equal(pidReused(written - 1000, written), false);
+  assert.equal(pidReused(written + 5000, written), false);
+  assert.equal(pidReused(NaN, written), false);
 });
