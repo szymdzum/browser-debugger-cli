@@ -164,6 +164,15 @@ void describe('usage errors of an old spelling', () => {
   }
 });
 
+void describe('quote hint of an old spelling', () => {
+  void it("bdg dom eval x y: names bdg eval '<script>'", async () => {
+    const run = await runCli(['dom', 'eval', 'x', 'y']);
+    assert.equal(run.status, EXIT_CODES.INVALID_ARGUMENTS, run.stderr);
+    assert.ok(run.stderr.includes("one argument: bdg eval '<script>'"), run.stderr);
+    assert.ok(!withoutWarnings(run.stderr).includes('bdg dom eval'), run.stderr);
+  });
+});
+
 void describe('help lists only the new names', () => {
   void it('bdg --help lists eval; dom --help lists press-key and no eval or pressKey', async () => {
     const root = await runCli(['--help']);
