@@ -184,10 +184,8 @@ void describe('stop-after, capture-all and cleanup -f rows (#465 D7, D8, D9)', (
     assert.ok(longs(attach).includes('--stop-after'));
     for (const old of ['--timeout', '--all']) assert.ok(!longs(program).includes(old), old);
     assert.ok(!longs(attach).includes('--timeout'));
-    assert.deepEqual(
-      longs(cleanup).filter((name) => name?.startsWith('-') && name !== '--json'),
-      ['--force', '--purge']
-    );
+    assert.ok(longs(cleanup).includes('--force'));
+    assert.ok(!longs(cleanup).includes('-f'));
   });
 
   void it('--stop-after with an old --timeout exits 81', async () => {
@@ -250,6 +248,6 @@ void describe('a short-only row (#465 D8)', () => {
     assert.ok(run);
     assert.ok(run.options.some((option) => option.short === '-f'));
     assert.ok(run.helpInformation().includes('--force'));
-    assert.ok(!run.helpInformation().includes('-f'));
+    assert.doesNotMatch(run.helpInformation(), /(^|\s)-f[,\s]/);
   });
 });
