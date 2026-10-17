@@ -196,7 +196,7 @@ export type DomGetCommandOptions = BaseOptions &
   SelectionOptions & {
     /** All of the element's text (semantic output) or HTML (`--raw`), instead of its start */
     full?: boolean;
-    /** Which match of the selector (0-based); `--nth` is its alias */
+    /** Which match of the selector (0-based) */
     index?: number;
   };
 

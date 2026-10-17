@@ -390,7 +390,7 @@ bdg dom get "h1"                              # Get semantic A11y representation
 bdg dom get "button"                          # [Button] "Submit" (focusable)
 bdg dom get "#searchInput"                    # [Searchbox] "Search" (focusable)
 bdg dom get ".nav-link"                       # First matching element
-bdg dom get ".nav-link" --index 2             # Third match (0-based; --nth is an alias)
+bdg dom get ".nav-link" --index 2             # Third match (0-based)
 bdg dom get                                   # The body (default selector)
 bdg dom get "#content"                        # [Generic] <div#content> + a Text: line (up to 500 characters; #id shown when it has one, JSON domContext.id)
 bdg dom get "#content" --full                 # All of its text
@@ -1932,6 +1932,7 @@ Old spellings are hidden from `--help`, `--help --json` and "Did you mean" sugge
 | `bdg console --history` | deprecated | `bdg console --page all`; `-H` is the short form (with `--page current` it exits 81) |
 | `bdg network document` | deprecated | `bdg network headers` (no id: the main document; same options and output) |
 | `bdg dom audit --level` | deprecated | `bdg dom audit --wcag` (same values; given together with `--wcag` and another value it exits 81) |
+| `bdg dom get --nth` | deprecated | `bdg dom get --index` (same value; given together with `--index` and another value it exits 81) |
 | `bdg tail` | deprecated | `bdg peek --follow` (same options) |
 | `bdg cleanup --aggressive` | deprecated | `bdg cleanup --force` |
 | `bdg cleanup -f` | deprecated | `bdg cleanup --force` (`-f` means `--follow` everywhere else) |

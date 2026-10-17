@@ -116,7 +116,7 @@ async function handleRawGet(selectorOrIndex: string, options: DomGetCommandOptio
         : (filterDefined({
             selector: selectorOrIndex,
             all: options.all,
-            nth: matchIndex(options),
+            nth: options.index,
           }) as DomGetHelperOptions);
       const data: WithIndexSource<DomGetResult> = {
         ...rawGetData(await getDOMElements(getOptions), options),
@@ -162,7 +162,7 @@ async function handleSemanticGet(
   let origin: string | undefined;
   await runCommand(
     async () => {
-      const { nodeId, indexSource } = await getTarget(selectorOrIndex, matchIndex(options));
+      const { nodeId, indexSource } = await getTarget(selectorOrIndex, options.index);
       const [element, elementOrigin] = await Promise.all([
         semanticElement(nodeId, options.full === true),
         options.json ? undefined : pageOrigin(),
@@ -180,16 +180,6 @@ async function handleSemanticGet(
 }
 
 /**
- * Which match of the selector to read: `--index`, or its alias `--nth`.
- *
- * @param options - Command options
- * @returns 0-based index, undefined for the first match
- */
-function matchIndex(options: DomGetCommandOptions): number | undefined {
-  return options.index ?? options.nth;
-}
-
-/**
  * Options of `dom get` that cannot be combined (one would be ignored).
  *
  * @param selectorOrIndex - Selector or index argument
@@ -203,10 +193,7 @@ function getOptionsConflict(
   if (options.nodeId !== undefined && selectorOrIndex !== undefined) {
     return conflictingOptionsError('--node-id', 'a selector or index');
   }
-  if (options.index !== undefined && options.nth !== undefined) {
-    return conflictingOptionsError('--index', '--nth');
-  }
-  if (options.all && matchIndex(options) !== undefined) {
+  if (options.all && options.index !== undefined) {
     return conflictingOptionsError('--all', '--index');
   }
   if (options.all && !options.raw) return optionRequiresError('--all', '--raw');
@@ -244,10 +231,7 @@ export async function handleDomGet(
     return;
   }
   const target = selectorOrIndex ?? DOM_GET_DEFAULT_SELECTOR;
-  if (
-    DomElementResolver.getInstance().isNumericIndex(target) &&
-    matchIndex(options) !== undefined
-  ) {
+  if (DomElementResolver.getInstance().isNumericIndex(target) && options.index !== undefined) {
     const err = indexWithIndexOptionError(target, 'get');
     throw new CommandError(
       err.message,

@@ -38,8 +38,7 @@ export const DOM_READ_BEHAVIORS: BehaviorTable = {
   },
   'get:--index': {
     default: 'Returns the first matching element (body without a selector)',
-    whenEnabled:
-      'Returns that match of the selector (0-based), in semantic and --raw output; --nth is an alias',
+    whenEnabled: 'Returns that match of the selector (0-based), in semantic and --raw output',
     automaticBehavior:
       'Past the last match exits 81; a numeric index argument (a cached query index) past the indexed matches (also after a navigation: reported as out of range), or from an earlier page, exits 87 (re-run dom query). A numeric index names the list it resolved against (From index 0 of the last dom query "h3"; JSON indexSource)',
   },
