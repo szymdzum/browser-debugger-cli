@@ -30,7 +30,7 @@ interface HelpNode {
 
 type Idd = Record<string, unknown>;
 
-/** Every command option named `--last` or `--limit`, sorted */
+/** Every `--last` or `--limit` option in `--help --json --full`, sorted (hidden `tail` is no longer listed) */
 const EXPECTED_PATHS = [
   'console --last',
   'css search --limit',
@@ -41,7 +41,6 @@ const EXPECTED_PATHS = [
   'dom screenshot --limit',
   'network list --last',
   'peek --last',
-  'tail --last',
 ].sort();
 
 /**
