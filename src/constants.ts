@@ -278,7 +278,7 @@ export const DEFAULT_PAGE_READINESS_TIMEOUT_MS = 2000;
  * Maximum size of one JSONL message from the daemon (256 MB, below V8's
  * maximum string length so joining a message cannot fail).
  * Guards against a process sending data without newlines; large enough for
- * HAR exports of long sessions with response bodies (`--all`).
+ * HAR exports of long sessions with response bodies (`--capture-all`).
  */
 export const MAX_JSONL_BUFFER_SIZE = 256 * 1024 * 1024;
 

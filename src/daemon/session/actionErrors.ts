@@ -40,7 +40,7 @@ export type ActionErrorsCollector = () => CollectedErrors;
  * them (same text and source location), in order of first appearance.
  * Errors whose first stack frame is a script on a host the default tracking
  * filter drops ({@link fromTracker}) are left out and only counted, unless
- * the session runs with `--all`; stackless entries (a tracker's
+ * the session runs with `--capture-all`; stackless entries (a tracker's
  * `Failed to load resource`) are still listed.
  * Nothing is reported when console telemetry is off.
  *

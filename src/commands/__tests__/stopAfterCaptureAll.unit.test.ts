@@ -4,7 +4,8 @@
  * warnings. Old `--timeout`/`-t` (root, `attach`) reach `stopAfter`, old
  * `-a`/`--all` reach `captureAll`, old `cleanup -f`/`--aggressive` reach
  * `force`; each old spelling warns once, a new one never, and an old and a
- * new spelling of the same option together exit 81. `dom` commands keep
+ * new spelling of the same option together exit 81 when their values differ,
+ * and pass with the old spelling's warning when they agree. `dom` commands keep
  * their own `--all` without a warning. The human and `--json` reporting of
  * the warnings is in `stopAfterCaptureAll.contract.test.ts`.
  */
@@ -188,17 +189,36 @@ void describe('stop-after, capture-all and cleanup -f rows (#465 D7, D8, D9)', (
     assert.ok(!longs(cleanup).includes('-f'));
   });
 
-  void it('--stop-after with an old --timeout exits 81', async () => {
+  void it('--stop-after with an old --timeout of another value exits 81', async () => {
     for (const argv of [
-      [URL_ARG, '--stop-after', '5', '-t', '9'],
+      [URL_ARG, '--stop-after', '7', '-t5'],
+      [URL_ARG, '-t5', '--stop-after', '7'],
       ['attach', '0', '--timeout', '9', '--stop-after', '5'],
     ]) {
       await assert.rejects(parse(argv), (error: unknown) => {
         assert.ok(error instanceof CommandError);
         assert.equal(error.exitCode, EXIT_CODES.INVALID_ARGUMENTS);
-        assert.match(error.message, /--stop-after/);
+        assert.match(
+          error.message,
+          /"bdg (<url>|attach) --timeout" and "bdg (<url>|attach) --stop-after"/
+        );
         return true;
       });
+    }
+  });
+
+  void it('an old and a new spelling with the same value pass, with the old one warning', async () => {
+    const cells: [string[], Record<string, unknown>, number][] = [
+      [[URL_ARG, '-t', '5', '--stop-after', '5'], { stopAfter: '5' }, 1],
+      [[URL_ARG, '-a', '--capture-all'], { captureAll: true }, 1],
+      [['cleanup', '--aggressive', '--force'], { force: true }, 1],
+      [['cleanup', '--force', '-f'], { force: true }, 1],
+      [['cleanup', '--aggressive', '-f'], { force: true }, 2],
+    ];
+    for (const [argv, expected, warnings] of cells) {
+      const parsed = await parse(argv);
+      for (const [key, value] of Object.entries(expected)) assert.equal(parsed.opts[key], value);
+      assert.equal(parsed.warnings.length, warnings, argv.join(' '));
     }
   });
 });

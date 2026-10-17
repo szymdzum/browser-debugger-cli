@@ -124,10 +124,25 @@ void describe('--stop-after, --capture-all and cleanup -f through the CLI (#465 
     });
   }
 
-  void it('--stop-after with an old --timeout exits 81 naming both', async () => {
+  void it('--stop-after with an old --timeout of another value exits 81 naming both', async () => {
     const run = await runCli(['http://localhost:1', '--stop-after', '5', '--timeout', '9']);
     assert.equal(run.status, EXIT_CODES.INVALID_ARGUMENTS, run.stderr);
-    assert.match(run.stderr, /--stop-after/);
-    assert.match(run.stderr, /--timeout/);
+    assert.match(run.stderr, /"bdg <url> --timeout" and "bdg <url> --stop-after"/);
+  });
+
+  void it('an old and a new spelling with the same value exit 0 with the old one warning', async () => {
+    for (const argv of [
+      ['cleanup', '--aggressive', '--force'],
+      ['cleanup', '--aggressive', '-f'],
+      ['cleanup', '--force', '-f'],
+    ]) {
+      const run = await runCli(argv);
+      assert.equal(run.status, 0, run.stdout + run.stderr);
+      assert.ok(run.stderr.includes('Warning: "bdg cleanup '), `${argv.join(' ')}: ${run.stderr}`);
+    }
+    const stop = await runCli(['http://localhost:1', '-t', '0', '--stop-after', '0']);
+    assert.equal(stop.status, 81, stop.stderr);
+    assert.match(stop.stderr, /Invalid --stop-after: 0 is out of range/);
+    assert.ok(stop.stderr.includes('Warning: "bdg <url> --timeout"'), stop.stderr);
   });
 });

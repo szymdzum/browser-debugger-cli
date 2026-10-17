@@ -480,7 +480,7 @@ export function releasedElsewhereWarning(releasedOn: string): string {
 
 /**
  * Last `Errors:` row when console errors from filtered tracker hosts were
- * left out (a session started with `--all` lists them).
+ * left out (a session started with `--capture-all` lists them).
  *
  * @param count - Errors left out
  * @returns e.g. `(+2 from filtered trackers)`

@@ -3765,7 +3765,7 @@ export function renamedOptionConflictError(
   newSpelling: string
 ): ErrorWithSuggestion {
   return {
-    message: `"${oldSpelling}" and "${newSpelling}" are the same option`,
-    suggestion: `Give it once, as "${newSpelling}"`,
+    message: `"${oldSpelling}" and "${newSpelling}" are the same option, given different values`,
+    suggestion: `Give it once, as "${newSpelling}", or the same value to both`,
   };
 }

@@ -447,7 +447,7 @@ export function shouldFetchBodyWithReason(
   if (!isTextResponse && !options.fetchAllBodies) {
     return {
       should: false,
-      reason: 'Binary response (start the session with --all to capture it)',
+      reason: 'Binary response (start the session with --capture-all to capture it)',
     };
   }
 
@@ -466,7 +466,7 @@ export function shouldFetchBodyWithReason(
     return {
       should: false,
       reason:
-        'Skipped by default for this kind of resource (start the session with --all to capture it)',
+        'Skipped by default for this kind of resource (start the session with --capture-all to capture it)',
     };
   }
 

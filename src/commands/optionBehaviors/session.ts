@@ -34,7 +34,7 @@ export const SESSION_BEHAVIORS: BehaviorTable = {
     whenEnabled:
       'The session stops itself this many seconds (1-3600) after the page has loaded, as bdg stop does; the start output shows the time (autoStopAt with --json)',
     automaticBehavior:
-      'Seconds, unlike the --timeout of waits (milliseconds); the old -t/--timeout still works with a deprecation warning, and exits 81 when given together with --stop-after',
+      'Seconds, unlike the --timeout of waits (milliseconds); the old -t/--timeout still works with a deprecation warning, and exits 81 when given together with --stop-after and another value',
   },
   'attach:--stop-after': {
     default: 'The attached session runs until bdg stop, or until the tab or the browser closes',

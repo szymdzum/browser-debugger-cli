@@ -176,12 +176,14 @@ export function registerRenamedNames(
 }
 
 /**
- * Give a deprecated option's value to the option that replaces it.
+ * Give a deprecated option's value to the option that replaces it. Both
+ * spellings on one command line are fine when they give the same value
+ * (`cleanup --aggressive --force`, `-t 5 --stop-after 5`).
  *
  * @param level - Command that has both options
  * @param entry - Deprecated option entry with a new option
  * @param oldAttribute - Attribute name of the old option
- * @throws CommandError (81) when the command line also gave the new option
+ * @throws CommandError (81) when the command line gave the new option another value
  */
 function passToNewOption(
   level: Command,
@@ -189,7 +191,9 @@ function passToNewOption(
   oldAttribute: string
 ): void {
   const newAttribute = attributeName(entry.new ?? '');
-  if (level.getOptionValueSource(newAttribute) === 'cli') {
+  const value: unknown = level.getOptionValue(oldAttribute);
+  const given = level.getOptionValueSource(newAttribute) === 'cli';
+  if (given && level.getOptionValue(newAttribute) !== value) {
     const err = renamedOptionConflictError(spelling(entry, 'old'), spelling(entry, 'new'));
     throw new CommandError(
       err.message,
@@ -197,7 +201,7 @@ function passToNewOption(
       EXIT_CODES.INVALID_ARGUMENTS
     );
   }
-  level.setOptionValueWithSource(newAttribute, level.getOptionValue(oldAttribute), 'cli');
+  level.setOptionValueWithSource(newAttribute, value, 'cli');
 }
 
 /**
