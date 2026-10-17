@@ -8,7 +8,7 @@ import { handleValidationError } from '@/commands/shared/handleValidationError.j
 import { currentSubcommands } from '@/commands/shared/renamedNames.js';
 import { startSessionViaDaemon } from '@/commands/shared/startHelpers.js';
 import { readStateFile } from '@/commands/shared/stateFile.js';
-import { parseDialogAnswer, positiveIntRule } from '@/commands/shared/validation.js';
+import { parseDialogAnswer, parseStopAfter, positiveIntRule } from '@/commands/shared/validation.js';
 import { getIPCRequestTimeout, PORT_OPTION_DESCRIPTION } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
 import {
@@ -49,14 +49,10 @@ export interface CollectorOptions {
   port: string;
   /** Optional auto-stop (seconds, string form), from `--stop-after`. */
   stopAfter?: string;
-  /** Old spelling of `stopAfter` (`-t, --timeout`), copied to it by the rename step. */
-  timeout?: string;
   /** Custom Chrome profile directory path. */
   userDataDir?: string;
   /** When true, disables default filtering of noisy data (`--capture-all`). */
   captureAll?: boolean;
-  /** Old spelling of `captureAll` (`-a, --all`), copied to it by the rename step. */
-  all?: boolean;
   /** Maximum response body size in megabytes (default: 5MB). */
   maxBodySize?: string;
   /** Launch Chrome in headless mode. Default: true if no display, false if display available. */
@@ -270,18 +266,11 @@ function buildSessionOptions(options: CollectorOptions): {
     max: 100,
     required: false,
   });
-  const stopAfterRule = positiveIntRule({
-    name: '--stop-after',
-    min: 1,
-    max: 3600,
-    required: false,
-  });
   const portRule = positiveIntRule({ name: '--port', min: 1024, max: 65535, required: false });
 
   const maxBodySizeMB =
     options.maxBodySize !== undefined ? maxBodySizeRule.validate(options.maxBodySize) : undefined;
-  const timeout =
-    options.stopAfter !== undefined ? stopAfterRule.validate(options.stopAfter) : undefined;
+  const timeout = parseStopAfter(options.stopAfter);
 
   // Merge env var flags with CLI flags (CLI flags come after, taking precedence)
   const envFlags = parseChromeFlags(process.env['BDG_CHROME_FLAGS']);

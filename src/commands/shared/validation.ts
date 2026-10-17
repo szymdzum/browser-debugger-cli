@@ -108,6 +108,18 @@ export function positiveIntRule(options: IntegerRuleOptions = {}): ValidationRul
 }
 
 /**
+ * Parse `--stop-after` of `bdg <url>` and `bdg attach`: whole seconds, 1–3600.
+ *
+ * @param value - Raw option value, if given
+ * @returns Seconds, or undefined when not given
+ * @throws CommandError (81) for a value out of range or not an integer
+ */
+export function parseStopAfter(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  return parseInteger(value, { name: '--stop-after', min: 1, max: 3600, required: false });
+}
+
+/**
  * Build a Commander option parser for strict integers.
  *
  * Replaces bare `parseInt` (which yields NaN for "abc", accepts "5px", and

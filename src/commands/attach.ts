@@ -14,7 +14,7 @@ import { jsonOption } from '@/commands/shared/commonOptions.js';
 import { handleValidationError } from '@/commands/shared/handleValidationError.js';
 import type { BaseOptions } from '@/commands/shared/optionTypes.js';
 import { startSessionViaDaemon } from '@/commands/shared/startHelpers.js';
-import { positiveIntRule } from '@/commands/shared/validation.js';
+import { parseStopAfter } from '@/commands/shared/validation.js';
 import { assertValidChromeWsUrl, resolveChromeWsUrl } from '@/commands/start.js';
 import { connectToBrowser } from '@/connection/browserConnection.js';
 import { listPageTabs, type PageTab } from '@/connection/browserTabs.js';
@@ -33,7 +33,6 @@ interface AttachOptions extends BaseOptions {
   chromeWsUrl?: string;
   userDataDir?: string;
   stopAfter?: string;
-  timeout?: string;
   quiet?: boolean;
 }
 
@@ -119,15 +118,7 @@ export function registerAttachCommand(program: Command): void {
       let timeout: number | undefined;
       try {
         endpoint = await browserEndpoint(options);
-        timeout =
-          options.stopAfter === undefined
-            ? undefined
-            : positiveIntRule({
-                name: '--stop-after',
-                min: 1,
-                max: 3600,
-                required: false,
-              }).validate(options.stopAfter);
+        timeout = parseStopAfter(options.stopAfter);
       } catch (error) {
         handleValidationError(error, options.json ?? false);
       }
