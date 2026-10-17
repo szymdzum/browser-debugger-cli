@@ -175,7 +175,7 @@ Colors follow prefers-color-scheme, the system setting (even headless): pin it w
 
 ## Run JavaScript
 
-`bdg eval` (shortcut for `bdg eval`) returns the value of an expression:
+`bdg eval` returns the value of an expression:
 
 ```bash
 bdg eval "document.body.innerText.includes('Success')"
