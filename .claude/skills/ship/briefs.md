@@ -28,6 +28,7 @@ export PATH="$HOME/.nvm/versions/node/v22.15.0/bin:$PATH"
 - No `pkill`, `killall` or `pkill -P`. A background process you start writes its PID at start (`cmd & echo $! > /tmp/bdg-<ROLE>-<N>-NAME.pid`); kill only PIDs read back from those files. A stray bdg session is ended with `bdg stop` (or `bdg cleanup --force`) in its own `BDG_SESSION_DIR`.
 - Never touch `~/.bdg`, other agents' worktrees, or the main checkout `<MAIN>` (its `.tmp/` included); the one exception is adding and removing your own worktrees with `git -C <MAIN> worktree …`. Nothing may land in `~/Downloads`.
 - Don't open GitHub issues. Report findings with the command and its output; the orchestrator verifies and files them.
+- `bdg attach` only with `--chrome-ws-url` to a Chrome you launched yourself: without it, attach reads the stable profile's `DevToolsActivePort`, which is the owner's everyday Chrome (S19: a reviewer attached to it).
 <!-- /block -->
 
 <!-- block:findings -->

@@ -470,10 +470,30 @@ function supersedingPush(sha) {
   return { sha: latest.headSha, commits };
 }
 
+/**
+ * Waits up to 3 minutes for GitHub to show a pushed commit as the PR head:
+ * a waiter started right after a push otherwise sees the old head, then the
+ * new one, and exits superseded (S19 #828: both waiters did).
+ *
+ * @param {number} prNumber
+ * @param {string} want full or short SHA of the pushed commit
+ * @returns {Promise<string | null>} the full head SHA, or null on timeout
+ */
+async function waitForHead(prNumber, want) {
+  for (let i = 0; i < 36; i++) {
+    const head = prInfo(prNumber).headRefOid;
+    if (head.startsWith(want)) return head;
+    if (i === 0) console.log(`waiting for PR #${prNumber} to show head ${want.slice(0, 10)} (now ${head.slice(0, 10)})`);
+    await sleep(5000);
+  }
+  console.log(`timeout: PR #${prNumber} never showed head ${want.slice(0, 10)} within 3 minutes; check the push`);
+  return null;
+}
+
 async function ciWaitLoop(argv) {
-  const { positional, flags } = parseArgs(argv);
+  const { positional, flags, keys } = parseArgs(argv);
   const target = positional[0];
-  if (!target) return usage('ci-wait <pr> | ci-wait <sha> --push');
+  if (!target) return usage('ci-wait <pr> [--head=<sha>] | ci-wait <sha> --push');
   const deadline = waiterDeadline;
   const push = flags.has('push');
   let pr = null;
@@ -482,7 +502,8 @@ async function ciWaitLoop(argv) {
   let workflows = ['CI', 'Security'];
   if (!push) {
     pr = prInfo(target);
-    sha = pr.headRefOid;
+    sha = keys.head ? await waitForHead(pr.number, keys.head) : pr.headRefOid;
+    if (!sha) return EXIT.timeout;
     if (pr.baseRefName !== 'main') workflows = ['CI'];
   }
   const event = push ? 'push' : 'pull_request';
@@ -744,6 +765,34 @@ function freshOriginRef(branch) {
 }
 
 /**
+ * True for a file `npm run format:check` covers (TypeScript under src/,
+ * JavaScript and JSON files at the repo root); other files keep their own formatting.
+ *
+ * @param {string} file repo-relative path
+ */
+export function isFormatChecked(file) {
+  return /^src\/.*\.ts$/.test(file) || /^[^/]+\.(js|json)$/.test(file);
+}
+
+/**
+ * After the orchestrator's /simplify edits: formats the edited files with
+ * Prettier and type-checks the worktree, so the implementer gets edits that
+ * pass `npm run check` (S19: a red CI in #825 and an extra style: commit in #824).
+ *
+ * @param {string} path the PR's worktree
+ */
+function finishSimplify(path) {
+  const edited = run('git', ['-C', path, 'diff', '--name-only'])
+    .split('\n')
+    .filter((f) => isFormatChecked(f) && existsSync(join(path, f)));
+  const results = [];
+  if (edited.length) results.push(step(`prettier --write (${edited.length} files)`, `npx prettier --write ${edited.map((f) => `'${f}'`).join(' ')}`, path));
+  else console.log('ok   no edited code files to format');
+  results.push(step('npm run type-check', 'npm run type-check', path));
+  return results.every(Boolean) ? EXIT.ok : EXIT.failed;
+}
+
+/**
  * Prepares the orchestrator's /simplify pass on a PR: the PR's worktree, its
  * base, and the diff in a file, plus the args to pass, since /simplify works
  * on the current directory (S18: agents started by hand for each worktree).
@@ -751,14 +800,16 @@ function freshOriginRef(branch) {
  * @param {string[]} argv `<pr>`
  */
 function simplify(argv) {
-  const prNumber = argv[0];
-  if (!prNumber) return usage('simplify <pr>');
+  const { positional, flags } = parseArgs(argv);
+  const prNumber = positional[0];
+  if (!prNumber) return usage('simplify <pr> [--finish]');
   const pr = prInfo(prNumber);
   const path = worktreeOfBranch(run('git', ['worktree', 'list', '--porcelain']), pr.headRefName);
   if (!path) {
     console.log(`FAIL no worktree has branch ${pr.headRefName}: run /simplify where the PR's code is checked out`);
     return EXIT.failed;
   }
+  if (flags.has('finish')) return finishSimplify(path);
   run('git', ['fetch', '-q', 'origin', `pull/${pr.number}/head`]);
   const base = run('git', ['merge-base', freshOriginRef(pr.baseRefName), pr.headRefOid]);
   const file = `/tmp/simplify-${pr.number}.diff`;
@@ -769,8 +820,8 @@ function simplify(argv) {
       `worktree: ${path}`,
       `base:     ${base}`,
       `diff:     ${file} (${lines} product lines)`,
-      `args for /simplify: "Review only the changes in ${file}; the code is in ${path}. Apply your fixes in ${path} and leave them uncommitted."`,
-      `then SendMessage the implementer to run the affected tests and commit the edits as refactor:`,
+      `args for /simplify: "Review only the changes in ${file}; the code is in ${path}.${lines < 500 ? ' Use one agent, on reuse and simplification only.' : ''} Apply your fixes in ${path} and leave them uncommitted."`,
+      `then: ship simplify ${pr.number} --finish (Prettier and type-check on the edits), and SendMessage the implementer to run the affected tests and commit them as refactor:`,
     ].join('\n')
   );
   return EXIT.ok;
@@ -1058,7 +1109,7 @@ async function freshBaseGate(results, pr, baseRef, forkPoint, prFiles) {
 }
 
 /** Product diff size above which the orchestrator runs /simplify on the PR */
-export const SIMPLIFY_THRESHOLD = 150;
+export const SIMPLIFY_THRESHOLD = 200;
 
 /**
  * True for a file whose lines count as product code: under `src/`, not a
@@ -1087,6 +1138,23 @@ export function productLines(numstat) {
       const [added, deleted, path] = line.split('\t');
       return isProductFile(path) ? sum + (Number(added) || 0) + (Number(deleted) || 0) : sum;
     }, 0);
+}
+
+/**
+ * A release PR's version check: package.json's version at the head, and the
+ * PR title naming the same `vX.Y.Z` (S19: #830 went through bare gh because
+ * gate 7 refused its CHANGELOG change, and skipped every other gate).
+ *
+ * @param {string} packageJson package.json at the PR head
+ * @param {string} title PR title
+ */
+export function releaseVersion(packageJson, title) {
+  const version = JSON.parse(packageJson).version;
+  const named = /v(\d+\.\d+\.\d+(?:-[\w.]+)?)/.exec(title ?? '')?.[1];
+  if (!named) return { ok: false, text: `the title names no vX.Y.Z (package.json has ${version})` };
+  return named === version
+    ? { ok: true, text: `package.json ${version} matches the title` }
+    : { ok: false, text: `package.json ${version}, title v${named}` };
 }
 
 /**
@@ -1152,7 +1220,7 @@ async function gates(argv) {
   const { positional, keys, flags } = parseArgs(argv);
   const tier = Number(keys.tier);
   if (!positional[0] || ![1, 2, 3].includes(tier))
-    return usage('gates <pr> --tier=1|2|3 [--macos] [--timing] [--repeat=<run id>] [--no-issue] [--fixes-main]');
+    return usage('gates <pr> --tier=1|2|3 [--macos] [--timing] [--repeat=<run id>] [--no-issue] [--fixes-main] [--release]');
   const pr = prInfo(positional[0]);
   const head = pr.headRefOid;
   const results = [];
@@ -1192,9 +1260,15 @@ async function gates(argv) {
   ciGates(results, pr, flags.has('macos'));
   mainGate(results, flags.has('fixes-main'));
   await freshBaseGate(results, pr, baseRef, forkPoint, prFiles);
-  gateLine(results, !prFiles.includes('CHANGELOG.md'), '7 CHANGELOG.md untouched');
+  const release = flags.has('release');
+  if (release) {
+    const version = releaseVersion(run('git', ['show', `${head}:package.json`]), pr.title);
+    gateLine(results, prFiles.includes('CHANGELOG.md'), '7 release: CHANGELOG.md changed');
+    gateLine(results, version.ok, `7 release: ${version.text}`);
+  } else gateLine(results, !prFiles.includes('CHANGELOG.md'), '7 CHANGELOG.md untouched');
   const parts = partOfIssues(pr.body);
-  if (flags.has('no-issue')) console.log('ok   7 PR body closes an issue: skipped (--no-issue)');
+  if (flags.has('no-issue') || release)
+    console.log(`ok   7 PR body closes an issue: skipped (${release ? '--release' : '--no-issue'})`);
   else {
     const closed = closedIssues(pr.body);
     const named = [...closed.map((n) => `#${n}`), ...parts.map((n) => `part of #${n}`)];
@@ -1789,7 +1863,7 @@ function fastForwardMainCheckout() {
  */
 async function merge(argv) {
   const prNumber = argv[0];
-  if (!prNumber) return usage('merge <pr> --tier=1|2|3 [--macos] [--timing] [--repeat=<run id>] [--no-issue] [--fixes-main]');
+  if (!prNumber) return usage('merge <pr> --tier=1|2|3 [--macos] [--timing] [--repeat=<run id>] [--no-issue] [--fixes-main] [--release]');
   const pr = prInfo(prNumber);
   for (const n of prScope(pr))
     if (stopFixtures(n) === 'stopped') console.log(`stopped your fixtures of ${n} (ship fixtures)`);
@@ -2197,7 +2271,7 @@ const COMMANDS = {
     snapshot,
     "session start: snapshot ~/.bdg and ~/Downloads (gate 8); --accept <name>… adds a user's own ~/Downloads or ~/.bdg file to the snapshot; --accept-live accepts all files of the user's live session in ~/.bdg, and its session files written later",
   ],
-  simplify: [simplify, "<pr>: the PR's worktree, base and diff file, and the args for the orchestrator's /simplify pass"],
+  simplify: [simplify, "<pr> [--finish]: the PR's worktree, base, diff file and /simplify args; --finish formats and type-checks the edits"],
   fixtures: [
     fixtures,
     '<N> [dir=<worktree>] | <N> --stop: the fixture servers for a tester, from ../bdg-<N>; ship merge stops them',
@@ -2207,7 +2281,7 @@ const COMMANDS = {
     brief,
     '<role> N=<issue> [PR=<pr>] KEY=value… [--out=<file>]: render a brief (quotes the issue; PR fills BASE/HEAD/RED/BRANCH); --check=<file>: refuse an empty or unfilled brief',
   ],
-  'ci-wait': [ciWait, '<pr> | <sha> --push: wait for CI (+ Security); exit 3 when superseded'],
+  'ci-wait': [ciWait, '<pr> [--head=<sha>] | <sha> --push: wait for CI (+ Security); --head waits for that pushed commit; exit 3 when superseded'],
   repeat: [repeat, '<pr> <smoke files…> [--node=22|24|26]: dispatch the repeat=10 run on the PR head'],
   'run-wait': [
     runWait,
