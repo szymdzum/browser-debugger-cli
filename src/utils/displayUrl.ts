@@ -6,7 +6,7 @@
  * masked as {@link MASKED_VALUE}, by the HAR sanitiser's rule
  * (`isSensitiveParam`: secret field names plus `code`, `sig` and `key`); the
  * rest byte for byte. `--include-sensitive` shows the parameters; the user
- * info is removed with or without it (`details network --include-sensitive`
+ * info is removed with or without it (`network details --include-sensitive`
  * has the full request).
  */
 

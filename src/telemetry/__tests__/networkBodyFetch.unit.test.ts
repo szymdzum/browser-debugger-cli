@@ -109,7 +109,7 @@ async function collect(options: { maxRequests?: number } = {}): Promise<{
 }
 
 /**
- * The request as `bdg details network <id> --json` reports it.
+ * The request as `bdg network details <id> --json` reports it.
  *
  * @param store - Session store
  * @param id - Request id

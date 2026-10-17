@@ -98,7 +98,7 @@ void describe('Network and navigation', () => {
     const data = await runJson<{ requests: ListedRequest[] }>('network', ['list', '--last', '0']);
     const request = data.requests.find((r) => r.url.endsWith('/repeated-headers'));
     assert.ok(request, `Requests: ${JSON.stringify(data.requests)}`);
-    const human = await runCommand('details', ['network', request.requestId], { timeout: 30000 });
+    const human = await runCommand('network', ['details', request.requestId], { timeout: 30000 });
     assert.equal(human.exitCode, 0, human.stderr);
     assert.match(human.stdout, /^ {2}X-Repeated: max-age=63072000 \(sent 2 times\)$/im);
     assert.match(human.stdout, /^Remote Address:\s+(127\.0\.0\.1|\[::1\]):\d+$/m);
@@ -288,7 +288,7 @@ async function pixelBodyFetched(): Promise<boolean> {
     const list = await runJson<{ requests: ListedRequest[] }>('network', ['list', '--last', '0']);
     const pixel = list.requests.find((r) => r.url.endsWith('/pixel.png'));
     const details = pixel
-      ? await runJson<{ item: { responseBody?: string } }>('details', ['network', pixel.requestId])
+      ? await runJson<{ item: { responseBody?: string } }>('network', ['details', pixel.requestId])
       : undefined;
     if (details?.item.responseBody) return true;
     await new Promise((resolve) => setTimeout(resolve, 250));
@@ -387,8 +387,8 @@ void describe('WebSocket connections', () => {
     const [socket] = list.requests;
     assert.equal(socket?.status, 101);
 
-    const { item } = await runJson<{ item: WebSocketItem }>('details', [
-      'network',
+    const { item } = await runJson<{ item: WebSocketItem }>('network', [
+      'details',
       socket?.requestId ?? '',
     ]);
     assert.equal(item.resourceType, 'WebSocket');
@@ -401,7 +401,7 @@ void describe('WebSocket connections', () => {
     );
     assert.equal(item.webSocket?.closedTime, undefined);
 
-    const human = await runCommand('details', ['network', socket?.requestId ?? '']);
+    const human = await runCommand('network', ['details', socket?.requestId ?? '']);
     assert.match(human.stdout, /WebSocket Messages \(2, open\)/);
   });
 
@@ -449,8 +449,8 @@ interface ScopedList {
 async function bodyFetched(requestId: string): Promise<boolean> {
   const deadline = Date.now() + 20000;
   while (Date.now() < deadline) {
-    const details = await runJson<{ item: { responseBody?: string } }>('details', [
-      'network',
+    const details = await runJson<{ item: { responseBody?: string } }>('network', [
+      'details',
       requestId,
     ]);
     if (details.item.responseBody) return true;
@@ -550,7 +550,7 @@ void describe('Network list by page and size, details body options (#451)', () =
   });
 
   void it('caps the body in details --json, prints it whole with --body', async () => {
-    const json = await runCommand('details', ['network', largeId, '--json'], { timeout: 30000 });
+    const json = await runCommand('network', ['details', largeId, '--json'], { timeout: 30000 });
     assert.equal(json.exitCode, 0, json.stderr);
     assert.ok(json.stdout.length < 30000, `details --json is ${json.stdout.length} characters`);
     const { item } = (
@@ -562,10 +562,10 @@ void describe('Network list by page and size, details body options (#451)', () =
     assert.equal(item.bodyLength, LARGE_BODY.length);
     assert.equal(item.responseBody, LARGE_BODY.slice(0, 20000));
 
-    const raw = await runCommand('details', ['network', largeId, '--body'], { timeout: 30000 });
+    const raw = await runCommand('network', ['details', largeId, '--body'], { timeout: 30000 });
     assert.equal(raw.exitCode, 0, raw.stderr);
     assert.equal(raw.stdout, LARGE_BODY);
-    const cut = await runCommand('details', ['network', largeId, '--body', '--body-max', '100'], {
+    const cut = await runCommand('network', ['details', largeId, '--body', '--body-max', '100'], {
       timeout: 30000,
     });
     assert.equal(cut.exitCode, 0, cut.stderr);
@@ -577,14 +577,14 @@ void describe('Network list by page and size, details body options (#451)', () =
   });
 
   void it('--no-body drops the body in human and JSON output', async () => {
-    const { item } = await runJson<{ item: Record<string, unknown> }>('details', [
-      'network',
+    const { item } = await runJson<{ item: Record<string, unknown> }>('network', [
+      'details',
       largeId,
       '--no-body',
     ]);
     assert.ok(!('responseBody' in item), Object.keys(item).join(', '));
     assert.equal(item['url'], `${fixture.url}large-body`);
-    const human = await runCommand('details', ['network', largeId, '--no-body'], {
+    const human = await runCommand('network', ['details', largeId, '--no-body'], {
       timeout: 30000,
     });
     assert.equal(human.exitCode, 0, human.stderr);

@@ -4,6 +4,8 @@
 
 import { Option, type Command } from 'commander';
 
+import { registerDetailsSubcommand } from '@/commands/details.js';
+import { pageScopeOption } from '@/commands/network/listScope.js';
 import { printWarning, runCommand } from '@/commands/shared/CommandRunner.js';
 import { includeSensitiveOption, jsonOption } from '@/commands/shared/commonOptions.js';
 import { noteFollowConnected } from '@/commands/shared/daemonErrorHandler.js';
@@ -82,7 +84,7 @@ export function filterByCurrentNavigation(
 }
 
 /**
- * Navigation id of the page whose messages are shown without `--history`.
+ * Navigation id of the page whose messages are shown without `--page all`.
  *
  * @param messages - All captured messages
  * @param currentNavigationId - Navigation id of the current page, if known
@@ -94,12 +96,12 @@ function shownNavigationId(messages: ConsoleMessage[], currentNavigationId?: num
 
 /**
  * Dropped messages that could have been in the view: all of them with
- * `--history`; for the current page only while the oldest kept message is
+ * `--page all`; for the current page only while the oldest kept message is
  * that page's (else every dropped one came from an earlier page).
  *
  * @param messages - All kept messages, oldest first
  * @param dropped - Oldest messages the session dropped at its limit
- * @param options - `--history`
+ * @param options - `--page all`
  * @param currentNavigationId - Navigation id of the current page, if known
  * @returns Dropped count to warn about (0: none of the view's)
  */
@@ -137,7 +139,7 @@ function applyFilters(
  * Messages of the page in view that `--level` hid, per level.
  *
  * @param messages - All messages of the session
- * @param options - `--history` and `--level`
+ * @param options - `--page all` and `--level`
  * @param currentNavigationId - Navigation id of the current page, if known
  * @returns Counts per level of the hidden messages (empty without `--level` or when none)
  */
@@ -161,12 +163,12 @@ export function hiddenByLevel(
 /**
  * Messages the filters left out between the first and the last listed
  * message (their session indices skip them), by why: logged by another page
- * load, or of another level. With `--history` every page load is listed, so
+ * load, or of another level. With `--page all` every page load is listed, so
  * all of them are of another level.
  *
  * @param all - All messages of the session
  * @param listed - Messages listed
- * @param history - `--history`: messages of every page load were listed
+ * @param history - `--page all`: messages of every page load were listed
  * @returns Counts per reason
  */
 export function skippedMessages(
@@ -370,13 +372,13 @@ export interface FollowCursor {
  * surplus over that count is new. Identical messages are therefore each
  * printed once, also when some of them were dropped. A message of a page left
  * since the last poll is printed like any other. The first poll prints the
- * page loaded (every page with `--history`), the last `lastN` messages of it;
+ * page loaded (every page with `--page all`), the last `lastN` messages of it;
  * later polls print what is new on any page. `--level` applies to all of them.
  * Limit: a message inserted late (by its time) before older ones counts as
  * new, and a late message the session drops at once makes the next poll
  * reprint one message identical to the oldest kept.
  *
- * @param options - `--history` and `--level`
+ * @param options - `--page all` and `--level`
  * @param lastN - Messages to show at start (0 = all)
  * @returns The cursor
  */
@@ -442,17 +444,18 @@ interface ConsoleResult extends PageNotes {
 }
 
 export function registerConsoleCommand(program: Command): void {
-  program
+  const consoleCommand = program
     .command('console')
     .description('Console message inspection and analysis')
     .addOption(new Option('-l, --list', 'List all messages chronologically').default(false))
     .addOption(new Option('-f, --follow', 'Stream console messages in real-time').default(false))
     .addOption(
       new Option(
-        '-H, --history',
-        'Show messages from all page loads (default: current only)'
-      ).default(false)
+        '--page <scope>',
+        'Which page loads to show: current or all (default: current)'
+      ).argParser(pageScopeOption)
     )
+    .addOption(new Option('-H, --history', 'Old spelling of --page all').default(false))
     .addOption(
       new Option(
         '--level <level>',
@@ -475,6 +478,7 @@ export function registerConsoleCommand(program: Command): void {
     .addOption(includeSensitiveOption())
     .addOption(jsonOption())
     .action(async (options: ConsoleCommandOptions) => {
+      options.history = options.page === 'all';
       let lastN: number;
 
       try {
@@ -569,4 +573,5 @@ export function registerConsoleCommand(program: Command): void {
         }
       );
     });
+  registerDetailsSubcommand(consoleCommand, 'console');
 }

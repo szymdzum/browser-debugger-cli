@@ -2,12 +2,14 @@ import { Option, type Command } from 'commander';
 
 import { runCommand, type CommandResult } from '@/commands/shared/CommandRunner.js';
 import { includeSensitiveOption, jsonOption } from '@/commands/shared/commonOptions.js';
+import { createErrorResult } from '@/commands/shared/dataFetcher.js';
 import type { DetailsCommandOptions } from '@/commands/shared/optionTypes.js';
 import { integerOption } from '@/commands/shared/validation.js';
 import type { DetailsResult } from '@/commands/types.js';
 import { CommandError } from '@/errors/index.js';
 import {
   conflictingOptionsError,
+  detailsUsageError,
   networkOnlyDetailsOptionError,
   responseBodyMissingError,
 } from '@/errors/messages.js';
@@ -28,7 +30,7 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { validateDetailsItem } from '@/utils/typeGuards.js';
 
 /**
- * `details network <id> --body` result (the `data` of `--json`).
+ * `network details <id> --body` result (the `data` of `--json`).
  */
 interface NetworkBodyResult {
   type: 'network-body';
@@ -53,7 +55,7 @@ type DetailsOutput = DetailsResult | NetworkBodyResult;
  * Dispatches to the appropriate formatter based on type.
  *
  * @param data - Details result
- * @param options - Body options of `details network`
+ * @param options - Body options of `network details`
  * @returns Text (the raw body for `--body`)
  */
 function formatDetails(data: DetailsOutput, options: DetailsCommandOptions): string {
@@ -159,7 +161,7 @@ function bodyOnly(
 }
 
 /**
- * The network request as `details network` shows it: credentials masked
+ * The network request as `network details` shows it: credentials masked
  * (unless `--include-sensitive`, which warns), the response body cut at the
  * cap in `--json` (human output cuts it in the formatter), the body alone
  * with `--body`.
@@ -203,89 +205,157 @@ function detailsResult(
 }
 
 /**
- * Register details command.
+ * Show one captured request or console message: the handler behind
+ * `network details <id>`, `console details <n>` and the deprecated
+ * `details <type> <id>`.
+ *
+ * @param options - Command options with the item's type and id
+ */
+async function runDetails(options: DetailsCommandOptions): Promise<void> {
+  await runCommand<DetailsCommandOptions, DetailsOutput>(
+    async (opts) => {
+      if (opts.type !== 'network' && opts.type !== 'console') {
+        return usageFailure(`Unknown type: ${String(opts.type)}. Valid types: network, console`);
+      }
+
+      if (!opts.id.trim()) {
+        return usageFailure(
+          `The ${opts.type === 'network' ? 'request id' : 'message index'} is empty`
+        );
+      }
+
+      validateBodyOptions(opts);
+
+      const response = await getDetails(opts.type, opts.id);
+
+      validateIPCResponse(response);
+
+      if (!response.data?.item) {
+        return {
+          success: false,
+          error: 'No data in response',
+          exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
+          errorContext: {
+            suggestion:
+              opts.type === 'network'
+                ? `Use ${sessionCommand('bdg network list')} to see available request IDs`
+                : `Use ${sessionCommand('bdg peek --console')} to see available console message indices`,
+          },
+        };
+      }
+
+      if (opts.type === 'network') {
+        return networkDetails(validateDetailsItem(response.data.item, 'network'), opts);
+      }
+      return {
+        success: true,
+        data: {
+          type: 'console' as const,
+          item: validateDetailsItem(response.data.item, 'console'),
+        },
+      };
+    },
+    options,
+    (data) => formatDetails(data, options)
+  );
+}
+
+/**
+ * A usage failure (exit 81) naming the commands that show details.
+ *
+ * @param error - What is wrong
+ * @returns Failed command result
+ */
+function usageFailure(error: string): CommandResult<never> {
+  const err = detailsUsageError(error);
+  return createErrorResult(err.message, EXIT_CODES.INVALID_ARGUMENTS, err.suggestion);
+}
+
+/** What `network details` and `console details` say about themselves */
+const DETAILS_SUBCOMMANDS = {
+  network: {
+    description: 'Get detailed information for a specific request',
+    idHelp: 'Request ID (from network list)',
+  },
+  console: {
+    description: 'Get detailed information for a specific console message',
+    idHelp: 'Message index (from console)',
+  },
+} as const;
+
+/**
+ * Add the options of a details command: `--json`, the response body
+ * options when it can show network requests, `--include-sensitive`.
+ *
+ * @param command - Command to add them to
+ * @param withBody - Whether to add `--body`, `--no-body`, `--body-max`
+ * @returns The command
+ */
+function addDetailsOptions(command: Command, withBody: boolean): Command {
+  command.addOption(jsonOption());
+  if (withBody) addBodyOptions(command);
+  return command.addOption(includeSensitiveOption());
+}
+
+/**
+ * Register `details` on `network` or `console`: the item's id is its argument.
+ * `--json` and `--include-sensitive` given to `console` before `details` count too.
+ *
+ * @param parent - The `network` or `console` command
+ * @param type - What it shows details of
+ */
+export function registerDetailsSubcommand(parent: Command, type: 'network' | 'console'): void {
+  const { description, idHelp } = DETAILS_SUBCOMMANDS[type];
+  const command = parent.command('details').description(description).argument('<id>', idHelp);
+  addDetailsOptions(command, type === 'network').action(
+    async (id: string, options: DetailsCommandOptions) => {
+      const inherited = parent.opts<Pick<DetailsCommandOptions, 'json' | 'includeSensitive'>>();
+      await runDetails({
+        ...options,
+        json: options.json === true || inherited.json === true,
+        ...((options.includeSensitive === true || inherited.includeSensitive === true) && {
+          includeSensitive: true,
+        }),
+        type,
+        id,
+      });
+    }
+  );
+}
+
+/**
+ * The response body options of `network details`.
+ *
+ * @param command - Command to add them to
+ */
+function addBodyOptions(command: Command): void {
+  command
+    .addOption(new Option('--body', 'Print only the response body, whole and raw (for piping)'))
+    .addOption(new Option('--no-body', 'Leave the response body out'))
+    .addOption(
+      new Option(
+        '--body-max <chars>',
+        'Characters of the response body to show (default 20000; 0 = all)'
+      ).argParser(integerOption(0))
+    );
+}
+
+/**
+ * Register the deprecated `details <type> <id>` command (see the rename
+ * table, `@/utils/renames.ts`); it runs the handler of `network details`
+ * and `console details`.
  *
  * @param program - Commander.js Command instance to register commands on
  */
 export function registerDetailsCommand(program: Command): void {
-  program
+  const command = program
     .command('details')
     .description('Get detailed information for a specific request or console message')
     .argument('<type>', 'Type of item: "network" or "console"')
-    .argument('<id>', 'Request ID (for network) or index (for console)')
-    .addOption(jsonOption())
-    .addOption(
-      new Option('--body', 'Network: print only the response body, whole and raw (for piping)')
-    )
-    .addOption(new Option('--no-body', 'Network: leave the response body out'))
-    .addOption(
-      new Option(
-        '--body-max <chars>',
-        'Network: characters of the response body to show (default 20000; 0 = all)'
-      ).argParser(integerOption(0))
-    )
-    .addOption(includeSensitiveOption())
-    .action(async (type: string, id: string, options: DetailsCommandOptions) => {
-      options.type = type as 'network' | 'console';
-      options.id = id;
-
-      await runCommand<DetailsCommandOptions, DetailsOutput>(
-        async (opts) => {
-          if (opts.type !== 'network' && opts.type !== 'console') {
-            return {
-              success: false,
-              error: `Unknown type: ${String(opts.type)}. Valid types: network, console`,
-              exitCode: EXIT_CODES.INVALID_ARGUMENTS,
-              errorContext: {
-                suggestion: 'Usage: bdg details network <requestId> or bdg details console <index>',
-              },
-            };
-          }
-
-          if (!opts.id.trim()) {
-            return {
-              success: false,
-              error: `The ${opts.type === 'network' ? 'request id' : 'message index'} is empty`,
-              exitCode: EXIT_CODES.INVALID_ARGUMENTS,
-              errorContext: {
-                suggestion: 'Usage: bdg details network <requestId> or bdg details console <index>',
-              },
-            };
-          }
-
-          validateBodyOptions(opts);
-
-          const response = await getDetails(opts.type, opts.id);
-
-          validateIPCResponse(response);
-
-          if (!response.data?.item) {
-            return {
-              success: false,
-              error: 'No data in response',
-              exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
-              errorContext: {
-                suggestion:
-                  opts.type === 'network'
-                    ? `Use ${sessionCommand('bdg network list')} to see available request IDs`
-                    : `Use ${sessionCommand('bdg peek --console')} to see available console message indices`,
-              },
-            };
-          }
-
-          if (opts.type === 'network') {
-            return networkDetails(validateDetailsItem(response.data.item, 'network'), opts);
-          }
-          return {
-            success: true,
-            data: {
-              type: 'console' as const,
-              item: validateDetailsItem(response.data.item, 'console'),
-            },
-          };
-        },
-        options,
-        (data) => formatDetails(data, options)
-      );
-    });
+    .argument('<id>', 'Request ID (for network) or index (for console)');
+  addDetailsOptions(command, true).action(
+    async (type: string, id: string, options: DetailsCommandOptions) => {
+      await runDetails({ ...options, type: type as 'network' | 'console', id });
+    }
+  );
 }

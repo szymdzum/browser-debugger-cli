@@ -3,6 +3,7 @@
  *
  * Provides commands for inspecting and exporting network data:
  * - list: List requests with DevTools-compatible filtering
+ * - details: One request's details
  * - har: Export to HAR 1.2 format
  * - cookies: List cookies
  * - headers: Show HTTP headers
@@ -11,6 +12,7 @@
 
 import type { Command } from 'commander';
 
+import { registerDetailsSubcommand } from '@/commands/details.js';
 import { registerHarCommand } from './har.js';
 import { registerListCommand } from './list.js';
 import {
@@ -28,6 +30,7 @@ export function registerNetworkCommands(program: Command): void {
   const networkCmd = program.command('network').description('Inspect network state and resources');
 
   registerListCommand(networkCmd);
+  registerDetailsSubcommand(networkCmd, 'network');
   registerHarCommand(networkCmd);
   registerCookiesCommands(networkCmd);
   registerHeadersCommand(networkCmd);

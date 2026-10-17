@@ -41,6 +41,14 @@ const TABLE: readonly RenameEntry[] = [
     stage: 'removed',
     takesValue: true,
   },
+  {
+    kind: 'option',
+    command: 'run',
+    old: '--legacy',
+    new: '--mode',
+    value: 'all',
+    stage: 'deprecated',
+  },
 ];
 
 interface Parsed {
@@ -72,6 +80,7 @@ async function parse(argv: string[]): Promise<Parsed> {
     .command('run')
     .option('--new-name <name>', 'Name')
     .option('--size <n>', 'Size')
+    .option('--mode <mode>', 'Mode')
     .argument('[args...]')
     .action((args: string[], opts: Record<string, unknown>) => {
       parsed.args = args;
@@ -174,6 +183,80 @@ void describe('rename mechanism (injected table)', () => {
     const parsed = await parse(['run', '--new-name', 'a']);
     assert.equal(parsed.opts?.['newName'], 'a');
     assert.deepEqual(parsed.warnings, []);
+  });
+});
+
+void describe('an option row with a value', () => {
+  void it('the new option gets the row value, not the old option value, with it in the warning', async () => {
+    const parsed = await parse(['run', '--legacy']);
+    assert.equal(parsed.opts?.['mode'], 'all');
+    assert.deepEqual(parsed.warnings, [
+      '"bdg run --legacy" is deprecated and will be removed in 1.0: use "bdg run --mode all"',
+    ]);
+  });
+
+  void it('the new option given the same value is no conflict; another value exits 81', async () => {
+    const same = await parse(['run', '--legacy', '--mode', 'all']);
+    assert.equal(same.opts?.['mode'], 'all');
+    await assertRenameError(
+      ['run', '--legacy', '--mode', 'other'],
+      '"bdg run --legacy" and "bdg run --mode other" are the same option, given different values',
+      'Give it once, as "bdg run --mode other", or the same value to both'
+    );
+  });
+});
+
+void describe('a command row with a hint for two replacements', () => {
+  void it('warns with the hint while deprecated and names both once removed', () => {
+    const removed: RenameEntry = {
+      kind: 'command',
+      command: '',
+      old: 'twins',
+      hint: 'use "bdg a" or "bdg b"',
+      stage: 'removed',
+    };
+    const program = new Command('bdg').exitOverride();
+    registerRenamedNames(program, [removed]);
+    program.hook('preAction', (_root, action) => {
+      applyRenamedNames(action, [removed]);
+    });
+    return assert.rejects(program.parseAsync(['twins'], { from: 'user' }), (error: unknown) => {
+      assert.ok(error instanceof CommandError, String(error));
+      assert.equal(error.exitCode, EXIT_CODES.INVALID_ARGUMENTS);
+      assert.ok(error.message.includes('"bdg twins"'));
+      assert.ok(String(error.metadata['suggestion']).includes('"bdg a" or "bdg b"'));
+      return true;
+    });
+  });
+
+  void it('the real details row, removed, exits 81 naming both new commands', async () => {
+    const row = RENAMES.find((entry) => entry.kind === 'command' && entry.old === 'details');
+    assert.ok(row, 'details row');
+    const removed: RenameEntry = { ...row, stage: 'removed' };
+    const program = new Command('bdg').exitOverride();
+    registerRenamedNames(program, [removed]);
+    program.hook('preAction', (_root, action) => {
+      applyRenamedNames(action, [removed]);
+    });
+    await assert.rejects(
+      program.parseAsync(['details', 'network', '1'], { from: 'user' }),
+      (error: unknown) => {
+        assert.ok(error instanceof CommandError, String(error));
+        assert.equal(error.exitCode, EXIT_CODES.INVALID_ARGUMENTS);
+        const text = `${error.message} ${String(error.metadata['suggestion'])}`;
+        assert.ok(text.includes('bdg network details <id>'), text);
+        assert.ok(text.includes('bdg console details <n>'), text);
+        return true;
+      }
+    );
+  });
+
+  void it('the real table has the details and --history rows, deprecated', () => {
+    const history = RENAMES.find((entry) => entry.kind === 'option' && entry.old === '--history');
+    assert.equal(history?.new, '--page');
+    assert.equal(history?.kind === 'option' && history.value, 'all');
+    assert.equal(history?.stage, 'deprecated');
+    assert.equal(RENAMES.find((entry) => entry.old === 'details')?.stage, 'deprecated');
   });
 });
 

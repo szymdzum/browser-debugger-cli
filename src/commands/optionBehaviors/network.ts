@@ -10,7 +10,7 @@ import {
   type BehaviorTable,
 } from '@/commands/optionBehaviors/shared.js';
 
-/** What `details network`, `network headers` and `network document` mask by default (#615) */
+/** What `network details`, `network headers` and `network document` mask by default (#615) */
 const MASKED_OUTPUT_DEFAULT =
   'Credentials are shown as "••••" (human and --json; field and header names and the JSON shape stay): Cookie and Set-Cookie values (cookie names and attributes such as HttpOnly; Path=/ kept), Authorization and Proxy-Authorization (the scheme kept: Bearer ••••), Authentication, X-*key/token/secret/auth headers, headers with an api-key/token/secret/jwt/session segment and headers named like a secret field (X-Password, Sid, Cookie2); user:pass@ and credential query/fragment parameters (secret field names plus code, sig, key) in the request URL, redirect URL and Location, Referer, :path, Content-Location, Refresh and Link headers; a JWT in any header; secret-named fields of urlencoded, JSON (any depth) and multipart request bodies, of JSON response bodies (access_token, id_token...), the value of password, hidden and secret-named inputs and the text of secret-named textareas in HTML response bodies (text/html, application/xhtml+xml; the rest of the HTML, inline scripts included, stays as captured) and of WebSocket messages (in plain-text messages, a token-shaped credential after Bearer or Basic of any case: a word of 6+ token characters with a digit, symbol or inner capital, so bearer abc123 is masked and Basic information is not); any JWT. The rules are those of the default HAR export (network har) and the secret field names DOM masking uses. A footer line (JSON masked: true; with --body a hint on stderr) says when something was masked';
 
@@ -68,7 +68,7 @@ export const NETWORK_BEHAVIORS: BehaviorTable = {
     whenEnabled:
       'Prints only the response body, whole, for piping (no newline added; control characters escaped only on a terminal); in an HTML body the values of secret form controls are •••• (inline scripts as captured) unless --include-sensitive. Binary bodies come base64-encoded (hint on stderr). --json: data { type: "network-body", requestId, body, bodyLength, base64Encoded?, mimeType? }. --body-max caps it (bodyTruncated: true; on stderr: body cut at N of M characters (--body-max 0 for all))',
     automaticBehavior:
-      'A request without a body to print exits 83 and says why: not captured (binary bodies such as images and fonts are skipped unless the session started with --capture-all; past the session body budget it was evicted), still loading, a WebSocket (messages, not a body), the response has no body (HEAD, 204, 205, 304), or none captured (redirects, failed requests). Network only (details console exits 81)',
+      'A request without a body to print exits 83 and says why: not captured (binary bodies such as images and fonts are skipped unless the session started with --capture-all; past the session body budget it was evicted), still loading, a WebSocket (messages, not a body), the response has no body (HEAD, 204, 205, 304), or none captured (redirects, failed requests). Network only (console details exits 81)',
     tokenImpact:
       'Whole body: a large HTML document is hundreds of KB. Use --body-max or pipe through head/jq',
   },
@@ -80,16 +80,16 @@ export const NETWORK_BEHAVIORS: BehaviorTable = {
   },
   'details:--body-max': {
     default:
-      '20000: a longer response body is cut, human output ends it with "… N more characters (full body: bdg details network <id> --body)", --json adds bodyTruncated: true and bodyLength (the whole length)',
+      '20000: a longer response body is cut, human output ends it with "… N more characters (full body: bdg network details <id> --body)", --json adds bodyTruncated: true and bodyLength (the whole length)',
     whenEnabled:
       'Characters of the response body to keep (0 = all), in human and --json output and with --body. Base64 bodies are cut on a whole 4-character group. Not with --no-body (exit 81)',
     tokenImpact:
-      'details network --json used to inline the whole body (614 KB for the github.com document); the 20000 default keeps it near 25 KB',
+      'network details --json used to inline the whole body (614 KB for the github.com document); the 20000 default keeps it near 25 KB',
   },
   'details:--include-sensitive': {
     default: MASKED_OUTPUT_DEFAULT,
     whenEnabled: MASKED_OUTPUT_ENABLED,
-    automaticBehavior: `${MASKED_OUTPUT_AUTOMATIC}. With --body the masked body is what is printed and cut (bodyLength counts the masked body); masked: true and the stderr note only when the body itself had a credential. Network only (details console exits 81)`,
+    automaticBehavior: `${MASKED_OUTPUT_AUTOMATIC}. With --body the masked body is what is printed and cut (bodyLength counts the masked body); masked: true and the stderr note only when the body itself had a credential. Network only (console details exits 81)`,
   },
   'headers:--include-sensitive': {
     default: MASKED_OUTPUT_DEFAULT,
@@ -107,6 +107,6 @@ export const NETWORK_BEHAVIORS: BehaviorTable = {
     whenEnabled:
       'Writes every captured value (JSON sanitized: false); human output warns that the file holds credentials',
     automaticBehavior:
-      'Matching is by name, so it over-redacts: harmless values under credential-looking names (tokenCount: 5, sessionLength, refreshInterval, cookieConsent) are replaced too, and credentials under other names are kept. Only JSON syntax is understood: single-quoted strings, unquoted keys, JSONP, STOMP passcode: header lines and bare values with spaces ({"token":abc def}, a non-JWT token after Bearer in text) are not (fully) redacted. A body the sanitizer fails on is replaced whole by [redacted]. Unlike Chrome DevTools, which drops these headers and empties cookies, names are kept so the HAR still shows a request was authenticated. Kept as captured: other binary (base64) bodies, binary WebSocket messages that are not UTF-8, text that is not JSON, a form or HTML (apart from JWTs), and in an HTML body everything but the secret form-control values: inline-script tokens (const token = "…") are kept, and the options of a select and a tag broken by an unclosed quote are not judged, while a control written inside a script string or comment is masked too (harmless over-masking); a WebSocket message cut at 100 KB has _truncatedFrom. HAR files are written readable by their owner only (0600). details network, network headers and network document mask the same values as •••• (their own --include-sensitive); network cookies always shows real values',
+      'Matching is by name, so it over-redacts: harmless values under credential-looking names (tokenCount: 5, sessionLength, refreshInterval, cookieConsent) are replaced too, and credentials under other names are kept. Only JSON syntax is understood: single-quoted strings, unquoted keys, JSONP, STOMP passcode: header lines and bare values with spaces ({"token":abc def}, a non-JWT token after Bearer in text) are not (fully) redacted. A body the sanitizer fails on is replaced whole by [redacted]. Unlike Chrome DevTools, which drops these headers and empties cookies, names are kept so the HAR still shows a request was authenticated. Kept as captured: other binary (base64) bodies, binary WebSocket messages that are not UTF-8, text that is not JSON, a form or HTML (apart from JWTs), and in an HTML body everything but the secret form-control values: inline-script tokens (const token = "…") are kept, and the options of a select and a tag broken by an unclosed quote are not judged, while a control written inside a script string or comment is masked too (harmless over-masking); a WebSocket message cut at 100 KB has _truncatedFrom. HAR files are written readable by their owner only (0600). network details, network headers and network document mask the same values as •••• (their own --include-sensitive); network cookies always shows real values',
   },
 };

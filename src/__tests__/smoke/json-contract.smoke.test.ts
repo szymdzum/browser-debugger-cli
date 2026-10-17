@@ -92,7 +92,7 @@ void describe('JSON contract', () => {
       ['console', '--json'],
       ['dom', 'query', 'p', '--json'],
       ['dom', 'a11y', 'tree', '--json'],
-      ['details', 'network', '1', '--json'],
+      ['network', 'details', '1', '--json'],
       ['stop', '--json'],
     ]) {
       await expectEnvelope(args, 83);
@@ -471,7 +471,7 @@ void describe('JSON contract', () => {
       await expectEnvelope(['dom', ...args, '--json'], 81);
     }
     await expectEnvelope(['dom', 'click', '#missing', '--json'], 83);
-    await expectEnvelope(['details', 'network', 'missing', '--json'], 83);
+    await expectEnvelope(['network', 'details', 'missing', '--json'], 83);
     const running = await expectEnvelope([fixture.url, '--headless', '--json'], 84);
     assert.ok(running.data === undefined);
     const existing = (running as unknown as { existingSession?: Record<string, unknown> })

@@ -435,6 +435,7 @@ export interface SessionStartOptions {
 export type { ConsoleLevel } from '@/types.js';
 
 // Import locally for use in ConsoleCommandOptions
+import type { PageScope } from '@/commands/network/listScope.js';
 import type { DialogAnswer } from '@/ipc/protocol/domTypes.js';
 import type { AuthStateContent } from '@/ipc/protocol/stateTypes.js';
 import type { ColorScheme, ConsoleLevel, ViewportSize } from '@/types.js';
@@ -442,7 +443,7 @@ import type { ColorScheme, ConsoleLevel, ViewportSize } from '@/types.js';
 /**
  * Options for console command.
  * Supports smart summary (default), list view (--list), and streaming (--follow).
- * By default shows only current navigation; use --history for all.
+ * By default shows only current navigation; use --page all for all.
  */
 export interface ConsoleCommandOptions extends BaseOptions {
   /** Show the newest N messages (string from CLI, 0 = all, default: 100) */
@@ -451,7 +452,9 @@ export interface ConsoleCommandOptions extends BaseOptions {
   list?: boolean;
   /** Stream console messages in real-time */
   follow?: boolean;
-  /** Show messages from all page loads (default: current only) */
+  /** `--page`: which page loads to show (default: current only) */
+  page?: PageScope;
+  /** Whether all page loads are shown: `--page all` (set from it before the command runs; `-H/--history` is its deprecated spelling) */
   history?: boolean;
   /** Filter by message level (error, warning, info, debug) */
   level?: ConsoleLevel;

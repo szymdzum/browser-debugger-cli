@@ -26,7 +26,7 @@ export function jsonOption(): Option {
 
 /**
  * Create the `--include-sensitive` flag of the commands that mask
- * credentials by default: `details network`, `network headers` and
+ * credentials by default: `network details`, `network headers` and
  * `network document` (headers, cookies, bodies, WebSocket messages and the
  * request URL), and `status`, `sessions`, `page info`, `page tabs`,
  * `network list` and `peek` (the query and fragment tokens of page URLs;
@@ -37,7 +37,7 @@ export function jsonOption(): Option {
 export function includeSensitiveOption(): Option {
   return new Option(
     '--include-sensitive',
-    'Show credentials as captured, masked as •••• by default: the query and fragment tokens of page URLs (user:pass@ is always removed); on details network, network headers and network document also auth/cookie/API key/token headers, cookie values, password and token fields of bodies and WebSocket messages, and secret form-control values of HTML bodies'
+    'Show credentials as captured, masked as •••• by default: the query and fragment tokens of page URLs (user:pass@ is always removed); on network details, network headers and network document also auth/cookie/API key/token headers, cookie values, password and token fields of bodies and WebSocket messages, and secret form-control values of HTML bodies'
   );
 }
 

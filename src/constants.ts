@@ -149,7 +149,7 @@ export const MAX_OMITTED_COOKIE_KEYS = 200;
 
 /**
  * Blocked cookie names `network list` and `peek` carry per request (their
- * JSON and the `has-blocked-cookies` filter); `details network` has them all
+ * JSON and the `has-blocked-cookies` filter); `network details` has them all
  */
 export const BLOCKED_COOKIE_PREVIEW_NAMES = 5;
 

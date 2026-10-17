@@ -104,7 +104,7 @@ export type HiddenByLevel = Partial<Record<ConsoleInternalLevel, number>>;
  * listed index (session indices then skip numbers).
  */
 export interface ConsoleSkipped {
-  /** Logged by another page load (`--history` lists them) */
+  /** Logged by another page load (`--page all` lists them) */
   otherPages: number;
   /** Of another level (`--level`) */
   otherLevels: number;
@@ -119,7 +119,7 @@ export interface JsonErrorEntry {
   text: string;
   /** Original length of `text` when it was cut (`--full` keeps it whole) */
   truncatedFrom?: number;
-  /** Position in the session's message list (what `details console <n>` takes) */
+  /** Position in the session's message list (what `console details <n>` takes) */
   index?: number;
   /** Where it came from; no line/column for a resource URL (e.g. a failed load) */
   source?: { url: string; line?: number; column?: number };

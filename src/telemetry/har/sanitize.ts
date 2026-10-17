@@ -18,7 +18,7 @@
  * message the sanitizer fails on is replaced whole by {@link REDACTED}.
  *
  * The rules (which headers, URL parameters and body fields are credentials)
- * are shared with the masked output of `details network`, `network headers`
+ * are shared with the masked output of `network details`, `network headers`
  * and `network document` (networkMasking.ts), which writes `••••` instead.
  */
 

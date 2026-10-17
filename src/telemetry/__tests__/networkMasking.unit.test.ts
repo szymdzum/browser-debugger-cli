@@ -1,7 +1,7 @@
 /**
  * Masked network output unit tests (#615).
  *
- * `details network`, `network headers` and `network document` show the
+ * `network details`, `network headers` and `network document` show the
  * credentials the HAR sanitiser redacts as `••••`: header values (keeping
  * cookie names, `Set-Cookie` attributes and auth schemes), URL credentials,
  * secret fields of bodies and WebSocket messages. Everything else stays as

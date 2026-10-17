@@ -22,7 +22,7 @@ function megabytes(bytes: number): string {
 
 /**
  * Why a stored request or response body was replaced by a placeholder
- * (shown by `bdg details network <id>` as `requestBodyNotCaptured` or
+ * (shown by `bdg network details <id>` as `requestBodyNotCaptured` or
  * `bodyNotCaptured`).
  *
  * @param budgetBytes - Total body budget of the session
@@ -36,7 +36,7 @@ export function bodyEvictedReason(budgetBytes: number): string {
  * Why a request body is missing although the request had one: Chrome leaves
  * it out of `Network.requestWillBeSent` when it holds a file or blob part
  * or exceeds the 1 MB `maxPostDataSize` bdg sets
- * (shown by `bdg details network <id>` as `requestBodyNotCaptured`).
+ * (shown by `bdg network details <id>` as `requestBodyNotCaptured`).
  *
  * @returns Reason text
  */
@@ -48,7 +48,7 @@ export function requestBodyOmittedReason(): string {
  * Why a response body is missing when Chrome no longer had it
  * (`Network.getResponseBody` failed with "No resource with given identifier
  * found" or "No data found for resource with given identifier"), shown by
- * `bdg details network <id>` as `bodyNotCaptured` and in the HAR as the
+ * `bdg network details <id>` as `bodyNotCaptured` and in the HAR as the
  * content comment.
  *
  * @returns Reason text
@@ -149,7 +149,7 @@ export function headerRepeatedNote(count: number): string {
 /** Mark after the URL of a `network list` row whose request had cookies blocked */
 export const COOKIE_BLOCKED_MARK = '⚠ cookie blocked';
 
-/** What each kind of blocked cookie means, as `details network` says it */
+/** What each kind of blocked cookie means, as `network details` says it */
 const BLOCKED_COOKIE_KINDS: Record<BlockedCookie['kind'], string> = {
   'set-rejected': 'set rejected',
   'not-sent': 'not sent',
@@ -181,7 +181,7 @@ function glossedReason(reason: string): string {
 }
 
 /**
- * Why a cookie was blocked, for the `Blocked Cookies` block of `details network`.
+ * Why a cookie was blocked, for the `Blocked Cookies` block of `network details`.
  *
  * @param cookie - Blocked cookie
  * @returns e.g. `not sent: SameSiteLax (SameSite=Lax cookie on a cross-site request …)`, `set rejected: SyntaxError, UnknownError`
@@ -191,7 +191,7 @@ export function blockedCookieReason(cookie: BlockedCookie): string {
 }
 
 /**
- * A blocked cookie's name as `details network` shows it.
+ * A blocked cookie's name as `network details` shows it.
  *
  * @param name - Cookie name
  * @returns The name, or `(no name)` for a Set-Cookie line without `=`
@@ -230,7 +230,7 @@ export function harSanitizedComment(): string {
 }
 
 /**
- * Footer of `details network`, `network headers` and `network document`
+ * Footer of `network details`, `network headers` and `network document`
  * output in which a credential was masked (also the hint of `--body`).
  *
  * @returns The note, naming the flag that shows the values
@@ -298,7 +298,7 @@ export function earlierPagesIncludedNote(count: number): string {
 }
 
 /**
- * Why `details network --body` has nothing to print: the body was skipped or evicted.
+ * Why `network details --body` has nothing to print: the body was skipped or evicted.
  *
  * @param reason - Why it was not captured
  * @returns e.g. `not captured: evicted: total body budget (…)`
@@ -308,16 +308,16 @@ export function responseBodyNotCapturedReason(reason: string): string {
 }
 
 /**
- * Why `details network --body` has nothing to print: a WebSocket.
+ * Why `network details --body` has nothing to print: a WebSocket.
  *
  * @returns Reason text
  */
 export function webSocketHasNoBodyReason(): string {
-  return 'a WebSocket has messages, not a body (bdg details network <id> lists them)';
+  return 'a WebSocket has messages, not a body (bdg network details <id> lists them)';
 }
 
 /**
- * Why `details network --body` has nothing to print: the response is still loading.
+ * Why `network details --body` has nothing to print: the response is still loading.
  *
  * @returns Reason text
  */
@@ -326,7 +326,7 @@ export function bodyStillLoadingReason(): string {
 }
 
 /**
- * Why `details network --body` has nothing to print: a HEAD request or a
+ * Why `network details --body` has nothing to print: a HEAD request or a
  * 204, 205 or 304 response, which have no body.
  *
  * @returns Reason text
@@ -336,7 +336,7 @@ export function noBodyInResponseReason(): string {
 }
 
 /**
- * Hint (stderr) after `details network --body --body-max` printed part of the body.
+ * Hint (stderr) after `network details --body --body-max` printed part of the body.
  *
  * @param shown - Characters printed
  * @param total - Characters of the whole body
@@ -347,7 +347,7 @@ export function bodyCutHint(shown: number, total: number): string {
 }
 
 /**
- * Why `details network --body` has nothing to print: the request finished without one.
+ * Why `network details --body` has nothing to print: the request finished without one.
  *
  * @returns Reason text
  */
@@ -356,18 +356,18 @@ export function noResponseBodyReason(): string {
 }
 
 /**
- * Note after a response body `details network` cut at its cap.
+ * Note after a response body `network details` cut at its cap.
  *
  * @param remaining - Characters left out
  * @param requestId - Request id
- * @returns e.g. `… 594000 more characters (full body: bdg details network 123.4 --body)`
+ * @returns e.g. `… 594000 more characters (full body: bdg network details 123.4 --body)`
  */
 export function bodyCutNote(remaining: number, requestId: string): string {
-  return `… ${remaining} more characters (full body: ${sessionCommand(`bdg details network ${requestId} --body`)})`;
+  return `… ${remaining} more characters (full body: ${sessionCommand(`bdg network details ${requestId} --body`)})`;
 }
 
 /**
- * Hint (stderr) after `details network --body` printed a binary body.
+ * Hint (stderr) after `network details --body` printed a binary body.
  *
  * @returns Hint text
  */
@@ -377,4 +377,4 @@ export function base64BodyHint(): string {
 
 /** `network document --help` note: this command shows headers, not the body */
 export const NETWORK_DOCUMENT_BODY_NOTE =
-  'Note: Shows headers only. The HTML body is in: bdg details network <id> --body';
+  'Note: Shows headers only. The HTML body is in: bdg network details <id> --body';

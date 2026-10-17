@@ -192,21 +192,23 @@ Scripts run like the DevTools console (top-level `await`, last expression is the
 bdg network list                              # Requests of all page loads (--page current: the current one; only --preset errors|failed|slow default to current)
 bdg network list --filter "status-code:>=400 domain:api.*"   # DevTools DSL: status-code:, domain: (host or host:port), url: (part of the URL as shown; masked tokens never match), method:, mime-type:, ! negates; space = AND
 bdg network list --sort size --last 5         # 5 heaviest requests (--sort duration: slowest; --page current|all; DSL page:current; a footer says when earlier pages are included)
-bdg details network <id>                      # Headers, timing, body (cut at 20000 chars; --json bodyTruncated/bodyLength); Blocked Cookies: set rejected / not sent + reason
-bdg details network <id> --no-body            # Metadata only; --body prints just the whole raw body (pipe to jq); --body-max <chars>
+bdg network details <id>                      # Headers, timing, body (cut at 20000 chars; --json bodyTruncated/bodyLength); Blocked Cookies: set rejected / not sent + reason
+bdg network details <id> --no-body            # Metadata only; --body prints just the whole raw body (pipe to jq); --body-max <chars>
 bdg network headers <id>                      # Headers only (no id: main document; also bdg network document)
-# details network / network headers / network document mask credentials as ••••: cookie values, Authorization (Bearer ••••),
+# network details / network headers / network document mask credentials as ••••: cookie values, Authorization (Bearer ••••),
 # API key/token headers, URL tokens, password/token fields of bodies and WebSocket messages, secret form-control
 # values of HTML bodies (inline scripts kept) (JSON masked: true). network cookies shows cookie values as stored.
 # --include-sensitive shows them as captured (with a warning); names and everything else stay as captured.
 # Page URLs everywhere (status, sessions, page info/tabs, network list, peek, action results, start errors, daemon.log) drop user:pass@
 # and show token/code/password parameters as ••••; status/sessions/page info/page tabs/network list/peek --include-sensitive
 # show the parameters. Action results, dom frames and the start output are always masked (no --include-sensitive there):
-# details network <id> --include-sensitive has the full URL. Page content is shown as written (hrefs in dom query / dom get --raw,
+# network details <id> --include-sensitive has the full URL. Page content is shown as written (hrefs in dom query / dom get --raw,
 # inline scripts, HTML bodies): only the page and request URLs bdg itself reports are masked.
 bdg network list --filter "has-blocked-cookies:*"   # "Logged out after this request?" Rows end ⚠ cookie blocked; value = kind, reason, or one of the first 5 names
 bdg network cookies
 bdg console --level error                     # Errors on the current page
+bdg console --page all                        # Messages of every page load of the session (default: the current page)
+bdg console details <n>                       # One message whole ([n] from the list)
 bdg console                                   # Summary + Issues block: quirks mode, broken labels/duplicate ids, failed @import, eval blocked by CSP
 bdg console --follow                          # Streams (blocks; agents re-run bdg console instead); a page left is printed in full, then the separator
 bdg network har /tmp/session.har              # Export HAR 1.2 (credentials redacted, also secret form-control values in HTML bodies; inline-script tokens kept; --include-sensitive keeps all)

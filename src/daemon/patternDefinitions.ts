@@ -60,7 +60,7 @@ export const PATTERNS: PatternDefinition[] = [
     name: 'network_body_fetching',
     cdpMethods: ['Network.getResponseBody'],
     threshold: 3,
-    alternative: 'bdg details network <id>',
+    alternative: 'bdg network details <id>',
   },
 ];
 

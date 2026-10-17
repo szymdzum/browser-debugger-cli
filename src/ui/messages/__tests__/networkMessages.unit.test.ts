@@ -1,5 +1,5 @@
 /**
- * Blocked cookie reasons as `details network` says them.
+ * Blocked cookie reasons as `network details` says them.
  */
 
 import * as assert from 'node:assert/strict';

@@ -27,7 +27,7 @@ export const SESSION_BEHAVIORS: BehaviorTable = {
     whenEnabled:
       'Everything is captured, including binary response bodies (base64, flagged by responseBodyBase64, within --max-body-size)',
     tokenImpact:
-      'HAR exports can grow considerably on media-heavy pages (details network caps a body at 20000 characters unless --body)',
+      'HAR exports can grow considerably on media-heavy pages (network details caps a body at 20000 characters unless --body)',
   },
   'bdg:--stop-after': {
     default: 'The session runs until bdg stop, Chrome closes or the page closes',

@@ -43,7 +43,7 @@ export interface DialogInfo {
  * and before the command returned).
  */
 export interface TriggeredRequest {
-  /** Request id (what `bdg details network <id>` takes) */
+  /** Request id (what `bdg network details <id>` takes) */
   requestId: string;
   method: string;
   url: string;

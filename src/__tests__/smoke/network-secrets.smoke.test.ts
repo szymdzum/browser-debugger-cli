@@ -6,7 +6,7 @@
  * urlencoded, JSON and multipart request bodies, and in a WebSocket message,
  * and gets tokens in a JSON response body and a `Set-Cookie`; a second
  * server answers an OAuth-like redirect with a code in `Location`.
- * `details network`, `network headers` and `network document` show none of
+ * `network details`, `network headers` and `network document` show none of
  * these values by default, human or `--json` (each is `••••`, the field
  * names stay, and the output says that values were masked);
  * `--include-sensitive` shows them, with a warning.
@@ -45,7 +45,7 @@ interface ListedRequest {
   resourceType?: string;
 }
 
-/** What the tests read of `details network --json` */
+/** What the tests read of `network details --json` */
 interface DetailsJson {
   item: {
     url: string;
@@ -189,8 +189,8 @@ void describe('Secrets in network output', () => {
     await new Promise<void>((resolve) => oauth.server.close(() => resolve()));
   });
 
-  void it('details network masks the form body, auth headers, cookies and Referer', async () => {
-    const { stdout } = await bdg(['details', 'network', requestId(requests, '/net-form')]);
+  void it('network details masks the form body, auth headers, cookies and Referer', async () => {
+    const { stdout } = await bdg(['network', 'details', requestId(requests, '/net-form')]);
     assert.doesNotMatch(stdout, ANY_SECRET);
     assert.ok(stdout.includes(`user=tom&password=${MASK}`), stdout);
     assert.match(stdout, new RegExp(`authorization: Bearer ${MASK}$`, 'im'));
@@ -204,10 +204,10 @@ void describe('Secrets in network output', () => {
     assert.match(stdout, /--include-sensitive/, 'the output says values were masked');
   });
 
-  void it('details network --json masks the same values and says so', async () => {
+  void it('network details --json masks the same values and says so', async () => {
     const { data, stdout } = await bdgJson<DetailsJson>([
-      'details',
       'network',
+      'details',
       requestId(requests, '/net-form'),
     ]);
     assert.doesNotMatch(stdout, ANY_SECRET);
@@ -219,8 +219,8 @@ void describe('Secrets in network output', () => {
 
   void it('masks JSON request fields at any depth and keeps the others', async () => {
     const { data, stdout } = await bdgJson<DetailsJson>([
-      'details',
       'network',
+      'details',
       requestId(requests, '/net-json'),
     ]);
     assert.doesNotMatch(stdout, ANY_SECRET);
@@ -232,8 +232,8 @@ void describe('Secrets in network output', () => {
 
   void it('--body says masked only when the body was', async () => {
     const result = await runCommand(
-      'details',
-      ['network', requestId(requests, '/net-form'), '--body', '--json'],
+      'network',
+      ['details', requestId(requests, '/net-form'), '--body', '--json'],
       { timeout: 60000 }
     );
     assert.equal(result.exitCode, 0, result.stderr);
@@ -243,7 +243,7 @@ void describe('Secrets in network output', () => {
   });
 
   void it('masks a multipart password part and keeps the others', async () => {
-    const { stdout } = await bdg(['details', 'network', requestId(requests, '/net-upload')]);
+    const { stdout } = await bdg(['network', 'details', requestId(requests, '/net-upload')]);
     assert.doesNotMatch(stdout, ANY_SECRET);
     assert.ok(stdout.includes('keep-me'), stdout);
     assert.ok(stdout.includes(MASK), stdout);
@@ -251,24 +251,24 @@ void describe('Secrets in network output', () => {
 
   void it('masks tokens of a JSON response body and Set-Cookie values', async () => {
     const id = requestId(requests, '/har-login');
-    const { stdout } = await bdg(['details', 'network', id]);
+    const { stdout } = await bdg(['network', 'details', id]);
     assert.doesNotMatch(stdout, ANY_SECRET);
     assert.ok(stdout.includes(`"access_token":"${MASK}","refresh_token":"${MASK}"`), stdout);
     assert.ok(stdout.includes('"expires_in":3600'), stdout);
     assert.match(stdout, new RegExp(`set-cookie: har_session=${MASK}; Path=/; HttpOnly$`, 'im'));
 
-    const body = await bdg(['details', 'network', id, '--body']);
+    const body = await bdg(['network', 'details', id, '--body']);
     assert.doesNotMatch(body.stdout, ANY_SECRET);
     assert.ok(body.stdout.includes(`"access_token":"${MASK}"`), body.stdout);
   });
 
   void it('masks WebSocket message tokens', async () => {
     const id = requests.find((r) => r.resourceType === 'WebSocket')?.requestId ?? '';
-    const human = await bdg(['details', 'network', id]);
+    const human = await bdg(['network', 'details', id]);
     assert.doesNotMatch(human.stdout, ANY_SECRET);
     assert.ok(human.stdout.includes(`"token":"${MASK}","room":"lobby"`), human.stdout);
     assert.ok(human.stdout.includes(`Bearer ${MASK}`), human.stdout);
-    const { data, stdout } = await bdgJson<DetailsJson>(['details', 'network', id]);
+    const { data, stdout } = await bdgJson<DetailsJson>(['network', 'details', id]);
     assert.doesNotMatch(stdout, ANY_SECRET);
     assert.equal(data.masked, true);
     assert.ok(data.item.webSocket?.frames.every((f) => f.payloadData.includes(MASK)));
@@ -294,7 +294,7 @@ void describe('Secrets in network output', () => {
 
   void it('--include-sensitive shows the values with a warning', async () => {
     const id = requestId(requests, '/net-form');
-    const human = await bdg(['details', 'network', id, '--include-sensitive']);
+    const human = await bdg(['network', 'details', id, '--include-sensitive']);
     assert.ok(human.stdout.includes(`password=FORM${NETWORK_SECRET_MARKER}`), human.stdout);
     assert.ok(human.stdout.includes(`Bearer AUTH${NETWORK_SECRET_MARKER}`), human.stdout);
     assert.match(human.stderr, /Warning: .*credentials/i);
@@ -311,7 +311,7 @@ void describe('Secrets in network output', () => {
       (r) => r.url.endsWith('/authorize') && r.status === 302
     );
     assert.ok(hop, 'redirect hop captured');
-    const details = await bdg(['details', 'network', hop.requestId]);
+    const details = await bdg(['network', 'details', hop.requestId]);
     assert.doesNotMatch(details.stdout, ANY_SECRET);
     assert.match(
       details.stdout,

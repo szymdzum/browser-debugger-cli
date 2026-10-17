@@ -125,7 +125,7 @@ export const TASK_MAPPINGS: Record<string, TaskMapping> = {
   },
 
   console_history: {
-    commands: ['console --history'],
+    commands: ['console --page all'],
     description: 'Show console messages from all page loads',
     cdpAlternative: 'Runtime.consoleAPICalled events',
   },
@@ -155,7 +155,7 @@ export const TASK_MAPPINGS: Record<string, TaskMapping> = {
   },
 
   get_full_details: {
-    commands: ['details network', 'details console'],
+    commands: ['network details', 'console details'],
     description: 'Get complete request/response or console message details',
     cdpAlternative: 'Session state query + response body fetch',
   },
@@ -197,7 +197,7 @@ export const TASK_MAPPINGS: Record<string, TaskMapping> = {
   },
 
   get_network_details: {
-    commands: ['details network <id>'],
+    commands: ['network details <id>'],
     description: 'Get full request/response details including body',
     cdpAlternative: 'Network.getResponseBody',
   },

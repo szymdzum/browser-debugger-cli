@@ -1,5 +1,5 @@
 /**
- * Response bodies as `details network` shows them: cut at a cap by default
+ * Response bodies as `network details` shows them: cut at a cap by default
  * (an HTML document can be hundreds of KB), dropped with `--no-body`, and
  * why there is none to print for `--body`.
  */
@@ -14,7 +14,7 @@ import {
   webSocketHasNoBodyReason,
 } from '@/ui/messages/networkMessages.js';
 
-/** Characters of a response body `details network` shows by default, in human and JSON output */
+/** Characters of a response body `network details` shows by default, in human and JSON output */
 export const DEFAULT_BODY_MAX = 20000;
 
 /** Statuses whose responses have no body (No Content, Reset Content, Not Modified) */

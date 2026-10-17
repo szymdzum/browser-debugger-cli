@@ -44,6 +44,8 @@ interface OptionRename extends RenameEntryBase {
   old: string;
   /** New long option of the same command (`--force`) */
   new?: string;
+  /** Value the new option gets in place of the old option's own (`all` for `--history` → `--page all`) */
+  value?: string;
   /** Whether the option takes a value (`--old <value>`, `--old=value`) */
   takesValue?: boolean;
 }
@@ -57,6 +59,13 @@ export type RenameEntry = (CommandRename | OptionRename) & Replacement;
 /** Every old spelling bdg still recognizes */
 export const RENAMES: readonly RenameEntry[] = [
   { kind: 'command', command: '', old: 'tail', new: 'peek --follow', stage: 'deprecated' },
+  {
+    kind: 'command',
+    command: '',
+    old: 'details',
+    stage: 'deprecated',
+    hint: 'use "bdg network details <id>" or "bdg console details <n>"',
+  },
   { kind: 'command', command: 'dom', old: 'eval', new: 'eval', stage: 'deprecated' },
   { kind: 'command', command: 'dom', old: 'pressKey', new: 'dom press-key', stage: 'deprecated' },
   {
@@ -93,6 +102,14 @@ export const RENAMES: readonly RenameEntry[] = [
   { kind: 'option', command: '', old: '--all', new: '--capture-all', stage: 'deprecated' },
   {
     kind: 'option',
+    command: 'console',
+    old: '--history',
+    new: '--page',
+    value: 'all',
+    stage: 'deprecated',
+  },
+  {
+    kind: 'option',
     command: 'stop',
     old: '--kill-chrome',
     stage: 'deprecated',
@@ -126,6 +143,9 @@ export const RENAMES: readonly RenameEntry[] = [
 export function spelling(entry: RenameEntry, which: 'old' | 'new'): string {
   const name = entry[which] ?? '';
   if (entry.kind === 'command' && which === 'new') return `bdg ${name}`;
+  if (entry.kind === 'option' && which === 'new' && entry.value !== undefined) {
+    return `bdg ${entry.command} ${name} ${entry.value}`;
+  }
   const command = entry.kind === 'option' && entry.command === '' ? '<url>' : entry.command;
   return ['bdg', command, name].filter(Boolean).join(' ');
 }
