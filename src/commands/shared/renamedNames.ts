@@ -73,7 +73,11 @@ function registerOldOption(command: Command, entry: RenameEntry & { kind: 'optio
 
 /**
  * Hide a registered command from help. Commander has no public call for it
- * (`hidden` is an option of `.command()` only), so this sets its flag.
+ * (`hidden` is an option of `.command()` only), so this sets its private
+ * `_hidden` flag (commander ^15). A commander upgrade that breaks it fails
+ * the contract test "help lists only the new names"
+ * (`canonicalNames.contract.test.ts`) and the unit test "a deprecated old
+ * command is registered and hidden from help" (`renamedNames.unit.test.ts`).
  *
  * @param command - Registered command
  */
