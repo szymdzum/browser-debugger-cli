@@ -90,7 +90,6 @@ If Chrome refuses target discovery, `bdg status` says `Tabs: ⚠ Tabs are not tr
 ### Stop the session
 ```bash
 bdg stop                        # Stop session (closes Chrome launched by bdg)
-bdg stop --kill-chrome          # Kept for compatibility (no additional effect)
 ```
 `bdg stop` returns once the session's daemon has exited (waiting up to 3 s), so a `bdg sessions` or a new start right after it no longer sees the session. When the daemon is still running after the wait, a warning says so (`The daemon (PID 4242) was still shutting down after 3s; check with bdg sessions, or end it with bdg cleanup --force`; JSON `data.warnings`), and the exit code stays 0.
 
@@ -178,7 +177,7 @@ bdg peek --type XHR,Fetch --follow
 bdg peek --type Script --last 100
 ```
 
-**Timestamp:** `data.timestamp` in `peek --json` (and in every `peek --follow --json` line, so in `tail --json` too, its deprecated alias) is when the snapshot was taken, an ISO time, the same instant as the human `Updated:` line. It used to be the session start (changed meaning of an existing field); the session's age is `data.duration` (ms), so the start is exactly `timestamp` minus `duration`.
+**Timestamp:** `data.timestamp` in `peek --json` (and in every `peek --follow --json` line) is when the snapshot was taken, an ISO time, the same instant as the human `Updated:` line. It used to be the session start (changed meaning of an existing field); the session's age is `data.duration` (ms), so the start is exactly `timestamp` minus `duration`.
 
 **Pages:** `peek` shows the session's latest requests and console messages across page loads (unlike `bdg console`, which shows the current page). Those of an earlier page load, or of another tab before a `bdg page switch`, are marked: `ERROR (previous page) Failed to load resource: …` and `[12] [CSS] 404 GET …/old.css (previous page)`; in JSON they have `previousPage: true`, and `data.currentNavigationId` is the current page's `navigationId`. While Fetch interception is on (`bdg cdp Fetch.enable` without `Fetch.disable` since), pending requests get `⚠ Pending requests possibly paused by Fetch interception: bdg cdp --events Fetch.requestPaused` (JSON `fetchInterception: true`).
 
@@ -194,7 +193,7 @@ bdg peek --follow --interval 2000     # Custom update interval (100-60000 ms)
 bdg peek --follow --verbose           # Verbose output (full URLs, resource and MIME types)
 ```
 
-`bdg tail` still works with the same options but is deprecated: it prints a note and runs `peek --follow`. `--interval` without `--follow` exits 81.
+`--interval` without `--follow` exits 81. The old `bdg tail` is deprecated (see [Renamed and deprecated names](#renamed-and-deprecated-names)).
 
 Follow modes (`peek --follow`, `console --follow`, `network list --follow`, `dom screenshot --follow`):
 - Ctrl-C exits 130 and SIGTERM 143, as shells expect, after the mode's stop line on stderr (`Stopped following preview`, `Captured 4 frames`). No `Interrupted` envelope is printed, with `--json` either: each NDJSON line is already a whole envelope.
@@ -1762,8 +1761,6 @@ bdg cdp Emulation.setCPUThrottlingRate --params '{"rate":4}'   # rate 1 resets
 ```bash
 bdg cleanup                     # Remove files left by a crashed session, kill its orphaned Chrome
 bdg cleanup --force             # Kill a stuck session (daemon + its Chrome), then clean up
-bdg cleanup --aggressive        # Alias for --force
-bdg cleanup --remove-output     # Also remove legacy session.json
 bdg cleanup --json              # JSON output
 ```
 
@@ -1902,6 +1899,33 @@ When the session ends, it prints one error envelope and stops with exit 83; othe
 page, a timeout) print an error envelope per refresh and are retried.
 
 Put `--json` after the command (`bdg peek --json`); `bdg --json peek` also works.
+
+### Warnings
+
+`warning` (one string) says how the command ran despite something unusual, for example `--include-sensitive` output that holds credentials. `warnings` (an array of strings) says the command line used an old spelling that still works until 1.0, one text per spelling:
+
+```json
+{
+  "version": "x.y.z",
+  "success": true,
+  "data": { },
+  "warnings": ["\"bdg cleanup --aggressive\" is deprecated and will be removed in 1.0: use \"bdg cleanup --force\""]
+}
+```
+
+Both appear only when they have something to say (never `"warnings": []`), on success and error envelopes alike; in follow mode every line carries `warnings`. Without `--json` each one is a `Warning: …` line on stderr, printed once before the command's output. An agent that sees `warnings` should switch to the new spelling.
+
+### Renamed and deprecated names
+
+Old spellings are hidden from `--help`, `--help --json` and "Did you mean" suggestions. A **deprecated** one works as before, with the warning above; a **removed** one exits 81 (`"bdg <url> --compact" was removed`, or `"<old>" was renamed to "<new>"`) with a suggestion. Deprecated names are removed in 1.0. An argument value that happens to equal an old name (`bdg dom eval tail`, anything after `--`) is never touched.
+
+| Old spelling | Stage | Use instead |
+|---|---|---|
+| `bdg tail` | deprecated | `bdg peek --follow` (same options) |
+| `bdg cleanup --aggressive` | deprecated | `bdg cleanup --force` |
+| `bdg stop --kill-chrome` | deprecated | `bdg stop` (it already closes the Chrome bdg launched; `--kill-chrome` still exits 81 on an attached session) |
+| `bdg <url> --compact` | removed | Drop it (it had no effect) |
+| `bdg cleanup --remove-output` | removed | Drop it (bdg no longer writes `session.json`) |
 
 Bare `bdg --json` (or `-j`, with no command and no URL) is an error envelope: `success: false`, exit 81, suggesting `bdg <url>` and `bdg --help --json`. An empty `$URL` in `bdg $URL --json` therefore fails loudly instead of printing the help document; `bdg --help --json` is the machine-readable help.
 
