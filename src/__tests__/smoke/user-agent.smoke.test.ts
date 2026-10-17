@@ -49,7 +49,7 @@ async function bdgJson(args: string[]): Promise<Record<string, unknown>> {
  * @returns Its result
  */
 async function evaluate(expression: string): Promise<unknown> {
-  return (await bdgJson(['dom', 'eval', expression]))['result'];
+  return (await bdgJson(['eval', expression]))['result'];
 }
 
 void describe('headless user agent', () => {

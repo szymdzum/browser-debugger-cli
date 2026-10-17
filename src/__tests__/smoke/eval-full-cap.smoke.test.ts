@@ -1,5 +1,5 @@
 /**
- * `dom eval --full` result cap smoke test (#693).
+ * `eval --full` result cap smoke test (#693).
  *
  * A result over 50 MiB is refused with exit 81 and a suggestion, in human and
  * `--json` output, before the CLI holds it (a 200 MB string used to end in a
@@ -28,7 +28,7 @@ interface ErrorEnvelope {
   suggestion?: string;
 }
 
-void describe('dom eval --full cap', () => {
+void describe('eval --full cap', () => {
   let fixture: FixtureServer;
 
   before(async () => {
@@ -48,7 +48,7 @@ void describe('dom eval --full cap', () => {
   });
 
   void it('refuses a string one character over the cap with exit 81 and a suggestion', async () => {
-    const result = await runCommand('dom', ['eval', `'x'.repeat(${CAP} + 1)`, '--full', '--json'], {
+    const result = await runCommand('eval', [`'x'.repeat(${CAP} + 1)`, '--full', '--json'], {
       timeout: 120000,
     });
     assert.equal(result.exitCode, 81, result.stderr);
@@ -61,8 +61,8 @@ void describe('dom eval --full cap', () => {
 
   void it('refuses an object over the cap in human output too', async () => {
     const result = await runCommand(
-      'dom',
-      ['eval', `Array.from({ length: 60 }, () => 'y'.repeat(1024 * 1024))`, '--full'],
+      'eval',
+      [`Array.from({ length: 60 }, () => 'y'.repeat(1024 * 1024))`, '--full'],
       { timeout: 120000 }
     );
     assert.equal(result.exitCode, 81, result.stdout.slice(0, 200));
@@ -72,7 +72,7 @@ void describe('dom eval --full cap', () => {
   });
 
   void it('returns a result under the cap whole', async () => {
-    const result = await runCommand('dom', ['eval', `'z'.repeat(1_000_000)`, '--full'], {
+    const result = await runCommand('eval', [`'z'.repeat(1_000_000)`, '--full'], {
       timeout: 60000,
     });
     assert.equal(result.exitCode, 0, result.stderr);
@@ -81,12 +81,12 @@ void describe('dom eval --full cap', () => {
 
   void it('refuses 200 MB within seconds, and the session stays usable', async () => {
     const startedAt = Date.now();
-    const result = await runCommand('dom', ['eval', `'x'.repeat(200 * 1024 * 1024)`, '--full'], {
+    const result = await runCommand('eval', [`'x'.repeat(200 * 1024 * 1024)`, '--full'], {
       timeout: 60000,
     });
     assert.equal(result.exitCode, 81, result.stderr.slice(0, 300));
     assert.ok(Date.now() - startedAt < 15000, `took ${Date.now() - startedAt} ms`);
-    const after = await runCommand('dom', ['eval', '1 + 1'], { timeout: 30000 });
+    const after = await runCommand('eval', ['1 + 1'], { timeout: 30000 });
     assert.equal(after.exitCode, 0, after.stderr);
   });
 
@@ -97,7 +97,7 @@ void describe('dom eval --full cap', () => {
       floats: `new Array(5e6).fill(0.1234567890123456)`,
     };
     for (const [name, expression] of Object.entries(cases)) {
-      const result = await runCommand('dom', ['eval', expression, '--full'], { timeout: 120000 });
+      const result = await runCommand('eval', [expression, '--full'], { timeout: 120000 });
       assert.equal(result.exitCode, 81, `${name}: ${result.stdout.length} chars out`);
       assert.match(result.stderr, /50 MiB/, name);
     }
@@ -105,8 +105,8 @@ void describe('dom eval --full cap', () => {
 
   void it('returns an object under the cap exactly as formatted', async () => {
     const result = await runCommand(
-      'dom',
-      ['eval', `({ a: [1, 2.5, 'é'], b: { c: null } })`, '--full'],
+      'eval',
+      [`({ a: [1, 2.5, 'é'], b: { c: null } })`, '--full'],
       { timeout: 60000 }
     );
     assert.equal(result.exitCode, 0, result.stderr);
@@ -116,7 +116,7 @@ void describe('dom eval --full cap', () => {
   });
 
   void it('without --full the same 200 MB eval still prints the preview', async () => {
-    const result = await runCommand('dom', ['eval', `'x'.repeat(200 * 1024 * 1024)`], {
+    const result = await runCommand('eval', [`'x'.repeat(200 * 1024 * 1024)`], {
       timeout: 120000,
     });
     assert.equal(result.exitCode, 0, result.stderr);
@@ -126,8 +126,8 @@ void describe('dom eval --full cap', () => {
 
   void it('refuses an object over the cap on a page that replaced built-ins', async () => {
     const result = await runCommand(
-      'dom',
-      ['eval', `Object.keys = () => ['a']; ({ a: 'z'.repeat(60 * 1024 * 1024) })`, '--full'],
+      'eval',
+      [`Object.keys = () => ['a']; ({ a: 'z'.repeat(60 * 1024 * 1024) })`, '--full'],
       { timeout: 120000 }
     );
     assert.equal(result.exitCode, 81, `${result.stdout.length} chars out`);

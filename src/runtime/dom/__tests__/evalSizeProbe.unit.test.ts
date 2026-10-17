@@ -1,5 +1,5 @@
 /**
- * `dom eval` results too large to send are refused within seconds, not after
+ * `eval` results too large to send are refused within seconds, not after
  * the 20-30 s timeout (#705).
  */
 

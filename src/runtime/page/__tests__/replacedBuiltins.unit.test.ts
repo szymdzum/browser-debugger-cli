@@ -1,6 +1,6 @@
 /**
  * Which built-ins a page replaced: checks that run at the same time (an
- * interaction and a `dom eval`, or two evals) do not free each other's page
+ * interaction and a `eval`, or two evals) do not free each other's page
  * objects, which would report nothing replaced (#584).
  */
 

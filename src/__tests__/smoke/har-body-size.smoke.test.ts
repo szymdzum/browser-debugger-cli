@@ -55,7 +55,7 @@ async function harEntry(route: string): Promise<HarEntry> {
 async function waitForDone(): Promise<void> {
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline) {
-    const title = await runCommand('dom', ['eval', 'document.title', '--json'], {
+    const title = await runCommand('eval', ['document.title', '--json'], {
       timeout: 30000,
     });
     if (title.stdout.includes('"done"')) return;

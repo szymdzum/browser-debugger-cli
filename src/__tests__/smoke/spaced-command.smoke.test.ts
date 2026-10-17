@@ -39,7 +39,7 @@ void describe('quoted command as the start URL (#728)', () => {
       ['pagee info', 'bdg page info'],
       ['Page Info', 'bdg page info'],
       ['Page Nosuch', 'bdg page Nosuch'],
-      ['dom eval document.title', 'bdg dom eval document.title'],
+      ['eval document.title', 'bdg eval document.title'],
       ['page $(rm -rf x)', 'bdg page --help'],
       ['peek ;', 'bdg peek --help'],
       ["page 'x'", 'bdg page --help'],

@@ -60,7 +60,7 @@ async function bdg(args: string[], expectedExit = 0): Promise<string> {
  * @returns Evaluation result
  */
 async function evaluate(expression: string): Promise<unknown> {
-  const output = await bdg(['dom', 'eval', expression, '--json']);
+  const output = await bdg(['eval', expression, '--json']);
   return (JSON.parse(output) as { data: { result: unknown } }).data.result;
 }
 
@@ -159,7 +159,7 @@ void describe('JavaScript dialogs', () => {
     assert.match(await bdg(['dom', 'click', '#conf']), /Dialog: confirm\(\) dismissed: "Sure\?"/);
     assert.equal(await evaluate('window.confirmed'), false, 'the action choice was reset');
 
-    await bdg(['dom', 'pressKey', '#key', 'a', '--dialog', 'accept']);
+    await bdg(['dom', 'press-key', '#key', 'a', '--dialog', 'accept']);
     assert.equal(await evaluate('window.keyConfirmed'), true);
   });
 

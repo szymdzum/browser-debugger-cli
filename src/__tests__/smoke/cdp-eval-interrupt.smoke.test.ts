@@ -1,6 +1,6 @@
 /**
  * An interrupted raw `bdg cdp Runtime.evaluate` / `Runtime.callFunctionOn`
- * stops its script on the page, like `bdg dom eval` (#726, #713).
+ * stops its script on the page, like `bdg eval` (#726, #713).
  *
  * When the CLI that sent the call exits (Ctrl-C) while the script still
  * runs, the daemon terminates the script instead of letting it run to its
@@ -11,7 +11,7 @@
  * Signals are sent once the command is known to be where the test needs
  * it: a looping script has told the fixture server it started (a
  * synchronous `/beacon?…` request before the loop), and a queued call has
- * been sent to Chrome (the daemon's `dom eval sent` debug line in
+ * been sent to Chrome (the daemon's `eval sent` debug line in
  * `daemon.log`, the session runs with `BDG_DEBUG=1`).
  */
 
@@ -42,7 +42,7 @@ const COMMAND_TIMEOUT_MS = 60_000;
 const ANSWER_WITHIN_MS = 5_000;
 
 /** The daemon's debug line for a script call sent to Chrome */
-const SENT_LINE = 'dom eval sent';
+const SENT_LINE = 'eval sent';
 
 /**
  * The body of a script that tells the fixture server it started, then busy-waits.
@@ -146,10 +146,10 @@ void describe('Interrupted bdg cdp script call', () => {
     assert.ok(fixture.beacons.includes(tag), `the script never started (${tag})`);
   }
 
-  /** Check that `dom eval 1+1` answers well before the loop would have ended. */
+  /** Check that `eval 1+1` answers well before the loop would have ended. */
   async function assertAnswersAtOnce(): Promise<void> {
     const startedAt = Date.now();
-    const next = await runCommand('dom', ['eval', '1+1'], { timeout: COMMAND_TIMEOUT_MS });
+    const next = await runCommand('eval', ['1+1'], { timeout: COMMAND_TIMEOUT_MS });
     const ms = Date.now() - startedAt;
     assert.equal(next.exitCode, 0, shown(next));
     assert.equal(next.stdout.trim(), '2', shown(next));
@@ -251,7 +251,7 @@ void describe('Interrupted bdg cdp script call', () => {
     assert.match(survivor.stdout, /"value":"finished"/, shown(survivor));
   });
 
-  void it('stops an interrupted dom eval behind a replMode call that awaits forever', async () => {
+  void it('stops an interrupted eval behind a replMode call that awaits forever', async () => {
     const sentBefore = callsSent();
     const stopAwaiting = new AbortController();
     const awaiting = cdpCall(
@@ -261,7 +261,7 @@ void describe('Interrupted bdg cdp script call', () => {
     );
     await untilCallsSent(sentBefore + 1);
     const stopLoop = new AbortController();
-    const loop = runCommand('dom', ['eval', `(() => { ${loopBody('repl-loop', LOOP_MS)} })()`], {
+    const loop = runCommand('eval', [`(() => { ${loopBody('repl-loop', LOOP_MS)} })()`], {
       timeout: COMMAND_TIMEOUT_MS,
       interrupt: stopLoop.signal,
     });

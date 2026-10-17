@@ -83,7 +83,6 @@ void describe('dom audit and css search', () => {
   void it('says what it cannot see: paint behind text, masks, canvas, and the scroll a hover made', async () => {
     await bdg(['page', 'navigate', `${fixture.url}inspect-paint`]);
     await bdg([
-      'dom',
       'eval',
       "document.querySelectorAll('.hero img').forEach((img) => (img.style.pointerEvents = 'none')); 1",
     ]);

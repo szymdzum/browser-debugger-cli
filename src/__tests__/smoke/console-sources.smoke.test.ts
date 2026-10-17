@@ -114,7 +114,7 @@ void describe('Console sources', () => {
   });
 
   void it('follows same-document navigations in status', async () => {
-    await runCommand('dom', ['eval', 'history.pushState({}, "", "/pushed"); 1'], {
+    await runCommand('eval', ['history.pushState({}, "", "/pushed"); 1'], {
       timeout: 30000,
     });
 

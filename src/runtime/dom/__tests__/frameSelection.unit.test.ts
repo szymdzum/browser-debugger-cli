@@ -1,5 +1,5 @@
 /**
- * `dom eval --frame` picks one iframe by index, name/id attribute or a part
+ * `eval --frame` picks one iframe by index, name/id attribute or a part
  * of the name, id or URL,
  * and fails with the candidates (81) or the available frames (83) otherwise.
  */

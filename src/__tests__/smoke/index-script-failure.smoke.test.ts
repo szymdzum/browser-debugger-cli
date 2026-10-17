@@ -61,7 +61,7 @@ void describe('Action script failure on an index', () => {
     fixture = await startFixtureServer();
     const port = await getFreePort();
     await bdg([`${fixture.url}index-script-failure`, '--port', String(port), '--headless']);
-    await bdg(['dom', 'eval', "Math.round = function () { throw new Error('boom'); }; 1"]);
+    await bdg(['eval', "Math.round = function () { throw new Error('boom'); }; 1"]);
   });
 
   after(async () => {
@@ -74,10 +74,10 @@ void describe('Action script failure on an index', () => {
     const text = await bdg(['dom', 'click', '0'], 91);
     assert.match(text, /The page's own code threw during the click: Error: boom/);
     assert.match(text, /The page's own code threw during the click/);
-    assert.match(text, /bdg dom listeners 0, or inspect its methods with bdg dom eval/);
+    assert.match(text, /bdg dom listeners 0, or inspect its methods with bdg eval/);
     assert.doesNotMatch(text, /a11y /);
     const json = await failedClick('0');
-    assert.match(json.suggestion, /bdg dom listeners 0, or inspect its methods with bdg dom eval/);
+    assert.match(json.suggestion, /bdg dom listeners 0, or inspect its methods with bdg eval/);
     assert.doesNotMatch(json.suggestion, /a11y /);
   });
 
@@ -85,16 +85,16 @@ void describe('Action script failure on an index', () => {
     await bdg(['dom', 'query', 'button']);
     assert.match(
       (await failedClick('0')).suggestion,
-      /bdg dom listeners 0, or inspect its methods with bdg dom eval/
+      /bdg dom listeners 0, or inspect its methods with bdg eval/
     );
   });
 
   void it('still names the quoted selector for a selector target', async () => {
     const text = await bdg(['dom', 'click', '#go'], 91);
-    assert.match(text, /bdg dom listeners "#go", or inspect its methods with bdg dom eval/);
+    assert.match(text, /bdg dom listeners "#go", or inspect its methods with bdg eval/);
     assert.match(
       (await failedClick('#go')).suggestion,
-      /bdg dom listeners "#go", or inspect its methods with bdg dom eval/
+      /bdg dom listeners "#go", or inspect its methods with bdg eval/
     );
   });
 });

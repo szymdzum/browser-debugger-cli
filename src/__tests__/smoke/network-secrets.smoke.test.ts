@@ -135,7 +135,7 @@ function requestId(requests: ListedRequest[], pathname: string): string {
 async function waitForPage(): Promise<void> {
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline) {
-    const title = await runCommand('dom', ['eval', 'document.title', '--json'], { timeout: 30000 });
+    const title = await runCommand('eval', ['document.title', '--json'], { timeout: 30000 });
     if (title.stdout.includes('"done"')) return;
     await new Promise((resolve) => setTimeout(resolve, 250));
   }

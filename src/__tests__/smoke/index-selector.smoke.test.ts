@@ -68,7 +68,7 @@ async function selectorAfterClick(name: string): Promise<string | undefined> {
  * @returns Comma-separated notes
  */
 async function clicksOnPage(): Promise<string> {
-  return String((await dataOf(['dom', 'eval', 'window.clicks.join()']))['result']);
+  return String((await dataOf(['eval', 'window.clicks.join()']))['result']);
 }
 
 void describe('Selector in the result of an action on an index', () => {
@@ -87,7 +87,7 @@ void describe('Selector in the result of an action on an index', () => {
   });
 
   beforeEach(async () => {
-    await bdg(['dom', 'eval', 'window.clicks = []; 1']);
+    await bdg(['eval', 'window.clicks = []; 1']);
   });
 
   void it('is #id for an element with an id, and finds it again', async () => {

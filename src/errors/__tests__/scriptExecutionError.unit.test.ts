@@ -1,5 +1,5 @@
 /**
- * Suggestions for `bdg dom eval` scripts that threw.
+ * Suggestions for `bdg eval` scripts that threw.
  */
 
 import assert from 'node:assert/strict';

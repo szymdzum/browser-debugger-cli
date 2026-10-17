@@ -184,7 +184,7 @@ const SCRIPTS: Script[] = [
     run: (cdp) => scrollPage(cdp, SELECTOR, { index: 1 }),
   },
   {
-    name: 'dom pressKey (FOCUS_ELEMENT_SCRIPT)',
+    name: 'dom press-key (FOCUS_ELEMENT_SCRIPT)',
     probes: [SELECTOR],
     run: (cdp) => pressKeyElement(cdp, SELECTOR, 'Enter'),
   },

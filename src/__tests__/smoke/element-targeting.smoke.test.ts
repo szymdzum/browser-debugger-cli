@@ -42,7 +42,7 @@ async function bdg(args: string[], expectedExit = 0): Promise<string> {
  * @returns Evaluation result
  */
 async function evaluate(expression: string): Promise<unknown> {
-  const output = await bdg(['dom', 'eval', expression, '--json']);
+  const output = await bdg(['eval', expression, '--json']);
   return (JSON.parse(output) as { data: { result: unknown } }).data.result;
 }
 
@@ -55,8 +55,8 @@ async function waitForNewDocument(): Promise<void> {
   const deadline = Date.now() + 20000;
   for (;;) {
     const result = await runCommand(
-      'dom',
-      ['eval', "typeof window.beforeReload === 'undefined'", '--json'],
+      'eval',
+      ["typeof window.beforeReload === 'undefined'", '--json'],
       { timeout: 60000 }
     );
     const reloaded =
@@ -608,7 +608,7 @@ void describe('Element layout', () => {
     await bdg(['dom', 'layout', 'button', '--index', '9'], 81);
     await bdg(['dom', 'layout', '#missing'], 83);
     await bdg(['dom', 'query', '#save']);
-    await bdg(['dom', 'eval', "document.getElementById('save').remove(); 1"]);
+    await bdg(['eval', "document.getElementById('save').remove(); 1"]);
     await bdg(['dom', 'layout', '0'], 87);
   });
 
@@ -617,7 +617,7 @@ void describe('Element layout', () => {
     for (const args of [
       ['dom', 'click', '#top', '--index', '3'],
       ['dom', 'scroll', '#top', '--index', '3'],
-      ['dom', 'pressKey', '#top', 'Enter', '--index', '3'],
+      ['dom', 'press-key', '#top', 'Enter', '--index', '3'],
     ]) {
       const output = await bdg(args, 81);
       assert.match(output, only, args.join(' '));

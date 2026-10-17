@@ -357,7 +357,7 @@ void describe('JSON contract', () => {
     await expectEnvelope(['console', '--list', '--json'], 0);
     await expectEnvelope(['dom', 'query', 'button', '--json'], 0);
     await expectEnvelope(['dom', 'a11y', 'tree', '--json'], 0);
-    await expectEnvelope(['dom', 'eval', '1+1', '--json'], 0);
+    await expectEnvelope(['eval', '1+1', '--json'], 0);
     const cdp = await expectEnvelope(['cdp', 'Browser.getVersion', '--json'], 0);
     assert.equal(typeof cdp.data?.['result'], 'object', 'cdp accepts --json');
 
@@ -421,7 +421,7 @@ void describe('JSON contract', () => {
       viewport: { width: 900, height: 700 },
       colorScheme: 'dark',
     });
-    const width = await expectEnvelope(['dom', 'eval', 'innerWidth', '--json'], 0);
+    const width = await expectEnvelope(['eval', 'innerWidth', '--json'], 0);
     assert.equal(width.data?.['result'], 900);
     const phone = await expectEnvelope(['page', 'emulate', '--mobile', '--json'], 0);
     assert.deepEqual(phone.data?.['emulated'], {
@@ -430,7 +430,6 @@ void describe('JSON contract', () => {
     });
     const device = await expectEnvelope(
       [
-        'dom',
         'eval',
         '[innerWidth, navigator.maxTouchPoints, /Mobile/.test(navigator.userAgent)]',
         '--json',
@@ -441,7 +440,7 @@ void describe('JSON contract', () => {
     const reset = await expectEnvelope(['page', 'emulate', '--reset', '--json'], 0);
     assert.deepEqual(reset.data?.['emulated'], {});
     const desktop = await expectEnvelope(
-      ['dom', 'eval', '[navigator.maxTouchPoints, /Mobile/.test(navigator.userAgent)]', '--json'],
+      ['eval', '[navigator.maxTouchPoints, /Mobile/.test(navigator.userAgent)]', '--json'],
       0
     );
     assert.deepEqual(desktop.data?.['result'], [0, false]);
@@ -451,7 +450,7 @@ void describe('JSON contract', () => {
   });
 
   void it('returns large results intact through a pipe', async () => {
-    const result = await runCommand('dom', ['eval', "'x'.repeat(200000)", '--json', '--full'], {
+    const result = await runCommand('eval', ["'x'.repeat(200000)", '--json', '--full'], {
       readDelay: 500,
       timeout: 60000,
     });
@@ -465,7 +464,7 @@ void describe('JSON contract', () => {
     for (const args of [
       ['fill', 'a[[', 'x'],
       ['click', 'a[['],
-      ['pressKey', 'a[[', 'Enter'],
+      ['press-key', 'a[[', 'Enter'],
       ['scroll', 'a[['],
       ['submit', 'a[['],
     ]) {
@@ -485,7 +484,7 @@ void describe('JSON contract', () => {
   void it('passes option-like values after -- untouched', async () => {
     await expectEnvelope(['dom', 'fill', '#second-input', '--json', '--', '--debug'], 0);
     const value = await expectEnvelope(
-      ['dom', 'eval', "document.getElementById('second-input').value", '--json'],
+      ['eval', "document.getElementById('second-input').value", '--json'],
       0
     );
     assert.equal(value.data?.['result'], '--debug');

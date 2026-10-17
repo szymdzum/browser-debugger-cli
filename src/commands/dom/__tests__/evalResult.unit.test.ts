@@ -1,5 +1,5 @@
 /**
- * How `dom eval --json` bounds its result (#478): long strings, long arrays
+ * How `eval --json` bounds its result (#478): long strings, long arrays
  * and structured values whose JSON is over the cap.
  */
 

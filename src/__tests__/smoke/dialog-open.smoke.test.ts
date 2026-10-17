@@ -137,7 +137,7 @@ void describe('Pre-rendered dialogs in action results (#786)', () => {
 
   void it('pressKey Enter on a button that opens a dialog lists it', async () => {
     await open(`${fixture.url}dialog-open`);
-    assertDialogShown(await act('pressKey', '#key', 'Enter'), 'Key opened');
+    assertDialogShown(await act('press-key', '#key', 'Enter'), 'Key opened');
   });
 
   void it('a dialog with only a password field is not listed', async () => {

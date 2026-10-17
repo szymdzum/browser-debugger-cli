@@ -1,5 +1,5 @@
 /**
- * The source a `bdg dom eval` script runs as (#743): a block that keeps a
+ * The source a `bdg eval` script runs as (#743): a block that keeps a
  * strict directive and a hashbang working, the script's own syntax errors,
  * and positions mapped back to the script.
  */

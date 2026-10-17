@@ -2,9 +2,9 @@
  * Smoke test for pages that replace built-ins bdg's scripts use: bdg's
  * own scripts run in its isolated world and still find and describe the
  * right elements, actions find their element there too and warn, and
- * `dom eval` keeps running in the page's world. Actions avoid the built-ins
+ * `eval` keeps running in the page's world. Actions avoid the built-ins
  * pages commonly replace, a script that still breaks says which built-ins
- * the page replaced and what they threw, and `dom eval` results are copied
+ * the page replaced and what they threw, and `eval` results are copied
  * without the page's `Object.keys`.
  */
 
@@ -67,13 +67,13 @@ void describe('page that replaces built-ins', () => {
       /the page replaced built-ins bdg's scripts use \(Element\.prototype\.querySelectorAll/
     );
     assert.match(
-      await bdg(['dom', 'eval', 'document.getElementById("go").textContent']),
+      await bdg(['eval', 'document.getElementById("go").textContent']),
       /Clicked/
     );
   });
 
-  void it('keeps dom eval in the page world', async () => {
-    assert.match(await bdg(['dom', 'eval', 'JSON.stringify({ a: 1 })']), /replaced/);
+  void it('keeps eval in the page world', async () => {
+    assert.match(await bdg(['eval', 'JSON.stringify({ a: 1 })']), /replaced/);
   });
 });
 
@@ -97,12 +97,12 @@ void describe('page whose replaced built-ins break action scripts', () => {
     assert.match(fill, /Value: +Alice/);
     assert.match(fill, /Element\.prototype\.matches/);
     assert.match(
-      await bdg(['dom', 'eval', 'document.getElementById("log").textContent']),
+      await bdg(['eval', 'document.getElementById("log").textContent']),
       /input;change;/
     );
     await bdg(['dom', 'click', '#go']);
     assert.match(
-      await bdg(['dom', 'eval', 'document.getElementById("go").textContent']),
+      await bdg(['eval', 'document.getElementById("go").textContent']),
       /Clicked/
     );
   });
@@ -124,7 +124,7 @@ void describe('page whose replaced built-ins break action scripts', () => {
   });
 
   void it("copies eval results without the page's Object.keys", async () => {
-    const result = await runCommand('dom', ['eval', '--json', '({ a: 1, b: [1, 2] })'], {
+    const result = await runCommand('eval', ['--json', '({ a: 1, b: [1, 2] })'], {
       timeout: 60000,
     });
     const response = JSON.parse(result.stdout) as { data: { result: unknown; warning?: string } };
@@ -149,13 +149,13 @@ void describe('page that removes globalThis', () => {
   });
 
   void it('fills, clicks, scrolls and presses keys although the page set globalThis to undefined', async () => {
-    assert.match(await bdg(['dom', 'eval', 'String(globalThis)']), /undefined/);
+    assert.match(await bdg(['eval', 'String(globalThis)']), /undefined/);
     assert.match(await bdg(['dom', 'fill', '#name', 'Alice']), /Value: +Alice/);
-    assert.match(await bdg(['dom', 'pressKey', '#name', 'Tab']), /Key: +Tab/);
+    assert.match(await bdg(['dom', 'press-key', '#name', 'Tab']), /Key: +Tab/);
     assert.match(await bdg(['dom', 'scroll', '#go']), /button#go/);
     await bdg(['dom', 'click', '#go']);
     assert.match(
-      await bdg(['dom', 'eval', 'document.getElementById("go").textContent']),
+      await bdg(['eval', 'document.getElementById("go").textContent']),
       /Clicked/
     );
   });
@@ -177,7 +177,7 @@ void describe('page whose replaced getRootNode breaks the key press and fill scr
   });
 
   void it('reports a key press like a fill: replaced built-ins, the exception, exit 90', async () => {
-    const press = await bdg(['dom', 'pressKey', '#name', 'a'], 90);
+    const press = await bdg(['dom', 'press-key', '#name', 'a'], 90);
     const fill = await bdg(['dom', 'fill', '#name', 'x'], 90);
     assert.match(
       press,
@@ -191,7 +191,7 @@ void describe('page whose replaced getRootNode breaks the key press and fill scr
 
   void it('puts the same message in --json error, with exit 90', async () => {
     for (const [command, args] of [
-      ['press', ['dom', 'pressKey', '--json', '#name', 'a']],
+      ['press', ['dom', 'press-key', '--json', '#name', 'a']],
       ['fill', ['dom', 'fill', '--json', '#name', 'x']],
     ] as const) {
       const result = await runCommand(args[0], args.slice(1), { timeout: 60000 });

@@ -1,5 +1,5 @@
 /**
- * The daemon-side `dom eval --full` size cap (#693).
+ * The daemon-side `eval --full` size cap (#693).
  */
 
 import assert from 'node:assert/strict';

@@ -222,7 +222,6 @@ void describe('dom inspect', () => {
     const border = await bdg(['dom', 'inspect', '#email', '--props', 'border']);
     assert.match(border, /\nborder: top .* \/ bottom 1px solid/);
     await bdg([
-      'dom',
       'eval',
       'document.body.insertAdjacentHTML(\'beforeend\', \'<label id="invisible" style="opacity:0">Hidden label</label>\'); 1',
     ]);
@@ -320,7 +319,6 @@ void describe('dom inspect', () => {
 
   void it('inspects the first rendered match and says so, and exits 83 when nothing matches', async () => {
     await bdg([
-      'dom',
       'eval',
       'document.body.insertAdjacentHTML(\'afterbegin\', \'<p class="dup" style="display:none">a</p><p class="dup">b</p>\'); 1',
     ]);

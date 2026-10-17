@@ -1,5 +1,5 @@
 /**
- * `dom eval` results too large to send are refused within seconds (#705).
+ * `eval` results too large to send are refused within seconds (#705).
  *
  * Strings and Maps of 300 MB, an object holding 300 MB without `--full`, and
  * a 900 MB object on a page that replaced built-ins used to end in a 20-30 s
@@ -36,7 +36,7 @@ const LOST_MS = 18_000;
 const UNSENT_GRACE_MS = '1000';
 
 /**
- * Run `dom eval` and time it.
+ * Run `eval` and time it.
  *
  * @param script - The script
  * @param extra - More arguments
@@ -47,11 +47,11 @@ async function timedEval(
   extra: string[] = []
 ): Promise<{ exitCode: number; stderr: string; ms: number }> {
   const startedAt = Date.now();
-  const result = await runCommand('dom', ['eval', script, ...extra], { timeout: 60000 });
+  const result = await runCommand('eval', [script, ...extra], { timeout: 60000 });
   return { exitCode: result.exitCode, stderr: result.stderr, ms: Date.now() - startedAt };
 }
 
-void describe('dom eval size probe', () => {
+void describe('eval size probe', () => {
   let fixture: FixtureServer;
 
   before(async () => {
@@ -109,8 +109,8 @@ void describe('dom eval size probe', () => {
 
   void it('a healthy script that runs 3 s before returning a small value is not reported lost', async () => {
     const result = await runCommand(
-      'dom',
-      ['eval', `const e = Date.now(); while (Date.now() - e < 3000); 'done'`],
+      'eval',
+      [`const e = Date.now(); while (Date.now() - e < 3000); 'done'`],
       { timeout: 60000 }
     );
     assert.equal(result.exitCode, 0, result.stderr);
@@ -118,7 +118,7 @@ void describe('dom eval size probe', () => {
   });
 
   void it('the session stays usable', async () => {
-    const result = await runCommand('dom', ['eval', '1 + 1'], { timeout: 30000 });
+    const result = await runCommand('eval', ['1 + 1'], { timeout: 30000 });
     assert.equal(result.exitCode, 0, result.stderr);
   });
 });

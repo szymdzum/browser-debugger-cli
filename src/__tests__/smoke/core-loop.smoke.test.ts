@@ -44,7 +44,7 @@ async function runJson<T>(command: string, args: string[] = []): Promise<T> {
  * @returns Evaluated value
  */
 async function evaluate(expression: string): Promise<unknown> {
-  const data = await runJson<{ result: unknown }>('dom', ['eval', expression]);
+  const data = await runJson<{ result: unknown }>('eval', [expression]);
   return data.result;
 }
 

@@ -1,5 +1,5 @@
 /**
- * Size wording of `dom eval` errors: MiB where 1024 x 1024 is meant, and a
+ * Size wording of `eval` errors: MiB where 1024 x 1024 is meant, and a
  * suggestion that names only ways out that work (#706).
  */
 
@@ -26,10 +26,10 @@ void describe('formatMiB', () => {
   });
 });
 
-void describe('dom eval --full over the cap', () => {
+void describe('eval --full over the cap', () => {
   void it('names the size and the cap in MiB for a string that arrived, and offers dropping --full', () => {
     const err = evalResultTooLargeError(200 * MIB, FULL_CAP, true);
-    assert.equal(err.message, 'The result is 200.0 MiB, over the 50 MiB limit of dom eval --full');
+    assert.equal(err.message, 'The result is 200.0 MiB, over the 50 MiB limit of eval --full');
     assert.match(err.suggestion ?? '', /drop --full/);
   });
 
@@ -52,7 +52,7 @@ void describe('dom eval --full over the cap', () => {
   });
 });
 
-void describe('dom eval result Chrome cannot send', () => {
+void describe('eval result Chrome cannot send', () => {
   void it('names the transfer cap in MiB (81, without --full)', () => {
     const err = evalResultNotSendableError(300 * MIB, TRANSFER_CAP);
     assert.match(err.message, /over 256 MiB \(counted 300\.0 MiB/);

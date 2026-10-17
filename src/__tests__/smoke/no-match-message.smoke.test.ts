@@ -35,7 +35,7 @@ const COMMANDS: Record<string, string[]> = {
   hover: ['hover', SELECTOR],
   fill: ['fill', SELECTOR, 'text'],
   submit: ['submit', SELECTOR],
-  pressKey: ['pressKey', SELECTOR, 'Enter'],
+  pressKey: ['press-key', SELECTOR, 'Enter'],
   scroll: ['scroll', SELECTOR],
   listeners: ['listeners', SELECTOR],
   'a11y describe': ['a11y', 'describe', SELECTOR],

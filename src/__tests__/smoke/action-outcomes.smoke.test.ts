@@ -148,10 +148,10 @@ void describe('Action outcomes', () => {
 
     void it('warns "no visible effect" when Enter in a form field submits nothing', async () => {
       await bdg(['dom', 'fill', '#guarded [name=nick]', 'ada']);
-      const data = await act(['pressKey', '#guarded [name=nick]', 'Enter']);
+      const data = await act(['press-key', '#guarded [name=nick]', 'Enter']);
       assert.equal(data.submitted, undefined);
       assert.equal(data.effect, 'none');
-      const output = await bdg(['dom', 'pressKey', '#guarded [name=nick]', 'Enter']);
+      const output = await bdg(['dom', 'press-key', '#guarded [name=nick]', 'Enter']);
       assert.match(output, /no visible effect/);
     });
   });
@@ -168,7 +168,7 @@ void describe('Action outcomes', () => {
     void it('reports the submit of a form in an open shadow root', async () => {
       await open(`${fixture.url}shadow-forms`);
       await bdg(['dom', 'fill', '[name=email]', 'ada@example.com']);
-      const data = await act(['pressKey', '[name=email]', 'Enter']);
+      const data = await act(['press-key', '[name=email]', 'Enter']);
       assert.deepEqual(data.submitted, { form: 'form#login', cancelled: true });
       assert.equal(data.effect, undefined);
     });
@@ -195,17 +195,17 @@ void describe('Action outcomes', () => {
     });
 
     void it('reports that Enter activated the button it was pressed on', async () => {
-      const data = await act(['pressKey', '#plain', 'Enter']);
+      const data = await act(['press-key', '#plain', 'Enter']);
       assert.equal(data.activated, 'button#plain');
-      assert.match(await bdg(['dom', 'pressKey', '#plain', 'Enter']), /Activated:\s+button#plain/);
+      assert.match(await bdg(['dom', 'press-key', '#plain', 'Enter']), /Activated:\s+button#plain/);
     });
 
     void it('reports the JS-handled submit Enter in a field started', async () => {
       await bdg(['dom', 'fill', '[name=q]', 'ada']);
-      const data = await act(['pressKey', '[name=q]', 'Enter']);
+      const data = await act(['press-key', '[name=q]', 'Enter']);
       assert.deepEqual(data.submitted, { form: 'form#lookup', cancelled: true });
       assert.match(
-        await bdg(['dom', 'pressKey', '[name=q]', 'Enter']),
+        await bdg(['dom', 'press-key', '[name=q]', 'Enter']),
         /Form submitted \(cancelled by the page\)/
       );
     });

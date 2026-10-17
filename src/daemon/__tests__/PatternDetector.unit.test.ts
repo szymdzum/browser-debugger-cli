@@ -62,7 +62,7 @@ describe('PatternDetector', () => {
       const result1 = detector.trackCommand('Network.getCookies');
 
       assert.strictEqual(result1.shouldShow, true);
-      assert.ok(result1.pattern?.alternative.includes('bdg network getCookies'));
+      assert.ok(result1.pattern?.alternative.includes('bdg network cookies'));
     });
 
     test('respects threshold of 3 for network body pattern', () => {
@@ -79,7 +79,7 @@ describe('PatternDetector', () => {
       assert.ok(result3.pattern?.alternative.includes('bdg details network'));
     });
 
-    test('suggests dom eval for a plain Runtime.evaluate, not dom query', () => {
+    test('suggests eval for a plain Runtime.evaluate, not dom query', () => {
       const detector = new PatternDetector();
       const params = { expression: 'document.title' };
 

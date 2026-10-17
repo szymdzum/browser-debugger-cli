@@ -39,7 +39,7 @@ async function bdg(args: string[], expectedExit = 0): Promise<string> {
  * @returns Entries like `click:c25x:MouseEvent`
  */
 async function recordedEvents(): Promise<string[]> {
-  const output = await bdg(['dom', 'eval', 'JSON.stringify(window.__events)', '--json']);
+  const output = await bdg(['eval', 'JSON.stringify(window.__events)', '--json']);
   const data = (JSON.parse(output) as { data: { result: string } }).data.result;
   return JSON.parse(data) as string[];
 }
@@ -83,7 +83,6 @@ void describe('Clicking SVG elements without a box', () => {
 
   void it('reports a throwing fallback as a script failure, not as removed', async () => {
     await bdg([
-      'dom',
       'eval',
       'document.querySelector("g[aria-label=other]").dispatchEvent = () => { throw new Error("boom"); }; 1',
     ]);

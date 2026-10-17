@@ -1,7 +1,7 @@
 /**
  * Interactions smoke test.
  *
- * Drives the `/interactions` fixture with `dom fill`, `dom pressKey` and
+ * Drives the `/interactions` fixture with `dom fill`, `dom press-key` and
  * `dom click` and asserts on what the page observed: trusted key input,
  * Enter semantics, controlled checkboxes, pointer-driven menus, and clear
  * errors for read-only and disabled fields; and the `/effects` fixture for
@@ -62,7 +62,7 @@ async function bdg(args: string[], expectedExit = 0): Promise<string> {
  * @returns Evaluation result
  */
 async function evaluate(expression: string): Promise<unknown> {
-  const output = await bdg(['dom', 'eval', expression, '--json']);
+  const output = await bdg(['eval', expression, '--json']);
   return (JSON.parse(output) as { data: { result: unknown } }).data.result;
 }
 
@@ -157,9 +157,9 @@ void describe('DOM interactions', () => {
 
   void it('pressKey types characters with trusted key events', async () => {
     await evaluate("document.getElementById('name').focus()");
-    await bdg(['dom', 'pressKey', '#name', 'a']);
-    await bdg(['dom', 'pressKey', '#name', 'b', '--modifiers', 'shift']);
-    await bdg(['dom', 'pressKey', '#name', '1', '--modifiers', 'shift']);
+    await bdg(['dom', 'press-key', '#name', 'a']);
+    await bdg(['dom', 'press-key', '#name', 'b', '--modifiers', 'shift']);
+    await bdg(['dom', 'press-key', '#name', '1', '--modifiers', 'shift']);
     assert.equal(await evaluate("document.getElementById('name').value"), 'aB!');
     const events = await takeEvents();
     assert.ok(events.includes('name:keypress:a'), events.join(','));
@@ -167,11 +167,11 @@ void describe('DOM interactions', () => {
   });
 
   void it('Enter adds a newline in a textarea and submits from an input', async () => {
-    await bdg(['dom', 'pressKey', '#notes', 'Enter']);
+    await bdg(['dom', 'press-key', '#notes', 'Enter']);
     assert.equal(await evaluate("document.getElementById('notes').value"), '\n');
     assert.equal(await evaluate('window.submits'), 0);
 
-    await bdg(['dom', 'pressKey', '#name', 'Enter']);
+    await bdg(['dom', 'press-key', '#name', 'Enter']);
     assert.equal(await evaluate('window.submits'), 1);
   });
 
@@ -179,7 +179,7 @@ void describe('DOM interactions', () => {
     await evaluate("document.getElementById('notes').value = 'hello world'");
     for (const modifier of ['ctrl', 'meta']) {
       await evaluate("document.getElementById('notes').setSelectionRange(0, 0)");
-      await bdg(['dom', 'pressKey', '#notes', 'a', '--modifiers', modifier]);
+      await bdg(['dom', 'press-key', '#notes', 'a', '--modifiers', modifier]);
       assert.deepEqual(
         await evaluate(
           "[document.getElementById('notes').selectionStart, document.getElementById('notes').selectionEnd]"
@@ -188,13 +188,13 @@ void describe('DOM interactions', () => {
         `${modifier}+a selects all`
       );
     }
-    await bdg(['dom', 'pressKey', '#notes', 'x', '--modifiers', 'ctrl']);
+    await bdg(['dom', 'press-key', '#notes', 'x', '--modifiers', 'ctrl']);
     assert.equal(await evaluate("document.getElementById('notes').value"), '');
-    await bdg(['dom', 'pressKey', '#notes', 'z', '--modifiers', 'meta']);
+    await bdg(['dom', 'press-key', '#notes', 'z', '--modifiers', 'meta']);
     assert.equal(await evaluate("document.getElementById('notes').value"), 'hello world');
-    await bdg(['dom', 'pressKey', '#notes', 'z', '--modifiers', 'ctrl,shift']);
+    await bdg(['dom', 'press-key', '#notes', 'z', '--modifiers', 'ctrl,shift']);
     assert.equal(await evaluate("document.getElementById('notes').value"), '', 'redo');
-    await bdg(['dom', 'pressKey', '#notes', 'v', '--modifiers', 'ctrl']);
+    await bdg(['dom', 'press-key', '#notes', 'v', '--modifiers', 'ctrl']);
     assert.equal(await evaluate("document.getElementById('notes').value"), 'hello world', 'paste');
     await takeEvents();
   });
@@ -452,8 +452,8 @@ void describe('DOM interactions', () => {
   });
 
   void it('rejects inputs a user could not perform', async () => {
-    assert.match(await bdg(['dom', 'pressKey', '#menu', 'a'], 81), /cannot receive keyboard focus/);
-    await bdg(['dom', 'pressKey', '#name', 'a', '--modifiers', 'bogus'], 81);
+    assert.match(await bdg(['dom', 'press-key', '#menu', 'a'], 81), /cannot receive keyboard focus/);
+    await bdg(['dom', 'press-key', '#name', 'a', '--modifiers', 'bogus'], 81);
     assert.match(await bdg(['dom', 'fill', '#agree', 'maybe'], 81), /Expected true or false/);
     await bdg(['dom', 'fill', '#agree', 'yes']);
     assert.equal(await evaluate("document.getElementById('agree').checked"), true);
@@ -502,7 +502,7 @@ void describe('DOM interactions', () => {
 
   void it('types at the end of a prefilled field', async () => {
     await bdg(['dom', 'fill', '#name', 'hello']);
-    await bdg(['dom', 'pressKey', '#name', 'x']);
+    await bdg(['dom', 'press-key', '#name', 'x']);
     assert.equal(await evaluate("document.getElementById('name').value"), 'hellox');
   });
 
@@ -588,7 +588,7 @@ void describe('DOM interactions', () => {
     assert.equal(await evaluate("document.querySelector('[name=custname]').value"), 'Ada');
     await bdg(['dom', 'fill', 'label:has-text("Customer name") input', 'Bob']);
     assert.equal(await evaluate("document.querySelector('[name=custname]').value"), 'Bob');
-    await bdg(['dom', 'pressKey', 'label[for=em]', 'a']);
+    await bdg(['dom', 'press-key', 'label[for=em]', 'a']);
     assert.equal(await evaluate("document.getElementById('em').value"), 'a');
     const click = JSON.parse(
       await bdg(['dom', 'click', 'label:has-text("I agree")', '--json'])
@@ -1201,13 +1201,13 @@ void describe('DOM interactions', () => {
   void it('reports the item an Enter added, not a widget elsewhere that changed meanwhile', async () => {
     await bdg(['page', 'navigate', `${fixture.url}effects`]);
     await bdg(['dom', 'fill', '#todo', 'Write tests']);
-    const pressed = JSON.parse(await bdg(['dom', 'pressKey', '#todo', 'Enter', '--json'])) as {
+    const pressed = JSON.parse(await bdg(['dom', 'press-key', '#todo', 'Enter', '--json'])) as {
       data: { shown?: unknown };
     };
     assert.deepEqual(pressed.data.shown, [{ text: 'Write tests', element: 'li' }]);
     assert.equal(await evaluate("document.querySelectorAll('#ticker p').length > 0"), true);
     await bdg(['dom', 'fill', '#todo', 'Ship it']);
-    assert.match(await bdg(['dom', 'pressKey', '#todo', 'Enter']), /\nShown: +li "Ship it"\n/);
+    assert.match(await bdg(['dom', 'press-key', '#todo', 'Enter']), /\nShown: +li "Ship it"\n/);
   });
 
   void it('says when the page was still changing as a click returned', async () => {

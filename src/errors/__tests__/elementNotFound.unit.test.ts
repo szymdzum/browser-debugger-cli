@@ -35,11 +35,11 @@ void describe('elementNotFoundError', () => {
       noNodesFoundError("a[title='x']").suggestion,
     ]) {
       assert.match(suggestion, /bdg dom frames/);
-      assert.match(suggestion, /bdg dom eval --frame <n> '/);
+      assert.match(suggestion, /bdg eval --frame <n> '/);
     }
     assert.ok(
       noNodesFoundError("a[title='x']").suggestion.includes(
-        `bdg dom eval --frame <n> 'document.querySelector("a[title='\\''x'\\'']")'`
+        `bdg eval --frame <n> 'document.querySelector("a[title='\\''x'\\'']")'`
       )
     );
   });
@@ -50,7 +50,7 @@ void describe('elementNotFoundError', () => {
     assert.doesNotMatch(noNodesFoundError('#x', { unsearched: none }).suggestion, /iframe|embed/);
     const frames = unreachableElementsNote('#x', { crossOriginFrames: true, embeds: false });
     assert.match(frames, /^The page has cross-origin iframes, which are not searched\./);
-    assert.match(frames, /bdg dom eval --frame <n>/);
+    assert.match(frames, /bdg eval --frame <n>/);
     assert.equal(
       unreachableElementsNote('#x', { crossOriginFrames: false, embeds: true }),
       'The page has <object>/<embed> documents, which are not searched.'
@@ -78,7 +78,7 @@ void describe('elementNotFoundError', () => {
       /^The page has closed shadow roots \(in <a-b>, <c-d#pay>, <e-f>, \+1 more\), cross-origin iframes and <object>\/<embed> documents, which are not searched\./
     );
     assert.ok(many.includes(help));
-    assert.match(many, /bdg dom eval --frame <n>/);
+    assert.match(many, /bdg eval --frame <n>/);
     assert.ok(unreachableElementsNote('#x').includes(help), 'an unchecked page names the path too');
   });
 
