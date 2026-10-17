@@ -57,9 +57,6 @@ interface PendingResize {
   arrives: 'during-wait' | 'after-timeout';
 }
 
-/** Page script waiting for a resize: the size it waits to leave */
-const RESIZE_WAIT = /innerWidth !== (\d+) \|\| innerHeight !== (\d+)/;
-
 /** Chrome's answer to a capture whose page scripts were terminated */
 const TERMINATED = new CDPProtocolError('Execution was terminated', -32000, undefined);
 
@@ -107,25 +104,32 @@ function fakePage(options: FakePageOptions = {}): {
     pending = pending.filter((p) => p.arrives !== arrives);
   };
   /**
-   * Answer a page script reading the window: its size, or the wait for a
-   * resize (the new size, null when the window still has the size waited on).
+   * Answer a page script reading the window's size.
    *
-   * @param expression - Page script
    * @returns Evaluate response
    */
-  const readWindow = (expression: string): unknown => {
-    const wait = RESIZE_WAIT.exec(expression);
-    if (options.windowError === (wait ? 'wait' : 'size')) {
-      throw new CDPProtocolError('Execution context was destroyed.', -32000, undefined);
-    }
-    if (!wait) return { result: { value: window } };
-    const [, width, height] = wait;
-    const left = (): boolean => window[0] !== Number(width) || window[1] !== Number(height);
-    if (!left()) arrive('during-wait');
-    const resized = left();
-    const value = resized ? window : null;
-    if (!resized) arrive('after-timeout');
-    waits.push(`${width}x${height} ${resized ? 'resized' : 'timed out'}`);
+  const readWindow = (): unknown => {
+    if (options.windowError === 'size') throw contextDestroyed();
+    return { result: { value: window } };
+  };
+  /**
+   * Answer the page function waiting for the window to leave or reach a size
+   * (the window's size then, null when it did not happen).
+   *
+   * @param params - `Runtime.callFunctionOn` parameters: leave, width, height
+   * @returns Call response
+   */
+  const waitForWindow = (params: Record<string, unknown>): unknown => {
+    if (options.windowError === 'wait') throw contextDestroyed();
+    const args = params['arguments'] as Array<{ value: unknown }>;
+    const [leave, width, height] = args.map(({ value }) => value);
+    const done = (): boolean => (window[0] === width && window[1] === height) !== leave;
+    if (!done()) arrive('during-wait');
+    const happened = done();
+    const value = happened ? window : null;
+    if (!happened) arrive('after-timeout');
+    const label = happened ? (leave ? 'resized' : 'reached') : 'timed out';
+    waits.push(`${leave ? '' : 'to '}${String(width)}x${String(height)} ${label}`);
     return { result: { value } };
   };
   let terminate: () => void = () => undefined;
@@ -137,9 +141,11 @@ function fakePage(options: FakePageOptions = {}): {
       if (expression.includes('devicePixelRatio')) {
         return { result: { value: options.pixelRatio ?? 1 } };
       }
-      if (expression.includes('innerWidth')) return readWindow(expression);
+      if (expression.includes('innerWidth')) return readWindow();
       return { result: { value: [0, 0] } };
     },
+    'Runtime.callFunctionOn': waitForWindow,
+    'DOM.getDocument': () => ({ root: { nodeId: 1 } }),
     'Runtime.terminateExecution': () => terminate(),
     'Page.getLayoutMetrics': () => ({
       contentSize: { x: 0, y: 0, width: 1905, height: 1200 },
@@ -172,6 +178,15 @@ function fakePage(options: FakePageOptions = {}): {
     },
   } as unknown as CDPConnection;
   return { cdp, sent, overrides, waits, windowNow: () => window };
+}
+
+/**
+ * Chrome's error for a script whose page went away.
+ *
+ * @returns The error
+ */
+function contextDestroyed(): CDPProtocolError {
+  return new CDPProtocolError('Execution context was destroyed.', -32000, undefined);
 }
 
 /**
@@ -284,6 +299,12 @@ void describe('takeScreenshot', () => {
     const { cdp, windowNow } = fakePage({ lateTaller: true });
     await takeScreenshot(cdp, { format: 'png', backendNodeId: 7 }, noViewport);
     assert.deepEqual(windowNow(), WINDOW, 'the restore returned before the page had its size back');
+  });
+
+  void it('waits on a page that never resizes at most twice after an element capture beyond the viewport (#529)', async () => {
+    const { cdp, waits } = fakePage({ fixedWindow: true });
+    await takeScreenshot(cdp, { format: 'png', backendNodeId: 7 }, noViewport);
+    assert.deepEqual(waits, ['1920x1000 timed out', 'to 1920x1000 reached']);
   });
 
   void it('clears the taller viewport when the wait for it fails, and reports the capture (#514)', async () => {
