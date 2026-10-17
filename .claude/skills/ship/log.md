@@ -107,9 +107,11 @@ Process changes seen in one session only (SKILL.md, Keep the books: a second ses
 |---|---|---|
 | No reviewer for a tier 1 PR that only changes runner labels or versions and is verified by CI plus a dispatch; the orchestrator's `git show` is enough | S14 (#781: nits only) | keep the reviewer for workflow logic: S12 #765 found a should-fix there |
 | A change to shared test infrastructure (fixture server, runner) runs the full smoke suite locally before the draft PR | S15 (#795: the 404 change broke `/style.css`, `/forms-jumped`, `/favicon.ico`, one per round) | |
-| A third fix round that only touches tests or removes code needs no owner's yes | S15 (#795 round 3 tests, #800 round 3 removal; the yes came at once both times) | |
 | A polish PR covers at most 2–3 areas | S15 (#800: 5 areas, 4 rounds, ~600k tokens; the low-queue review itself closed 7 issues) | the review step (one verifier, owner decides per row) worked |
 | Tell other threads before a series of merges to `main`, or keep dependabot merges outside ship sessions | S15 (dependabot merges cancelled two push runs); S16 (a related symptom: stale `node_modules` after dependabot merges) | both symptoms now have tool fixes (`ci-wait --push` follows the newer run; `ship snapshot` warns on stale `node_modules`), so the rule itself may not be needed |
-| A flaky test that fails three or more times in one session is fixed in that session as tier 1, not only commented on #529 | S16 (#806: "URL display is linear", 3/10 under load → 10/10) | |
-| The reviewer of a flaky-test fix checks that the test still catches the regression it guards | S16 (#806: a 2 ms floor hid a quadratic regression; blocking) | |
+| A flaky test that fails three or more times in one session is fixed in that session as tier 1, not only commented on #529 | S16 (#806: "URL display is linear", 3/10 under load → 10/10) | S17: `#tall` failed a third time, but it was already in the plan: not a confirmation |
+| A third fix round that removes code (not only tests) needs no owner's yes | S15 (#800 round 3 removal) | the tests-only half became a rule in S17 |
+| A timing PR also passes the full macOS CI shard under load, not only the repeat run | S17 (#812: repeat ×10 green, the shard red on the case where nothing was kept) | |
+| Ask for merge authority with AskUserQuestion (yes/no options), so a blanket "OK" can't count as a merge yes | S17 (a first "All Ok" didn't count; #813 waited ~1 h ready to merge) | until then, the session prompt can grant it: "Merge authority: yes" |
+| Remove: the fresh-agent test for a flake fix that changes no output | S17 (#812, #813: 0 findings) | sessions with no catch: 1 of 3 |
 

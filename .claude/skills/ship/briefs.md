@@ -10,7 +10,7 @@ Render a brief with `node .claude/skills/ship/scripts/ship.mjs brief <role> N=<n
 | verifier | `general-purpose` | `sonnet` | foreground | 60 |
 | design | `general-purpose` | `sonnet` | foreground | 40 |
 
-Placeholders the script can fill: `N` (issue; its text is quoted where a brief has `<ISSUE>`), `ISSUES` (several, comma-separated, for the verifier), `PR` (fills `BASE`, `HEAD`, `RED`, `BRANCH`), `DESIGN` (a design note file, for the design brief), `TIER=1` (implementer: no red commit), `PART=1` (implementer: `Part of #N`, not `Closes`), `BRANCH`, `BASE` (merge base or the unmerged branch this PR builds on), `HEAD` (head SHA under review or test), `RED` (red commit SHA), `CAP`, `URLS` (fixture URLs), `DATE`.
+Placeholders the script can fill: `N` (issue; its text is quoted where a brief has `<ISSUE>`), `ISSUES` (several, comma-separated, for the verifier), `PR` (fills `BASE`, `HEAD`, `RED`, `BRANCH`), `DESIGN` (a design note file, for the design brief), `TIER=1` (implementer: no red commit), `PART=1` (implementer: `Part of #N`, not `Closes`), `NAME` (a suffixed name such as `529a` for a second PR of one issue: every path uses it, `#N` stays the issue number), `BRANCH`, `BASE` (merge base or the unmerged branch this PR builds on), `HEAD` (head SHA under review or test), `RED` (red commit SHA), `CAP`, `URLS` (fixture URLs), `DATE`.
 
 ## Shared blocks
 
@@ -118,6 +118,7 @@ Scratch files in `/tmp/review-<N>-work`; remove the worktree at the end (`git -C
 - **Tests:** do they test the claims, deterministically (no fixed sleeps)? Any **tautological** expected value (computed the way the code computes it rather than from the issue or a known-good literal)? Did a later commit weaken a red assertion?
 - **Docs and PR description** say exactly what the code does; `CHANGELOG.md` untouched.
 - **Conventions (`CLAUDE.md`):** CommandRunner, `CommandError` or `{success, error}` never both, the `BdgResponse` envelope, semantic exit codes, centralized messages, option behavior keys `COMMAND:--flag`, TSDoc, no inline comments, no empty catch, ~30 lines per function.
+- For a change to a timing-dependent test or its budget (a flake fix, a shortened suite): in your worktree, break the code the test guards (remove the check, return early, skip the wait) and show the test now fails; a test that still passes is **blocking**.
 - <change-specific risks; for parsing, selectors, validation or secrets a matrix of inputs × surfaces with the counts of wrong outcomes; for detection heuristics a false-positive matrix on scratch pages of your own>
 
 **Run** in `/tmp/review-<N>`, every shell call starting with:
