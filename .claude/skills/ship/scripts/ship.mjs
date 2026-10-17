@@ -755,10 +755,14 @@ function simplify(argv) {
   if (!prNumber) return usage('simplify <pr>');
   const pr = prInfo(prNumber);
   const path = worktreeOfBranch(run('git', ['worktree', 'list', '--porcelain']), pr.headRefName);
-  if (!path) return usage(`simplify ${prNumber}: no worktree has branch ${pr.headRefName}`);
+  if (!path) {
+    console.log(`FAIL no worktree has branch ${pr.headRefName}: run /simplify where the PR's code is checked out`);
+    return EXIT.failed;
+  }
+  run('git', ['fetch', '-q', 'origin', `pull/${pr.number}/head`]);
   const base = run('git', ['merge-base', freshOriginRef(pr.baseRefName), pr.headRefOid]);
   const file = `/tmp/simplify-${pr.number}.diff`;
-  writeFileSync(file, run('git', ['-C', path, 'diff', base, pr.headRefOid]));
+  run('git', ['-C', path, 'diff', `--output=${file}`, base, pr.headRefOid]);
   const lines = productLines(run('git', ['-C', path, 'diff', '--numstat', base, pr.headRefOid]));
   console.log(
     [
@@ -1555,7 +1559,7 @@ function leftoverLines(scope) {
 function ownWorktreeName(headRefName) {
   const path = worktreeOfBranch(run('git', ['worktree', 'list', '--porcelain']), headRefName);
   const name = path ? /\/bdg-([\w.-]+)$/.exec(path)?.[1] : null;
-  return name ?? null;
+  return name && name !== 'verify' ? name : null;
 }
 
 /**
