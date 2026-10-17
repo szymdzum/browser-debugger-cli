@@ -130,16 +130,15 @@ function modifiersOption(value: string): string {
 
 /**
  * Add the press-key command: `dom press-key`, and the old spelling
- * `dom pressKey` (a hidden, deprecated row of the rename table) with the same
+ * `dom pressKey` (a deprecated row of the rename table) with the same
  * options.
  *
  * @param parent - The `dom` command
  * @param name - Command name
- * @param hidden - Whether the command is hidden from help
  */
-function addPressKeyCommand(parent: Command, name: string, hidden: boolean): void {
+function addPressKeyCommand(parent: Command, name: string): void {
   parent
-    .command(name, { hidden })
+    .command(name)
     .description('Press a key on an element (for Enter-to-submit, keyboard navigation)')
     .argument('<selectorOrIndex>', SELECTOR_OR_INDEX_ARGUMENT)
     .argument(
@@ -339,8 +338,8 @@ export function registerFormInteractionCommands(program: Command): void {
       );
     });
 
-  addPressKeyCommand(domCommand, 'press-key', false);
-  addPressKeyCommand(domCommand, 'pressKey', true);
+  addPressKeyCommand(domCommand, 'press-key');
+  addPressKeyCommand(domCommand, 'pressKey');
 
   domCommand
     .command('scroll')

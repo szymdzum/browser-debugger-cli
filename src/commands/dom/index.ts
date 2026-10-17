@@ -33,6 +33,7 @@ import { handleDomScreenshot } from '@/commands/dom/screenshot.js';
 import { registerWaitCommand } from '@/commands/dom/wait.js';
 import {
   EVAL_SCOPE_HELP,
+  jsonOption,
   SELECTOR_OR_INDEX_ARGUMENT,
   QUERY_CLASS_HELP,
   NODE_ID_HELP,
@@ -53,14 +54,13 @@ const EVAL_FULL_HELP = `Print the whole value (default: the first ${MAX_VALUE_LE
 
 /**
  * Add the `eval` command: `bdg eval`, and the old spelling `bdg dom eval` (a
- * hidden, deprecated row of the rename table) with the same options.
+ * deprecated row of the rename table) with the same options.
  *
  * @param parent - Root program, or the `dom` command for the old spelling
- * @param hidden - Whether the command is hidden from help
  */
-function addEvalCommand(parent: Command, hidden: boolean): void {
+function addEvalCommand(parent: Command): void {
   parent
-    .command('eval', { hidden })
+    .command('eval')
     .description('Evaluate JavaScript expression in the page context')
     .argument('<script>', 'JavaScript to execute (e.g., "document.title", "window.location.href")')
     .option(
@@ -68,7 +68,7 @@ function addEvalCommand(parent: Command, hidden: boolean): void {
       'Evaluate in an iframe, cross-origin ones included: index (from dom frames; 87 when stale), name/id attribute, or part of the name, id or URL'
     )
     .option('--full', EVAL_FULL_HELP)
-    .option('-j, --json', 'Output as JSON')
+    .addOption(jsonOption())
     .addHelpText('after', EVAL_SCOPE_HELP)
     .action(async (script: string, options: DomEvalCommandOptions) => {
       await handleDomEval(script, options);
@@ -108,8 +108,8 @@ export function registerDomCommands(program: Command): void {
       await handleDomQuery(selector, options);
     });
 
-  addEvalCommand(program, false);
-  addEvalCommand(dom, true);
+  addEvalCommand(program);
+  addEvalCommand(dom);
 
   dom
     .command('frames')

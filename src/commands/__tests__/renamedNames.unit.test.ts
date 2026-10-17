@@ -200,6 +200,43 @@ void describe('old spellings in suggestions', () => {
   });
 });
 
+void describe('command rows of the real table', () => {
+  const program = buildProgram();
+  const commandRows = RENAMES.filter((entry) => entry.kind === 'command');
+
+  void it('an old command path differs from its new one', () => {
+    for (const entry of commandRows) {
+      assert.notEqual(
+        [entry.command, entry.old].filter(Boolean).join(' '),
+        entry.new,
+        spelling(entry, 'old')
+      );
+    }
+  });
+
+  void it('a deprecated old command is registered and hidden from help', () => {
+    for (const entry of commandRows.filter((row) => row.stage === 'deprecated')) {
+      const parent = entry.command
+        .split(' ')
+        .filter(Boolean)
+        .reduce<Command>((command, word) => {
+          const sub = command.commands.find((candidate) => candidate.name() === word);
+          assert.ok(sub, `${word} is registered`);
+          return sub;
+        }, program);
+      assert.ok(
+        parent.commands.some((command) => command.name() === entry.old),
+        `${spelling(entry, 'old')} is registered`
+      );
+      const visible = program.createHelp().visibleCommands(parent);
+      assert.ok(
+        !visible.some((command) => command.name() === entry.old),
+        `${spelling(entry, 'old')} is hidden`
+      );
+    }
+  });
+});
+
 void describe('CLI reference', () => {
   void it('lists every rename table entry with its stage', () => {
     const reference = fs.readFileSync('docs/CLI_REFERENCE.md', 'utf8');

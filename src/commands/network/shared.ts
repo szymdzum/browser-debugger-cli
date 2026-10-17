@@ -97,16 +97,15 @@ function headersResult(
 
 /**
  * Add the cookies command: `network cookies`, and the old spelling
- * `network getCookies` (a hidden, deprecated row of the rename table) with
+ * `network getCookies` (a deprecated row of the rename table) with
  * the same options.
  *
  * @param networkCmd - Network parent command
  * @param name - Command name
- * @param hidden - Whether the command is hidden from help
  */
-function addCookiesCommand(networkCmd: Command, name: string, hidden: boolean): void {
+function addCookiesCommand(networkCmd: Command, name: string): void {
   networkCmd
-    .command(name, { hidden })
+    .command(name)
     .description('List cookies from the current page')
     .option('--url <url>', 'Filter cookies by URL')
     .addOption(jsonOption())
@@ -149,8 +148,8 @@ function addCookiesCommand(networkCmd: Command, name: string, hidden: boolean): 
  * @param networkCmd - Network parent command
  */
 export function registerCookiesCommands(networkCmd: Command): void {
-  addCookiesCommand(networkCmd, 'cookies', false);
-  addCookiesCommand(networkCmd, 'getCookies', true);
+  addCookiesCommand(networkCmd, 'cookies');
+  addCookiesCommand(networkCmd, 'getCookies');
 }
 
 /**

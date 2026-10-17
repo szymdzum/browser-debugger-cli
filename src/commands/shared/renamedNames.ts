@@ -72,8 +72,18 @@ function registerOldOption(command: Command, entry: RenameEntry & { kind: 'optio
 }
 
 /**
+ * Hide a registered command from help. Commander has no public call for it
+ * (`hidden` is an option of `.command()` only), so this sets its flag.
+ *
+ * @param command - Registered command
+ */
+function hideCommand(command: Command): void {
+  (command as unknown as { _hidden: boolean })._hidden = true;
+}
+
+/**
  * Check an old command: a deprecated one must still be registered by its
- * module (hidden), so it keeps working; a removed one gets a hidden stub
+ * module, so it keeps working, and is hidden here; a removed one gets a hidden stub
  * taking any arguments and options, whose preAction check exits 81.
  *
  * @param parent - Command the old command belongs to
@@ -81,9 +91,10 @@ function registerOldOption(command: Command, entry: RenameEntry & { kind: 'optio
  * @throws Error for a deprecated command no module registers (a table bug)
  */
 function registerOldCommand(parent: Command, entry: RenameEntry & { kind: 'command' }): void {
-  const registered = parent.commands.some((command) => command.name() === entry.old);
+  const registered = parent.commands.find((command) => command.name() === entry.old);
   if (entry.stage === 'deprecated') {
     if (!registered) throw new Error(`Rename table: "${spelling(entry, 'old')}" is not registered`);
+    hideCommand(registered);
     return;
   }
   if (registered) return;
@@ -241,8 +252,7 @@ export function renamedCommandSuggestion(
   if (word === undefined) return undefined;
   const words = commandWords(command);
   const entries = table.filter(
-    (entry): entry is RenameEntry & { kind: 'command'; new: string } =>
-      entry.kind === 'command' && entry.command === words && entry.new !== undefined
+    (entry) => entry.kind === 'command' && entry.command === words && entry.new !== undefined
   );
   const [closest] = findSimilarCommands(
     word,
