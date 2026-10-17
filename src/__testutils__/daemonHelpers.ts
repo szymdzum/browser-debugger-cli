@@ -120,7 +120,7 @@ function killIfAlive(pid: number): void {
  */
 export async function cleanupAllSessions(): Promise<void> {
   if (await isDaemonRunning()) {
-    await runCommand('stop', ['--kill-chrome'], { timeout: 15000 });
+    await runCommand('stop', [], { timeout: 15000 });
   }
 
   const pids = [

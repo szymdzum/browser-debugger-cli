@@ -42,6 +42,7 @@ interface Envelope<T> {
   error?: string;
   exitCode?: number;
   suggestion?: string;
+  warnings?: string[];
 }
 
 interface TabsData {
@@ -489,6 +490,9 @@ void describe('bdg attach', () => {
 
     const kill = await runJson('stop', ['--kill-chrome']);
     assert.equal(kill.exitCode, 81);
+    assert.deepEqual(kill.envelope.warnings, [
+      '"bdg stop --kill-chrome" is deprecated and will be removed in 1.0: bdg stop already closes the Chrome bdg launched; drop the flag',
+    ]);
 
     const stop = await run('stop', []);
     assert.equal(stop.exitCode, 0, stop.output);

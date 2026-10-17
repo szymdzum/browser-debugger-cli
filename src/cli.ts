@@ -15,12 +15,19 @@ import {
   resolveCommand,
 } from '@/commands/helpJson.js';
 import { assertKnownHelpTopic, helpTopicPath, usageErrorDetails } from '@/commands/helpTopic.js';
+import { printWarning } from '@/commands/shared/CommandRunner.js';
+import { applyRenamedNames } from '@/commands/shared/renamedNames.js';
 import { assertNotMistypedCommand, isBareWord } from '@/commands/start.js';
 import { CommandError } from '@/errors/index.js';
 import { genericError, jsonTakenAsValueError, noCommandOrUrlError } from '@/errors/messages.js';
 import { buildProgram } from '@/program.js';
 import { selectSession } from '@/session/sessionName.js';
-import { OutputBuilder, buildSuccessResponse, stringifyEnvelope } from '@/ui/OutputBuilder.js';
+import {
+  OutputBuilder,
+  addEnvelopeWarning,
+  buildSuccessResponse,
+  stringifyEnvelope,
+} from '@/ui/OutputBuilder.js';
 import { hideHints } from '@/ui/formatting.js';
 import { enableDebugLogging } from '@/ui/logging/index.js';
 import { JSON_FLAGS, flagArgs, isJsonMode } from '@/utils/cliArgs.js';
@@ -168,7 +175,10 @@ async function main(): Promise<void> {
     },
     outputError: () => undefined,
   });
-  program.hook('preAction', (_root, actionCommand) => applyGlobalOptions(program, actionCommand));
+  program.hook('preAction', (_root, actionCommand) => {
+    applyGlobalOptions(program, actionCommand);
+    reportDeprecations(applyRenamedNames(actionCommand), jsonMode);
+  });
   assertKnownHelpTopic(program, helpTopic);
   assertNotMistypedCommand(program, process.argv);
 
@@ -278,6 +288,23 @@ function applyGlobalOptions(program: Command, actionCommand: Command): void {
   const acceptsJson = actionCommand.options.some((option) => option.long === '--json');
   if (root.json && actionCommand !== program && acceptsJson) {
     actionCommand.setOptionValue('json', true);
+  }
+}
+
+/**
+ * Report the old spellings the command line used, once per invocation and
+ * before the command runs: a `Warning:` line on stderr each, or with
+ * `--json` in the `warnings` of every envelope printed (nothing on stderr).
+ * Doing it before the action means an early `process.exit` or a signal
+ * cannot lose them.
+ *
+ * @param warnings - Warning texts
+ * @param jsonMode - Whether `--json` was requested
+ */
+function reportDeprecations(warnings: string[], jsonMode: boolean): void {
+  for (const warning of warnings) {
+    if (jsonMode) addEnvelopeWarning(warning);
+    else printWarning(warning);
   }
 }
 

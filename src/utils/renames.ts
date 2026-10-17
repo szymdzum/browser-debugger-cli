@@ -74,20 +74,41 @@ export const RENAMES: readonly RenameEntry[] = [
  * @returns True for an option entry
  */
 export function isOptionEntry(entry: RenameEntry): boolean {
-  void entry;
-  throw new Error('not implemented');
+  return entry.old.startsWith('-');
+}
+
+/**
+ * A name of the entry's command as a user types it: a root option goes with
+ * the start URL (`bdg <url> --compact`).
+ *
+ * @param entry - Rename entry
+ * @param name - Old or new name
+ * @returns `bdg …` spelling
+ */
+function spelling(entry: RenameEntry, name: string): string {
+  const command = entry.command === '' && name.startsWith('-') ? '<url>' : entry.command;
+  return ['bdg', command, name].filter(Boolean).join(' ');
 }
 
 /**
  * The old spelling as a user types it: `bdg tail`, `bdg cleanup --aggressive`,
- * `bdg <url> --compact` (a root option goes with the start URL).
+ * `bdg <url> --compact`.
  *
  * @param entry - Rename entry
  * @returns Old spelling
  */
 export function oldSpelling(entry: RenameEntry): string {
-  void entry;
-  throw new Error('not implemented');
+  return spelling(entry, entry.old);
+}
+
+/**
+ * The new spelling: `bdg peek --follow`, `bdg cleanup --force`.
+ *
+ * @param entry - Rename entry
+ * @returns New spelling, or undefined for a pure removal
+ */
+export function newSpelling(entry: RenameEntry): string | undefined {
+  return entry.new === undefined ? undefined : spelling(entry, entry.new);
 }
 
 /**
@@ -104,8 +125,5 @@ export function isRetiredName(
   name: string,
   table: readonly RenameEntry[] = RENAMES
 ): boolean {
-  void command;
-  void name;
-  void table;
-  throw new Error('not implemented');
+  return table.some((entry) => entry.command === command && entry.old === name);
 }

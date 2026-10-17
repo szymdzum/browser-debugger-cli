@@ -1,6 +1,6 @@
 /**
- * `bdg tail`: deprecated alias of `bdg peek --follow` (#115). It keeps its
- * options and says to use `peek --follow` instead.
+ * `bdg tail`: deprecated alias of `bdg peek --follow` (#115), hidden from
+ * help. Its rename table entry (`@/utils/renames.ts`) gives the warning.
  */
 
 import type { Command } from 'commander';
@@ -8,16 +8,15 @@ import type { Command } from 'commander';
 import { followPreview } from '@/commands/peek.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type { TailCommandOptions } from '@/commands/shared/optionTypes.js';
-import { tailDeprecatedNotice } from '@/ui/messages/preview.js';
 
 /**
- * Register the deprecated `tail` command.
+ * Register the deprecated `tail` command (hidden).
  *
  * @param program - Root command
  */
 export function registerTailCommand(program: Command): void {
   program
-    .command('tail')
+    .command('tail', { hidden: true })
     .description('Deprecated: use "bdg peek --follow" (same options)')
     .addOption(jsonOption())
     .option('-v, --verbose', 'Use verbose output with full URLs and formatting', false)
@@ -30,7 +29,6 @@ export function registerTailCommand(program: Command): void {
     )
     .option('--interval <ms>', 'Update interval in milliseconds', '1000')
     .action(async (options: TailCommandOptions) => {
-      console.error(tailDeprecatedNotice());
       await followPreview({ ...options, follow: true });
     });
 }

@@ -111,7 +111,7 @@ void describe('Core agent loop', () => {
     const chromePid = readTestChromePid();
     assert.ok(chromePid, 'Chrome PID should be recorded in session metadata');
 
-    const result = await runCommand('stop', ['--kill-chrome'], { timeout: 30000 });
+    const result = await runCommand('stop', [], { timeout: 30000 });
     assert.equal(result.exitCode, 0, `Stop failed: ${result.stderr}`);
 
     assert.equal(await waitForProcessExit(chromePid), true, 'Chrome should exit after stop');

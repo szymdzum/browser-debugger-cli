@@ -26,7 +26,6 @@ import { joinLines } from '@/ui/formatting.js';
 import {
   downloadsKeptMessage,
   sessionFilesCleanedMessage,
-  sessionOutputRemovedMessage,
   sessionDirectoryCleanMessage,
   sessionDirectoryPurgedMessage,
   noSessionFilesMessage,
@@ -47,7 +46,6 @@ function formatCleanup(data: CleanupResult): string {
 
   return joinLines(
     cleaned.session && sessionFilesCleanedMessage(),
-    cleaned.output && sessionOutputRemovedMessage(),
     data.downloadsKept && downloadsKeptMessage(data.downloadsKept.dir, data.downloadsKept.files),
     ...(data.warnings ?? []).map((warning) => warningMessage(warning)),
     '',
@@ -151,7 +149,7 @@ async function cleanupBlocker(
       errorContext: { suggestion: err.suggestion },
     };
   }
-  if (!opts.force && !opts.aggressive && (await isDaemonAlive())) {
+  if (!opts.force && (await isDaemonAlive())) {
     return {
       success: false,
       error: sessionStillActiveError(readDaemonPid() ?? 0),
@@ -178,10 +176,7 @@ async function cleanupSession(opts: CleanupCommandOptions): Promise<CommandResul
   const blocker = await cleanupBlocker(opts);
   if (blocker) return blocker;
   const chromePid = opts.purge ? liveSessionChromePid() : null;
-  const { cleaned, warnings } = await performSessionCleanup({
-    force: Boolean(opts.force) || Boolean(opts.aggressive),
-    removeOutput: opts.removeOutput,
-  });
+  const { cleaned, warnings } = await performSessionCleanup({ force: Boolean(opts.force) });
   const { purged, refusal } = opts.purge ? await purge(chromePid, warnings) : {};
   if (refusal) {
     return {
@@ -231,8 +226,6 @@ export function registerCleanupCommand(program: Command): void {
     .command('cleanup')
     .description('Clean up stale session files (downloaded files are kept)')
     .option('-f, --force', 'Kill a running (possibly hung) session, then clean up', false)
-    .option('--remove-output', 'Also remove session.json output file', false)
-    .option('--aggressive', 'Alias for --force (kept for compatibility)', false)
     .option(
       '--purge',
       "Also delete a named session's directory (Chrome profile, logs, port); needs --session",
