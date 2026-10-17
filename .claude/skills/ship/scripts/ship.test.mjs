@@ -1061,3 +1061,11 @@ test('fixtureNamesFor finds the fixtures of a number and of names it starts', ()
   assert.deepEqual(fixtureNamesFor(['812', '529'], tmp), ['812', '529', '529a', '529b']);
   assert.deepEqual(fixtureNamesFor(['77'], tmp), ['77']);
 });
+
+test('inScope covers suffixed names of a second PR, not other numbers', () => {
+  assert.equal(inScope('bdg-impl-529a-fixtures.pid', ['529']), true);
+  assert.equal(inScope('bdg-http-529a.pid', ['529']), true);
+  assert.equal(inScope('/tmp/review-529b', ['529']), true);
+  assert.equal(inScope('bdg-impl-5290-fixtures.pid', ['529']), false);
+  assert.equal(inScope('bdg-impl-529-fixtures.pid', ['529']), true);
+});

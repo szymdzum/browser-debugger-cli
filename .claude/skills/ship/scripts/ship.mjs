@@ -1193,11 +1193,21 @@ async function gates(argv) {
  * @param {string} [body]
  */
 export function closedIssues(body) {
-  const text = (body ?? '').replace(/^ {0,3}(`{3,}|~{3,})[\s\S]*?(^ {0,3}\1[`~]*[ \t]*$|(?![\s\S]))/gm, '');
+  const text = withoutFencedCode(body);
   const ref = `(?:#|https://github\\.com/${REPO}/issues/)(\\d+)(?![\\w/-])`;
   const keyword = '\\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\\s+';
   const found = [...text.matchAll(new RegExp(keyword + ref, 'gi'))];
   return [...new Set(found.map((m) => m[1]))];
+}
+
+/**
+ * A PR body without its fenced code blocks, so an example `Closes #5` in a
+ * code sample never counts.
+ *
+ * @param {string} [body]
+ */
+function withoutFencedCode(body) {
+  return (body ?? '').replace(/^ {0,3}(`{3,}|~{3,})[\s\S]*?(^ {0,3}\1[`~]*[ \t]*$|(?![\s\S]))/gm, '');
 }
 
 /**
@@ -1209,7 +1219,7 @@ export function closedIssues(body) {
  * @param {string} [body]
  */
 export function partOfIssues(body) {
-  const text = (body ?? '').replace(/^ {0,3}(`{3,}|~{3,})[\s\S]*?(^ {0,3}\1[`~]*[ \t]*$|(?![\s\S]))/gm, '');
+  const text = withoutFencedCode(body);
   const ref = `(?:#|https://github\\.com/${REPO}/issues/)(\\d+)(?![\\w/-])`;
   const found = [...text.matchAll(new RegExp(`\\bpart of:?\\s+${ref}`, 'gi'))];
   return [...new Set(found.map((m) => m[1]))];
@@ -1439,13 +1449,14 @@ function alive(pid) {
 
 /**
  * True when a PID file or temporary worktree name belongs to one of the
- * given issue or PR numbers (`/tmp/bdg-impl-611-fixtures.pid`, `/tmp/review-611`).
+ * given issue or PR numbers (`/tmp/bdg-impl-611-fixtures.pid`, `/tmp/review-611`),
+ * including a suffixed name for a second PR of one issue (`529a`, brief NAME=).
  *
  * @param {string} name
  * @param {string[]} scope
  */
 export function inScope(name, scope) {
-  return scope.some((n) => new RegExp(`(^|[-/])${n}(-|\\.pid$|$)`).test(name));
+  return scope.some((n) => new RegExp(`(^|[-/])${n}(?:[a-z][\\w]*)?(-|\\.pid$|$)`).test(name));
 }
 
 /**
@@ -1584,7 +1595,7 @@ async function fixtures(argv) {
   const { positional, keys, flags } = parseArgs(argv);
   const n = positional[0];
   if (!n || !/^[A-Za-z0-9][\w.-]*$/.test(n))
-    return usage('fixtures <N or name, e.g. 529a> [dir=<worktree>] | fixtures <N or name> --stop');
+    return usage('fixtures <N, or a name that starts with it, e.g. 529a> [dir=<worktree>] | fixtures <N or name> --stop');
   if (flags.has('stop')) {
     const result = stopFixtures(n);
     console.log(
