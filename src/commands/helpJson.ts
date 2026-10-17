@@ -8,6 +8,7 @@ import type { Command, Option, Argument } from 'commander';
 
 import { getAllDomainSummaries } from '@/cdp/schema.js';
 import { getOptionBehavior } from '@/commands/optionBehaviors.js';
+import { currentOptions, currentSubcommands } from '@/commands/shared/renamedNames.js';
 import { readLiveDaemonPid } from '@/session/cleanup/staleSession.js';
 import { helpJsonDetailsNote } from '@/ui/messages/commands.js';
 import { getAllDecisionTrees, type DecisionTree } from '@/utils/decisionTrees.js';
@@ -351,9 +352,9 @@ function convertCommand(command: Command): CommandMetadata {
     description: command.description(),
     usage: command.usage(),
     arguments: command.registeredArguments.map(convertArgument),
-    options: command.options.map((opt) => convertOption(opt, commandName)),
+    options: currentOptions(command).map((opt) => convertOption(opt, commandName)),
     ...(helpText && { helpText }),
-    subcommands: command.commands.map(convertCommand),
+    subcommands: currentSubcommands(command).map(convertCommand),
   };
 }
 
@@ -379,7 +380,8 @@ function argumentTerm(argument: Argument): string {
 function convertCompactCommand(command: Command): CompactCommand {
   const aliases = command.aliases();
   const args = command.registeredArguments.map(argumentTerm).join(' ');
-  const options = command.options.filter((option) => !option.hidden);
+  const options = currentOptions(command).filter((option) => !option.hidden);
+  const subcommands = currentSubcommands(command);
   return {
     name: command.name(),
     ...(aliases.length > 0 && { aliases }),
@@ -396,8 +398,8 @@ function convertCompactCommand(command: Command): CompactCommand {
         })
       ),
     }),
-    ...(command.commands.length > 0 && {
-      subcommands: command.commands.map(convertCompactCommand),
+    ...(subcommands.length > 0 && {
+      subcommands: subcommands.map(convertCompactCommand),
     }),
   };
 }
@@ -629,7 +631,7 @@ export function generateCommandHelp(program: Command, command: Command): Command
     path: commandPath(command),
     command: {
       ...convertCommand(command),
-      subcommands: command.commands.map(convertCompactCommand),
+      subcommands: currentSubcommands(command).map(convertCompactCommand),
     },
     exitCodes: [...EXIT_CODE_DOCS],
   };

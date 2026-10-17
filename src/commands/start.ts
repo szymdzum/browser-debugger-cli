@@ -1,10 +1,11 @@
 import fs from 'node:fs';
 import os from 'node:os';
 
-import { Option, type Command } from 'commander';
+import type { Command } from 'commander';
 
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import { handleValidationError } from '@/commands/shared/handleValidationError.js';
+import { currentSubcommands } from '@/commands/shared/renamedNames.js';
 import { startSessionViaDaemon } from '@/commands/shared/startHelpers.js';
 import { readStateFile } from '@/commands/shared/stateFile.js';
 import { parseDialogAnswer, positiveIntRule } from '@/commands/shared/validation.js';
@@ -142,7 +143,6 @@ export function applyCollectorOptions(command: Command): Command {
       false
     )
     .option('-m, --max-body-size <megabytes>', 'Maximum response body size in MB', '5')
-    .addOption(new Option('--compact', 'No effect; kept for compatibility').hideHelp())
     .option(
       '--headless',
       'Run Chrome without a window (default without a display: Linux without DISPLAY or WAYLAND_DISPLAY, macOS over SSH or in CI)',
@@ -431,12 +431,15 @@ export function assertNotMistypedCommand(program: Command, argv: string[]): void
   const commandNames = program.commands.map((command) => command.name());
   if (first === undefined || commandNames.includes(first)) return;
   const group = program.commands.find((command) =>
-    command.commands.some((sub) => sub.name() === first)
+    currentSubcommands(command).some((sub) => sub.name() === first)
   );
   const similar = group
     ? [`${group.name()} ${first}`]
     : rest.length > 0 && BARE_WORD.test(first)
-      ? findSimilarCommands(first, commandNames)
+      ? findSimilarCommands(
+          first,
+          currentSubcommands(program).map((command) => command.name())
+        )
       : [];
   if (similar.length === 0) return;
   const err = unknownCommandError(first, similar);
@@ -466,9 +469,9 @@ function validateStartInput(
       EXIT_CODES.INVALID_ARGUMENTS
     );
   }
-  const commandNames = program.commands.map((command) => command.name());
+  const commandNames = currentSubcommands(program).map((command) => command.name());
   assertNotCommandTypo(url, commandNames);
-  assertNotSpacedCommand(url, program.commands);
+  assertNotSpacedCommand(url, currentSubcommands(program));
   assertValidUrl(url);
   getIPCRequestTimeout();
   assertStateNotAttached(options);

@@ -188,7 +188,8 @@ const MIN_COMMAND_TYPO_LENGTH = 3;
 
 /**
  * Command names close to a mistyped word: at least 3 characters, within
- * {@link scaledMaxDistance} edits, case folded.
+ * {@link scaledMaxDistance} edits, case folded. Callers pass current names
+ * only (`currentSubcommands`), so an old spelling is never suggested.
  *
  * @param word - Word as typed
  * @param commandNames - Command names to compare with

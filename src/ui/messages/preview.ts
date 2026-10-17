@@ -100,12 +100,3 @@ export function followedSessionEndedMessage(): string {
 export function connectionLostStopHintMessage(): string {
   return 'Press Ctrl+C to stop';
 }
-
-/**
- * Notice that `bdg tail` is deprecated (it still runs).
- *
- * @returns Notice for stderr
- */
-export function tailDeprecatedNotice(): string {
-  return 'Note: "bdg tail" is deprecated and will be removed; use "bdg peek --follow" (same options: --last, --network, --console, --interval, --verbose)';
-}

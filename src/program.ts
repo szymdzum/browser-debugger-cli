@@ -4,6 +4,7 @@
 
 import { Command, Option, type OutputConfiguration } from 'commander';
 
+import { registerRenamedNames } from '@/commands/shared/renamedNames.js';
 import { commandRegistry } from '@/commands.js';
 import { VERSION } from '@/utils/version.js';
 
@@ -35,9 +36,10 @@ function addGlobalOptions(command: Command): void {
 }
 
 /**
- * Build the bdg program with every command registered, without parsing
- * anything. Commander errors throw instead of exiting; the output
- * configuration is set before commands are registered so they inherit it.
+ * Build the bdg program with every command registered (and the old
+ * spellings of the rename table, hidden), without parsing anything.
+ * Commander errors throw instead of exiting; the output configuration is set
+ * before commands are registered so they inherit it.
  *
  * @param output - Where Commander writes help and errors
  * @returns Root command
@@ -54,6 +56,7 @@ export function buildProgram(output: OutputConfiguration = {}): Command {
     .configureOutput(output);
 
   commandRegistry.forEach((register) => register(program));
+  registerRenamedNames(program);
   addGlobalOptions(program);
   return program;
 }

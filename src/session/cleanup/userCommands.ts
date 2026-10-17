@@ -27,8 +27,6 @@ const DAEMON_EXIT_WAIT_MS = 2000;
 export interface SessionCleanupOptions {
   /** Kill a running (possibly hung) daemon before cleaning */
   force?: boolean | undefined;
-  /** Also remove the legacy session.json output file */
-  removeOutput?: boolean | undefined;
 }
 
 /**
@@ -39,6 +37,7 @@ export interface SessionCleanupResult {
     session: boolean;
     chrome: boolean;
     daemons: boolean;
+    /** Always false: `--remove-output` was removed (#465) */
     output: boolean;
   };
   warnings: string[];
@@ -67,7 +66,6 @@ export async function performSessionCleanup(
   const orphan = killOrphanedChrome();
   const unrecorded = readLiveDaemonPid() === null ? killSessionChromes() : [];
   const chrome = orphan || unrecorded.length > 0;
-  const output = options.removeOutput ? removeOutputFile(warnings) : false;
   const filesRemoved = countSessionFiles() < filesBefore;
   const endedRecordRemoved = clearLastSessionEnd();
 
@@ -76,7 +74,7 @@ export async function performSessionCleanup(
       session: session || daemonKilled || filesRemoved || endedRecordRemoved,
       chrome,
       daemons: daemonKilled,
-      output,
+      output: false,
     },
     warnings,
   };
@@ -110,22 +108,4 @@ async function killLiveDaemon(warnings: string[]): Promise<boolean> {
   const deadline = Date.now() + DAEMON_EXIT_WAIT_MS;
   while (Date.now() < deadline && (await isDaemonAlive())) await delay(100);
   return true;
-}
-
-/**
- * Remove the legacy session.json output file.
- *
- * @param warnings - Collector for non-fatal problems
- * @returns True if the file was removed
- */
-function removeOutputFile(warnings: string[]): boolean {
-  const outputPath = getSessionFilePath('OUTPUT');
-  if (!fs.existsSync(outputPath)) return false;
-  try {
-    fs.unlinkSync(outputPath);
-    return true;
-  } catch (error) {
-    warnings.push(`Could not remove session.json: ${getErrorMessage(error)}`);
-    return false;
-  }
 }

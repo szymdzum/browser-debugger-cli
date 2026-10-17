@@ -55,6 +55,15 @@ export interface BdgResponse<T = unknown> {
   warning?: string;
 
   /**
+   * The command line used an old spelling that still works until 1.0 (#465),
+   * one text per spelling (`bdg tail` gives: "bdg tail" is deprecated and will
+   * be removed in 1.0: use "bdg peek --follow"). Switch to the new spelling. Present only
+   * when non-empty, on success and error envelopes (and on every line of a
+   * follow mode); human output prints each as a `Warning:` line on stderr.
+   */
+  warnings?: string[];
+
+  /**
    * The session's tab that closed on its own (e.g. a popup's timer calling
    * `window.close()`) since the last command, when no command reported it
    * yet; given once, on success and error (with {@link switchedTo})

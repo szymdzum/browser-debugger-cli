@@ -5,6 +5,7 @@
 import type { Command, CommanderError } from 'commander';
 
 import { commandPath } from '@/commands/helpJson.js';
+import { currentOptions, currentSubcommands } from '@/commands/shared/renamedNames.js';
 import { CommandError } from '@/errors/index.js';
 import {
   didYouMeanSuggestion,
@@ -56,7 +57,7 @@ export function assertKnownHelpTopic(program: Command, topic: string[], viaHelp 
     if (!sub) {
       const [closest] = findSimilarCommands(
         word,
-        command.commands.map((c) => c.name())
+        currentSubcommands(command).map((c) => c.name())
       );
       const err =
         path.length === 0 && !viaHelp
@@ -106,7 +107,7 @@ const UNKNOWN_OPTION = /unknown option '([^'=]+)/;
  * @returns Closest long option, if any is similar
  */
 function closestOption(flag: string, command: Command): string | undefined {
-  const longs = command.options.flatMap((option) => (option.long ? [option.long] : []));
+  const longs = currentOptions(command).flatMap((option) => (option.long ? [option.long] : []));
   const maxDistance = Math.ceil(flag.replace(/^-+/, '').length / 3);
   return findSimilar(flag, longs, { maxDistance })[0];
 }
@@ -188,7 +189,7 @@ export function usageErrorDetails(
   const { message, suggestion } = splitCommanderHint(error.message);
   const flag = error.code === 'commander.unknownOption' && UNKNOWN_OPTION.exec(message)?.[1];
   if (error.code === 'commander.help' || (bareGroup && flag && JSON_FLAGS.includes(flag))) {
-    const names = command.commands.map((sub) => sub.name());
+    const names = currentSubcommands(command).map((sub) => sub.name());
     return { message: missingSubcommandMessage(command.name(), names), suggestion: help };
   }
   if (error.code === 'commander.excessArguments') {

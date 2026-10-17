@@ -2045,15 +2045,6 @@ export function sessionFilesCleanedMessage(): string {
 }
 
 /**
- * Generate session output file removed message.
- *
- * @returns Formatted success message
- */
-export function sessionOutputRemovedMessage(): string {
-  return 'Session output file removed';
-}
-
-/**
  * Cleanup left the session's downloaded files in place.
  *
  * @param dir - Downloads directory
@@ -2309,3 +2300,14 @@ export const PERFORMANCE_METRICS_EMPTY_HINT =
 
 /** What to run to capture the full page of a page too tall for a full-page capture */
 export const FULL_PAGE_SKIPPED_HINT = '--no-resize captures the full page';
+
+/**
+ * Warning for an old spelling that still works until 1.0 (#465).
+ *
+ * @param oldSpelling - Old spelling (`bdg tail`)
+ * @param instead - What to do instead (`use "bdg peek --follow"`)
+ * @returns Warning text (without the `Warning:` prefix)
+ */
+export function deprecatedNameWarning(oldSpelling: string, instead: string): string {
+  return `"${oldSpelling}" is deprecated and will be removed in 1.0: ${instead}`;
+}

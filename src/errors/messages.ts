@@ -3734,3 +3734,22 @@ export function backgroundTabError(): ErrorWithSuggestion {
       'Bring the tab to the front in Chrome, or wait until the page is idle, then run the command again',
   };
 }
+
+/**
+ * An old spelling that exits 81 since 1.0 (#465): renamed, or removed
+ * without a replacement.
+ *
+ * @param oldSpelling - Old spelling (`bdg dom pressKey`, `bdg <url> --compact`)
+ * @param instead - The new spelling (`bdg dom press-key`), or for a removal what to do instead
+ */
+export function retiredNameError(
+  oldSpelling: string,
+  instead: { newSpelling: string } | { hint: string }
+): ErrorWithSuggestion {
+  return 'newSpelling' in instead
+    ? {
+        message: `"${oldSpelling}" was renamed to "${instead.newSpelling}"`,
+        suggestion: `Use "${instead.newSpelling}"`,
+      }
+    : { message: `"${oldSpelling}" was removed`, suggestion: instead.hint };
+}

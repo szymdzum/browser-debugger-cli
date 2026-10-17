@@ -30,7 +30,7 @@ export const PEEK_BEHAVIORS: BehaviorTable = {
   'peek:--follow': {
     default: 'Shows snapshot of current data',
     whenEnabled:
-      'Continuous monitoring (like tail -f): refreshes every second, or every --interval ms (100-60000). Replaces the deprecated bdg tail',
+      'Continuous monitoring (like tail -f): refreshes every second, or every --interval ms (100-60000)',
     automaticBehavior: FOLLOW_BEHAVIOR,
   },
   'peek:--verbose': {
