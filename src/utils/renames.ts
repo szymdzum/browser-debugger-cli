@@ -44,6 +44,8 @@ interface OptionRename extends RenameEntryBase {
   old: string;
   /** New long option of the same command (`--force`) */
   new?: string;
+  /** Value the new option gets in place of the old option's own (`all` for `--history` → `--page all`) */
+  value?: string;
   /** Whether the option takes a value (`--old <value>`, `--old=value`) */
   takesValue?: boolean;
 }
