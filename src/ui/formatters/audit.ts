@@ -9,6 +9,7 @@ import {
   a11yTruncatedNote,
   auditCanvasNote,
   auditUncertainContrastNote,
+  pageLoadingWarning,
 } from '@/ui/messages/commands.js';
 import { truncateByLength } from '@/utils/strings.js';
 
@@ -30,7 +31,10 @@ export function formatAudit(data: AuditResult): string {
     data.a11y && a11ySection(data.a11y),
   ].filter((section): section is string[] => section !== undefined);
   const capped = data.capped ? [`(stopped after ${data.walked} elements; the page has more)`] : [];
-  return [...sections.flatMap((lines) => [...lines, '']), ...capped].join('\n').trimEnd();
+  const loading = data.loading ? [`⚠ ${pageLoadingWarning(data.loading)}`] : [];
+  return [...sections.flatMap((lines) => [...lines, '']), ...capped, ...loading]
+    .join('\n')
+    .trimEnd();
 }
 
 /**

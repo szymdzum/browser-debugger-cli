@@ -2,6 +2,8 @@
  * Types of `bdg dom audit` (page-wide checks) and `bdg css search`.
  */
 
+import type { PageLoadingState } from '@/ipc/protocol/commands.js';
+
 /** A check `dom audit` can run */
 export type AuditCheck = 'contrast' | 'overflow' | 'layers' | 'animations' | 'a11y';
 
@@ -82,6 +84,8 @@ export interface AuditResult {
   walked: number;
   /** The walk stopped at its cap: the page has more elements */
   capped?: true;
+  /** The document had not finished loading: the findings cover what was there */
+  loading?: PageLoadingState;
   contrast?: {
     level: 'AA' | 'AAA';
     /** Text holders checked */
