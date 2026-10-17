@@ -8,6 +8,7 @@ import { commandPath } from '@/commands/helpJson.js';
 import {
   currentOptions,
   currentSubcommands,
+  renamedCommandPath,
   renamedCommandSuggestion,
 } from '@/commands/shared/renamedNames.js';
 import { CommandError } from '@/errors/index.js';
@@ -189,7 +190,7 @@ export function usageErrorDetails(
   argv: string[] = process.argv,
   bareGroup = false
 ): { message: string; suggestion: string } {
-  const help = usageHelpSuggestion(commandPath(command));
+  const help = usageHelpSuggestion(renamedCommandPath(command) ?? commandPath(command));
   const { message, suggestion } = splitCommanderHint(error.message);
   const flag = error.code === 'commander.unknownOption' && UNKNOWN_OPTION.exec(message)?.[1];
   if (error.code === 'commander.help' || (bareGroup && flag && JSON_FLAGS.includes(flag))) {

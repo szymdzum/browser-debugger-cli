@@ -130,6 +130,40 @@ void describe('renamed commands: new name, old name, human and --json', () => {
   }
 });
 
+void describe('usage errors of an old spelling', () => {
+  const USAGE: Array<{ old: string[]; help: string; warning: string }> = [
+    { old: ['dom', 'eval'], help: 'bdg eval', warning: RENAMED[0]?.warning ?? '' },
+    { old: ['dom', 'pressKey'], help: 'bdg dom press-key', warning: RENAMED[1]?.warning ?? '' },
+    {
+      old: ['network', 'getCookies', '--bogus'],
+      help: 'bdg network cookies',
+      warning: RENAMED[2]?.warning ?? '',
+    },
+  ];
+  for (const row of USAGE) {
+    const label = `bdg ${row.old.join(' ')}`;
+
+    void it(`${label}: exit 81, the warning, help of the new name`, async () => {
+      const run = await runCli(row.old);
+      assert.equal(run.status, EXIT_CODES.INVALID_ARGUMENTS, run.stderr);
+      assert.deepEqual(
+        run.stderr.split('\n').filter((line) => line.startsWith('Warning: ')),
+        [`Warning: ${row.warning}`]
+      );
+      assert.ok(run.stderr.includes(`Run "${row.help} --help" for usage`), run.stderr);
+    });
+
+    void it(`${label} --json: warnings in the error envelope, help of the new name`, async () => {
+      const run = await runCli([...row.old, '--json']);
+      assert.equal(run.status, EXIT_CODES.INVALID_ARGUMENTS, run.stderr);
+      const response = envelope(run.stdout);
+      assert.deepEqual(response['warnings'], [row.warning]);
+      assert.equal(response.suggestion, `Run "${row.help} --help" for usage`);
+      assert.equal(run.stderr, '');
+    });
+  }
+});
+
 void describe('help lists only the new names', () => {
   void it('bdg --help lists eval; dom --help lists press-key and no eval or pressKey', async () => {
     const root = await runCli(['--help']);

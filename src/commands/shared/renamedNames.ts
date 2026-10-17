@@ -265,3 +265,28 @@ export function renamedCommandSuggestion(
   const entry = entries.find((candidate) => candidate.old === closest);
   return entry && `Did you mean: ${spelling(entry, 'new')}?`;
 }
+
+/**
+ * The new spelling of a command reached by a deprecated old name, so a usage
+ * error points at the command that exists (`bdg dom press-key`, not
+ * `bdg dom pressKey`).
+ *
+ * @param command - Command a usage error came from
+ * @param table - Rename table
+ * @returns `bdg …` spelling of the new command, if this one is a deprecated old name
+ */
+export function renamedCommandPath(
+  command: Command,
+  table: readonly RenameEntry[] = RENAMES
+): string | undefined {
+  const parentWords = command.parent ? commandWords(command.parent) : undefined;
+  const entry = table.find(
+    (row) =>
+      row.kind === 'command' &&
+      row.stage === 'deprecated' &&
+      row.new !== undefined &&
+      row.command === parentWords &&
+      row.old === command.name()
+  );
+  return entry && spelling(entry, 'new');
+}
