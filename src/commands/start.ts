@@ -8,7 +8,11 @@ import { handleValidationError } from '@/commands/shared/handleValidationError.j
 import { currentSubcommands } from '@/commands/shared/renamedNames.js';
 import { startSessionViaDaemon } from '@/commands/shared/startHelpers.js';
 import { readStateFile } from '@/commands/shared/stateFile.js';
-import { parseDialogAnswer, parseStopAfter, positiveIntRule } from '@/commands/shared/validation.js';
+import {
+  parseDialogAnswer,
+  parseStopAfter,
+  positiveIntRule,
+} from '@/commands/shared/validation.js';
 import { getIPCRequestTimeout, PORT_OPTION_DESCRIPTION } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
 import {
