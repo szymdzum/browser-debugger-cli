@@ -176,9 +176,10 @@ export function registerRenamedNames(
 }
 
 /**
- * Give a deprecated option's value to the option that replaces it. Both
- * spellings on one command line are fine when they give the same value
- * (`cleanup --aggressive --force`, `-t 5 --stop-after 5`).
+ * Give a deprecated option's value, or the row's `value`, to the option that
+ * replaces it. Both spellings on one command line are fine when they give
+ * the same value (`cleanup --aggressive --force`, `-t 5 --stop-after 5`,
+ * `console -H --page all`).
  *
  * @param level - Command that has both options
  * @param entry - Deprecated option entry with a new option
@@ -191,10 +192,14 @@ function passToNewOption(
   oldAttribute: string
 ): void {
   const newAttribute = attributeName(entry.new ?? '');
-  const value: unknown = level.getOptionValue(oldAttribute);
-  const given = level.getOptionValueSource(newAttribute) === 'cli';
-  if (given && level.getOptionValue(newAttribute) !== value) {
-    const err = renamedOptionConflictError(spelling(entry, 'old'), spelling(entry, 'new'));
+  const value: unknown = entry.value ?? level.getOptionValue(oldAttribute);
+  const given: unknown = level.getOptionValue(newAttribute);
+  if (level.getOptionValueSource(newAttribute) === 'cli' && given !== value) {
+    const typed =
+      entry.value === undefined
+        ? spelling(entry, 'new')
+        : `${['bdg', entry.command, entry.new].filter(Boolean).join(' ')} ${String(given)}`;
+    const err = renamedOptionConflictError(spelling(entry, 'old'), typed);
     throw new CommandError(
       err.message,
       { suggestion: err.suggestion },

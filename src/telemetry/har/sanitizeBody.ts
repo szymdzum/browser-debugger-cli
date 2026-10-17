@@ -1,7 +1,7 @@
 /**
  * Credential redaction in request and response bodies, WebSocket text
  * messages and `name=value` lists, for sanitized HAR exports (see sanitize.ts)
- * and the masked output of `details network` (networkMasking.ts). Each
+ * and the masked output of `network details` (networkMasking.ts). Each
  * replaces a credential value with a placeholder it is given
  * (`[redacted]` in a HAR, `••••` on screen).
  *

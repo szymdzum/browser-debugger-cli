@@ -54,17 +54,17 @@ export function ndjsonConflictsWithJson(): { message: string; suggestion: string
 
 /**
  * Note under a console list whose indices skip messages: the indices are
- * positions in the session's message list (what `bdg details console <n>`
+ * positions in the session's message list (what `bdg console details <n>`
  * takes), and the messages in between were left out by the filters.
  *
  * @param skipped - Messages left out between the first and last listed index
- * @returns e.g. `[n] are positions in the session's message list; not listed in between: 1 message from another page load (-H lists all)`
+ * @returns e.g. `[n] are positions in the session's message list; not listed in between: 1 message from another page load (--page all lists all)`
  */
 export function consoleIndexGapNote(skipped: ConsoleSkipped): string {
   const reasons = [
     skipped.otherLevels > 0 && `${pluralize(skipped.otherLevels, 'message')} of another level`,
     skipped.otherPages > 0 &&
-      `${pluralize(skipped.otherPages, 'message')} from another page load (-H lists all)`,
+      `${pluralize(skipped.otherPages, 'message')} from another page load (--page all lists all)`,
   ].filter(Boolean);
   return `[n] are positions in the session's message list; not listed in between: ${reasons.join(', ')}`;
 }
@@ -102,7 +102,7 @@ export function consoleDroppedNote(dropped: number): string {
 }
 
 /**
- * Error for `bdg details console <n>` with the index of a dropped message.
+ * Error for `bdg console details <n>` with the index of a dropped message.
  *
  * @param index - Index asked for
  * @param dropped - Messages dropped (the first kept has this index)

@@ -1,5 +1,5 @@
 /**
- * Fixture page for the secrets `details network`, `network headers` and
+ * Fixture page for the secrets `network details`, `network headers` and
  * `network document` mask (#615), served by the fixture server.
  *
  * `/net-secrets` sets a cookie (`pre`), moves its own URL to one with

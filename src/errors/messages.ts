@@ -3462,7 +3462,7 @@ export function tabsUnavailableError(reason: string): ErrorWithSuggestion {
 }
 
 /**
- * `details network <id> --body` on a request without a response body to print.
+ * `network details <id> --body` on a request without a response body to print.
  *
  * @param requestId - Request id
  * @param reason - Why there is none (from missingBodyReason)
@@ -3471,7 +3471,7 @@ export function tabsUnavailableError(reason: string): ErrorWithSuggestion {
 export function responseBodyMissingError(requestId: string, reason: string): ErrorWithSuggestion {
   return {
     message: `No response body for request ${requestId}: ${reason}`,
-    suggestion: `Repeat the request (reload the page) to capture it again; ${sessionCommand(`bdg details network ${requestId}`)} shows the rest`,
+    suggestion: `Repeat the request (reload the page) to capture it again; ${sessionCommand(`bdg network details ${requestId}`)} shows the rest`,
   };
 }
 
@@ -3484,7 +3484,7 @@ export function responseBodyMissingError(requestId: string, reason: string): Err
 export function networkOnlyDetailsOptionError(flag: string): ErrorWithSuggestion {
   return {
     message: `${flag} applies to network requests only`,
-    suggestion: `Usage: bdg details network <requestId> ${flag}`,
+    suggestion: `Usage: bdg network details <requestId> ${flag}`,
   };
 }
 

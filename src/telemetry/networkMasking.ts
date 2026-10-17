@@ -1,5 +1,5 @@
 /**
- * Masked network output (#615): `details network`, `network headers` and
+ * Masked network output (#615): `network details`, `network headers` and
  * `network document` show credentials as {@link MASKED_VALUE} unless run with
  * `--include-sensitive`.
  *

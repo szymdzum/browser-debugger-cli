@@ -19,7 +19,7 @@ export const MASKED_URL_DEFAULT =
 
 /** What `--include-sensitive` does on the commands that mask page URLs */
 export const MASKED_URL_ENABLED =
-  'Shows the query and fragment parameters as captured, with a warning (JSON warning) that the output holds credentials; user:pass@ stays removed (bdg details network <id> --include-sensitive has the full request)';
+  'Shows the query and fragment parameters as captured, with a warning (JSON warning) that the output holds credentials; user:pass@ stays removed (bdg network details <id> --include-sensitive has the full request)';
 
 /** Hidden behaviors of masked page URLs */
 export const MASKED_URL_AUTOMATIC =

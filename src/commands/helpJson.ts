@@ -416,7 +416,7 @@ function convertCompactCommand(command: Command): CompactCommand {
 function generateRuntimeState(): RuntimeState {
   const sessionActive = readLiveDaemonPid() !== null;
   const availableCommands = sessionActive
-    ? ['peek', 'details', 'dom', 'network', 'console', 'cdp', 'status', 'sessions', 'stop']
+    ? ['peek', 'dom', 'network', 'console', 'cdp', 'status', 'sessions', 'stop']
     : ['bdg <url>', 'sessions', 'cleanup', '--help', '--version'];
 
   return {

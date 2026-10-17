@@ -488,7 +488,7 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
             fmt.text(`  MIME: ${req.mimeType}`);
           }
           fmt.text(
-            `  ID: ${req.requestId} (use '${sessionCommand(`bdg details network ${req.requestId}`)}' for full details)`
+            `  ID: ${req.requestId} (use '${sessionCommand(`bdg network details ${req.requestId}`)}' for full details)`
           );
         });
         if (mayHavePausedRequests(output, requests)) fmt.text(`⚠ ${pendingRequestsPausedNote()}`);

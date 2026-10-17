@@ -77,7 +77,7 @@ Commands reflect the investigation workflow and compose through pipes:
 
 ```bash
 bdg network list --filter "duration:>1s" --json | jq -r '.data.requests[].requestId'   # slow requests
-bdg details network <id> --json                                                          # one request in full
+bdg network details <id> --json                                                          # one request in full
 bdg network list --filter "url:/api/" --preset errors                                   # failed requests whose URL contains /api/
 bdg console --level error                                                                # console errors only
 ```
@@ -89,7 +89,7 @@ Not `bdg diagnose-everything`, which would mix network, console and performance 
 Agents need semantic signals more than friendly prose. bdg errors carry the exit code, a message and a next step:
 
 ```console
-$ bdg details network nope --json
+$ bdg network details nope --json
 {"version":"0.17.0","success":false,"error":"Network request not found: nope","suggestion":"List request ids with: bdg network list","exitCode":83}
 ```
 

@@ -102,7 +102,7 @@ export const DECISION_TREES: Record<string, DecisionTree> = {
       },
       {
         question: 'Need full request/response details?',
-        yesCommand: 'details network',
+        yesCommand: 'network details',
         noAction: 'cdp',
       },
     ],
@@ -118,7 +118,7 @@ export const DECISION_TREES: Record<string, DecisionTree> = {
       },
       {
         question: 'Need messages from all page loads (history)?',
-        yesCommand: 'console --history',
+        yesCommand: 'console --page all',
         noAction: 'next',
       },
       {
@@ -133,7 +133,7 @@ export const DECISION_TREES: Record<string, DecisionTree> = {
       },
       {
         question: 'Need full console message details?',
-        yesCommand: 'details console',
+        yesCommand: 'console details',
         noAction: 'cdp',
       },
     ],
@@ -154,7 +154,7 @@ export const DECISION_TREES: Record<string, DecisionTree> = {
       },
       {
         question: 'Need detailed item inspection?',
-        yesCommand: 'details',
+        yesCommand: 'network details',
         noAction: 'status',
       },
     ],

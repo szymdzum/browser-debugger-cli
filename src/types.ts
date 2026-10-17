@@ -235,7 +235,7 @@ export interface NetworkRequest {
   blockedCookiesOmitted?: number;
   /**
    * What `network list` and `peek` carry instead of `blockedCookies` (which
-   * only `details network` has)
+   * only `network details` has)
    */
   blockedCookieSummary?: BlockedCookieSummary;
 }
@@ -286,7 +286,7 @@ export interface StackFrame {
 }
 
 export interface ConsoleMessage {
-  /** Position in the session's message list (set in previews; `details console <n>` takes it) */
+  /** Position in the session's message list (set in previews; `console details <n>` takes it) */
   index?: number;
   type: Protocol.Runtime.ConsoleAPICalledEvent['type'];
   text: string;

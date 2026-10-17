@@ -65,7 +65,7 @@ void describe('console index gaps', () => {
     assert.deepEqual(skippedMessages(all, listed), { otherPages: 0, otherLevels: 1 });
   });
 
-  void it('with --history, counts the messages left out between as of another level', () => {
+  void it('with --page all, counts the messages left out between as of another level', () => {
     const all = [message(0, 1, 'error'), message(1, 2), message(2, 3, 'error')];
     const listed = [all[0], all[2]] as ConsoleMessage[];
     assert.deepEqual(skippedMessages(all, listed, true), { otherPages: 0, otherLevels: 1 });
@@ -80,14 +80,14 @@ void describe('console index gaps', () => {
     assert.match(output, /Console Messages \(3 total\)/);
     assert.match(
       output,
-      /\[n\] are positions in the session's message list; not listed in between: 1 message from another page load \(-H lists all\)$/
+      /\[n\] are positions in the session's message list; not listed in between: 1 message from another page load \(--page all lists all\)$/
     );
   });
 
   void it('names both reasons with their counts', () => {
     assert.equal(
       consoleIndexGapNote({ otherPages: 2, otherLevels: 1 }),
-      "[n] are positions in the session's message list; not listed in between: 1 message of another level, 2 messages from another page load (-H lists all)"
+      "[n] are positions in the session's message list; not listed in between: 1 message of another level, 2 messages from another page load (--page all lists all)"
     );
   });
 });

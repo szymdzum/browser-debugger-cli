@@ -141,7 +141,7 @@ interface NetworkPreview {
   errorText?: string;
   fromCache?: boolean;
   duration?: number;
-  /** Cookies Chrome blocked, in short (`details network` has them all) */
+  /** Cookies Chrome blocked, in short (`network details` has them all) */
   blockedCookieSummary?: BlockedCookieSummary;
   requestHeaders?: Record<string, string>;
   responseHeaders?: Record<string, string>;
@@ -181,7 +181,7 @@ function mapNetworkRequestToPreview(
 }
 
 interface ConsolePreview {
-  /** Position in the session's message list (what `details console <n>` takes) */
+  /** Position in the session's message list (what `console details <n>` takes) */
   index?: number;
   timestamp: number;
   type: string;

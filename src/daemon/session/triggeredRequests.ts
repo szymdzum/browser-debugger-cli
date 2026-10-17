@@ -170,7 +170,7 @@ function isReportable(request: NetworkRequest): boolean {
 
 /**
  * Summarize a captured request, its URL without user info and with its
- * tokens masked (#623; `details network --include-sensitive` has it whole).
+ * tokens masked (#623; `network details --include-sensitive` has it whole).
  *
  * @param request - Captured request
  * @param inFlight - Whether it was still in flight (a request with a response

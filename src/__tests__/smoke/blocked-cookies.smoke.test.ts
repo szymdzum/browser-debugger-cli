@@ -5,7 +5,7 @@
  * a `SameSite=Lax` cookie, then opens a page on 127.0.0.1 (another site)
  * whose response sets a `SameSite=None` cookie over http and one for
  * `Domain=example.com`, both rejected, and which fetches the API with
- * credentials: the Lax cookie is not sent. `details network` and `--json`
+ * credentials: the Lax cookie is not sent. `network details` and `--json`
  * name each cookie with its reason, `network list` marks and filters the two
  * requests, and no cookie value appears in that output or a default HAR.
  *
@@ -95,21 +95,21 @@ async function waitForBlockedCookies(
  * A request's details, in JSON.
  *
  * @param requestId - Request id
- * @returns The request as `details network --json` reports it
+ * @returns The request as `network details --json` reports it
  */
 async function detailsJson(requestId: string): Promise<NetworkRequest> {
-  const output = await bdg(['details', 'network', requestId, '--json']);
+  const output = await bdg(['network', 'details', requestId, '--json']);
   return (JSON.parse(output) as { data: { item: NetworkRequest } }).data.item;
 }
 
 /**
- * The `Blocked Cookies` block of `details network`.
+ * The `Blocked Cookies` block of `network details`.
  *
  * @param requestId - Request id
  * @returns Its lines (after the heading and separator)
  */
 async function blockedCookieLines(requestId: string): Promise<string[]> {
-  const lines = (await bdg(['details', 'network', requestId])).split('\n');
+  const lines = (await bdg(['network', 'details', requestId])).split('\n');
   const start = lines.findIndex((line) => line === 'Blocked Cookies:');
   if (start === -1) return [];
   const rest = lines.slice(start + 2);

@@ -2,7 +2,7 @@
  * Low-priority polish smoke test (#644, #646, #608, #567, #458).
  *
  * One session walks three pages: `/polish-net` (a multipart request whose
- * file part Chrome leaves out of the event says so in `details network`;
+ * file part Chrome leaves out of the event says so in `network details`;
  * `peek` console lines name the URL of each 404; `Performance.getMetrics`
  * explains an empty list; a sorted `network list` notes earlier pages),
  * `/polish-forms` (`dom form` lists `type=image` buttons, takes a field's
@@ -99,7 +99,7 @@ void describe('Low-priority polish', () => {
     await fixture.close();
   });
 
-  void it('details network says a multipart body with a file part was not captured (#646)', async () => {
+  void it('network details says a multipart body with a file part was not captured (#646)', async () => {
     const list = await bdgData<{ requests: Array<{ requestId: string; url: string }> }>([
       'network',
       'list',
@@ -108,15 +108,15 @@ void describe('Low-priority polish', () => {
     ]);
     const id = list.requests.find((r) => r.url.endsWith('/polish-upload'))?.requestId ?? '';
     assert.ok(id, JSON.stringify(list.requests));
-    assert.match(await bdg(['details', 'network', id]), /Request Body:\s+[━\s]*\(not captured: /);
+    assert.match(await bdg(['network', 'details', id]), /Request Body:\s+[━\s]*\(not captured: /);
     const data = await bdgData<{ item: { requestBody?: string; requestBodyNotCaptured?: string } }>(
-      ['details', 'network', id]
+      ['network', 'details', id]
     );
     assert.equal(data.item.requestBody, undefined);
     assert.match(data.item.requestBodyNotCaptured ?? '', /file|multipart/i);
   });
 
-  void it('details network says a body over 1 MB was not captured (#646)', async () => {
+  void it('network details says a body over 1 MB was not captured (#646)', async () => {
     const list = await bdgData<{ requests: Array<{ requestId: string; url: string }> }>([
       'network',
       'list',
@@ -125,7 +125,7 @@ void describe('Low-priority polish', () => {
     ]);
     const id = list.requests.find((r) => r.url.endsWith('/polish-big'))?.requestId ?? '';
     assert.ok(id, JSON.stringify(list.requests));
-    assert.match(await bdg(['details', 'network', id]), /\(not captured: .*over 1 MB/);
+    assert.match(await bdg(['network', 'details', id]), /\(not captured: .*over 1 MB/);
   });
 
   void it('peek console lines name the URL of each 404 (#567)', async () => {

@@ -101,7 +101,7 @@ void describe('formatNetworkDetails', () => {
       responseBody: 'x'.repeat(30000),
     });
 
-    assert.match(output, /10000 more characters \(full body: bdg details network R --body\)/);
+    assert.match(output, /10000 more characters \(full body: bdg network details R --body\)/);
   });
 
   void it('takes --body-max and --no-body', () => {
@@ -116,7 +116,7 @@ void describe('formatNetworkDetails', () => {
 
     assert.match(
       formatNetworkDetails(request, { bodyMax: 100 }),
-      /^x{100}\n… 200 more characters \(full body: bdg details network R --body\)$/m
+      /^x{100}\n… 200 more characters \(full body: bdg network details R --body\)$/m
     );
     assert.match(formatNetworkDetails(request, { bodyMax: 0 }), /^x{300}$/m);
     assert.doesNotMatch(formatNetworkDetails(request, { noBody: true }), /Response Body|xxx/);

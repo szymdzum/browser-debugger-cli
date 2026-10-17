@@ -2,7 +2,7 @@
  * Secrets in files on disk smoke test (#634, #624).
  *
  * The session opens `/html-secrets`, whose form holds every shape of secret
- * and ordinary control. The default HAR and `details network <doc> --body`
+ * and ordinary control. The default HAR and `network details <doc> --body`
  * mask the values of the secret controls and keep the ordinary ones and the
  * inline script; `--include-sensitive` keeps everything; `network document`
  * (headers only) prints no value at all. `state save` and
@@ -126,12 +126,12 @@ void describe('Secrets in files on disk', () => {
     for (const secret of [...MASKED, ...KEPT]) assert.ok(text.includes(secret), `lost ${secret}`);
   });
 
-  void it('details network --body masks the same values; network document prints none', async () => {
+  void it('network details --body masks the same values; network document prints none', async () => {
     const id = await documentId();
-    const body = await bdg(['details', 'network', id, '--body']);
-    assertMasked(body, 'details network --body');
+    const body = await bdg(['network', 'details', id, '--body']);
+    assertMasked(body, 'network details --body');
     assert.match(body, /••••/);
-    const full = await bdg(['details', 'network', id, '--body', '--include-sensitive']);
+    const full = await bdg(['network', 'details', id, '--body', '--include-sensitive']);
     for (const secret of MASKED)
       assert.ok(full.includes(secret), `--include-sensitive lost ${secret}`);
     const document = await bdg(['network', 'document']);

@@ -76,7 +76,7 @@ describe('PatternDetector', () => {
 
       const result3 = detector.trackCommand('Network.getResponseBody');
       assert.strictEqual(result3.shouldShow, true);
-      assert.ok(result3.pattern?.alternative.includes('bdg details network'));
+      assert.ok(result3.pattern?.alternative.includes('bdg network details'));
     });
 
     test('suggests eval for a plain Runtime.evaluate, not dom query', () => {
@@ -187,7 +187,7 @@ describe('PatternDetector', () => {
 
       const bodyResult3 = detector.trackCommand('Network.getResponseBody');
       assert.strictEqual(bodyResult3.shouldShow, true);
-      assert.ok(bodyResult3.pattern?.alternative.includes('bdg details network'));
+      assert.ok(bodyResult3.pattern?.alternative.includes('bdg network details'));
     });
   });
 });

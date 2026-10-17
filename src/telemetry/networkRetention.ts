@@ -167,7 +167,7 @@ const SKIPPED_BODY_PATTERN = /^\[SKIPPED: (.*)\]$/s;
  * Placeholder stored instead of a body that was not fetched or not kept.
  *
  * @param reason - Why the body was skipped
- * @returns Placeholder text shown by `bdg details`
+ * @returns Placeholder text shown by `bdg network details`
  */
 export function skippedBodyPlaceholder(reason: string): string {
   return `[SKIPPED: ${reason}]`;
