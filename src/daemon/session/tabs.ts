@@ -10,6 +10,7 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import { sendTyped, type Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import {
   actionAfterTabMoveError,
@@ -33,18 +34,6 @@ import { findSimilar } from '@/utils/suggestions.js';
 
 const log = createLogger('session');
 
-/** What Chrome reports about a target (`Target.TargetInfo`), as far as read here */
-export interface TargetInfoEvent {
-  targetId: string;
-  type: string;
-  url: string;
-  title: string;
-  openerId?: string;
-  canAccessOpener?: boolean;
-  /** Set for prerendered pages and the like, which are not tabs */
-  subtype?: string;
-}
-
 /** A page target the session knows */
 interface Tab {
   targetId: string;
@@ -67,7 +56,7 @@ type TargetSource = Pick<CDPConnection, 'send' | 'on'>;
  * @param info - Target info
  * @returns True for tabs and windows
  */
-function isTab(info: TargetInfoEvent): boolean {
+function isTab(info: Protocol.Target.TargetInfo): boolean {
   return info.type === 'page' && info.subtype === undefined;
 }
 
@@ -77,7 +66,7 @@ function isTab(info: TargetInfoEvent): boolean {
  * @param info - Target info
  * @returns Tab
  */
-function toTab(info: TargetInfoEvent): Tab {
+function toTab(info: Protocol.Target.TargetInfo): Tab {
   return {
     targetId: info.targetId,
     url: info.url,
@@ -170,10 +159,13 @@ export class TabTracker {
    */
   private listen(cdp: TargetSource): Array<() => void> {
     return [
-      cdp.on<{ targetInfo: TargetInfoEvent }>('Target.targetCreated', ({ targetInfo }, session) => {
-        if (session === undefined) this.created(targetInfo);
-      }),
-      cdp.on<{ targetInfo: TargetInfoEvent }>(
+      cdp.on<Protocol.Target.TargetCreatedEvent>(
+        'Target.targetCreated',
+        ({ targetInfo }, session) => {
+          if (session === undefined) this.created(targetInfo);
+        }
+      ),
+      cdp.on<Protocol.Target.TargetInfoChangedEvent>(
         'Target.targetInfoChanged',
         ({ targetInfo }, session) => {
           if (session === undefined) this.changed(targetInfo);
@@ -213,9 +205,7 @@ export class TabTracker {
    * @param cdp - The session's page connection
    */
   async refresh(cdp: Pick<CDPConnection, 'send'>): Promise<void> {
-    const { targetInfos } = (await cdp.send('Target.getTargets')) as {
-      targetInfos: TargetInfoEvent[];
-    };
+    const { targetInfos } = await sendTyped(cdp, 'Target.getTargets');
     this.sync(targetInfos);
   }
 
@@ -463,7 +453,7 @@ export class TabTracker {
    *
    * @param infos - Every target
    */
-  private sync(infos: readonly TargetInfoEvent[]): void {
+  private sync(infos: readonly Protocol.Target.TargetInfo[]): void {
     const pages = infos.filter((info) => isTab(info) && !this.gone.has(info.targetId));
     const open = new Set(pages.map((info) => info.targetId));
     for (const tab of this.tabs) {
@@ -489,7 +479,7 @@ export class TabTracker {
    *
    * @param info - Target info
    */
-  private created(info: TargetInfoEvent): void {
+  private created(info: Protocol.Target.TargetInfo): void {
     const known = this.tabs.some((tab) => tab.targetId === info.targetId);
     if (!isTab(info) || known || this.gone.has(info.targetId)) return;
     this.tabs.push(toTab(info));
@@ -502,7 +492,7 @@ export class TabTracker {
    *
    * @param info - Target info
    */
-  private changed(info: TargetInfoEvent): void {
+  private changed(info: Protocol.Target.TargetInfo): void {
     const tab = this.tabs.find((candidate) => candidate.targetId === info.targetId);
     if (!tab) return;
     tab.url = info.url;

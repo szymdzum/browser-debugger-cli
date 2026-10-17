@@ -7,6 +7,7 @@ import type { TelemetryPluginContext } from './plugins.js';
 import type { SessionConfig } from './types.js';
 
 import { CDPConnection } from '@/connection/cdp.js';
+import { sendTyped, type Protocol } from '@/connection/typed-cdp.js';
 import { browserWebSocketUrl } from '@/daemon/session/chromeConnection.js';
 import { ensureSessionDownloadsDir } from '@/session/paths.js';
 import { DownloadTracker, type DownloadDestination } from '@/telemetry/downloads.js';
@@ -148,18 +149,12 @@ async function tabFrames(
   ];
   const stop = (): void => stops.forEach((remove) => remove());
   try {
-    const { frameTree } = (await cdp.send('Page.getFrameTree')) as { frameTree: FrameTreeNode };
+    const { frameTree } = await sendTyped(cdp, 'Page.getFrameTree');
     collectFrameIds(frameTree, ids);
   } catch (error) {
     logger.debug(`Frame tree not read: ${getErrorMessage(error)}`);
   }
   return Object.assign(ids, { stop });
-}
-
-/** `Page.getFrameTree` node (the fields read) */
-interface FrameTreeNode {
-  frame: { id: string };
-  childFrames?: FrameTreeNode[];
 }
 
 /**
@@ -168,7 +163,7 @@ interface FrameTreeNode {
  * @param node - Tree node
  * @param ids - Receives the ids
  */
-function collectFrameIds(node: FrameTreeNode, ids: Set<string>): void {
+function collectFrameIds(node: Protocol.Page.FrameTree, ids: Set<string>): void {
   ids.add(node.frame.id);
   node.childFrames?.forEach((child) => collectFrameIds(child, ids));
 }

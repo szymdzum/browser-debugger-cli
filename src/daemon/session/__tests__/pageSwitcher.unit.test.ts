@@ -8,17 +8,40 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import type { Protocol } from '@/connection/typed-cdp.js';
 import { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
 import { PageSwitcher, type PageHost, type PageStart } from '@/daemon/session/pageSwitcher.js';
-import { TabTracker, type TargetInfoEvent } from '@/daemon/session/tabs.js';
+import { TabTracker } from '@/daemon/session/tabs.js';
 import { PageIssueLog } from '@/telemetry/issues.js';
 import type { CleanupFunction } from '@/types.js';
 
 /** Targets Chrome lists, newest first */
-const TARGETS: TargetInfoEvent[] = [
-  { targetId: 'N', type: 'page', url: 'http://n/', title: 'New' },
-  { targetId: 'P', type: 'page', url: 'http://a/popup', title: 'Popup', openerId: 'A' },
-  { targetId: 'A', type: 'page', url: 'http://a/', title: 'App' },
+const TARGETS: Protocol.Target.TargetInfo[] = [
+  {
+    targetId: 'N',
+    type: 'page',
+    attached: false,
+    canAccessOpener: false,
+    url: 'http://n/',
+    title: 'New',
+  },
+  {
+    targetId: 'P',
+    type: 'page',
+    attached: false,
+    canAccessOpener: false,
+    url: 'http://a/popup',
+    title: 'Popup',
+    openerId: 'A',
+  },
+  {
+    targetId: 'A',
+    type: 'page',
+    attached: false,
+    canAccessOpener: false,
+    url: 'http://a/',
+    title: 'App',
+  },
 ];
 
 /** A page connection stand-in */

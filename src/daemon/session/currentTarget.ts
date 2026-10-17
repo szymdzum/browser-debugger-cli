@@ -1,6 +1,7 @@
 import type { TelemetryStore } from './TelemetryStore.js';
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import { sendTyped } from '@/connection/typed-cdp.js';
 import type { PageLoadingState } from '@/ipc/protocol/commands.js';
 import { readPageLoadingState } from '@/runtime/page/loadingState.js';
 import { createLogger } from '@/ui/logging/index.js';
@@ -31,13 +32,15 @@ export async function refreshCurrentTarget(
   const stored = store.targetInfo;
   if (!stored) return;
   try {
-    const { targetInfo } = (await raceTimeout(cdp.send('Target.getTargetInfo', {}), timeoutMs, {
-      onTimeout: (): never => {
-        throw new Error(`no answer within ${timeoutMs} ms`);
-      },
-    })) as {
-      targetInfo: { targetId: string; url: string; title: string };
-    };
+    const { targetInfo } = await raceTimeout(
+      sendTyped(cdp, 'Target.getTargetInfo', {}),
+      timeoutMs,
+      {
+        onTimeout: (): never => {
+          throw new Error(`no answer within ${timeoutMs} ms`);
+        },
+      }
+    );
     if (targetInfo.targetId !== stored.id || store.targetInfo !== stored) return;
     store.setTargetInfo({ ...stored, url: targetInfo.url, title: targetInfo.title });
   } catch (error) {
