@@ -43,18 +43,18 @@ const SHORT_LOOP_MS = 3_000;
  * (production: 12 s). It only affects lost-answer timing; the lost-result
  * tests rely on it being well under the 20 s eval limit ({@link LOST_MS}).
  */
-const UNSENT_GRACE_MS = '4000';
+const UNSENT_GRACE_MS = '1000';
 
 /**
- * Bound for an eval whose result is lost: about 1 s check + 4 s grace (5 s in),
- * well under the 20 s limit it would fall back to if the lost-result check
- * never fired
+ * Bound for an eval whose result is lost: about 1 s check + 1 s grace (about 3 s
+ * on Linux, 7-10 s on macOS), well under the 20 s limit it would fall back to
+ * (about 25 s with overhead) if the lost-result check never fired
  */
-const LOST_MS = 12_000;
+const LOST_MS = 18_000;
 
 /**
  * How long another client's script runs while an eval's result is lost: it
- * starts 2 s into that eval and outlasts its answer (about 5 s in)
+ * starts 2 s into that eval and outlasts its answer
  */
 const OTHER_LOOP_MS = 8_000;
 
@@ -324,18 +324,26 @@ void describe('Interrupted dom eval', () => {
     void it(`never stops another client's script after an eval whose result was lost${full ? ' (--full)' : ''}`, async () => {
       const armed = full ? 'lost-full-armed' : 'lost-armed';
       const lostStartedAt = Date.now();
+      let lostEndedAt = 0;
       const lost = startEval(
         `setTimeout(() => { const r = new XMLHttpRequest(); r.open('GET', '/beacon?${armed}', false); r.send(); }, 2000); 'x'.repeat(300e6)`,
         undefined,
         { extra: full ? ['--full'] : [] }
-      );
+      ).finally(() => {
+        lostEndedAt = Date.now();
+      });
       await untilBeacon(armed);
       const other = startEval(loopScript(`${armed}-loop`, OTHER_LOOP_MS));
       await untilBeacon(`${armed}-loop`);
+      const otherStartedAt = Date.now();
       const lostResult = await lost;
       const lostAfter = Date.now() - lostStartedAt;
       assert.ok(lostAfter < LOST_MS, `the lost result took ${lostAfter} ms (limit ${LOST_MS} ms)`);
       assert.equal(lostResult.exitCode, full ? 81 : 102, shown(lostResult));
+      assert.ok(
+        lostEndedAt > otherStartedAt,
+        `the lost result was answered ${otherStartedAt - lostEndedAt} ms before the other script started`
+      );
       const survivor = await other;
       assert.equal(survivor.exitCode, 0, shown(survivor));
       assert.match(survivor.stdout, /"result":"finished"/, shown(survivor));

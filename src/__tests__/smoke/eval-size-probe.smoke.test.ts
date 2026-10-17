@@ -20,11 +20,12 @@ import {
 const FAST_MS = 30_000;
 
 /**
- * Bound for a lost result: about 1 s check + 4 s grace (7 s locally), and well
- * under the 20 s eval limit it would fall back to if the lost-result check
- * never fired, so the tests fail when it does not.
+ * Bound for a lost result: about 1 s check + 1 s grace (about 3 s on Linux,
+ * 7-10 s on macOS), and well under the 20 s eval limit it would fall back to
+ * (about 25 s with overhead) if the lost-result check never fired, so the
+ * tests fail when it does not.
  */
-const LOST_MS = 12_000;
+const LOST_MS = 18_000;
 
 /**
  * How long a lost result's answer gets after the page answered the check
@@ -32,7 +33,7 @@ const LOST_MS = 12_000;
  * tests rely on it being well under the 20 s eval limit ({@link LOST_MS}).
  * The results here are lost or small, so none needs it.
  */
-const UNSENT_GRACE_MS = '4000';
+const UNSENT_GRACE_MS = '1000';
 
 /**
  * Run `dom eval` and time it.
