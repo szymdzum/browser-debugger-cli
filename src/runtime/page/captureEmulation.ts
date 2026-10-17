@@ -74,6 +74,9 @@ export async function scrollPosition(cdp: CDPConnection): Promise<ScrollPosition
   return { x: x ?? 0, y: y ?? 0 };
 }
 
+/** Page script reading the window's size with its scrollbars */
+const WINDOW_SIZE_JS = '[window.innerWidth, window.innerHeight]';
+
 /**
  * The emulation changes of one capture, undone by {@link restore}.
  */
@@ -277,10 +280,7 @@ export class CaptureEmulation {
    * @returns Width and height in CSS px
    */
   private async windowSize(viewport: Size): Promise<Size> {
-    const [width, height] = await evaluatePair(
-      this.connection,
-      '[window.innerWidth, window.innerHeight]'
-    );
+    const [width, height] = await evaluatePair(this.connection, WINDOW_SIZE_JS);
     return {
       width: Math.round(width ?? viewport.width),
       height: Math.round(height ?? viewport.height),
@@ -294,10 +294,7 @@ export class CaptureEmulation {
    */
   private async readWindowOrNone(): Promise<Size | undefined> {
     try {
-      const [width, height] = await evaluatePair(
-        this.connection,
-        '[window.innerWidth, window.innerHeight]'
-      );
+      const [width, height] = await evaluatePair(this.connection, WINDOW_SIZE_JS);
       if (width === undefined || height === undefined) return undefined;
       return { width: Math.round(width), height: Math.round(height) };
     } catch (error) {
