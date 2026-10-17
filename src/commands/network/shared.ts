@@ -153,6 +153,44 @@ export function registerCookiesCommands(networkCmd: Command): void {
 }
 
 /**
+ * Run `network headers`: headers of one request, or of the main document
+ * without an id. `network document` (deprecated) runs the same function.
+ *
+ * @param id - Request id (the main document when omitted)
+ * @param options - Command options
+ */
+async function runHeaders(
+  id: string | undefined,
+  options: NetworkHeadersCommandOptions
+): Promise<void> {
+  await runCommand(
+    async (opts) => {
+      const response = await getNetworkHeaders({
+        ...(id && { id }),
+        ...(opts.header && { headerName: opts.header }),
+      });
+
+      validateIPCResponse(response);
+
+      if (!response.data) {
+        return {
+          success: false,
+          error: 'No data returned from the session',
+          exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
+          errorContext: {
+            suggestion: 'No network requests captured yet. Navigate to a page first.',
+          },
+        };
+      }
+
+      return headersResult(response.data, opts.includeSensitive);
+    },
+    options,
+    formatNetworkHeaders
+  );
+}
+
+/**
  * Register headers command.
  *
  * @param networkCmd - Network parent command
@@ -168,72 +206,21 @@ export function registerHeadersCommand(networkCmd: Command): void {
       'after',
       '\nNote: Without [id], shows headers for the current main document.\n      If the page has navigated, this will be the latest navigation, not the original URL.'
     )
-    .action(async (id: string | undefined, options: NetworkHeadersCommandOptions) => {
-      await runCommand(
-        async (opts) => {
-          const response = await getNetworkHeaders({
-            ...(id && { id }),
-            ...(opts.header && { headerName: opts.header }),
-          });
-
-          validateIPCResponse(response);
-
-          if (!response.data) {
-            return {
-              success: false,
-              error: 'No data returned from the session',
-              exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
-              errorContext: {
-                suggestion: 'No network requests captured yet. Navigate to a page first.',
-              },
-            };
-          }
-
-          return headersResult(response.data, opts.includeSensitive);
-        },
-        options,
-        formatNetworkHeaders
-      );
-    });
+    .action(runHeaders);
 }
 
 /**
- * Register document command.
+ * Register the `document` command, the old spelling of `headers` without an id.
  *
  * @param networkCmd - Network parent command
  */
 export function registerDocumentCommand(networkCmd: Command): void {
   networkCmd
     .command('document')
-    .description('Show main HTML document request details (alias for headers without ID)')
+    .description('Old spelling of "network headers" without an id')
     .option('--header <name>', 'Filter to specific header name')
     .addOption(jsonOption())
     .addOption(includeSensitiveOption())
     .addHelpText('after', `\n${NETWORK_DOCUMENT_BODY_NOTE}`)
-    .action(async (options: NetworkHeadersCommandOptions) => {
-      await runCommand(
-        async (opts) => {
-          const response = await getNetworkHeaders({
-            ...(opts.header && { headerName: opts.header }),
-          });
-
-          validateIPCResponse(response);
-
-          if (!response.data) {
-            return {
-              success: false,
-              error: 'No data returned from the session',
-              exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
-              errorContext: {
-                suggestion: 'No document request found. Navigate to a page first.',
-              },
-            };
-          }
-
-          return headersResult(response.data, opts.includeSensitive);
-        },
-        options,
-        formatNetworkHeaders
-      );
-    });
+    .action((options: NetworkHeadersCommandOptions) => runHeaders(undefined, options));
 }
