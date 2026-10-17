@@ -103,7 +103,11 @@ All `--json` output must follow `BdgResponse` structure:
 
 // Error
 { version: "x.y.z", success: false, error: "msg", exitCode: 83, suggestion: "..." }
+
+// Old spelling used (rename table, src/utils/renames.ts): on success and error
+{ version: "x.y.z", success: true, data: {...}, warnings: ["\"bdg tail\" is deprecated ..."] }
 ```
+`warnings` is present only when non-empty (never `[]`); in human mode the same text is one `Warning:` line on stderr. Renaming or retiring a command or flag is a row in the rename table (`deprecated` in 0.x, `removed` → exit 81 in 1.0), never a hand-written alias.
 
 ### Exit Codes
 Use semantic codes from `src/utils/exitCodes.ts`:
