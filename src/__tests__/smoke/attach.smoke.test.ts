@@ -32,8 +32,8 @@ import * as chromeLauncher from 'chrome-launcher';
 import { runCommand } from '@/__testutils__/commandRunner.js';
 import { startFixtureServer, type FixtureServer } from '@/__testutils__/fixtureServer.js';
 import { CDPConnection } from '@/connection/cdp.js';
-import { launchChrome } from '@/connection/launcher.js';
 import { needsNoSandbox } from '@/connection/launcher/flagsBuilder.js';
+import { launchChrome } from '@/connection/launcher.js';
 import type { CDPTarget, LaunchedChrome } from '@/types.js';
 
 interface Envelope<T> {
@@ -402,6 +402,24 @@ void describe('bdg attach', () => {
     } finally {
       fs.rmSync(empty, { recursive: true, force: true });
       fs.rmSync(stale, { recursive: true, force: true });
+    }
+  });
+
+  void it('--stop-after ends the attached session by itself; --timeout does too, with the warning', async () => {
+    const oldWarning =
+      '"bdg attach --timeout" is deprecated and will be removed in 1.0: use "bdg attach --stop-after"';
+    for (const flag of ['--stop-after', '--timeout']) {
+      const start = await runJson<StartData>('attach', [
+        'attach-b',
+        '--chrome-ws-url',
+        String(chrome.port),
+        flag,
+        '2',
+      ]);
+      assert.equal(start.exitCode, 0, JSON.stringify(start.envelope));
+      assert.deepEqual(start.envelope.warnings, flag === '--timeout' ? [oldWarning] : undefined);
+      await until(() => !fs.existsSync(path.join(sessionDir, 'daemon.sock')));
+      assert.equal((await chromePages(chrome.port)).length >= 2, true, 'both tabs are left open');
     }
   });
 
