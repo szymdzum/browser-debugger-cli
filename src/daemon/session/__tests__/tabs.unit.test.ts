@@ -6,7 +6,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { TabTracker, type TargetInfoEvent } from '@/daemon/session/tabs.js';
+import type { Protocol } from '@/connection/typed-cdp.js';
+import { TabTracker } from '@/daemon/session/tabs.js';
 import { CommandError } from '@/errors/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -24,9 +25,17 @@ type Emit = (event: string, params: unknown, sessionId?: string) => void;
 function page(
   targetId: string,
   url: string,
-  extra: Partial<TargetInfoEvent> = {}
-): TargetInfoEvent {
-  return { targetId, type: 'page', url, title: targetId, ...extra };
+  extra: Partial<Protocol.Target.TargetInfo> = {}
+): Protocol.Target.TargetInfo {
+  return {
+    targetId,
+    type: 'page',
+    url,
+    title: targetId,
+    attached: false,
+    canAccessOpener: false,
+    ...extra,
+  };
 }
 
 /**
@@ -36,7 +45,7 @@ function page(
  * @param targets - Targets
  * @returns Connection, the commands sent and an emitter
  */
-function fakeSource(targets: TargetInfoEvent[]): {
+function fakeSource(targets: Protocol.Target.TargetInfo[]): {
   source: Parameters<TabTracker['attach']>[0];
   sent: string[];
   emit: Emit;
@@ -104,7 +113,14 @@ void describe('TabTracker', () => {
     const tracker = new TabTracker();
     const { source, sent } = fakeSource([
       page('C', 'http://c/'),
-      { targetId: 'W', type: 'service_worker', url: 'http://c/sw.js', title: '' },
+      {
+        targetId: 'W',
+        type: 'service_worker',
+        url: 'http://c/sw.js',
+        title: '',
+        attached: false,
+        canAccessOpener: false,
+      },
       page('B', 'http://b/'),
       page('A', 'http://a/'),
     ]);

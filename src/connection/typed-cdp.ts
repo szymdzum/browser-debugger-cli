@@ -175,14 +175,16 @@ export class TypedCDPConnection {
  * @param cdp - Anything with a `send`
  * @param method - CDP method name
  * @param params - Command parameters (type-checked), if any
+ * @param options - `signal`: stops waiting when it aborts (as `CDPConnection.send`)
  * @returns Promise resolving to the command's response (type-safe)
  */
 export async function sendTyped<T extends keyof ProtocolMapping.Commands>(
   cdp: Pick<CDPConnection, 'send'>,
   method: T,
-  params?: CommandParams<T>
+  params?: CommandParams<T>,
+  options: { signal?: AbortSignal | undefined } = {}
 ): Promise<CommandReturn<T>> {
-  const result = await cdp.send(method, params);
+  const result = await cdp.send(method, params, undefined, options.signal);
   return result as CommandReturn<T>;
 }
 

@@ -7,6 +7,7 @@
 import { CDPConnection } from '@/connection/cdp.js';
 import { CDPConnectionError } from '@/connection/errors.js';
 import { waitForPageReady } from '@/connection/pageReadiness.js';
+import { sendTyped, type Protocol } from '@/connection/typed-cdp.js';
 import { DEFAULT_PAGE_READINESS_TIMEOUT_MS } from '@/constants.js';
 import type { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
 import type { SessionConfig } from '@/daemon/session/types.js';
@@ -168,7 +169,7 @@ async function sendNavigate(
   url: string,
   log: Logger,
   signal: AbortSignal | undefined
-): Promise<{ loaderId?: string; errorText?: string }> {
+): Promise<Protocol.Page.NavigateResponse> {
   const cancelNavigation = (): void => {
     cdp
       .send('Page.stopLoading', {}, undefined, AbortSignal.timeout(STOP_LOADING_REPLY_MS))
@@ -178,10 +179,7 @@ async function sendNavigate(
   };
   signal?.addEventListener('abort', cancelNavigation, { once: true });
   try {
-    return (await cdp.send('Page.navigate', { url }, undefined, signal)) as {
-      loaderId?: string;
-      errorText?: string;
-    };
+    return await sendTyped(cdp, 'Page.navigate', { url }, { signal });
   } finally {
     signal?.removeEventListener('abort', cancelNavigation);
   }

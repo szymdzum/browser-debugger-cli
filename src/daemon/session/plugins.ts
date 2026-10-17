@@ -3,6 +3,7 @@ import type { PageStart } from './pageSwitcher.js';
 import type { SessionConfig } from './types.js';
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import { sendTyped } from '@/connection/typed-cdp.js';
 import { startSessionDownloads } from '@/daemon/session/downloads.js';
 import { startActionHistory } from '@/runtime/dom/actionHistory.js';
 import { hideHeadlessUserAgent } from '@/runtime/page/userAgent.js';
@@ -79,10 +80,9 @@ function trackCurrentPage(cdp: CDPConnection, store: TelemetryStore, logger: Log
   };
   let mainFrameId: string | undefined;
   let titleTimer: NodeJS.Timeout | undefined;
-  cdp
-    .send('Page.getFrameTree')
+  sendTyped(cdp, 'Page.getFrameTree')
     .then((tree) => {
-      mainFrameId ??= (tree as { frameTree?: { frame?: { id?: string } } }).frameTree?.frame?.id;
+      mainFrameId ??= tree.frameTree.frame.id;
     })
     .catch((error: unknown) => logger.debug(`No frame tree: ${getErrorMessage(error)}`));
   const cleanups = [
