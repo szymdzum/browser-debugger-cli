@@ -147,7 +147,7 @@ void describe('Low-priority polish', () => {
     const third = await bdg(['cdp', 'Runtime.evaluate', '--params', '{"expression":"3"}']);
     const output = `${first}${second}${third}`;
     assert.match(output, /bdg eval <javascript>/);
-    assert.doesNotMatch(output, /bdg eval <javascript>/);
+    assert.doesNotMatch(output, /bdg dom eval/);
   });
 
   void it('dom form lists image buttons, labels by labels and buttons by aria-labelledby (#644)', async () => {

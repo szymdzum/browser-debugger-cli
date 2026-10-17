@@ -75,7 +75,7 @@ void describe('canonical command names (#465)', () => {
 
   void it('dom pressKey still presses the key, with the warning', async () => {
     await bdg(['eval', 'window.keyLog = []; 1']);
-    const result = await bdg(['dom', 'pressKey', 'body', 'a', '--json']);
+    const result = await bdg(['dom', 'pressKey', '#field', 'a', '--json']);
     assert.match(result.stdout, /"warnings":\["\\"bdg dom pressKey\\" is deprecated/);
     const log = await bdg(['eval', 'window.keyLog', '--json']);
     assert.match(log.stdout, /a\|KeyA\|false/);
