@@ -52,11 +52,13 @@ void describe('Page readiness', () => {
   let fixture: FixtureServer;
 
   before(async () => {
+    process.env['BDG_TEST_PAGE_READY_MS'] = '3000';
     await cleanupAllSessions();
     fixture = await startFixtureServer();
   });
 
   after(async () => {
+    delete process.env['BDG_TEST_PAGE_READY_MS'];
     await cleanupAllSessions();
     await fixture.close();
   });
@@ -116,7 +118,11 @@ void describe('Page readiness', () => {
   });
 
   void it('dom form on a page without a body yet says it is still loading, not a script error', async () => {
-    await bdg(['page', 'navigate', `${fixture.url}hanging-head`]);
+    const navigated = await bdg(['page', 'navigate', `${fixture.url}hanging-head`, '--json']);
+    assert.equal(
+      (JSON.parse(navigated.stdout) as LoadingEnvelope).data.loading?.readyState,
+      'loading'
+    );
     const { output } = await bdg(['dom', 'form'], 88);
     assert.match(output, /No forms discovered on the page yet; it is still loading/);
     assert.match(output, /bdg dom wait --load/);

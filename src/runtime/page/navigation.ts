@@ -27,7 +27,29 @@ import { normalizeUrl } from '@/utils/url.js';
 const log = createLogger('session');
 
 /** How long to wait in all for the page to load and settle after navigating */
-const PAGE_READY_TIMEOUT_MS = 15_000;
+const PAGE_READY_DEFAULT_MS = 15_000;
+
+/** Shortest accepted test override: below this a local page cannot answer in time */
+const MIN_PAGE_READY_OVERRIDE_MS = 1_000;
+
+/**
+ * The navigation time limit. `BDG_TEST_PAGE_READY_MS` shortens it for the test
+ * suites that wait it out on a page that never finishes loading (not a user
+ * feature): a whole number of ms from 1000 up to the default, anything else is
+ * ignored. Only `page navigate`, `reload`, `back` and `forward` read it; the
+ * `bdg URL` start path has its own limit.
+ *
+ * @param env - Environment to read the test override from
+ * @returns Limit in ms
+ */
+export function pageReadyTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env['BDG_TEST_PAGE_READY_MS'];
+  if (raw === undefined || !/^\d+$/.test(raw)) return PAGE_READY_DEFAULT_MS;
+  const value = Number(raw);
+  return value >= MIN_PAGE_READY_OVERRIDE_MS && value <= PAGE_READY_DEFAULT_MS
+    ? value
+    : PAGE_READY_DEFAULT_MS;
+}
 
 /**
  * Navigate the session's page and wait until it has loaded. The URL
@@ -35,7 +57,7 @@ const PAGE_READY_TIMEOUT_MS = 15_000;
  *
  * With `wait: false` the command is sent and the call returns at once (the
  * navigation may still be waiting for the server). Otherwise the server gets
- * {@link PAGE_READY_TIMEOUT_MS} to answer, then the new document is waited on
+ * {@link pageReadyTimeoutMs} to answer, then the new document is waited on
  * to settle; its HTTP status is reported, with a warning for 4xx/5xx, for a
  * URL that is a download, or a server that has not answered. A document
  * that has not finished loading by then is reported as `loading`, with the
@@ -76,13 +98,14 @@ async function runNavigation(
   const mainFrameId = (await pageTarget(cdp)).targetId;
   const navigated = nextNavigation(cdp, mainFrameId);
   const document = documentResponse(cdp, mainFrameId);
-  const deadline = Date.now() + PAGE_READY_TIMEOUT_MS;
+  const readyTimeoutMs = pageReadyTimeoutMs();
+  const deadline = Date.now() + readyTimeoutMs;
   let loaderId: string | undefined;
   try {
     const sent = startAction(cdp, action, url);
     sent.catch(() => undefined);
-    const started = await raceTimeout(sent, PAGE_READY_TIMEOUT_MS);
-    if (started === undefined) return await stillLoading(cdp, action);
+    const started = await raceTimeout(sent, readyTimeoutMs);
+    if (started === undefined) return await stillLoading(cdp, action, readyTimeoutMs);
     if (started.notAPage) {
       return { action, ...(await currentLocation(cdp)), warning: notAPageWarning() };
     }
@@ -206,14 +229,19 @@ async function currentLocation(cdp: CDPConnection): Promise<{ url: string; title
  *
  * @param cdp - CDP connection
  * @param action - What was done
+ * @param timeoutMs - The limit that passed
  * @returns The URL being loaded, with a warning
  */
-async function stillLoading(cdp: CDPConnection, action: PageAction): Promise<PageNavigationResult> {
+async function stillLoading(
+  cdp: CDPConnection,
+  action: PageAction,
+  timeoutMs: number
+): Promise<PageNavigationResult> {
   return {
     action,
     url: (await pageTarget(cdp)).url,
     title: '',
-    warning: stillLoadingWarning(PAGE_READY_TIMEOUT_MS),
+    warning: stillLoadingWarning(timeoutMs),
   };
 }
 
