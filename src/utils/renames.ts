@@ -40,7 +40,7 @@ interface CommandRename extends RenameEntryBase {
  */
 interface OptionRename extends RenameEntryBase {
   kind: 'option';
-  /** Old long option (`--aggressive`) */
+  /** Old long option (`--aggressive`), or a short-only one (`-f`) */
   old: string;
   /** New long option of the same command (`--force`) */
   new?: string;
@@ -73,6 +73,24 @@ export const RENAMES: readonly RenameEntry[] = [
     new: '--force',
     stage: 'deprecated',
   },
+  { kind: 'option', command: 'cleanup', old: '-f', new: '--force', stage: 'deprecated' },
+  {
+    kind: 'option',
+    command: '',
+    old: '--timeout',
+    new: '--stop-after',
+    stage: 'deprecated',
+    takesValue: true,
+  },
+  {
+    kind: 'option',
+    command: 'attach',
+    old: '--timeout',
+    new: '--stop-after',
+    stage: 'deprecated',
+    takesValue: true,
+  },
+  { kind: 'option', command: '', old: '--all', new: '--capture-all', stage: 'deprecated' },
   {
     kind: 'option',
     command: 'stop',

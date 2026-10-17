@@ -21,13 +21,25 @@ export const SESSION_BEHAVIORS: BehaviorTable = {
       'A window when there is a display: on macOS unless over SSH (SSH_CONNECTION, SSH_TTY) or CI is set; on Linux when DISPLAY or WAYLAND_DISPLAY is set',
     whenEnabled: 'Chrome shows its window even without a detected display (it fails without one)',
   },
-  'bdg:--all': {
+  'bdg:--capture-all': {
     default:
       'Tracking/analytics requests and console noise are filtered; bodies of binary responses (images, fonts) are not captured',
     whenEnabled:
       'Everything is captured, including binary response bodies (base64, flagged by responseBodyBase64, within --max-body-size)',
     tokenImpact:
       'HAR exports can grow considerably on media-heavy pages (details network caps a body at 20000 characters unless --body)',
+  },
+  'bdg:--stop-after': {
+    default: 'The session runs until bdg stop, Chrome closes or the page closes',
+    whenEnabled:
+      'The session stops itself this many seconds (1-3600) after the page has loaded, as bdg stop does; the start output shows the time (autoStopAt with --json)',
+    automaticBehavior:
+      'Seconds, unlike the --timeout of waits (milliseconds); the old -t/--timeout still works with a deprecation warning, and exits 81 when given together with --stop-after and another value',
+  },
+  'attach:--stop-after': {
+    default: 'The attached session runs until bdg stop, or until the tab or the browser closes',
+    whenEnabled:
+      'The session stops itself this many seconds (1-3600) after attaching; the tab stays open',
   },
   'bdg:--session': {
     default:

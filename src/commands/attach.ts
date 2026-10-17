@@ -14,7 +14,7 @@ import { jsonOption } from '@/commands/shared/commonOptions.js';
 import { handleValidationError } from '@/commands/shared/handleValidationError.js';
 import type { BaseOptions } from '@/commands/shared/optionTypes.js';
 import { startSessionViaDaemon } from '@/commands/shared/startHelpers.js';
-import { positiveIntRule } from '@/commands/shared/validation.js';
+import { parseStopAfter } from '@/commands/shared/validation.js';
 import { assertValidChromeWsUrl, resolveChromeWsUrl } from '@/commands/start.js';
 import { connectToBrowser } from '@/connection/browserConnection.js';
 import { listPageTabs, type PageTab } from '@/connection/browserTabs.js';
@@ -32,7 +32,7 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 interface AttachOptions extends BaseOptions {
   chromeWsUrl?: string;
   userDataDir?: string;
-  timeout?: string;
+  stopAfter?: string;
   quiet?: boolean;
 }
 
@@ -109,7 +109,8 @@ export function registerAttachCommand(program: Command): void {
       '--user-data-dir <dir>',
       "Chrome profile dir whose DevToolsActivePort names the browser (default: Chrome stable's; for Canary, Edge, Brave…)"
     )
-    .option('--timeout <seconds>', 'Auto-stop the session after this many seconds')
+    .option('--stop-after <seconds>', 'Auto-stop the session after this many seconds')
+    .option('--timeout <seconds>', 'Old spelling of --stop-after')
     .option('-q, --quiet', 'Quiet mode - minimal output for AI agents', false)
     .addOption(jsonOption())
     .action(async (tab: string | undefined, options: AttachOptions) => {
@@ -117,12 +118,7 @@ export function registerAttachCommand(program: Command): void {
       let timeout: number | undefined;
       try {
         endpoint = await browserEndpoint(options);
-        timeout =
-          options.timeout === undefined
-            ? undefined
-            : positiveIntRule({ name: '--timeout', min: 1, max: 3600, required: false }).validate(
-                options.timeout
-              );
+        timeout = parseStopAfter(options.stopAfter);
       } catch (error) {
         handleValidationError(error, options.json ?? false);
       }

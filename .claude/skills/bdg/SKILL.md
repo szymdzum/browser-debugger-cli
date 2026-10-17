@@ -47,7 +47,7 @@ bdg attach                                    # List the page tabs of your Chrom
 bdg attach checkout                           # Session on the only tab whose URL/title contains "checkout"
 bdg attach 2                                  # ... or by index from the list (a number is always an index)
 bdg attach --user-data-dir <dir>              # Another Chromium profile (Canary, Edge, Brave)
-bdg attach checkout --timeout 600             # End the session by itself after 600 s
+bdg attach checkout --stop-after 600             # End the session by itself after 600 s
 bdg attach checkout --chrome-ws-url 9222      # A Chrome started with --remote-debugging-port=9222 --user-data-dir=<dir>
 ```
 
@@ -106,7 +106,7 @@ DOM changed (200 nodes)                             # only when nothing else is 
 Shown:         span "Something went wrong"          # text added next to the clicked control, also in shadow roots, or un-hidden by an aria-expanded click (aria-controls / next sibling), or a pre-rendered <dialog> the click opened (showModal / open; not popovers, <details> or dialogs opened after an await/timer; one opened in the next animation frame usually is reported)
 ⚠ Submit blocked: email: Please include an '@' ...  # the form's validation stopped the submit (click or Enter): fix the named fields
 Errors: Uncaught Error: handler exploded (app.js:3:142)  # console errors/exceptions the action caused
-        (+2 from filtered trackers)                       # tracker-host errors hidden; start the session with bdg <url> --all to list them
+        (+2 from filtered trackers)                       # tracker-host errors hidden; start the session with bdg <url> --capture-all to list them
 Errors:        none from the page (2 from filtered trackers hidden; bdg console --level error)  # trackers were the only source
 Selector:      html > body > button:nth-of-type(2)  # after Element:, for an index into dom a11y query results (absent for a bare #id, or when no selector finds only that element: iframe, shadow root)
 Download: report.txt → ~/.bdg/downloads/report.txt (completed, 15 B)  # files go to <session dir>/downloads

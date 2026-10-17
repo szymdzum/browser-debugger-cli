@@ -271,7 +271,7 @@ This benchmark should be re-run:
 
 ### Example: bdg on Hacker News
 ```bash
-bdg https://news.ycombinator.com --timeout 300
+bdg https://news.ycombinator.com --stop-after 300
 bdg dom query ".athing"
 bdg dom query ".votelinks a"
 bdg dom eval "document.querySelector('.score')?.textContent"

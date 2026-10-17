@@ -33,7 +33,7 @@ const log = createLogger('session');
  * State of a session: its daemon runs (`active`, `starting`, `ending`,
  * `unresponsive`), died and left its Chrome running (`crashed`) or only
  * files (`stale`), or exited after the session ended without `bdg stop`
- * (`ended`: Chrome crashed or was closed, the page was closed, `--timeout`).
+ * (`ended`: Chrome crashed or was closed, the page was closed, `--stop-after`).
  * `untrusted`: something listens on its socket, but its directory is not
  * safe to use, so it is not asked.
  */

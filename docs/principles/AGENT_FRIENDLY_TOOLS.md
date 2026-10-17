@@ -59,7 +59,7 @@ $ bdg network list --preset errors --json     # the same data as the JSON envelo
 
 ### 5. Feedback for Long Operations
 
-Long commands must not look hung. `bdg peek --follow`, `bdg network list --follow` and `bdg console --follow` stream events as they happen; a session started with `--timeout <seconds>` ends by itself and says why.
+Long commands must not look hung. `bdg peek --follow`, `bdg network list --follow` and `bdg console --follow` stream events as they happen; a session started with `--stop-after <seconds>` ends by itself and says why.
 
 *Source: InfoQ (August 2025)*
 

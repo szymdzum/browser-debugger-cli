@@ -82,11 +82,11 @@ export interface NetworkEvictionCounts {
  * Note that the default tracking filter left requests out at capture.
  *
  * @param count - Requests left out
- * @returns e.g. `3 tracking requests excluded at capture (start the session with --all to keep them)`
+ * @returns e.g. `3 tracking requests excluded at capture (start the session with --capture-all to keep them)`
  */
 export function trackersExcludedNote(count: number): string {
   const requests = pluralize(count, 'tracking request');
-  return `${requests} excluded at capture (start the session with --all to keep them)`;
+  return `${requests} excluded at capture (start the session with --capture-all to keep them)`;
 }
 
 /**

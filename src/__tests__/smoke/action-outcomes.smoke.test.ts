@@ -338,7 +338,7 @@ void describe('Action outcomes', () => {
       assert.equal(output.split('\n').filter((line) => line.includes('beacon failed')).length, 1);
     });
 
-    void it('lists tracker errors in a session with --all', async () => {
+    void it('lists tracker errors in a session with --capture-all', async () => {
       await open(`${fixture.url}tracker-errors`, ['--all']);
       const data = await act(['click', '#track']);
       assert.ok(

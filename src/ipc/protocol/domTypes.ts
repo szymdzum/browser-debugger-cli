@@ -240,7 +240,7 @@ export interface ActionEffects {
   moreErrors?: number;
   /**
    * Console errors left out of `errors` because they came from scripts or
-   * loads on hosts the session's tracking filter drops (absent with `--all`
+   * loads on hosts the session's tracking filter drops (absent with `--capture-all`
    * or when there were none)
    */
   hiddenTrackerErrors?: number;

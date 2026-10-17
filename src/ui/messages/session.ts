@@ -25,7 +25,7 @@ export interface LandingPageOptions {
   documentStatus?: number;
   /** The page had not finished loading (a warning names what it waits on) */
   loading?: PageLoadingState;
-  /** When `--timeout` will stop the session */
+  /** When `--stop-after` will stop the session */
   autoStopAt?: Date;
   /** Name of a named session (`--session`) */
   session?: string;
@@ -75,7 +75,7 @@ export function startNotices(options: LandingPageOptions): string[] {
       : []),
     ...(loading ? [`⚠ ${pageLoadingWarning(loading)}`] : []),
     ...dialogs.map(dialogResultText),
-    ...(autoStopAt ? [`Auto-stop: at ${autoStopAt.toLocaleTimeString()} (--timeout)`] : []),
+    ...(autoStopAt ? [`Auto-stop: at ${autoStopAt.toLocaleTimeString()} (--stop-after)`] : []),
   ];
 }
 
@@ -194,7 +194,7 @@ function sessionEndText(end: { reason: string; cause?: string; endedAt: number }
   const why: Record<string, string> = {
     crash: 'Chrome crashed or was closed',
     closed: 'its page was closed',
-    timeout: 'the --timeout was reached',
+    timeout: 'the --stop-after was reached',
     disconnected: 'bdg lost its connection to Chrome',
   };
   const because: Record<string, string> = {
