@@ -38,6 +38,23 @@ interface FakePageOptions {
   fixedWindow?: boolean;
   /** Page script reading the window that throws: its size, or the wait for a resize */
   windowError?: 'size' | 'wait';
+  /**
+   * Clearing the override, the page first has the size of the override
+   * before the last one again (Chrome after an element capture beyond the
+   * viewport), and its own size only while a later resize wait runs
+   */
+  clearPassesThrough?: boolean;
+  /**
+   * After the capture, the page sees the first metrics change only once the
+   * wait for it timed out, and the next one only while a later wait runs
+   */
+  lateTaller?: boolean;
+}
+
+/** A metrics change the fake page has not seen yet, and when it sees it */
+interface PendingResize {
+  size: number[];
+  arrives: 'during-wait' | 'after-timeout';
 }
 
 /** Page script waiting for a resize: the size it waits to leave */
@@ -58,13 +75,36 @@ function fakePage(options: FakePageOptions = {}): {
   sent: string[];
   overrides: Array<Record<string, unknown>>;
   waits: string[];
+  windowNow: () => number[];
 } {
   const sent: string[] = [];
   const overrides: Array<Record<string, unknown>> = [];
   const waits: string[] = [];
   let window = WINDOW;
+  let captured = false;
+  let pending: PendingResize[] = [];
   const resize = (size: number[]): void => {
-    if (!options.fixedWindow) window = size;
+    if (options.fixedWindow) return;
+    if (options.lateTaller && captured) {
+      pending.push({ size, arrives: pending.length === 0 ? 'after-timeout' : 'during-wait' });
+      return;
+    }
+    window = size;
+  };
+  const clear = (): void => {
+    const previous = overrides.at(-2);
+    if (!options.clearPassesThrough || !previous) return resize(WINDOW);
+    window = [Number(previous['width']), Number(previous['height'])];
+    pending.push({ size: WINDOW, arrives: 'during-wait' });
+  };
+  /**
+   * The page sees the metrics changes that arrive at the given time.
+   *
+   * @param arrives - When
+   */
+  const arrive = (arrives: PendingResize['arrives']): void => {
+    for (const change of pending.filter((p) => p.arrives === arrives)) window = change.size;
+    pending = pending.filter((p) => p.arrives !== arrives);
   };
   /**
    * Answer a page script reading the window: its size, or the wait for a
@@ -80,9 +120,13 @@ function fakePage(options: FakePageOptions = {}): {
     }
     if (!wait) return { result: { value: window } };
     const [, width, height] = wait;
-    const resized = window[0] !== Number(width) || window[1] !== Number(height);
+    const left = (): boolean => window[0] !== Number(width) || window[1] !== Number(height);
+    if (!left()) arrive('during-wait');
+    const resized = left();
+    const value = resized ? window : null;
+    if (!resized) arrive('after-timeout');
     waits.push(`${width}x${height} ${resized ? 'resized' : 'timed out'}`);
-    return { result: { value: resized ? window : null } };
+    return { result: { value } };
   };
   let terminate: () => void = () => undefined;
   const terminated = new Promise<void>((resolve) => (terminate = resolve));
@@ -106,6 +150,7 @@ function fakePage(options: FakePageOptions = {}): {
     'DOM.getBoxModel': () => ({ model: { border: TALL_BORDER } }),
     'DOM.resolveNode': () => ({ object: {} }),
     'Page.captureScreenshot': () => {
+      captured = true;
       if (options.busy) return terminated.then(() => Promise.reject(TERMINATED));
       if (options.captureError) throw options.captureError;
       return { data: IMAGE };
@@ -119,14 +164,14 @@ function fakePage(options: FakePageOptions = {}): {
         overrides.push(params);
         resize([Number(params['width']), Number(params['height'])]);
       }
-      if (method === 'Emulation.clearDeviceMetricsOverride') resize(WINDOW);
+      if (method === 'Emulation.clearDeviceMetricsOverride') clear();
       if (label !== undefined && label === options.refuse) {
         return Promise.reject(new CDPProtocolError(`${method} refused`, -32000, undefined));
       }
       return Promise.resolve().then(() => answers[method]?.(params) ?? {});
     },
   } as unknown as CDPConnection;
-  return { cdp, sent, overrides, waits };
+  return { cdp, sent, overrides, waits, windowNow: () => window };
 }
 
 /**
@@ -227,6 +272,18 @@ void describe('takeScreenshot', () => {
     await takeScreenshot(cdp, { format: 'png' }, noViewport);
     assert.deepEqual(waits, ['1920x1000 timed out']);
     assert.equal(sent.at(-1), 'Emulation.clearDeviceMetricsOverride');
+  });
+
+  void it('returns only once the page has its size back after an element capture beyond the viewport, not at the size the capture overrode (#529)', async () => {
+    const { cdp, windowNow } = fakePage({ clearPassesThrough: true });
+    await takeScreenshot(cdp, { format: 'png', backendNodeId: 7 }, noViewport);
+    assert.deepEqual(windowNow(), WINDOW, 'the restore returned before the page had its size back');
+  });
+
+  void it('returns only once the page has its size back when it saw the taller viewport after the wait for it (#529)', async () => {
+    const { cdp, windowNow } = fakePage({ lateTaller: true });
+    await takeScreenshot(cdp, { format: 'png', backendNodeId: 7 }, noViewport);
+    assert.deepEqual(windowNow(), WINDOW, 'the restore returned before the page had its size back');
   });
 
   void it('clears the taller viewport when the wait for it fails, and reports the capture (#514)', async () => {
