@@ -12,6 +12,7 @@
 import { runCommand } from '@/__testutils__/commandRunner.js';
 import { cleanupAllSessions } from '@/__testutils__/daemonHelpers.js';
 import { getFreePort } from '@/__testutils__/fixtureServer.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /** Longest the new document may take to report its URL and `complete` */
 const PAGE_LOAD_DEADLINE_MS = 30_000;
@@ -63,6 +64,9 @@ async function waitForDocument(url: string): Promise<void> {
   let last = '';
   while (Date.now() < deadline) {
     const read = await evaluate(READ_DOCUMENT);
+    if (read.exitCode === EXIT_CODES.RESOURCE_NOT_FOUND) {
+      throw new Error(`${url} did not finish loading: the session is gone (${read.value})`);
+    }
     last = `exit ${read.exitCode}, ${JSON.stringify(read.value)}`;
     if (read.exitCode === 0 && read.value === `${url}\ncomplete`) {
       return;
