@@ -143,6 +143,27 @@ void describe('options given to console before details', () => {
   });
 });
 
+void describe('--include-sensitive on console details', () => {
+  void it('is refused like on details console, also when given before details', async () => {
+    const old = await runCli(['details', 'console', '0', '--include-sensitive']);
+    assert.equal(old.status, EXIT_CODES.INVALID_ARGUMENTS, old.stderr);
+    for (const argv of [
+      ['console', 'details', '0', '--include-sensitive'],
+      ['console', '--include-sensitive', 'details', '0'],
+    ]) {
+      const run = await runCli(argv);
+      assert.equal(run.status, EXIT_CODES.INVALID_ARGUMENTS, run.stderr);
+      assert.match(run.stderr, /--include-sensitive applies to network requests only/);
+    }
+  });
+
+  void it('is not turned on by inheritance when it was not given', async () => {
+    const run = await runCli(['console', '--json', 'details', '0']);
+    assert.ok(!run.stdout.includes('applies to network requests only'), run.stdout);
+    assert.notEqual(envelope(run.stdout).exitCode, EXIT_CODES.INVALID_ARGUMENTS);
+  });
+});
+
 void describe('console --page', () => {
   void it('takes current and all in any case', async () => {
     const reference = await runCli(['console']);

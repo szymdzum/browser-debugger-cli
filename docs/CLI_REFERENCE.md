@@ -213,6 +213,8 @@ bdg network details <id> --include-sensitive   # Credentials as captured (masked
 bdg console details <index>         # Full console message with args
 ```
 
+`console details` takes `--json` only: `--include-sensitive` and the body options are for `network details` (`--include-sensitive` on a console message exits 81, as `details console` did).
+
 **Credentials are masked by default** in `network details`, `network headers` and `network document`, human and `--json`: each value becomes `••••`, field and header names and the JSON shape stay, and everything else stays as captured, so the output is still good for debugging:
 
 ```text
