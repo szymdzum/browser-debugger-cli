@@ -39,10 +39,16 @@ const LOOP_MS = 20_000;
 const SHORT_LOOP_MS = 3_000;
 
 /**
- * How long another client's script runs while an eval's result is lost: it
- * starts 2 s into that eval and outlasts its answer (about 13 s in)
+ * How long a lost result's answer gets after the page answered the check
+ * (production: 12 s)
  */
-const OTHER_LOOP_MS = 15_000;
+const UNSENT_GRACE_MS = '4000';
+
+/**
+ * How long another client's script runs while an eval's result is lost: it
+ * starts 2 s into that eval and outlasts its answer (about 5 s in)
+ */
+const OTHER_LOOP_MS = 8_000;
 
 /** Upper bound for every command: well past the loop and the eval's own limit */
 const COMMAND_TIMEOUT_MS = 60_000;
@@ -117,7 +123,10 @@ void describe('Interrupted dom eval', () => {
     const started = await runCommand(
       `${fixture.url}eval-frames`,
       ['--port', String(port), '--headless'],
-      { timeout: COMMAND_TIMEOUT_MS, env: { BDG_DEBUG: '1' } }
+      {
+        timeout: COMMAND_TIMEOUT_MS,
+        env: { BDG_DEBUG: '1', BDG_TEST_EVAL_UNSENT_GRACE_MS: UNSENT_GRACE_MS },
+      }
     );
     assert.equal(started.exitCode, 0, started.stderr);
   });

@@ -16,7 +16,7 @@ import {
   scriptExecutionError,
   scriptTimeoutError,
 } from '@/errors/messages.js';
-import { evalTimeoutMs, terminationGraceMs } from '@/runtime/dom/evalLimits.js';
+import { evalTimeoutMs, terminationGraceMs, unsentGraceMs } from '@/runtime/dom/evalLimits.js';
 import { describeEvalException, wrapEvalScript } from '@/runtime/dom/evalSource.js';
 import { hasTopLevelAwait } from '@/runtime/dom/topLevelAwait.js';
 import { pendingNavigationUrl } from '@/runtime/page/navigation.js';
@@ -1102,7 +1102,7 @@ export async function untilAnswerLost<T>(
   pending: Promise<T>,
   lost: () => Error | undefined,
   onScriptFinished?: () => void,
-  timing: LostCheckTiming = DEFAULT_LOST_CHECK_TIMING
+  timing: LostCheckTiming = defaultLostCheckTiming()
 ): Promise<T> {
   const stop = new AbortController();
   const answered = pending.finally(() => stop.abort());
@@ -1116,30 +1116,28 @@ export async function untilAnswerLost<T>(
   return Promise.race([answered, unsent]);
 }
 
-/**
- * How long the script's answer gets after the page answered the check. The
- * check is answered as soon as the script has finished, which can be before
- * its own answer (built, then sent) arrives: sending up to 256 MiB takes a
- * few seconds.
- */
-const UNSENT_GRACE_MS = 12_000;
-
 /** How long the lost-answer check waits before it asks the page, and after it answered */
 export interface LostCheckTiming {
   checkMs: number;
   graceMs: number;
 }
 
-/** The check's usual timing */
-const DEFAULT_LOST_CHECK_TIMING: LostCheckTiming = {
-  checkMs: UNSENT_CHECK_MS,
-  graceMs: UNSENT_GRACE_MS,
-};
+/**
+ * The check's usual timing. The script's answer gets {@link unsentGraceMs}
+ * (12 s) after the page answered the check: the check is answered as soon as
+ * the script has finished, which can be before its own answer (built, then
+ * sent) arrives, and sending up to 256 MiB takes a few seconds.
+ *
+ * @returns Delays of the check
+ */
+function defaultLostCheckTiming(): LostCheckTiming {
+  return { checkMs: UNSENT_CHECK_MS, graceMs: unsentGraceMs() };
+}
 
 /**
  * Ask the page, once a second until stopped, whether it answers (it does
  * only once the script has finished), then give the script's answer
- * {@link UNSENT_GRACE_MS} more to arrive.
+ * {@link unsentGraceMs} more to arrive.
  *
  * @param cdp - CDP connection of the page
  * @param signal - Aborted once the script's answer arrived
@@ -1151,7 +1149,7 @@ async function checkForLostResult(
   cdp: CDPSender,
   signal: AbortSignal,
   onScriptFinished?: () => void,
-  timing: LostCheckTiming = DEFAULT_LOST_CHECK_TIMING
+  timing: LostCheckTiming = defaultLostCheckTiming()
 ): Promise<boolean> {
   try {
     await delay(timing.checkMs, signal);

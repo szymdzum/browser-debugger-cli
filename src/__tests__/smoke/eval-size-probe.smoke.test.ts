@@ -20,6 +20,12 @@ import {
 const FAST_MS = 30_000;
 
 /**
+ * How long a lost result's answer gets after the page answered the check
+ * (production: 12 s). The results here are lost or small, so none needs it.
+ */
+const UNSENT_GRACE_MS = '4000';
+
+/**
  * Run `dom eval` and time it.
  *
  * @param script - The script
@@ -44,7 +50,7 @@ void describe('dom eval size probe', () => {
     const start = await runCommand(
       `${fixture.url}interactions`,
       ['--port', String(await getFreePort()), '--headless'],
-      { timeout: 60000 }
+      { timeout: 60000, env: { BDG_TEST_EVAL_UNSENT_GRACE_MS: UNSENT_GRACE_MS } }
     );
     assert.equal(start.exitCode, 0, start.stderr);
   });
