@@ -2203,7 +2203,7 @@ export function inspectMidTransitionNote(): string {
 export const AUDIT_HELP_EXAMPLES = `
 Examples:
   bdg dom audit                       All checks
-  bdg dom audit contrast --level AAA  Text below WCAG AAA, weakest first
+  bdg dom audit contrast --wcag AAA   Text below WCAG AAA, weakest first
   bdg dom audit overflow              What scrolls sideways, cut-off text, scaled images
   bdg dom audit layers animations     Fixed/sticky elements and running animations
 

@@ -6,7 +6,7 @@
  * urlencoded, JSON and multipart request bodies, and in a WebSocket message,
  * and gets tokens in a JSON response body and a `Set-Cookie`; a second
  * server answers an OAuth-like redirect with a code in `Location`.
- * `network details`, `network headers` and `network document` show none of
+ * `network details` and `network headers` show none of
  * these values by default, human or `--json` (each is `••••`, the field
  * names stay, and the output says that values were masked);
  * `--include-sensitive` shows them, with a warning.
@@ -305,7 +305,7 @@ void describe('Secrets in network output', () => {
     assert.match(json.warning ?? '', /credentials/i);
   });
 
-  void it('masks the code in Location and in the document URL, and cookies of network document', async () => {
+  void it('masks the code in Location and in the document URL, and cookies of network headers', async () => {
     await bdg(['page', 'navigate', `${oauth.url}/authorize`]);
     const hop = (await listRequests()).find(
       (r) => r.url.endsWith('/authorize') && r.status === 302
@@ -318,15 +318,15 @@ void describe('Secrets in network output', () => {
       new RegExp(`location: /cb\\?code=${MASK}&state=ok#access_token=${MASK}$`, 'im')
     );
 
-    const human = await bdg(['network', 'document']);
+    const human = await bdg(['network', 'headers']);
     assert.doesNotMatch(human.stdout, ANY_SECRET);
-    const { data, stdout } = await bdgJson<HeadersJson>(['network', 'document']);
+    const { data, stdout } = await bdgJson<HeadersJson>(['network', 'headers']);
     assert.doesNotMatch(stdout, ANY_SECRET);
     assert.equal(data.masked, true);
     assert.equal(data.url, `${oauth.url}/cb?code=${MASK}&state=ok`);
     assert.match(header(data.requestHeaders, 'cookie') ?? '', new RegExp(`pre=${MASK}`));
 
-    const raw = await bdgJson<HeadersJson>(['network', 'document', '--include-sensitive']);
+    const raw = await bdgJson<HeadersJson>(['network', 'headers', '--include-sensitive']);
     assert.equal(raw.data.url, `${oauth.url}/cb?code=LOC${NETWORK_SECRET_MARKER}&state=ok`);
   });
 });

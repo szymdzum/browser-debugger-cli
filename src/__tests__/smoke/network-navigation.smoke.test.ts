@@ -129,7 +129,7 @@ void describe('Network and navigation', () => {
   });
 
   void it('serves headers of the main document by default', async () => {
-    const data = await runJson<{ url: string }>('network', ['document']);
+    const data = await runJson<{ url: string }>('network', ['headers']);
     assert.equal(data.url, fixture.url);
   });
 });

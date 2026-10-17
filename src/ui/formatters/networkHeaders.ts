@@ -10,7 +10,7 @@ import { OutputFormatter } from '@/ui/formatting.js';
 import { headerRepeatedNote, networkSecretsMaskedNote } from '@/ui/messages/networkMessages.js';
 
 /**
- * `network headers` and `network document` result (the `data` of `--json`).
+ * `network headers` result (the `data` of `--json`).
  */
 export type NetworkHeadersOutput = SessionNetworkHeadersData & {
   /** A credential in the URL or headers was shown as `••••` (no `--include-sensitive`) */

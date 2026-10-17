@@ -65,6 +65,16 @@ void describe('dom audit and css search', () => {
     );
   });
 
+  void it('--wcag AAA asks for AAA; --level AAA is the same with a warning', async () => {
+    assert.match(
+      await bdg(['dom', 'audit', 'contrast', '--wcag', 'aaa']),
+      /^Contrast \(AAA\): \d+ of \d+ text elements below/
+    );
+    const old = await bdg(['dom', 'audit', 'contrast', '--level', 'AAA']);
+    assert.match(old, /Warning: "bdg dom audit --level" is deprecated/);
+    assert.match(old, /Contrast \(AAA\): \d+ of \d+ text elements below/);
+  });
+
   void it('runs every check by default and rejects an unknown one', async () => {
     const output = await bdg(['dom', 'audit']);
     assert.match(output, /\nOverflow: /);

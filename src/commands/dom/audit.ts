@@ -24,6 +24,7 @@ import { findSimilar } from '@/utils/suggestions.js';
 /** Options of `bdg dom audit` */
 interface AuditCommandOptions extends BaseOptions {
   level?: 'AA' | 'AAA';
+  wcag?: 'AA' | 'AAA';
   limit?: number;
 }
 
@@ -39,7 +40,8 @@ export function registerAuditCommand(dom: Command): void {
       'Page-wide checks: text below WCAG contrast, sideways scroll and cut-off text, scaled images, fixed/sticky layers, animations'
     )
     .argument('[checks...]', `Checks to run: ${AUDIT_CHECKS.join(', ')} (default: all)`, checkList)
-    .option('--level <level>', 'WCAG level text must reach: AA or AAA (default: AA)', levelOption)
+    .option('--wcag <level>', 'WCAG level text must reach: AA or AAA (default: AA)', levelOption)
+    .option('--level <level>', 'Old spelling of --wcag', levelOption)
     .option('--limit <n>', 'First N findings listed per check (default: 20)', integerOption(1, 500))
     .addOption(jsonOption())
     .addHelpText('after', AUDIT_HELP_EXAMPLES)
@@ -67,7 +69,7 @@ function checkList(value: string, previous: AuditCheck[] = []): AuditCheck[] {
 }
 
 /**
- * Parse `--level`.
+ * Parse `--wcag` (and its old spelling `--level`).
  *
  * @param value - Level
  * @returns AA or AAA
@@ -83,7 +85,7 @@ function levelOption(value: string): 'AA' | 'AAA' {
  * Ask the daemon to audit the page.
  *
  * @param checks - Checks given (all when none)
- * @param options - Level and limit
+ * @param options - WCAG level and limit
  * @returns Command result
  */
 async function audit(
@@ -98,7 +100,7 @@ async function audit(
 }> {
   const response = await domAudit({
     checks: checks && checks.length > 0 ? checks : [...AUDIT_CHECKS],
-    ...(options.level && { level: options.level }),
+    ...(options.wcag && { level: options.wcag }),
     ...(options.limit !== undefined && { limit: options.limit }),
   });
   if (response.status === 'error' || !response.data) {

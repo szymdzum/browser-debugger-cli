@@ -4,7 +4,7 @@
  * The session opens `/html-secrets`, whose form holds every shape of secret
  * and ordinary control. The default HAR and `network details <doc> --body`
  * mask the values of the secret controls and keep the ordinary ones and the
- * inline script; `--include-sensitive` keeps everything; `network document`
+ * inline script; `--include-sensitive` keeps everything; `network headers`
  * (headers only) prints no value at all. `state save` and
  * `cdp --collect --out` write their file 0600 also over an existing 0644
  * file.
@@ -126,7 +126,7 @@ void describe('Secrets in files on disk', () => {
     for (const secret of [...MASKED, ...KEPT]) assert.ok(text.includes(secret), `lost ${secret}`);
   });
 
-  void it('network details --body masks the same values; network document prints none', async () => {
+  void it('network details --body masks the same values; network headers prints none', async () => {
     const id = await documentId();
     const body = await bdg(['network', 'details', id, '--body']);
     assertMasked(body, 'network details --body');
@@ -134,7 +134,7 @@ void describe('Secrets in files on disk', () => {
     const full = await bdg(['network', 'details', id, '--body', '--include-sensitive']);
     for (const secret of MASKED)
       assert.ok(full.includes(secret), `--include-sensitive lost ${secret}`);
-    const document = await bdg(['network', 'document']);
+    const document = await bdg(['network', 'headers']);
     for (const secret of [...MASKED, ...KEPT]) assert.ok(!document.includes(secret));
   });
 

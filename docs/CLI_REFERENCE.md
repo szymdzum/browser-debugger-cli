@@ -215,7 +215,7 @@ bdg console details <index>         # Full console message with args
 
 `console details` takes `--json` only: `--include-sensitive` and the body options are for `network details` (`--include-sensitive` on a console message exits 81, as `details console` did).
 
-**Credentials are masked by default** in `network details`, `network headers` and `network document`, human and `--json`: each value becomes `••••`, field and header names and the JSON shape stay, and everything else stays as captured, so the output is still good for debugging:
+**Credentials are masked by default** in `network details` and `network headers`, human and `--json`: each value becomes `••••`, field and header names and the JSON shape stay, and everything else stays as captured, so the output is still good for debugging:
 
 ```text
 Authorization: Bearer ••••
@@ -491,7 +491,7 @@ A numeric argument (`bdg dom get 0`, `bdg dom click 3`, `bdg dom screenshot out.
 
 ### Secret field names
 
-One list decides which field names hold secrets, for DOM masking (`dom query`, `dom get` incl. `--raw` and `--node-id`, `dom form`, `dom a11y`, `dom inspect`, the `dom fill` echo; applied to a field's name, id and autocomplete, and for a text-like control to its label text), for the HAR export's body, form and URL parameter redaction, and for the network output masking of `network details`, `network headers` and `network document`. A name counts when, case-insensitively and with camelCase split into words (`apiKey` is `api_Key`), it contains:
+One list decides which field names hold secrets, for DOM masking (`dom query`, `dom get` incl. `--raw` and `--node-id`, `dom form`, `dom a11y`, `dom inspect`, the `dom fill` echo; applied to a field's name, id and autocomplete, and for a text-like control to its label text), for the HAR export's body, form and URL parameter redaction, and for the network output masking of `network details` and `network headers`. A name counts when, case-insensitively and with camelCase split into words (`apiKey` is `api_Key`), it contains:
 
 - anywhere in the name: `passw`, `pwd`, `passcode`, `passphrase`, `cvv`, `cvc`, `security_code`, `card_verification`, `token`, `secret` (not `secretary`), `credential`, `jwt`, `bearer`, `oauth`, `api_key`/`apikey`/`api-key`, `private_key`, `access_key`, `authoriz`, `auth_code`, `code_verifier`, `session`, `cookie`, `csrf`, `xsrf`, `refresh`, `signature`
 - as a whole word (between non-letters or at an end): `pass`, `pw`, `otp`, `totp`, `pin`, `ssn`, `auth`, `sid`, `csc`, `card_number`/`cardNo` and `cc_number`/`cc-num`/`ccNo`; plus `creditcard`/`credit_card` anywhere
@@ -502,7 +502,7 @@ One list decides which field names hold secrets, for DOM masking (`dom query`, `
 | `pass`, `user_pass`, `userPass`, `pass1`, `pw`, `userPW`, `passcode`, `api_key`, `apiKey`, `x_api_key`, `client_secret`, `csrf_token`, `authenticity_token`, `_token`, `otp`, `otpCode`, `pin`, `userPin`, `cc-number`, `ccnum`, `credit_card_number` | `passport`, `compass`, `bypass`, `passenger`, `keyword`, `monkey`, `key`, `code`, `zipcode`, `pincode`, `spinner`, `opinion`, `author`, `sidebar`, `cardholder`, `secretary`, `cc`, `accent`, `success`, `credit_limit` |
 | over-masked (ordinary names with a credential word): `tokenizer`, `tokenCount`, `sessionLength`, `refreshInterval`, `cookie_consent`, `csrfEnabled`, `signature` (a forum signature too), `boarding_pass` | a secret under another name (`hash`, `license_key`, `mot_de_passe`) |
 
-Masking hides only what bdg prints: read a masked field with `bdg eval` (`bdg eval 'document.querySelector("#api-key").value'`), keep everything in a HAR, or show it in `network details`, `network headers` and `network document`, with `--include-sensitive`. The list is `SENSITIVE_NAME_TERMS` in `src/utils/sensitiveNames.ts`.
+Masking hides only what bdg prints: read a masked field with `bdg eval` (`bdg eval 'document.querySelector("#api-key").value'`), keep everything in a HAR, or show it in `network details` and `network headers`, with `--include-sensitive`. The list is `SENSITIVE_NAME_TERMS` in `src/utils/sensitiveNames.ts`.
 
 ### Event Listeners
 
@@ -651,7 +651,7 @@ tree
 ```bash
 bdg dom audit                          # Every check below
 bdg dom audit contrast                 # Text below WCAG AA, weakest first
-bdg dom audit contrast --level AAA     # ... below AAA
+bdg dom audit contrast --wcag AAA     # ... below AAA
 bdg dom audit overflow                 # What scrolls sideways, cut-off text, scaled images
 bdg dom audit layers animations        # Fixed/sticky elements, running animations
 bdg dom audit --limit 50 --json        # More findings per check, as JSON
@@ -660,7 +660,7 @@ bdg css search -- --brand              # A text that starts with - goes after --
 ```
 
 `dom audit` walks the rendered elements of the page once (open shadow roots included, at most 20000) and reports per check:
-- **contrast**: every element that draws text of its own, below the level (`--level AA`, the default, or `AAA`; large text — 24px, or 18.66px bold — needs less), weakest first with the ratio, the text and background colors (composited like `dom inspect`: translucent ancestors, the page canvas), the size, `(faded: opacity 0.4)` and `(out of view)`. Text whose contrast cannot be measured exactly is not listed as failing but counted (`(+12 more may be below it but cannot be measured …)`, JSON `uncertain`): a background image or gradient behind it, blend modes and filters, content painted behind or on top of text in view (hit-tested like `dom inspect`, `pointer-events: none` layers included), and for text out of view an image or background-image element under its center, or ancestors that paint no background below `body`. Gradient text (`-webkit-text-fill-color: transparent`, also inherited) is skipped. The header says how many of how many fail.
+- **contrast**: every element that draws text of its own, below the level (`--wcag AA`, the default, or `AAA`; large text — 24px, or 18.66px bold — needs less), weakest first with the ratio, the text and background colors (composited like `dom inspect`: translucent ancestors, the page canvas), the size, `(faded: opacity 0.4)` and `(out of view)`. Text whose contrast cannot be measured exactly is not listed as failing but counted (`(+12 more may be below it but cannot be measured …)`, JSON `uncertain`): a background image or gradient behind it, blend modes and filters, content painted behind or on top of text in view (hit-tested like `dom inspect`, `pointer-events: none` layers included), and for text out of view an image or background-image element under its center, or ancestors that paint no background below `body`. Gradient text (`-webkit-text-fill-color: transparent`, also inherited) is skipped. The header says how many of how many fail.
 - **overflow**: whether the page is wider than its viewport (it scrolls sideways) and the elements reaching past the right edge, farthest first (content inside a horizontal scroller is left out); text that is cut off (`ellipsis`, line `clamp`, `clip` by `overflow: hidden`; visually-hidden 1px text is left out); images drawn with fewer pixels than the screen needs (`upscaled 1.5x`, counting the pixel ratio) or with another aspect ratio (`distorted`, unless `object-fit` crops). Identical findings are grouped (`×5`).
 - **layers**: `position: fixed` and `sticky` elements with their `z-index`, viewport position and size.
 - **animations**: running CSS animations, transitions and Web Animations, with duration, iterations and whether scrolling drives them. Animations scripts draw on a `<canvas>` cannot be seen; visible canvas elements are counted (`(+ 1 canvas element: …)`, JSON `canvases`).
@@ -1427,9 +1427,9 @@ bdg network headers <request-id> --header content-type
 bdg network headers --json
 bdg network headers --header content-security-policy --json | jq '.data.responseHeaders | to_entries[0].value'
 
-# Main document headers (same as network headers without an id); the HTML body is in
+# Main document headers (no id); the HTML body is in
 # bdg network details <id> --body
-bdg network document
+bdg network headers
 
 # Credentials as captured (masked as •••• by default)
 bdg network headers <request-id> --include-sensitive
@@ -1480,7 +1480,7 @@ bdg stop
 
 ### Cookie Inspection
 
-List cookies for the current page or a specific URL. **Values are shown as stored**, HttpOnly session cookies included: `network cookies` has no masking and no `--include-sensitive` (unlike `network details`, `network headers` and `network document`, which show cookie values as `••••`), so treat its output as you would the cookie jar.
+List cookies for the current page or a specific URL. **Values are shown as stored**, HttpOnly session cookies included: `network cookies` has no masking and no `--include-sensitive` (unlike `network details` and `network headers`, which show cookie values as `••••`), so treat its output as you would the cookie jar.
 
 ```bash
 # List all cookies
@@ -1930,6 +1930,8 @@ Old spellings are hidden from `--help`, `--help --json` and "Did you mean" sugge
 | `bdg network getCookies` | deprecated | `bdg network cookies` (same options) |
 | `bdg details` | deprecated | `bdg network details <id>` for `bdg details network <id>`, `bdg console details <n>` for `bdg details console <n>` (same options, output and exit codes); the warning names both |
 | `bdg console --history` | deprecated | `bdg console --page all`; `-H` is the short form (with `--page current` it exits 81) |
+| `bdg network document` | deprecated | `bdg network headers` (no id: the main document; same options and output) |
+| `bdg dom audit --level` | deprecated | `bdg dom audit --wcag` (same values; given together with `--wcag` and another value it exits 81) |
 | `bdg tail` | deprecated | `bdg peek --follow` (same options) |
 | `bdg cleanup --aggressive` | deprecated | `bdg cleanup --force` |
 | `bdg cleanup -f` | deprecated | `bdg cleanup --force` (`-f` means `--follow` everywhere else) |

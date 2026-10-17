@@ -79,7 +79,7 @@ export function validateFilterOption(filterString: string): void {
 }
 
 /**
- * The headers `network headers` and `network document` show: credentials
+ * The headers `network headers` show: credentials
  * masked, or as captured with a warning (`--include-sensitive`).
  *
  * @param data - URL and headers from the session

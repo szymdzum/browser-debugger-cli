@@ -66,6 +66,13 @@ export const RENAMES: readonly RenameEntry[] = [
     stage: 'deprecated',
     hint: 'use "bdg network details <id>" or "bdg console details <n>"',
   },
+  {
+    kind: 'command',
+    command: 'network',
+    old: 'document',
+    new: 'network headers',
+    stage: 'deprecated',
+  },
   { kind: 'command', command: 'dom', old: 'eval', new: 'eval', stage: 'deprecated' },
   { kind: 'command', command: 'dom', old: 'pressKey', new: 'dom press-key', stage: 'deprecated' },
   {
@@ -96,6 +103,14 @@ export const RENAMES: readonly RenameEntry[] = [
     command: 'attach',
     old: '--timeout',
     new: '--stop-after',
+    stage: 'deprecated',
+    takesValue: true,
+  },
+  {
+    kind: 'option',
+    command: 'dom audit',
+    old: '--level',
+    new: '--wcag',
     stage: 'deprecated',
     takesValue: true,
   },
