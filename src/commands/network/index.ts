@@ -7,7 +7,7 @@
  * - har: Export to HAR 1.2 format
  * - cookies: List cookies
  * - headers: Show HTTP headers
- * - document: Show main document headers
+ * - document: Old spelling of headers without an id (deprecated)
  */
 
 import type { Command } from 'commander';

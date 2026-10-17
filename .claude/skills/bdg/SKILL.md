@@ -159,7 +159,7 @@ bdg dom a11y query role=button       # By accessibility role/name
 bdg dom inspect ".card" --why color  # Which CSS rule set a property, and what it overrode
 bdg dom layout ".card"               # Every match: position, size, above/below the fold, hidden, covered
 bdg dom audit                        # Page-wide: contrast, overflow, fixed layers, animations
-bdg dom audit contrast --level AAA
+bdg dom audit contrast --wcag AAA
 bdg css search -- --brand            # Where a CSS text/custom property is set and used (file:line)
 bdg dom listeners "#save"            # Event listeners that run for an element
 bdg page emulate --mobile            # Mid-session: phone viewport, touch, mobile UA
@@ -194,8 +194,8 @@ bdg network list --filter "status-code:>=400 domain:api.*"   # DevTools DSL: sta
 bdg network list --sort size --last 5         # 5 heaviest requests (--sort duration: slowest; --page current|all; DSL page:current; a footer says when earlier pages are included)
 bdg network details <id>                      # Headers, timing, body (cut at 20000 chars; --json bodyTruncated/bodyLength); Blocked Cookies: set rejected / not sent + reason
 bdg network details <id> --no-body            # Metadata only; --body prints just the whole raw body (pipe to jq); --body-max <chars>
-bdg network headers <id>                      # Headers only (no id: main document; also bdg network document)
-# network details / network headers / network document mask credentials as ••••: cookie values, Authorization (Bearer ••••),
+bdg network headers <id>                      # Headers only (no id: the main document)
+# network details / network headers mask credentials as ••••: cookie values, Authorization (Bearer ••••),
 # API key/token headers, URL tokens, password/token fields of bodies and WebSocket messages, secret form-control
 # values of HTML bodies (inline scripts kept) (JSON masked: true). network cookies shows cookie values as stored.
 # --include-sensitive shows them as captured (with a warning); names and everything else stay as captured.

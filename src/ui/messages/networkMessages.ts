@@ -230,7 +230,7 @@ export function harSanitizedComment(): string {
 }
 
 /**
- * Footer of `network details`, `network headers` and `network document`
+ * Footer of `network details` and `network headers`
  * output in which a credential was masked (also the hint of `--body`).
  *
  * @returns The note, naming the flag that shows the values
@@ -375,6 +375,6 @@ export function base64BodyHint(): string {
   return 'The body is binary, printed base64-encoded: pipe it through base64 -d';
 }
 
-/** `network document --help` note: this command shows headers, not the body */
+/** `network document --help` note (the deprecated spelling): this command shows headers, not the body */
 export const NETWORK_DOCUMENT_BODY_NOTE =
   'Note: Shows headers only. The HTML body is in: bdg network details <id> --body';

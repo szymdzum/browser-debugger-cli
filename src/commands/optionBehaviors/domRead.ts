@@ -103,10 +103,10 @@ export const DOM_READ_BEHAVIORS: BehaviorTable = {
     tokenImpact:
       'On React pages --all adds a row per event type and phase (about 140 rows, 60 KB of JSON)',
   },
-  'audit:--level': {
+  'audit:--wcag': {
     default:
       'Text must reach WCAG AA: 4.5, or 3 for large text (24px, or 18.66px bold); every text-drawing element is checked, composited like dom inspect',
-    whenEnabled: '--level AAA asks 7, or 4.5 for large text',
+    whenEnabled: '--wcag AAA asks 7, or 4.5 for large text',
     automaticBehavior:
       'One walk over the rendered elements (open shadow roots included, at most 20000; capped says when it stopped). Findings are sorted weakest first; --limit (default 20) lists that many per check and the rest are counted. Overflow leaves out content inside horizontal scrollers and visually-hidden 1px text; identical findings are grouped (×N). Contrast is approximate (approximate: …) when something is painted behind or on top of text in view (hit-tested), or for text out of view whose ancestors paint nothing below body (only its ancestors were checked). Canvas animations cannot be listed; visible canvas elements are counted (canvases)',
     tokenImpact: 'About one line per finding; --limit bounds it',

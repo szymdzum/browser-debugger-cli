@@ -1,6 +1,5 @@
 /**
- * Masked network output (#615): `network details`, `network headers` and
- * `network document` show credentials as {@link MASKED_VALUE} unless run with
+ * Masked network output (#615): `network details` and `network headers` show credentials as {@link MASKED_VALUE} unless run with
  * `--include-sensitive`.
  *
  * What counts as a credential is the HAR sanitiser's rule (sanitize.ts,
