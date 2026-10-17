@@ -16,6 +16,7 @@ import {
   appendSnapshotEntries,
   briefProblems,
   briefVariant,
+  fillOutsideQuotes,
   formatDesign,
   formatIssue,
   isAgentCommand,
@@ -27,6 +28,8 @@ import {
   isSessionFileName,
   templatePlaceholders,
   unfilledPlaceholders,
+  unitTestsFor,
+  worktreeOrphans,
   socketAccepts,
   callTimeout,
   closedIssues,
@@ -50,6 +53,7 @@ import {
   parseArgs,
   parseBriefs,
   parseSnapshot,
+  pidReused,
   partOfIssues,
   parseSnapshotArgs,
   productLines,
@@ -60,6 +64,8 @@ import {
   snapshotChanges,
   staleDependencies,
   snapshotLines,
+  strayClosingCommits,
+  suiteTimes,
   retryTransient,
   run,
   withWaiterDeadline,
@@ -1083,4 +1089,95 @@ test('isFormatChecked follows npm run format:check, never the ship scripts', () 
   assert.equal(isFormatChecked('.claude/skills/ship/scripts/ship.mjs'), false);
   assert.equal(isFormatChecked('docs/CLI_REFERENCE.md'), false);
   assert.equal(isFormatChecked('scripts/bundle-cli.mjs'), false);
+});
+
+test('strayClosingCommits flags a commit that closes an issue the PR body only takes part in', () => {
+  const log = '8d04b1fb test: fix #465 specify: the help check matched --force for -f\n\0a1b2c3d fix: rename rows (Part of #465)\n\0';
+  assert.deepEqual(strayClosingCommits(log, []), [{ sha: '8d04b1fb', issue: '465' }]);
+  assert.deepEqual(strayClosingCommits(log, ['465']), []);
+  assert.deepEqual(strayClosingCommits('abc test: reproduce #761\n\0', []), []);
+});
+
+test('briefVariant tier 1 also replaces the reviewer red-commit check', () => {
+  const { brief } = renderBrief(BRIEFS, 'reviewer', { N: '797', MAIN: '/m', HEAD: 'h', BASE: 'b', RED: 'r', BRANCH: 'x' });
+  assert.match(brief, /worktree add \/tmp\/red-797/);
+  const tier1 = briefVariant(brief, { tier1: true });
+  assert.doesNotMatch(tier1, /worktree add \/tmp\/red-|<!-- \/?red-review -->/);
+  assert.match(tier1, /\*\*Red commit\.\*\* None: tier 1/);
+  assert.doesNotMatch(briefVariant(brief, {}), /<!-- \/?red-review -->/);
+});
+
+test('the tester brief takes AGENT for a second parallel tester', () => {
+  const a = renderBrief(BRIEFS, 'tester', { N: '455', MAIN: '/m', HEAD: 'h', AGENT: 'a' }).brief;
+  const b = renderBrief(BRIEFS, 'tester', { N: '455', MAIN: '/m', HEAD: 'h', AGENT: 'b' }).brief;
+  assert.match(a, /BDG_SESSION_DIR=\/tmp\/bdg-t-455-a\b/);
+  assert.match(b, /BDG_SESSION_DIR=\/tmp\/bdg-t-455-b\b/);
+  assert.match(b, /\/tmp\/bdg-t-455-b-work/);
+});
+
+test('fillOutsideQuotes fills hand-written placeholders but not the quoted issue', () => {
+  const text = `Review <BASE>..<HEAD>\n${formatIssue({ number: 1, title: 't', body: 'keep <BASE>' })}`;
+  const filled = fillOutsideQuotes(text, { BASE: 'b1', HEAD: 'h1' });
+  assert.match(filled, /^Review b1\.\.h1\n/);
+  assert.match(filled, /keep <BASE>/);
+});
+
+test('unitTestsFor finds __tests__ and .unit tests next to edited files, never smoke tests', () => {
+  const tracked = [
+    'src/daemon/session/__tests__/cdpSetup.test.ts',
+    'src/daemon/__tests__/teardown.unit.test.ts',
+    'src/__tests__/smoke/eval.smoke.test.ts',
+    'src/utils/__tests__/renames.test.ts',
+  ];
+  assert.deepEqual(unitTestsFor(['src/daemon/session/cdpSetup.ts', 'src/daemon/session/teardown.ts', 'docs/x.md'], tracked), [
+    'src/daemon/session/__tests__/cdpSetup.test.ts',
+    'src/daemon/__tests__/teardown.unit.test.ts',
+  ]);
+  assert.deepEqual(unitTestsFor(['src/utils/__tests__/renames.test.ts'], tracked), ['src/utils/__tests__/renames.test.ts']);
+});
+
+test('suiteTimes reads top-level spec suites from a GitHub job log, summing reruns', () => {
+  const prefix = 'Smoke Tests (Chrome) (Node 22, shard 1/4)\tUNKNOWN STEP\t2026-10-17T20:53:58.4814807Z ';
+  const log = [
+    `${prefix}▶ auth state save and load`,
+    `${prefix}  ✔ logs in (1690.4ms)`,
+    `${prefix}✔ auth state save and load (6091.69597ms)`,
+    `${prefix}✖ DOM interactions (56000ms)`,
+  ].join('\n');
+  assert.deepEqual([...suiteTimes(log)], [
+    ['auth state save and load', 6091.69597],
+    ['DOM interactions', 56000],
+  ]);
+});
+
+test('worktreeOrphans names processes from a scoped worktree that no PID file covers', () => {
+  const ps = [
+    '  101     1 node /dev/bdg-797b/dist/daemon.js',
+    '  102   101 /Applications/Chrome --user-data-dir=/dev/bdg-797b/x/',
+    '  103     1 npx tsx src/__testutils__/serveFixtures.ts --cwd /dev/bdg-455/',
+    '  104     1 node /dev/bdg-verify/dist/index.js',
+    '  105     1 node /dev/browser-debugger-cli/dist/index.js',
+  ].join('\n');
+  const orphans = worktreeOrphans(ps, '/dev', ['797b'], new Set([102]));
+  assert.deepEqual(orphans.map((p) => p.pid), [101]);
+  assert.deepEqual(worktreeOrphans(ps, '/dev', undefined, new Set()).map((p) => p.pid), [101, 102, 103]);
+});
+
+test('worktreeOrphans walks up the parents: npx & echo $! covers the server below it', () => {
+  const ps = [
+    '  200     1 npm exec tsx src/__testutils__/serveFixtures.ts',
+    '  201   200 sh -c tsx src/__testutils__/serveFixtures.ts',
+    '  202   201 node /dev/bdg-455/node_modules/.bin/tsx src/__testutils__/serveFixtures.ts',
+    '  203   202 node --import tsx /dev/bdg-455/src/__testutils__/serveFixtures.ts',
+    '  300     1 node /dev/browser-debugger-cli/../bdg-455/dist/index.js',
+  ].join('\n');
+  assert.deepEqual(worktreeOrphans(ps, '/dev', ['455'], new Set([200])).map((p) => p.pid), [300]);
+});
+
+test('pidReused: a process that started after its PID file was written holds a reused PID', () => {
+  const written = Date.parse('2026-10-17T20:59:00Z');
+  assert.equal(pidReused(Date.parse('2026-10-17T23:15:22Z'), written), true);
+  assert.equal(pidReused(written - 1000, written), false);
+  assert.equal(pidReused(written + 5000, written), false);
+  assert.equal(pidReused(NaN, written), false);
 });

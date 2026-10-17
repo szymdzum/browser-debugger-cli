@@ -99,6 +99,9 @@ One row per merged PR, appended with `ship log <pr> …` right after the merge. 
 | 2026-10-17 | #827 | - | 2 | 0/0/2 | 0 | 1 | sonnet | ~270k | D5 D12: network document + dom audit --level rows; rebase onto 3 merged PRs; nits: one runHeaders |
 | 2026-10-17 | #828 | - | 1 | 0/3/2 | no | 1 | orchestrator | ~60k | docs sweep: old names only in the deprecations section; review found --timeout note, a self-referring eval aside and the silent --nth alias (→ owner: deprecated row, #829) |
 | 2026-10-17 | #829 | - | 2 | 0/0/2 | 0 | 0 | sonnet | ~160k | --nth deprecated row (owner decision mid-session, found by the docs-sweep review); dom get's own --index/--nth conflict replaced by the table rule |
+| 2026-10-17 | #834 | - | 1 | 0/2/2 | - | 1 | sonnet | ~120k | 797b daemon/session sendTyped (+currentTarget, plugins), signal option, typed-cdp unit test; implementer killed PIDs found by ps (2nd case after S18) |
+| 2026-10-17 | #833 | #455 | 2 | 0/2/3 | R1 2 (modal false structure, svg noise) R2 5 small | 3 | sonnet | ~700k | 455 dom audit a11y in default run (owner); 6 rules; simplify by orchestrator; round 3 owner yes; testers 4 agents bbc/gov.uk/guardian/github |
+| 2026-10-17 | #835 | - | 1 | 0/1/2 | - | 1 | sonnet | ~200k | 809b dialog-open 32.6/55.0 -> 10.0/16.7 s, action-outcomes 40.7/56.3 -> 27.4/44.5 s (Linux/macOS); interactions unchanged (spawns); ticker should-fix rejected with proof (self-updating guards history) |
 
 ## Escaped
 
@@ -121,11 +124,12 @@ Process changes seen in one session only (SKILL.md, Keep the books: a second ses
 | Tell other threads before a series of merges to `main`, or keep dependabot merges outside ship sessions | S15 (dependabot merges cancelled two push runs); S16 (a related symptom: stale `node_modules` after dependabot merges) | both symptoms now have tool fixes (`ci-wait --push` follows the newer run; `ship snapshot` warns on stale `node_modules`), so the rule itself may not be needed |
 | A flaky test that fails three or more times in one session is fixed in that session as tier 1, not only commented on #529 | S16 (#806: "URL display is linear", 3/10 under load → 10/10) | S17: `#tall` failed a third time, but it was already in the plan: not a confirmation |
 | A third fix round that removes code (not only tests) needs no owner's yes | S15 (#800 round 3 removal) | the tests-only half became a rule in S17 |
-| A timing PR also passes the full macOS CI shard under load, not only the repeat run | S17 (#812: repeat ×10 green, the shard red on the case where nothing was kept) | |
+| A timing PR also passes the full macOS CI shard under load, not only the repeat run | S17 (#812: repeat ×10 green, the shard red on the case where nothing was kept) | S20 #835: ran (`--macos`) next to the repeat, both green, cost nothing; not a confirmation |
 | Ask for merge authority with AskUserQuestion (yes/no options), so a blanket "OK" can't count as a merge yes | S17 (a first "All Ok" didn't count; #813 waited ~1 h ready to merge) | until then, the session prompt can grant it: "Merge authority: yes" |
-| Remove: the fresh-agent test for a flake fix that changes no output | S17 (#812, #813: 0 findings) | sessions with no catch: 1 of 3 |
+| Remove: the fresh-agent test for a flake fix that changes no output | S17 (#812, #813: 0 findings) | sessions with no catch: 1 of 3; S20: no flake fixes, not counted |
 | A test builds its own session directory instead of using `testHome` (brief rule or a lint) | S18 (#819: found only by merge-check) | S19: not seen |
-| Watch: an implementer killed PIDs not read from its PID files and left a smoke run hanging (breaks the forbidden block) | S18 (#820) | an existing rule broken, not a gap; a second case asks for a mechanical check; S19: not seen |
-| PRs sharing one registry (`renames.ts`, a docs table) run in sequence or each from a fresh `main`, not in parallel with rebases | S19 (3 rebases, each a CI run; one broke a docs row, caught on the reviewer's re-check) | same family as the "Shared registries" trap; pulls against the parallel same-file rule (S15) for registries |
+| PRs sharing one registry (`renames.ts`, a docs table) run in sequence or each from a fresh `main`, not in parallel with rebases | S19 (3 rebases, each a CI run; one broke a docs row, caught on the reviewer's re-check) | same family as the "Shared registries" trap; pulls against the parallel same-file rule (S15) for registries; S20: no shared registry |
 | Before a release that follows renames, a docs sweep with a reviewer | S19 (#828: found the silent `--nth` alias and two stale sentences) | |
+| A tier 2 feature over ~500 product lines gets 3 fresh agents in round 1, not 2, one of them on real sites | S20 (#833: the bbc.com modal and the SVG icons came from the real-site task; round 2 found 5 more) | |
+| The reviewer brief says when a `refactor:` commit came from the orchestrator's `/simplify`: check bounds and parallelism | S20 (#833: an unbounded `Promise.all`, ~1500 CDP calls in flight, caught by luck) | |
 

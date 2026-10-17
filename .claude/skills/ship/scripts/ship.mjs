@@ -792,7 +792,35 @@ function finishSimplify(path) {
   if (edited.length) results.push(step(`prettier --write (${edited.length} files)`, `npx prettier --write ${edited.map((f) => `'${f}'`).join(' ')}`, path));
   else console.log('ok   no edited code files to format');
   results.push(step('npm run type-check', 'npm run type-check', path));
+  const tests = unitTestsFor(edited, run('git', ['-C', path, 'ls-files', 'src']).split('\n'));
+  if (tests.length) results.push(step(`unit tests of the edited files (${tests.length})`, `npx tsx --test ${tests.map((f) => `'${f}'`).join(' ')}`, path));
+  else console.log('ok   no unit tests found next to the edited files');
   return results.every(Boolean) ? EXIT.ok : EXIT.failed;
+}
+
+/**
+ * Unit test files for edited source files: `__tests__/<name>.test.ts` or
+ * `<name>.unit.test.ts` in the file's directory or one above (smoke tests
+ * excluded: they need a build and Chrome). S20: --finish only knew type-check passed.
+ *
+ * @param {string[]} edited repo-relative paths
+ * @param {string[]} tracked repo-relative paths under src/
+ */
+export function unitTestsFor(edited, tracked) {
+  const tests = tracked.filter((f) => /__tests__\/.*\.test\.ts$/.test(f) && !/\.smoke\.test\.ts$/.test(f));
+  const found = edited
+    .filter((f) => /^src\/.*\.ts$/.test(f) && !/__tests__/.test(f))
+    .flatMap((f) => {
+      const dir = dirname(f);
+      const name = f.slice(dir.length + 1).replace(/\.ts$/, '');
+      return tests.filter((t) => {
+        const base = t.slice(t.lastIndexOf('/') + 1);
+        return (t.startsWith(`${dir}/__tests__/`) || t.startsWith(`${dirname(dir)}/__tests__/`)) &&
+          (base === `${name}.test.ts` || base === `${name}.unit.test.ts`);
+      });
+    });
+  const direct = edited.filter((f) => tests.includes(f));
+  return [...new Set([...found, ...direct])];
 }
 
 /**
@@ -827,6 +855,59 @@ function simplify(argv) {
       `then: ship simplify ${pr.number} --finish (Prettier and type-check on the edits), and SendMessage the implementer to run the affected tests and commit them as refactor:`,
     ].join('\n')
   );
+  return EXIT.ok;
+}
+
+/**
+ * Top-level suite times from a node --test spec log: lines `✔ name (12.3ms)`
+ * or `✖ …` with no indentation after the GitHub log prefix.
+ *
+ * @param {string} log
+ * @returns {Map<string, number>} suite → milliseconds
+ */
+export function suiteTimes(log) {
+  const times = new Map();
+  for (const line of log.split('\n')) {
+    const text = line.replace(/^[^\t]*\t[^\t]*\t\d{4}-\d\d-\d\dT[\d:.]+Z /, '');
+    const m = /^[✔✖] (.+) \((\d+(?:\.\d+)?)ms\)$/.exec(text);
+    if (m) times.set(m[1], (times.get(m[1]) ?? 0) + Number(m[2]));
+  }
+  return times;
+}
+
+/**
+ * Prints the slowest smoke suites of a CI run, or of two runs side by side
+ * (S20: extracted by hand three times for #809's before/after).
+ *
+ * @param {string[]} argv `<run id> [<other run id>] [--job=<regex>] [--top=15]`
+ */
+function suiteTimesCommand(argv) {
+  const { positional, keys } = parseArgs(argv);
+  if (!positional[0]) return usage('suite-times <run id> [<other run id>] [--job=<regex>] [--top=15]');
+  let jobFilter;
+  try {
+    jobFilter = new RegExp(keys.job ?? 'Smoke');
+  } catch (error) {
+    return usage(`suite-times: --job is not a valid regex: ${error.message}`);
+  }
+  const top = Number(keys.top ?? 15) || 15;
+  const timesOf = (runId) => {
+    const jobs = ghJson(['run', 'view', runId, '--json', 'jobs']).jobs.filter((j) => jobFilter.test(j.name));
+    const all = new Map();
+    for (const job of jobs) {
+      const log = spawnSync('gh', ['run', 'view', '--job', String(job.databaseId), '--log'], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, timeout: WRITE_TIMEOUT_MS }).stdout ?? '';
+      const platform = /macOS/.test(job.name) ? 'macOS' : 'Linux';
+      for (const [suite, ms] of suiteTimes(log)) all.set(`${suite} [${platform}]`, (all.get(`${suite} [${platform}]`) ?? 0) + ms);
+    }
+    return all;
+  };
+  const first = timesOf(positional[0]);
+  const second = positional[1] ? timesOf(positional[1]) : null;
+  const rows = [...first].sort((a, b) => b[1] - a[1]).slice(0, top);
+  for (const [suite, ms] of rows) {
+    const other = second?.get(suite);
+    console.log(`${(ms / 1000).toFixed(1).padStart(7)} s${second ? ` → ${other === undefined ? '   -' : (other / 1000).toFixed(1).padStart(6)} s` : ''}  ${suite}`);
+  }
   return EXIT.ok;
 }
 
@@ -1280,6 +1361,13 @@ async function gates(argv) {
     gateLine(results, version.ok, `7 release: ${version.text}`);
   } else gateLine(results, !prFiles.includes('CHANGELOG.md'), '7 CHANGELOG.md untouched');
   const parts = partOfIssues(pr.body);
+  const messages = run('git', ['log', '--no-merges', '--format=%h %B%x00', `${forkPoint}..${head}`]);
+  const stray = strayClosingCommits(messages, closedIssues(pr.body));
+  gateLine(
+    results,
+    stray.length === 0,
+    `7 no commit message closes an issue the PR body doesn't${stray.length ? `: ${stray.map((c) => `${c.sha} closes #${c.issue}`).join(', ')} (GitHub closes it on merge; reword the commit)` : ''}`
+  );
   if (flags.has('no-issue') || release)
     console.log(`ok   7 PR body closes an issue: skipped (${release ? '--release' : '--no-issue'})`);
   else {
@@ -1328,6 +1416,28 @@ export function closedIssues(body) {
  */
 function withoutFencedCode(body) {
   return (body ?? '').replace(/^ {0,3}(`{3,}|~{3,})[\s\S]*?(^ {0,3}\1[`~]*[ \t]*$|(?![\s\S]))/gm, '');
+}
+
+/**
+ * Commits whose message closes an issue the PR body doesn't close: GitHub
+ * closes it on merge whatever the PR says (S19: `test: fix #465 specify…`
+ * closed #465, which the PR was only part of).
+ *
+ * @param {string} log `git log --format='%h %B%x00'` output
+ * @param {string[]} closes issues the PR body closes
+ * @returns {{ sha: string, issue: string }[]}
+ */
+export function strayClosingCommits(log, closes) {
+  return log
+    .split('\0')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .flatMap((entry) => {
+      const [sha] = entry.split(' ', 1);
+      return closedIssues(entry.slice(sha.length))
+        .filter((issue) => !closes.includes(issue))
+        .map((issue) => ({ sha, issue }));
+    });
 }
 
 /**
@@ -1557,6 +1667,40 @@ export function snapshotChanges(before, current) {
   return { added, changed };
 }
 
+/**
+ * True when a PID was reused: the process now holding it started after
+ * the PID file was written (`cmd & echo $! > file` writes it right after
+ * the start; 10 s slack). S20: two stale review PID files from S16 named
+ * macOS system daemons, which "kill only PIDs read back from your files"
+ * would have killed.
+ *
+ * @param {number} startedAtMs start time of the process holding the PID
+ * @param {number} fileMtimeMs
+ */
+export function pidReused(startedAtMs, fileMtimeMs) {
+  return Number.isFinite(startedAtMs) && startedAtMs > fileMtimeMs + 10_000;
+}
+
+/**
+ * The PID a PID file names when that process is alive and is the one the
+ * file was written for, else null.
+ *
+ * @param {string} file
+ */
+function livePidOf(file) {
+  let pid;
+  let mtimeMs;
+  try {
+    pid = Number(readFileSync(file, 'utf8').trim());
+    mtimeMs = lstatSync(file).mtimeMs;
+  } catch {
+    return null;
+  }
+  if (!pid || !alive(pid)) return null;
+  const started = spawnSync('ps', ['-o', 'lstart=', '-p', String(pid)], { encoding: 'utf8' }).stdout?.trim();
+  return pidReused(Date.parse(started ?? ''), mtimeMs) ? null : pid;
+}
+
 /** True when the process with this PID is alive */
 function alive(pid) {
   try {
@@ -1623,13 +1767,14 @@ function leftoverLines(scope) {
         `written to in ~/${dir} since the snapshot: ${changed.join(', ')} (a user's own file: ship snapshot --accept <name>; their live session: --accept-live)`
       );
   }
+  for (const line of orphanWorktreeProcesses(scope)) lines.push(line);
   const agentDaemon = agentDaemonInBdgHome();
   if (agentDaemon) lines.push(`an agent's bdg session is live in ~/.bdg: ${agentDaemon}`);
   for (const file of readdirSync('/tmp').filter((f) => /^bdg-.*\.pid$/.test(f))) {
     if (scope && !inScope(file, scope)) continue;
     if (scope && /^bdg-fixtures-[\w.-]+\.pid$/.test(file)) continue;
-    const pid = Number(readFileSync(join('/tmp', file), 'utf8').trim());
-    if (pid && alive(pid)) lines.push(`live PID ${pid} from /tmp/${file}`);
+    const pid = livePidOf(join('/tmp', file));
+    if (pid) lines.push(`live PID ${pid} from /tmp/${file}`);
   }
   const temp = tempWorktrees(run('git', ['worktree', 'list', '--porcelain'])).filter(
     (p) => !scope || inScope(p, scope)
@@ -1808,6 +1953,59 @@ export function isSessionFileName(name) {
 }
 
 /**
+ * Live processes whose command line runs from an agent worktree of the
+ * scope (`<parent>/bdg-<name>/`) and that no /tmp/bdg-*.pid file names:
+ * started without a PID file, so the forbidden block's "kill only PIDs
+ * read back from your files" can't be followed (S18 #820, S20 #797b killed
+ * processes found by listing).
+ *
+ * @param {string[]} [scope] PR numbers and names; all worktrees without one
+ */
+function orphanWorktreeProcesses(scope) {
+  const parent = dirname(mainCheckout());
+  const pidFiles = new Set(
+    readdirSync('/tmp')
+      .filter((f) => /^bdg-.*\.pid$/.test(f))
+      .map((f) => livePidOf(join('/tmp', f)))
+      .filter(Boolean)
+  );
+  const ps = spawnSync('ps', ['-axo', 'pid=,ppid=,command='], { encoding: 'utf8' }).stdout ?? '';
+  return worktreeOrphans(ps, parent, scope, pidFiles).map(
+    (p) => `process ${p.pid} from ${p.worktree} has no PID file: ${p.command.slice(0, 120)}`
+  );
+}
+
+/**
+ * Processes in `ps -axo pid=,ppid=,command=` output running from a scoped
+ * worktree with no PID file on themselves or any ancestor (`cmd & echo $!`
+ * records npx, and the server it starts runs a few levels below). A path
+ * written as `<main>/../bdg-N/` counts as `<parent>/bdg-N/`.
+ *
+ * @param {string} ps
+ * @param {string} parent directory holding the worktrees
+ * @param {string[] | undefined} scope
+ * @param {Set<number>} pidFiles PIDs read from /tmp/bdg-*.pid
+ */
+export function worktreeOrphans(ps, parent, scope, pidFiles) {
+  const procs = ps
+    .split('\n')
+    .map((line) => /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line))
+    .filter(Boolean)
+    .map(([, pid, ppid, command]) => ({ pid: Number(pid), ppid: Number(ppid), command: command.replace(/\/[^/\s]+\/\.\.\//g, '/') }));
+  const parentOf = new Map(procs.map((p) => [p.pid, p.ppid]));
+  const covered = (pid) => {
+    for (let at = pid, hops = 0; at > 1 && hops < 64; at = parentOf.get(at) ?? 0, hops++)
+      if (pidFiles.has(at)) return true;
+    return false;
+  };
+  return procs
+    .map((p) => ({ ...p, worktree: new RegExp(`${parent.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/(bdg-[\\w.-]+)/`).exec(p.command)?.[1] }))
+    .filter((p) => p.worktree && p.worktree !== 'bdg-verify')
+    .filter((p) => !scope || scope.some((n) => p.worktree === `bdg-${n}`))
+    .filter((p) => !covered(p.pid));
+}
+
+/**
  * True when a daemon command line runs bdg from an agent worktree
  * (`<parent>/bdg-<N>/…`, `<parent>/bdg-verify/…`), not the user's own bdg.
  *
@@ -1841,8 +2039,7 @@ function leftovers(argv) {
   const { flags } = parseArgs(argv);
   if (flags.has('clean')) {
     for (const file of readdirSync('/tmp').filter((f) => /^bdg-.*\.pid$/.test(f))) {
-      const pid = Number(readFileSync(join('/tmp', file), 'utf8').trim());
-      if (!pid || !alive(pid)) rmSync(join('/tmp', file));
+      if (!livePidOf(join('/tmp', file))) rmSync(join('/tmp', file));
     }
   }
   const lines = leftoverLines();
@@ -2108,6 +2305,10 @@ export function briefProblems(text, placeholders) {
 const NO_RED_COMMIT =
   '- **No red commit** (tier 1: docs, CI, tooling, or a refactor under existing tests): the PR body says which applies and names the existing tests that cover the change.\n';
 
+/** What a tier 1 reviewer brief says instead of the red-commit check (S20: removed by hand twice) */
+const NO_RED_REVIEW =
+  '**Red commit.** None: tier 1 (docs, CI, tooling, or a refactor under existing tests). Check that the PR body says which applies and that existing tests cover the change.\n';
+
 /**
  * Adjusts a rendered brief: tier 1 drops the red-commit rules (between
  * `<!-- red -->` markers) for one line saying why there is none; a part of
@@ -2118,12 +2319,53 @@ const NO_RED_COMMIT =
  * @param {{ tier1?: boolean, part?: boolean }} variant
  */
 export function briefVariant(text, variant) {
-  const withRed = text.replace(/<!-- red -->\n([\s\S]*?)<!-- \/red -->\n/g, (_, rules) =>
-    variant.tier1 ? NO_RED_COMMIT : rules
-  );
+  const withRed = text
+    .replace(/<!-- red -->\n([\s\S]*?)<!-- \/red -->\n/g, (_, rules) => (variant.tier1 ? NO_RED_COMMIT : rules))
+    .replace(/<!-- red-review -->\n([\s\S]*?)<!-- \/red-review -->\n/g, (_, rules) =>
+      variant.tier1 ? NO_RED_REVIEW : rules
+    );
   return variant.part
     ? withRed.replace(/`Closes #(\d+)`/g, '`Part of #$1` (not `Closes`: this PR does one part, the issue stays open)')
     : withRed;
+}
+
+/**
+ * Fills placeholders the orchestrator wrote into a brief by hand (S20: a
+ * `<BASE>..<HEAD>` in added text failed --check): `brief --check=<file>`
+ * takes the same KEY=value pairs and PR=<pr> as rendering and replaces them
+ * in the file before checking, outside the quoted issue and design.
+ *
+ * @param {string} file
+ * @param {Record<string, string>} keys
+ */
+function fillBriefFile(file, keys) {
+  const { check: _check, out: _out, ...given } = keys;
+  const values = { ...(given.PR ? prBriefValues(given.PR) : {}), ...given };
+  if (!Object.keys(values).length) return;
+  const text = readFileSync(file, 'utf8');
+  const filled = fillOutsideQuotes(text, values);
+  if (filled !== text) {
+    writeFileSync(file, filled);
+    console.log(`filled ${Object.keys(values).join(', ')} in ${file}`);
+  }
+}
+
+/**
+ * Replaces `<KEY>` placeholders in text, leaving quoted issue and design regions alone.
+ *
+ * @param {string} text
+ * @param {Record<string, string>} values
+ */
+export function fillOutsideQuotes(text, values) {
+  const fill = (part) =>
+    Object.entries(values).reduce((acc, [key, value]) => acc.split(`<${key}>`).join(value), part);
+  let out = '';
+  let last = 0;
+  for (const match of text.matchAll(QUOTED_REGION)) {
+    out += fill(text.slice(last, match.index)) + match[0];
+    last = match.index + match[0].length;
+  }
+  return out + fill(text.slice(last));
 }
 
 /**
@@ -2166,6 +2408,7 @@ function brief(argv) {
   const briefsText = readFileSync(join(SKILL_DIR, 'briefs.md'), 'utf8');
   const placeholders = templatePlaceholders(briefsText);
   if (keys.check) {
+    if (existsSync(keys.check)) fillBriefFile(keys.check, keys);
     const problems = existsSync(keys.check)
       ? briefProblems(readFileSync(keys.check, 'utf8'), placeholders)
       : [`no file ${keys.check}`];
@@ -2178,6 +2421,7 @@ function brief(argv) {
   const values = {
     MAIN: mainCheckout(),
     ROLE: ROLE_TAGS[positional[0]] ?? positional[0],
+    AGENT: 'a',
     ...(given.PR ? prBriefValues(given.PR) : {}),
     ...given,
   };
@@ -2284,6 +2528,7 @@ const COMMANDS = {
     snapshot,
     "session start: snapshot ~/.bdg and ~/Downloads (gate 8); --accept <name>… adds a user's own ~/Downloads or ~/.bdg file to the snapshot; --accept-live accepts all files of the user's live session in ~/.bdg, and its session files written later",
   ],
+  'suite-times': [suiteTimesCommand, '<run id> [<other run id>] [--job=<regex>] [--top=15]: slowest smoke suites from CI logs, or two runs side by side'],
   simplify: [simplify, "<pr> [--finish]: the PR's worktree, base, diff file and /simplify args; --finish formats and type-checks the edits"],
   fixtures: [
     fixtures,

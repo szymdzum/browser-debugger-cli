@@ -10,7 +10,7 @@ Render a brief with `node .claude/skills/ship/scripts/ship.mjs brief <role> N=<n
 | verifier | `general-purpose` | `sonnet` | foreground | 60 |
 | design | `general-purpose` | `sonnet` | foreground | 40 |
 
-Placeholders the script can fill: `N` (issue; its text is quoted where a brief has `<ISSUE>`), `ISSUES` (several, comma-separated, for the verifier), `PR` (fills `BASE`, `HEAD`, `RED`, `BRANCH`), `DESIGN` (a design note file, for the design brief), `TIER=1` (implementer: no red commit), `PART=1` (implementer: `Part of #N`, not `Closes`), `NAME` (a suffixed name such as `529a` for a second PR of one issue: every path uses it, `#N` stays the issue number), `BRANCH`, `BASE` (merge base or the unmerged branch this PR builds on), `HEAD` (head SHA under review or test), `RED` (red commit SHA), `CAP`, `URLS` (fixture URLs), `DATE`.
+Placeholders the script can fill: `N` (issue; its text is quoted where a brief has `<ISSUE>`), `ISSUES` (several, comma-separated, for the verifier), `PR` (fills `BASE`, `HEAD`, `RED`, `BRANCH`), `DESIGN` (a design note file, for the design brief), `TIER=1` (implementer: no red commit), `PART=1` (implementer: `Part of #N`, not `Closes`), `NAME` (a suffixed name such as `529a` for a second PR of one issue: every path uses it, `#N` stays the issue number), `AGENT` (tester: `b`, `c`… for a second parallel tester of one PR; default `a`), `BRANCH`, `BASE` (merge base or the unmerged branch this PR builds on), `HEAD` (head SHA under review or test), `RED` (red commit SHA), `CAP`, `URLS` (fixture URLs), `DATE`.
 
 ## Shared blocks
 
@@ -25,7 +25,7 @@ export PATH="$HOME/.nvm/versions/node/v22.15.0/bin:$PATH"
 <!-- block:forbidden -->
 **Rules.**
 - No `git stash` (the stash is shared across worktrees); no `--no-verify` or any other hook bypass.
-- No `pkill`, `killall` or `pkill -P`. A background process you start writes its PID at start (`cmd & echo $! > /tmp/bdg-<ROLE>-<N>-NAME.pid`); kill only PIDs read back from those files. A stray bdg session is ended with `bdg stop` (or `bdg cleanup --force`) in its own `BDG_SESSION_DIR`.
+- No `pkill`, `killall` or `pkill -P`. A background process you start writes its PID at start (`cmd & echo $! > /tmp/bdg-<ROLE>-<N>-NAME.pid`); kill only PIDs read back from those files, and only when `ps -o lstart= -p <pid>` shows the process started before the file was written (a reused PID names an unrelated process). A stray bdg session is ended with `bdg stop` (or `bdg cleanup --force`) in its own `BDG_SESSION_DIR`.
 - Never touch `~/.bdg`, other agents' worktrees, or the main checkout `<MAIN>` (its `.tmp/` included); the one exception is adding and removing your own worktrees with `git -C <MAIN> worktree …`. Nothing may land in `~/Downloads`.
 - Don't open GitHub issues. Report findings with the command and its output; the orchestrator verifies and files them.
 - `bdg attach` only with `--chrome-ws-url` to a Chrome you launched yourself: without it, attach reads the stable profile's `DevToolsActivePort`, which is the owner's everyday Chrome (S19: a reviewer attached to it).
@@ -87,7 +87,7 @@ Run `npm run check`, `npm test`, `npm run build` and the affected smoke files (`
 
 **Budget.** At most 80 tool calls up to the draft PR; each fix round you are resumed for has its own 30. At a cap, stop and report what is left.
 
-**Report.** What changed; decisions with reasons; the red commit (SHA and the failure line); before/after in two lines; test result lines; timing-sensitive smoke files; adjacent fixes; findings outside the scope with command and output. {{report-tail}} The **last line** is exactly `PR <url> HEAD <sha>`; a report without it counts as unfinished.
+**Report.** Every process you stopped, with the PID file you read it from (none is an answer); what changed; decisions with reasons; the red commit (SHA and the failure line); before/after in two lines; test result lines; timing-sensitive smoke files; adjacent fixes; findings outside the scope with command and output. {{report-tail}} The **last line** is exactly `PR <url> HEAD <sha>`; a report without it counts as unfinished.
 
 <ISSUE>
 <!-- /brief -->
@@ -129,6 +129,7 @@ export BDG_TEST_SESSION_PARENT=/tmp/rv-<N>-t BDG_TEST_HOME_DIR=/tmp/rv-<N>-h
 ```
 `npm run build`, <the targeted unit tests>, <one targeted smoke test>. Check cheap claims by hand with the session directory on that command only: `BDG_SESSION_DIR=/tmp/rv-<N> node /tmp/review-<N>/dist/index.js …`. Never export `BDG_SESSION_DIR` in the shell that runs `npm test`: the IPC tests then fail by the dozen (S15: ~22 false failures, twice).
 
+<!-- red-review -->
 **Red commit.** `git -C <MAIN> log --oneline <BASE>..<HEAD>`: the first commit is `test: …` and holds only tests, fixture pages and `not implemented` skeletons. Run its tests in a worktree of its own:
 ```
 git -C <MAIN> worktree add /tmp/red-<N> <RED>
@@ -138,6 +139,7 @@ npm --prefix /tmp/red-<N> run build    # only if the tests run against dist
 git -C <MAIN> worktree remove --force /tmp/red-<N>
 ```
 They must fail on an assertion about the issue, not on a build or import error; quote the failure line. A missing or wrong-reason red commit is **blocking** (exempt: docs-only, refactors under existing tests, CI/tooling).
+<!-- /red-review -->
 
 {{foreground}}
 
@@ -162,12 +164,12 @@ You are a coding agent who has never used bdg, a CLI for debugging Chrome. Test 
 **Setup.** Every shell call starts with:
 ```
 {{node}}
-export BDG_SESSION_DIR=/tmp/bdg-t-<N>-a
+export BDG_SESSION_DIR=/tmp/bdg-t-<N>-<AGENT>
 bdg() { node <MAIN>/../bdg-<N>/dist/index.js "$@"; }
 ```
 Learn bdg the way a new user would: `bdg --help`, `bdg --help --json`, `<MAIN>/../bdg-<N>/.claude/skills/bdg/SKILL.md`. Read the source only to confirm a bug. To send Ctrl-C, use a tiny Node spawner that runs `child_process.spawn` on the bdg command, calls `child.kill('SIGINT')` after N ms and prints the exit code or signal, stdout and stderr (`kill -INT` on a `&` job does nothing: a non-interactive shell starts it with SIGINT ignored). `kill -TERM <pid>` works for a background `node <MAIN>/../bdg-<N>/dist/index.js …` with its PID in a file. Kill only PIDs you started.
 
-**Pages.** <URLS>. Scratch files in `/tmp/bdg-t-<N>-a-work`.
+**Pages.** <URLS>. Scratch files in `/tmp/bdg-t-<N>-<AGENT>-work`.
 
 **Tasks** (goals, not steps):
 1. <scenario Task line, or a goal that uses the new behaviour>
