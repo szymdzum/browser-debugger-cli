@@ -136,6 +136,8 @@ export interface AuditResult {
   canvases?: number;
   a11y?: {
     rules: AuditA11yRule[];
+    /** A modal dialog hides the rest of the page from screen readers: only it was checked, and the page-structure rules (headings, landmarks) report nothing */
+    modal?: { element: string };
     /** The accessibility tree or the id scan hit its cap: the page has more */
     truncated?: true;
   };

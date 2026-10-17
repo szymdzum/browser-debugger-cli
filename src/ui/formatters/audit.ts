@@ -6,6 +6,7 @@ import type { AuditResult, CssSearchResult } from '@/ipc/protocol/auditTypes.js'
 import { escapeOneLine } from '@/ui/formatters/keyAttributes.js';
 import {
   A11Y_RULE_HINTS,
+  a11yModalNote,
   a11yTruncatedNote,
   auditCanvasNote,
   auditUncertainContrastNote,
@@ -149,7 +150,10 @@ function animationsSection(
 function a11ySection(a11y: NonNullable<AuditResult['a11y']>): string[] {
   const failing = a11y.rules.filter((rule) => rule.count > 0);
   const total = failing.reduce((sum, rule) => sum + rule.count, 0);
-  const note = a11y.truncated ? [`  ${a11yTruncatedNote()}`] : [];
+  const note = [
+    ...(a11y.modal ? [`  ${a11yModalNote(a11y.modal.element)}`] : []),
+    ...(a11y.truncated ? [`  ${a11yTruncatedNote()}`] : []),
+  ];
   if (total === 0) return [`A11y: no issues (${a11y.rules.length} rules checked)`, ...note];
   return [
     `A11y: ${total} ${total === 1 ? 'issue' : 'issues'} in ${failing.length} of ${a11y.rules.length} rules`,

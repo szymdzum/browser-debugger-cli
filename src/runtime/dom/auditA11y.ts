@@ -13,7 +13,12 @@ import {
   type AuditA11yRule,
   type AuditResult,
 } from '@/ipc/protocol/auditTypes.js';
-import { findAxHits, type A11yHit, type A11yReason } from '@/runtime/dom/auditA11yModel.js';
+import {
+  activeModal,
+  findAxHits,
+  type A11yHit,
+  type A11yReason,
+} from '@/runtime/dom/auditA11yModel.js';
 import { AUDIT_ELEMENT_CAP } from '@/runtime/dom/auditScripts.js';
 import { childFrameIds } from '@/runtime/dom/frameLayout.js';
 import { NODE_SELECTOR_FUNCTION, selectorOfNode } from '@/runtime/dom/targetNode.js';
@@ -116,9 +121,11 @@ async function treeNodes(
  * landmarks, so only its image and control names count.
  *
  * @param cdp - CDP connection
- * @returns Hits and whether frames were left out
+ * @returns Hits, whether frames were left out, and the modal hiding the page
  */
-async function collectAxHits(cdp: CDPConnection): Promise<{ hits: A11yHit[]; truncated: boolean }> {
+async function collectAxHits(
+  cdp: CDPConnection
+): Promise<{ hits: A11yHit[]; truncated: boolean; modal: ReturnType<typeof activeModal> }> {
   const [{ frameTree }, pageNodes] = await Promise.all([
     sendTyped(cdp, 'Page.getFrameTree'),
     treeNodes(cdp),
@@ -131,26 +138,68 @@ async function collectAxHits(cdp: CDPConnection): Promise<{ hits: A11yHit[]; tru
     ...findAxHits(pageNodes, { page: true }),
     ...frameNodes.flatMap((nodes) => findAxHits(nodes, { page: false })),
   ];
-  return { hits, truncated: frames.length > A11Y_FRAME_CAP };
+  return { hits, truncated: frames.length > A11Y_FRAME_CAP, modal: activeModal(pageNodes) };
 }
 
 /**
- * A label for an element no selector finds again (in an iframe, or one of several alike in a shadow root): its tag and id.
+ * What the page says about an element: its tag and attributes.
  *
  * @param cdp - CDP connection
  * @param backendNodeId - Element
- * @returns `tag#id` or `tag`
+ * @returns Tag and attributes, or undefined when it cannot be read
  */
-async function elementLabel(cdp: CDPConnection, backendNodeId: number): Promise<string> {
+async function describeElement(
+  cdp: CDPConnection,
+  backendNodeId: number
+): Promise<{ tag: string; attributes: Map<string, string> } | undefined> {
   try {
     const { node } = await sendTyped(cdp, 'DOM.describeNode', { backendNodeId });
-    const attributes = node.attributes ?? [];
-    const id = attributes[attributes.indexOf('id') + 1];
-    return node.localName + (attributes.includes('id') && id ? `#${id}` : '');
+    const pairs = node.attributes ?? [];
+    const attributes = new Map<string, string>();
+    for (let i = 0; i + 1 < pairs.length; i += 2)
+      attributes.set(pairs[i] ?? '', pairs[i + 1] ?? '');
+    return { tag: node.localName, attributes };
   } catch (error) {
-    log.debug(`No label for node ${backendNodeId}: ${getErrorMessage(error)}`);
-    return PAGE_ELEMENT;
+    log.debug(`Cannot describe node ${backendNodeId}: ${getErrorMessage(error)}`);
+    return undefined;
   }
+}
+
+/**
+ * Whether an unnamed image is an inline `<svg>` without `role="img"`: an
+ * icon, not an image the rule asks a text alternative for (like axe's
+ * svg-img-alt).
+ *
+ * @param cdp - CDP connection
+ * @param backendNodeId - The image element
+ * @returns True for a plain svg
+ */
+async function isPlainSvg(cdp: CDPConnection, backendNodeId: number): Promise<boolean> {
+  const element = await describeElement(cdp, backendNodeId);
+  return element?.tag === 'svg' && element.attributes.get('role')?.trim().toLowerCase() !== 'img';
+}
+
+/**
+ * An element as a selector, or when no selector finds it alone as `<tag#id>`.
+ *
+ * @param cdp - CDP connection
+ * @param backendNodeId - Element
+ * @param lookups - Limits the selector lookups in flight
+ * @returns The element and whether it is a selector
+ */
+async function locate(
+  cdp: CDPConnection,
+  backendNodeId: number,
+  lookups: ConcurrencyLimiter
+): Promise<{ element: string; selectable: boolean }> {
+  const selector = await lookups.run(() => selectorOfNode(cdp, backendNodeId));
+  if (selector) return { element: selector, selectable: true };
+  const described = await describeElement(cdp, backendNodeId);
+  const id = described?.attributes.get('id');
+  return {
+    element: `<${described ? described.tag + (id ? `#${id}` : '') : PAGE_ELEMENT}>`,
+    selectable: false,
+  };
 }
 
 /**
@@ -158,7 +207,8 @@ async function elementLabel(cdp: CDPConnection, backendNodeId: number): Promise<
  *
  * @param cdp - CDP connection
  * @param hit - Hit
- * @returns Selector, or `tag#id` (and a note) for an element no selector finds alone
+ * @param lookups - Limits the selector lookups in flight
+ * @returns Selector, or `<tag#id>` (and a note) for an element no selector finds alone
  */
 async function hitElement(
   cdp: CDPConnection,
@@ -167,11 +217,10 @@ async function hitElement(
 ): Promise<AuditA11yElement> {
   const detail = a11yDetail(hit.reason);
   if (hit.backendNodeId === undefined) return { element: PAGE_ELEMENT, detail };
-  const backendNodeId = hit.backendNodeId;
-  const selector = await lookups.run(() => selectorOfNode(cdp, backendNodeId));
-  return selector
-    ? { element: selector, detail }
-    : unselectable(await elementLabel(cdp, backendNodeId), detail);
+  const { element, selectable } = await locate(cdp, hit.backendNodeId, lookups);
+  return selectable
+    ? { element, detail }
+    : { element, detail: `${detail} ${a11yNoSelectorNote()}` };
 }
 
 /**
@@ -206,6 +255,29 @@ async function scanIds(cdp: CDPConnection, limit: number): Promise<RawIdScan | u
 }
 
 /**
+ * The hits without the unnamed images that are plain inline svgs.
+ *
+ * @param cdp - CDP connection
+ * @param hits - All hits
+ * @param lookups - Limits the page calls in flight
+ * @returns Hits
+ */
+async function withoutPlainSvgs(
+  cdp: CDPConnection,
+  hits: A11yHit[],
+  lookups: ConcurrencyLimiter
+): Promise<A11yHit[]> {
+  const icons = await Promise.all(
+    hits.map(async ({ rule, backendNodeId }) =>
+      rule === 'img-alt' && backendNodeId !== undefined
+        ? lookups.run(() => isPlainSvg(cdp, backendNodeId))
+        : false
+    )
+  );
+  return hits.filter((_, index) => !icons[index]);
+}
+
+/**
  * Run the a11y rules.
  *
  * @param cdp - CDP connection
@@ -218,13 +290,15 @@ export async function auditA11y(
 ): Promise<NonNullable<AuditResult['a11y']>> {
   await sendTyped(cdp, 'Accessibility.enable', {});
   try {
-    const [{ hits, truncated }, ids] = await Promise.all([collectAxHits(cdp), scanIds(cdp, limit)]);
+    const [collected, ids] = await Promise.all([collectAxHits(cdp), scanIds(cdp, limit)]);
+    const { truncated, modal } = collected;
+    const lookups = new ConcurrencyLimiter(SELECTOR_LOOKUPS);
+    const hits = await withoutPlainSvgs(cdp, collected.hits, lookups);
     const idElements = (ids?.issues ?? []).map((issue) =>
       issue.selector
         ? { element: issue.selector, detail: a11yDetail(issue.reason) }
         : unselectable(issue.tag + (issue.id ? `#${issue.id}` : ''), a11yDetail(issue.reason))
     );
-    const lookups = new ConcurrencyLimiter(SELECTOR_LOOKUPS);
     const ruleEntry = async (id: A11yRuleId): Promise<AuditA11yRule> => {
       if (id === 'duplicate-id') return { id, count: ids?.total ?? 0, elements: idElements };
       const ruleHits = hits.filter((hit) => hit.rule === id);
@@ -235,6 +309,14 @@ export async function auditA11y(
     };
     return {
       rules: await Promise.all(A11Y_RULES.map(ruleEntry)),
+      ...(modal && {
+        modal: {
+          element:
+            modal.backendNodeId === undefined
+              ? PAGE_ELEMENT
+              : (await locate(cdp, modal.backendNodeId, lookups)).element,
+        },
+      }),
       ...((truncated || ids?.capped) && { truncated: true as const }),
     };
   } finally {

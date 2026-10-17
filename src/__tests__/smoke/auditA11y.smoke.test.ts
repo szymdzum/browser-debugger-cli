@@ -79,7 +79,12 @@ void describe('dom audit a11y', () => {
       ['img-alt', 'control-name', 'heading-order', 'landmarks', 'duplicate-id']
     );
     const names = (id: string): string[] => (rules.get(id)?.elements ?? []).map((e) => e.element);
-    assert.equal(rules.get('img-alt')?.count, 2, 'the image and the one in the iframe');
+    assert.equal(
+      rules.get('img-alt')?.count,
+      3,
+      'the image, the svg role=img and the one in the iframe'
+    );
+    assert.ok(names('img-alt').includes('#svgimg'));
     assert.ok(names('img-alt').includes('#pic'));
     assert.equal(rules.get('control-name')?.count, 4, 'input, icon button, two in the shadow root');
     assert.ok(
@@ -125,5 +130,17 @@ void describe('dom audit a11y', () => {
     const human = await bdg(['dom', 'audit', 'a11y']);
     assert.match(human, /^A11y: no issues/);
     assert.doesNotMatch(human, /hunter2/);
+  });
+
+  void it('names an open modal dialog and reports no false page structure', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}a11y-audit-modal`]);
+    await bdg(['dom', 'wait', '--load']);
+    const json = JSON.parse(await bdg(['dom', 'audit', 'a11y', '--json'])) as A11yJson & {
+      data: { a11y: { modal?: { element: string } } };
+    };
+    assert.equal(json.data.a11y.modal?.element, '#consent');
+    for (const rule of json.data.a11y.rules) assert.equal(rule.count, 0, rule.id);
+    const human = await bdg(['dom', 'audit', 'a11y']);
+    assert.match(human, /#consent is a modal dialog: it hides the rest of the page/);
   });
 });

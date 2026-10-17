@@ -114,7 +114,7 @@ export const DOM_READ_BEHAVIORS: BehaviorTable = {
     default: 'Lists the first 20 findings per check',
     whenEnabled: 'Lists that many per check (1 to 500); the rest are counted',
     automaticBehavior:
-      'For the a11y check the limit applies per rule (img-alt, control-name, heading-order, landmarks, duplicate-id); count is always the total. Each listed element costs a few page calls to build its selector',
+      'For the a11y check the limit applies per rule (img-alt, control-name, heading-order, landmarks, duplicate-id); count is always the total. Each listed element costs a few page calls to build its selector (seconds at --limit 500 on thousands of findings); 0 is not accepted, and findings never change the exit code',
     tokenImpact: 'About one line per finding; a11y adds the rule header and one describe hint',
   },
   'layout:--index': {

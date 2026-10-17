@@ -849,7 +849,8 @@ export const A11Y_RULE_HINTS: Readonly<Record<A11yRuleId, string>> = {
 
 /** Examples line of `dom audit a11y --help`: what it checks and does not */
 export const A11Y_AUDIT_RULES_HELP = `Rules of the a11y check (not a full WCAG engine; it reads the computed accessibility tree):
-  img-alt        images without an accessible name (alt="" and aria-hidden are fine)
+  img-alt        <img> and role=img without an accessible name (alt="", aria-hidden, a plain
+                 <svg> and an image inside a named button or link are fine)
   control-name   inputs, selects, buttons and links without a name (icon-only buttons);
                  a placeholder counts as a name, as Chrome computes it
   heading-order  no h1, more than one h1, skipped levels
@@ -901,6 +902,16 @@ function skippedLevels(previous: number, level: number): string {
  */
 export function a11yNoSelectorNote(): string {
   return '(no unique selector: find it with bdg dom a11y query)';
+}
+
+/**
+ * Note on an open modal dialog: it hides the rest of the page from screen readers.
+ *
+ * @param element - The dialog's selector
+ * @returns Note
+ */
+export function a11yModalNote(element: string): string {
+  return `${element} is a modal dialog: it hides the rest of the page from screen readers, so only the dialog was checked (headings and landmarks are not reported). Close it and run the audit again`;
 }
 
 /**
@@ -2286,6 +2297,10 @@ Examples:
 
 Follow up on a finding with bdg dom inspect <element> (e.g. --why color), or
 bdg dom a11y describe <element> for an a11y finding.
+
+Findings do not change the exit code (0): gate on data.a11y.rules[].count in --json.
+Each listed a11y element costs one selector lookup, so a high --limit on a page with
+thousands of findings takes seconds.
 
 ${A11Y_AUDIT_RULES_HELP}`;
 

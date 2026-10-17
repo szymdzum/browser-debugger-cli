@@ -6,7 +6,7 @@ import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { Protocol } from '@/connection/typed-cdp.js';
-import { findAxHits } from '@/runtime/dom/auditA11yModel.js';
+import { activeModal, findAxHits } from '@/runtime/dom/auditA11yModel.js';
 
 type AxNode = Protocol.Accessibility.AXNode;
 
@@ -110,5 +110,34 @@ void describe('findAxHits', () => {
       outside.filter((hit) => hit.rule === 'landmarks').map((hit) => hit.reason),
       [{ kind: 'outside-landmark', holders: 1 }]
     );
+  });
+
+  void it('leaves out an unnamed image anywhere inside a named button', () => {
+    const hits = findAxHits(
+      [
+        ax(1, 'RootWebArea', 'p', [2]),
+        ax(2, 'button', 'Menu', [3]),
+        ax(3, 'generic', '', [4]),
+        ax(4, 'image'),
+      ],
+      { page: false }
+    );
+    assert.deepEqual(hits, []);
+  });
+
+  void it('reports no page structure while a modal hides the page, and names the modal', () => {
+    const hidden = {
+      ...ax(2, 'main'),
+      ignored: true,
+      ignoredReasons: [{ name: 'activeAriaModalDialog' }],
+    };
+    const dialog = {
+      ...ax(3, 'dialog', 'Consent'),
+      properties: [{ name: 'modal', value: { type: 'boolean', value: true } }],
+    };
+    const nodes = [ax(1, 'RootWebArea', 'p', [2, 3]), hidden, dialog] as AxNode[];
+    assert.deepEqual(findAxHits(nodes, { page: true }), []);
+    assert.deepEqual(activeModal(nodes), { backendNodeId: 3 });
+    assert.equal(activeModal([ax(1, 'RootWebArea', 'p')]), undefined);
   });
 });

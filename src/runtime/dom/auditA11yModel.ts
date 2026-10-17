@@ -50,8 +50,11 @@ const CONTROL_ROLES: ReadonlySet<string> = new Set([
   'tab',
 ]);
 
-/** Controls that are named already: an image inside one adds nothing a reader needs (`<input type=image>` holds one) */
+/** Controls that are named already: an image inside one, at any depth, adds nothing a reader needs (`<input type=image>` holds one) */
 const NAMED_BY_ITSELF_ROLES: ReadonlySet<string> = new Set(['button', 'link']);
+
+/** Why Chrome ignores a node under an open modal: `aria-modal` and a native `<dialog>` shown with `showModal()` */
+const MODAL_REASONS: ReadonlySet<string> = new Set(['activeAriaModalDialog', 'activeModalDialog']);
 
 /** Landmarks that exist without a name */
 const LANDMARK_ROLES: ReadonlySet<string> = new Set([
@@ -112,9 +115,9 @@ function isLandmark(node: AxNode): boolean {
 /** A node with the nearest ancestor that has a DOM element, and whether a landmark is above it */
 interface Visit {
   node: AxNode;
-  parent?: AxNode;
   holder: number | undefined;
   inLandmark: boolean;
+  inNamedControl: boolean;
 }
 
 /**
@@ -128,7 +131,9 @@ function inDocumentOrder(nodes: AxNode[]): Visit[] {
   const root = nodes.find((node) => !node.parentId) ?? nodes[0];
   const visits: Visit[] = [];
   const seen = new Set<string>();
-  const stack: Visit[] = root ? [{ node: root, holder: undefined, inLandmark: false }] : [];
+  const stack: Visit[] = root
+    ? [{ node: root, holder: undefined, inLandmark: false, inNamedControl: false }]
+    : [];
   while (stack.length > 0) {
     const visit = stack.pop();
     if (!visit || seen.has(visit.node.nodeId)) continue;
@@ -137,8 +142,11 @@ function inDocumentOrder(nodes: AxNode[]): Visit[] {
     const inLandmark = visit.inLandmark || (!visit.node.ignored && isLandmark(visit.node));
     const holder = visit.node.backendDOMNodeId ?? visit.holder;
     const children = (visit.node.childIds ?? []).flatMap((id) => byId.get(id) ?? []);
+    const inNamedControl =
+      visit.inNamedControl ||
+      (!visit.node.ignored && NAMED_BY_ITSELF_ROLES.has(roleOf(visit.node)) && hasName(visit.node));
     for (const child of children.reverse())
-      stack.push({ node: child, parent: visit.node, holder, inLandmark });
+      stack.push({ node: child, holder, inLandmark, inNamedControl });
   }
   return visits;
 }
@@ -154,13 +162,13 @@ function inDocumentOrder(nodes: AxNode[]): Visit[] {
 function nodeHits(visits: Visit[], page: boolean): { hits: A11yHit[]; outside: number } {
   const hits: A11yHit[] = [];
   const outside = new Set<number>();
-  for (const { node, parent, holder, inLandmark } of visits) {
+  for (const { node, holder, inLandmark, inNamedControl } of visits) {
     if (node.ignored) continue;
     const role = roleOf(node);
     const backendNodeId = node.backendDOMNodeId;
     if (backendNodeId !== undefined && !hasName(node)) {
       if (IMAGE_ROLES.has(role)) {
-        if (parent && NAMED_BY_ITSELF_ROLES.has(roleOf(parent)) && hasName(parent)) continue;
+        if (inNamedControl) continue;
         hits.push({ rule: 'img-alt', backendNodeId, reason: { kind: 'unnamed' } });
       } else if (CONTROL_ROLES.has(role)) {
         hits.push({ rule: 'control-name', backendNodeId, reason: { kind: 'unnamed' } });
@@ -202,17 +210,49 @@ function headingHits(visits: Visit[]): A11yHit[] {
   return hits;
 }
 
+/** The modal dialog that hides the rest of the page; its element is missing when no dialog node is found */
+export interface ActiveModal {
+  backendNodeId?: number | undefined;
+}
+
+/**
+ * The modal dialog open over the page: while one is, Chrome marks everything
+ * outside it ignored (`activeAriaModalDialog`, or `activeModalDialog` for a native dialog), so a screen reader sees only
+ * the dialog.
+ *
+ * @param nodes - Nodes of the page's tree
+ * @returns The modal, or undefined when none hides anything
+ */
+export function activeModal(nodes: AxNode[]): ActiveModal | undefined {
+  const hides = nodes.some((node) =>
+    node.ignoredReasons?.some((reason) => MODAL_REASONS.has(reason.name))
+  );
+  if (!hides) return undefined;
+  const dialogs = nodes.filter(
+    (node) => !node.ignored && (roleOf(node) === 'dialog' || roleOf(node) === 'alertdialog')
+  );
+  const dialog =
+    dialogs.find((node) =>
+      node.properties?.some(
+        (property) => property.name === 'modal' && property.value.value === true
+      )
+    ) ?? dialogs[0];
+  return { backendNodeId: dialog?.backendDOMNodeId };
+}
+
 /**
  * Apply the accessibility-tree rules.
  *
  * @param nodes - Nodes of one frame's tree
- * @param options - `page`: the top document (the heading and landmark rules apply to it only)
+ * @param options - `page`: the top document (the heading and landmark rules apply to it only,
+ *   and not while a modal hides the rest of it)
  * @returns Hits: image and control names, headings, then the landmark findings
  */
 export function findAxHits(nodes: AxNode[], options: { page: boolean }): A11yHit[] {
   const visits = inDocumentOrder(nodes);
-  const { hits, outside } = nodeHits(visits, options.page);
-  if (!options.page) return hits;
+  const modal = options.page ? activeModal(nodes) : undefined;
+  const { hits, outside } = nodeHits(visits, options.page && !modal);
+  if (!options.page || modal) return hits;
   const hasMain = visits.some(({ node }) => !node.ignored && roleOf(node) === 'main');
   hits.push(...headingHits(visits));
   if (!hasMain) hits.push({ rule: 'landmarks', reason: { kind: 'no-main' } });
