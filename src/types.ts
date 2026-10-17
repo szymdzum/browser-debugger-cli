@@ -51,7 +51,11 @@ export interface BdgResponse<T = unknown> {
   /** Actionable suggestion for error recovery */
   suggestion?: string;
 
-  /** How the command ran despite something unusual (e.g. a CDP method bdg's protocol lacks) */
+  /**
+   * How the command ran despite something unusual (e.g. a CDP method bdg's protocol lacks).
+   * Deprecated in favour of {@link warnings}: in 0.x both are written (the same text, one
+   * entry per line), in 1.0 only `warnings`.
+   */
   warning?: string;
 
   /**
@@ -59,7 +63,8 @@ export interface BdgResponse<T = unknown> {
    * one text per spelling (`bdg tail` gives: "bdg tail" is deprecated and will
    * be removed in 1.0: use "bdg peek --follow"). Switch to the new spelling. Present only
    * when non-empty, on success and error envelopes (and on every line of a
-   * follow mode); human output prints each as a `Warning:` line on stderr.
+   * follow mode); human output prints each as a `Warning:` line on stderr. Also holds the
+   * text of {@link warning}, after the old-spelling ones.
    */
   warnings?: string[];
 

@@ -24,10 +24,16 @@ export function addEnvelopeWarning(warning: string): void {
 /**
  * The `warnings` field of an envelope: present only when there are any.
  *
+ * Old-spelling warnings come first, then the command's own `warning` (#465),
+ * one entry per line, since a warning joins several texts with newlines.
+ *
+ * @param commandWarning - The envelope's `warning`, if any
  * @returns `{ warnings }` or an empty object
  */
-function warningsField(): { warnings?: string[] } {
-  return envelopeWarnings.length > 0 ? { warnings: envelopeWarnings } : {};
+function warningsField(commandWarning?: unknown): { warnings?: string[] } {
+  const own = typeof commandWarning === 'string' ? commandWarning.split('\n').filter(Boolean) : [];
+  const all = [...envelopeWarnings, ...own];
+  return all.length > 0 ? { warnings: all } : {};
 }
 
 /**
@@ -36,10 +42,16 @@ function warningsField(): { warnings?: string[] } {
  * @param data - Response payload
  * @param warning - Warning about how the command ran, if any
  * @returns `{ version, success: true, data }`, plus `warning` when given and
- *   `warnings` when the invocation used an old spelling
+ *   `warnings` (the same text, and any old-spelling warnings) when there are any
  */
 export function buildSuccessResponse<T>(data: T, warning?: string): BdgResponse<T> {
-  return { version: VERSION, success: true, data, ...(warning && { warning }), ...warningsField() };
+  return {
+    version: VERSION,
+    success: true,
+    data,
+    ...(warning && { warning }),
+    ...warningsField(warning),
+  };
 }
 
 /**
@@ -65,11 +77,16 @@ export class OutputBuilder {
    * @param error - Error or message
    * @param options - Exit code, suggestion and extra context fields
    * @returns `{ version, success: false, error, ...options }`, plus `warnings`
-   *   when the invocation used an old spelling
+   *   (any old-spelling warnings, then the same text as `warning`)
    */
   static buildJsonError(
     error: string | Error,
-    options?: { exitCode?: number; suggestion?: string; context?: Record<string, string> }
+    options?: {
+      exitCode?: number;
+      suggestion?: string;
+      context?: Record<string, string>;
+      warning?: string;
+    }
   ): Record<string, unknown> {
     const {
       version: _version,
@@ -82,7 +99,7 @@ export class OutputBuilder {
       success: false,
       error: error instanceof Error ? error.message : error,
       ...rest,
-      ...warningsField(),
+      ...warningsField(rest['warning']),
     };
   }
 }

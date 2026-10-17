@@ -25,7 +25,7 @@ void describe('envelope warnings', () => {
     const envelope = OutputBuilder.buildJsonError('bad', {
       exitCode: 83,
       warning: 'w2',
-    } as never);
+    });
     assert.equal(envelope['warning'], 'w2');
     assert.deepEqual(envelope['warnings'], ['w2']);
   });
@@ -41,7 +41,7 @@ void describe('envelope warnings', () => {
     const success = buildSuccessResponse({}, 'w3');
     assert.deepEqual(success.warnings, ['old spelling', 'w3']);
     assert.equal(success.warning, 'w3');
-    const error = OutputBuilder.buildJsonError('bad', { warning: 'w4' } as never);
+    const error = OutputBuilder.buildJsonError('bad', { warning: 'w4' });
     assert.deepEqual(error['warnings'], ['old spelling', 'w4']);
   });
 });

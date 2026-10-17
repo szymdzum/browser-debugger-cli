@@ -1545,7 +1545,7 @@ Use `--history` to see messages from all page loads during the session.
 `bdg console --follow --ndjson` prints one JSON object per line, with no envelope: a `page` record each time the stream is on another page, before the first message of that page, and a `message` record per console message. `--level`, `--history`, `--last`, `--full` and `--include-sensitive` apply as with `--follow`.
 
 - `{"type":"page","navigationId":N,"url":"…"}`: the URL is masked like every page URL (`--include-sensitive` shows the tokens; `user:pass@` is always removed). The stream starts with the record of the current page (of the first message's page with `--history`); `url` is absent for a page the session has no record of; a page that logged nothing still gets its record, and so does each page the session passed through between two polls. A batch that spans two pages is split by the record in the right place.
-- `{"type":"message","level":"error","text":"…","timestamp":…,"navigationId":N,…}`: the fields of an entry of `console --json` `messages[]`, with the message's level as `level` (`type` names the kind of record).
+- `{"type":"message","level":"error","text":"…","timestamp":…,"navigationId":N,…}`: the fields of an entry of `console --json` `messages[]`, with the console type as `level` (`type` names the kind of record, so the type moves to `level`). `level` has the values of `messages[].type` in `console --json` (`error`, `warning`, `info`, `log`, `debug`, `trace`, …); `--level` groups `log` with `info` and `trace` with `debug` when filtering.
 - Usage errors (`--ndjson` without `--follow`, or together with `--json`: exit 81) and errors before the stream starts (no session: 83) are the one-line `--json` envelope with its exit code. Ctrl-C and SIGTERM end the stream with 130 / 143, no trailing record. A page crash is reported on stderr.
 - `--follow --json` is unchanged in 0.x (one envelope per batch of new messages); in 1.0 the `--ndjson` shape becomes the `--follow --json` shape and the batch envelope stays behind a flag for one minor.
 
@@ -1904,7 +1904,7 @@ Bare `bdg --json` (or `-j`, with no command and no URL) is an error envelope: `s
 
 ### Warnings
 
-`warning` (one string) says how the command ran despite something unusual, for example `--include-sensitive` output that holds credentials. `warnings` (an array of strings) says the command line used an old spelling that still works until 1.0, one text per spelling:
+`warnings` (an array of strings) says what to know about the run: the command line used an old spelling that still works until 1.0 (one text per spelling, listed first), and how the command ran despite something unusual, for example `--include-sensitive` output that holds credentials or a CDP method the bundled protocol lacks (one text per line of such a warning):
 
 ```json
 {
@@ -1915,7 +1915,7 @@ Bare `bdg --json` (or `-j`, with no command and no URL) is an error envelope: `s
 }
 ```
 
-Both appear only when they have something to say (never `"warnings": []`), on success and error envelopes alike; in follow mode every line carries `warnings`. Without `--json` each one is a `Warning: …` line on stderr, printed once before the command's output. An agent that sees `warnings` should switch to the new spelling.
+`warning` (one string) is the deprecated older field for the second kind: in 0.x it is still written with the same text, and the same text is also in `warnings`; in 1.0 only `warnings` stays. Read `warnings`. Both appear only when they have something to say (never `"warnings": []`), on success and error envelopes alike; in follow mode every line carries `warnings`. Fields named `warning` inside `data` (for example `dom listeners`) are not envelope fields and are unchanged. Without `--json` each one is a `Warning: …` line on stderr, printed once before the command's output. An agent that sees `warnings` should switch to the new spelling.
 
 ### Renamed and deprecated names
 
