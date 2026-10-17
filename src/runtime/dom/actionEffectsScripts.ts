@@ -72,6 +72,9 @@ const MAX_MESSAGES = 50;
 /** Time a message snapshot may spend before it stops looking (ms) */
 const MESSAGES_BUDGET_MS = 5;
 
+/** Candidates a snapshot still looks at after its time is up: until the first message is kept, then inside the last one */
+const MAX_LATE_CANDIDATES = 100;
+
 /** Time the list of shown elements may spend before it stops looking (ms) */
 const SHOWN_BUDGET_MS = 10;
 
@@ -154,9 +157,12 @@ export const MESSAGE_CHROME_JS = `(node) => {
  * their text (parts matching {@link MESSAGE_CHROME_JS}, such as the "×"
  * close link, left out). Elements are filtered first, then the first
  * {@link MAX_MESSAGES} kept, and the whole pass stops after
- * {@link MESSAGES_BUDGET_MS}. Only the innermost of nested messages is kept,
- * described by tag, id and classes (or its role when it has neither,
- * `h3[role="alert"]`). Each element gets a number from `ids` that stays the
+ * {@link MESSAGES_BUDGET_MS}, except that it still looks at up to
+ * {@link MAX_LATE_CANDIDATES} more elements: until the first message is kept,
+ * then those inside the last one kept (so a container is not reported in
+ * place of the message inside it that the budget cut off). Only the innermost
+ * of nested messages is kept, described by tag, id and classes (or its role
+ * when it has neither, `h3[role="alert"]`). Each element gets a number from `ids` that stays the
  * same within the document, so a later snapshot can tell a new element from
  * one that was there. With `marked` (elements the page kept changing before
  * the action, as {@link MARKED_REGIONS_JS} extends them) and `churned`
@@ -200,8 +206,13 @@ const MESSAGES_JS = `(ids, marked, churned, fresh) => {
     return false;
   };
   const found = [];
+  let late = 0;
   for (const el of document.querySelectorAll(${JSON.stringify(MESSAGE_CANDIDATES)})) {
-    if (found.length >= ${MAX_MESSAGES} || performance.now() > deadline) break;
+    if (found.length >= ${MAX_MESSAGES}) break;
+    if (performance.now() > deadline) {
+      const last = found[found.length - 1];
+      if (late++ >= ${MAX_LATE_CANDIDATES} || (last && !last.el.contains(el))) break;
+    }
     if (!named(el) || !shown(el)) continue;
     const text = visibleText(el, (node) => inChrome(node, el));
     if (text !== '' && text.length <= ${MAX_MESSAGE_TEXT}) found.push({ el: el, text: text });
