@@ -9,7 +9,8 @@
  * element scopes `Shown:` like `[role=search]`.
  *
  * Each page counts its own updates in `window.ticks`; a test waits for three
- * of them (the layout-sensitive page for six) (an observable event) before it acts. Nothing sleeps.
+ * of them before it acts, the layout-sensitive page for six. The tick count
+ * is an observable event: nothing sleeps.
  */
 
 import * as assert from 'node:assert/strict';

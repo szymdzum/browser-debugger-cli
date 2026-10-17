@@ -36,7 +36,8 @@ const MIN_PAGE_READY_OVERRIDE_MS = 1_000;
  * The navigation time limit. `BDG_TEST_PAGE_READY_MS` shortens it for the test
  * suites that wait it out on a page that never finishes loading (not a user
  * feature): a whole number of ms from 1000 up to the default, anything else is
- * ignored. The daemon reads it, so the start and every command agree.
+ * ignored. Only `page navigate`, `reload`, `back` and `forward` read it; the
+ * `bdg URL` start path has its own limit.
  *
  * @param env - Environment to read the test override from
  * @returns Limit in ms
