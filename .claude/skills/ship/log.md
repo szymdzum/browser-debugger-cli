@@ -124,7 +124,8 @@ Process changes seen in one session only (SKILL.md, Keep the books: a second ses
 | A timing PR also passes the full macOS CI shard under load, not only the repeat run | S17 (#812: repeat ×10 green, the shard red on the case where nothing was kept) | |
 | Ask for merge authority with AskUserQuestion (yes/no options), so a blanket "OK" can't count as a merge yes | S17 (a first "All Ok" didn't count; #813 waited ~1 h ready to merge) | until then, the session prompt can grant it: "Merge authority: yes" |
 | Remove: the fresh-agent test for a flake fix that changes no output | S17 (#812, #813: 0 findings) | sessions with no catch: 1 of 3 |
-| A test builds its own session directory instead of using `testHome` (brief rule or a lint) | S18 (#819: found only by merge-check) | |
-| Watch: an implementer killed PIDs not read from its PID files and left a smoke run hanging (breaks the forbidden block) | S18 (#820) | an existing rule broken, not a gap; a second case asks for a mechanical check |
-| `/simplify` under ~500 product lines runs one agent instead of four | S18 (#820, #822: one was enough; #819: four found a stub that did nothing and a wrong write on a reparent) | |
+| A test builds its own session directory instead of using `testHome` (brief rule or a lint) | S18 (#819: found only by merge-check) | S19: not seen |
+| Watch: an implementer killed PIDs not read from its PID files and left a smoke run hanging (breaks the forbidden block) | S18 (#820) | an existing rule broken, not a gap; a second case asks for a mechanical check; S19: not seen |
+| PRs sharing one registry (`renames.ts`, a docs table) run in sequence or each from a fresh `main`, not in parallel with rebases | S19 (3 rebases, each a CI run; one broke a docs row, caught on the reviewer's re-check) | same family as the "Shared registries" trap; pulls against the parallel same-file rule (S15) for registries |
+| Before a release that follows renames, a docs sweep with a reviewer | S19 (#828: found the silent `--nth` alias and two stale sentences) | |
 
