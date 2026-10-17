@@ -291,6 +291,9 @@ export class SessionController {
           lastN: request.lastN ?? 10,
           ...(request.only && { only: request.only }),
           ...(request.withHeaders && { withHeaders: true }),
+          ...(request.navigationsAfter !== undefined && {
+            navigationsAfter: request.navigationsAfter,
+          }),
         }),
         QUERY_TIMEOUT_MS,
         'Peek'

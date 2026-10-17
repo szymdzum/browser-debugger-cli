@@ -2,6 +2,7 @@ import type { Protocol } from '@/connection/typed-cdp.js';
 import type { PageLoadingState } from '@/ipc/protocol/commands.js';
 import type { DownloadInfo, FormIssue } from '@/ipc/protocol/domTypes.js';
 import type { TabRef, TabSwitchInfo } from '@/ipc/protocol/tabTypes.js';
+import type { NavigationEvent } from '@/telemetry/navigation.js';
 
 /**
  * Standard response envelope for all bdg command JSON output.
@@ -290,10 +291,7 @@ export interface ConsoleMessage {
 }
 
 /** A main-frame navigation of the session: the page loaded and the id its console messages carry */
-export interface PageNavigation {
-  navigationId: number;
-  url: string;
-}
+export type PageNavigation = Pick<NavigationEvent, 'navigationId' | 'url'>;
 
 /**
  * A Chrome Issue (DevTools Issues panel) of the page currently loaded: one of

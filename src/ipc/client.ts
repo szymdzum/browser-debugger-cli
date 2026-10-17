@@ -134,6 +134,7 @@ export async function getPeek(options?: {
   lastN?: number;
   only?: 'network' | 'console';
   withHeaders?: boolean;
+  navigationsAfter?: number;
   tabMove?: boolean;
 }): Promise<PeekResponse> {
   const request: PeekRequest = withSession({
@@ -141,6 +142,7 @@ export async function getPeek(options?: {
     ...(options?.lastN !== undefined && { lastN: options.lastN }),
     ...(options?.only && { only: options.only }),
     ...(options?.withHeaders && { withHeaders: true }),
+    ...(options?.navigationsAfter !== undefined && { navigationsAfter: options.navigationsAfter }),
     ...(options?.tabMove && { tabMove: true }),
   });
   return sendRequest<PeekRequest, PeekResponse>(

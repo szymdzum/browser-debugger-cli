@@ -4,7 +4,7 @@
 
 import { Option, type Command } from 'commander';
 
-import { runCommand } from '@/commands/shared/CommandRunner.js';
+import { printWarning, runCommand } from '@/commands/shared/CommandRunner.js';
 import { includeSensitiveOption, jsonOption } from '@/commands/shared/commonOptions.js';
 import { noteFollowConnected } from '@/commands/shared/daemonErrorHandler.js';
 import { fetchConsoleMessages, createErrorResult } from '@/commands/shared/dataFetcher.js';
@@ -20,7 +20,7 @@ import { consoleLevelOption, positiveIntRule } from '@/commands/shared/validatio
 import { MAX_CONSOLE_JSON_TEXT_LENGTH, MAX_CONSOLE_TEXT_LENGTH } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
 import type { TabSwitchInfo } from '@/ipc/protocol/tabTypes.js';
-import type { ConsoleMessage, PageIssue } from '@/types.js';
+import type { ConsoleMessage, PageIssue, PageNavigation } from '@/types.js';
 import { buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import {
   buildConsoleJsonOutput,
@@ -226,6 +226,17 @@ function buildFormatOptions(
 }
 
 /**
+ * Whether errors before the output starts are `--json` envelopes: with
+ * `--json`, and with `--ndjson` (one JSON object per line).
+ *
+ * @param options - Command options
+ * @returns True for envelopes
+ */
+function wantsJsonErrors(options: Pick<ConsoleCommandOptions, 'json' | 'ndjson'>): boolean {
+  return options.json === true || options.ndjson === true;
+}
+
+/**
  * Reject `--ndjson` without `--follow` (nothing to stream) and together with
  * `--json` (two output formats).
  *
@@ -234,13 +245,14 @@ function buildFormatOptions(
  */
 function checkNdjson(options: ConsoleCommandOptions): void {
   if (!options.ndjson) return;
-  const problem = options.json ? ndjsonConflictsWithJson() : !options.follow && ndjsonNeedsFollow();
-  if (!problem) return;
-  throw new CommandError(
-    problem.message,
-    { suggestion: problem.suggestion },
-    EXIT_CODES.INVALID_ARGUMENTS
-  );
+  const usage = options.json ? ndjsonConflictsWithJson() : ndjsonNeedsFollow();
+  if (options.json || !options.follow) {
+    throw new CommandError(
+      usage.message,
+      { suggestion: usage.suggestion },
+      EXIT_CODES.INVALID_ARGUMENTS
+    );
+  }
 }
 
 /**
@@ -255,20 +267,22 @@ async function runFollowMode(options: ConsoleCommandOptions, lastN: number): Pro
   const cursor = createFollowCursor(options, lastN);
   const newCrash = newPageCrashes();
   const ndjson = options.ndjson ? createConsoleNdjson(options) : undefined;
-  if (options.includeSensitive) console.error(includeSensitiveWarning());
+  if (options.includeSensitive) printWarning(includeSensitiveWarning());
+  const navigations: PageNavigation[] = [];
   let streamNavigationId: number | undefined;
   let started = false;
   const showConsole = async (): Promise<FollowPoll> => {
-    const result = await fetchConsoleMessages();
+    const result = await fetchConsoleMessages(false, navigations.at(-1)?.navigationId ?? -1);
     if (!result.success) {
       return followFetchFailure(result, {
-        json: options.json === true || options.ndjson === true,
+        json: wantsJsonErrors(options),
         retryIntervalMs: 1000,
       });
     }
     noteFollowConnected();
 
-    const { messages, currentNavigationId, navigations } = result.data;
+    const { messages, currentNavigationId } = result.data;
+    navigations.push(...result.data.navigations);
     const crashedAt = newCrash(result.data.pageCrashedAt);
     const backlog = cursor.next(messages, currentNavigationId, result.data.dropped);
     if (ndjson) {
@@ -462,7 +476,6 @@ export function registerConsoleCommand(program: Command): void {
     .addOption(jsonOption())
     .action(async (options: ConsoleCommandOptions) => {
       let lastN: number;
-      const jsonErrors = options.json === true || options.ndjson === true;
 
       try {
         checkNdjson(options);
@@ -473,7 +486,7 @@ export function registerConsoleCommand(program: Command): void {
           default: DEFAULT_LAST,
         }).validate(options.last);
       } catch (error) {
-        handleValidationError(error, jsonErrors);
+        handleValidationError(error, wantsJsonErrors(options));
       }
 
       if (options.follow) {

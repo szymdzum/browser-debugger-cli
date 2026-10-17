@@ -9,6 +9,7 @@ import { capForDisplay } from '@/ui/formatters/longValues.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import { displayUrl } from '@/utils/displayUrl.js';
 
+import { pagesEntered } from './pages.js';
 import { formatSourceLocation, formatTimestamp } from './shared.js';
 
 /**
@@ -43,9 +44,14 @@ export function formatConsoleFollowLines(
   }
   let onPage = options.streamNavigationId;
   const moveTo = (navigationId: number): void => {
-    const url = options.navigations?.find((page) => page.navigationId === navigationId)?.url;
-    const page = url === undefined ? '' : `: ${displayUrl(url, options.includeSensitive)}`;
-    fmt.text(`── Next page${page} (navigation #${navigationId}) ──`);
+    for (const { navigationId: id, url } of pagesEntered(
+      options.navigations ?? [],
+      onPage,
+      navigationId
+    )) {
+      const page = url === undefined ? '' : `: ${displayUrl(url, options.includeSensitive)}`;
+      fmt.text(`── Next page${page} (navigation #${id}) ──`);
+    }
     onPage = navigationId;
   };
   for (const msg of messages) {

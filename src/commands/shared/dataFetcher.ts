@@ -53,6 +53,8 @@ export interface PreviewQuery {
   only?: PeekSection;
   /** Include request/response headers in network items */
   withHeaders?: boolean;
+  /** Also the main-frame navigations with an id above this one (-1: all) */
+  navigationsAfter?: number;
   /** Take a move of the session to another tab that no command reported yet, for this command to report */
   tabMove?: boolean;
 }
@@ -185,13 +187,17 @@ export async function fetchNetworkRequests(
  * Fetch all console messages from daemon.
  *
  * @param tabMove - Take a move to another tab no command reported yet (see {@link PreviewQuery})
+ * @param navigationsAfter - Also return the navigations with an id above this one (-1: all)
  * @returns Messages (with their session-wide index), the navigation id of
  *   the page currently loaded, how many of the oldest messages the session
  *   dropped at its limit, when the page crashed (while it is not loaded
  *   again), the session's latest move to another tab, and the page's Chrome
  *   Issues with how many were not kept
  */
-export async function fetchConsoleMessages(tabMove = false): Promise<
+export async function fetchConsoleMessages(
+  tabMove = false,
+  navigationsAfter?: number
+): Promise<
   FetchResult<{
     messages: ConsoleMessage[];
     currentNavigationId: number | undefined;
@@ -203,7 +209,12 @@ export async function fetchConsoleMessages(tabMove = false): Promise<
     issuesDropped: number;
   }>
 > {
-  const result = await fetchPreviewData({ lastN: 0, only: 'console', tabMove });
+  const result = await fetchPreviewData({
+    lastN: 0,
+    only: 'console',
+    tabMove,
+    ...(navigationsAfter !== undefined && { navigationsAfter }),
+  });
   if (!result.success) return result;
   return {
     success: true,

@@ -7,15 +7,8 @@
 import type { ConsoleMessage, PageNavigation } from '@/types.js';
 import { displayUrl } from '@/utils/displayUrl.js';
 
+import { pagesEntered } from './pages.js';
 import { capMessageText } from './shared.js';
-
-/** What the stream prints */
-export interface ConsoleNdjsonOptions {
-  /** `--full`: message texts whole */
-  full?: boolean | undefined;
-  /** `--include-sensitive`: page URLs with their query and fragment tokens */
-  includeSensitive?: boolean | undefined;
-}
 
 /** Turns each poll's new messages into NDJSON lines */
 export interface ConsoleNdjsonStream {
@@ -46,16 +39,18 @@ export interface ConsoleNdjsonStream {
  * @param options - `--full` and `--include-sensitive`
  * @returns The stream
  */
-export function createConsoleNdjson(options: ConsoleNdjsonOptions = {}): ConsoleNdjsonStream {
+export function createConsoleNdjson(
+  options: { full?: boolean | undefined; includeSensitive?: boolean | undefined } = {}
+): ConsoleNdjsonStream {
   let onPage: number | undefined;
   return {
     next(messages, navigations, currentNavigationId) {
       const lines: string[] = [];
       const moveTo = (navigationId: number): void => {
-        const from = onPage ?? navigationId - 1;
-        for (const navigation of navigations) {
-          if (navigation.navigationId <= from || navigation.navigationId > navigationId) continue;
-          lines.push(pageRecord(navigation, options.includeSensitive));
+        for (const { url, ...page } of pagesEntered(navigations, onPage, navigationId)) {
+          if (url === undefined) continue;
+          const shown = displayUrl(url, options.includeSensitive);
+          lines.push(JSON.stringify({ type: 'page', ...page, url: shown }));
         }
         onPage = navigationId;
       };
@@ -64,7 +59,8 @@ export function createConsoleNdjson(options: ConsoleNdjsonOptions = {}): Console
       for (const message of messages) {
         const navigationId = message.navigationId ?? 0;
         if (isNewer(navigationId)) moveTo(navigationId);
-        lines.push(messageRecord(message, options.full));
+        const { type: level, ...rest } = capMessageText(message, options.full);
+        lines.push(JSON.stringify({ type: 'message', level, ...rest }));
       }
       if (currentNavigationId !== undefined && isNewer(currentNavigationId)) {
         moveTo(currentNavigationId);
@@ -72,31 +68,4 @@ export function createConsoleNdjson(options: ConsoleNdjsonOptions = {}): Console
       return lines;
     },
   };
-}
-
-/**
- * A `page` record.
- *
- * @param navigation - The navigation
- * @param includeSensitive - Show the URL's tokens
- * @returns The line
- */
-function pageRecord(navigation: PageNavigation, includeSensitive: boolean | undefined): string {
-  return JSON.stringify({
-    type: 'page',
-    navigationId: navigation.navigationId,
-    url: displayUrl(navigation.url, includeSensitive),
-  });
-}
-
-/**
- * A `message` record.
- *
- * @param message - The console message
- * @param full - `--full`: the text whole
- * @returns The line
- */
-function messageRecord(message: ConsoleMessage, full: boolean | undefined): string {
-  const { type: level, ...rest } = capMessageText(message, full);
-  return JSON.stringify({ type: 'message', level, ...rest });
 }

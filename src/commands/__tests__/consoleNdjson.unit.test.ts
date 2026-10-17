@@ -127,3 +127,25 @@ void describe('console follow separator', () => {
     );
   });
 });
+
+void describe('console text and ndjson streams', () => {
+  void it('enter the same pages when several navigations passed between two polls', () => {
+    const text = formatConsoleFollowLines([message('d', 3)], {
+      streamNavigationId: 1,
+      currentNavigationId: 3,
+      navigations: pages,
+    });
+    const separators = [...text.matchAll(/\(navigation #(\d+)\)/g)].map((m) => Number(m[1]));
+    const stream = createConsoleNdjson();
+    stream.next([message('a', 1)], pages, 1);
+    const records = stream
+      .next([message('d', 3)], pages, 3)
+      .map((line) => JSON.parse(line) as { type: string; navigationId?: number })
+      .filter((record) => record.type === 'page');
+    assert.deepEqual(separators, [2, 3]);
+    assert.deepEqual(
+      records.map((record) => record.navigationId),
+      separators
+    );
+  });
+});
