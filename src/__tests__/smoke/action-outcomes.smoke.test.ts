@@ -24,11 +24,8 @@ import { after, before, describe, it } from 'node:test';
 
 import { runCommand } from '@/__testutils__/commandRunner.js';
 import { cleanupAllSessions } from '@/__testutils__/daemonHelpers.js';
-import {
-  getFreePort,
-  startFixtureServer,
-  type FixtureServer,
-} from '@/__testutils__/fixtureServer.js';
+import { startFixtureServer, type FixtureServer } from '@/__testutils__/fixtureServer.js';
+import { createSharedSession } from '@/__testutils__/sharedSession.js';
 
 /** The part of an action result this test reads */
 interface ActionData {
@@ -64,23 +61,9 @@ async function act(args: string[]): Promise<ActionData> {
   return (JSON.parse(await bdg(['dom', ...args, '--json'])) as { data: ActionData }).data;
 }
 
-/**
- * Start a session on a fixture page.
- *
- * @param url - Page URL
- * @param extra - More start arguments
- */
-async function open(url: string, extra: string[] = []): Promise<void> {
-  await cleanupAllSessions();
-  const port = await getFreePort();
-  const started = await runCommand(url, ['--port', String(port), '--headless', ...extra], {
-    timeout: 60000,
-  });
-  assert.equal(started.exitCode, 0, started.stderr);
-}
-
 void describe('Action outcomes', () => {
   let fixture: FixtureServer;
+  const open = createSharedSession();
 
   before(async () => {
     fixture = await startFixtureServer();
@@ -212,7 +195,19 @@ void describe('Action outcomes', () => {
   });
 
   void describe('a ticker on /ticker', () => {
-    before(() => open(`${fixture.url}ticker`));
+    before(async () => {
+      await open(`${fixture.url}ticker`);
+      await bdg([
+        'cdp',
+        'Runtime.evaluate',
+        '--params',
+        JSON.stringify({
+          expression:
+            'new Promise((resolve) => { const check = () => (score >= 40 ? resolve(true) : setTimeout(check, 20)); check(); })',
+          awaitPromise: true,
+        }),
+      ]);
+    });
 
     void it('does not attribute toasts added elsewhere to a click', async () => {
       const data = await act(['click', '#like']);

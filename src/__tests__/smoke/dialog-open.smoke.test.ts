@@ -15,11 +15,8 @@ import { after, before, describe, it } from 'node:test';
 
 import { runCommand } from '@/__testutils__/commandRunner.js';
 import { cleanupAllSessions } from '@/__testutils__/daemonHelpers.js';
-import {
-  getFreePort,
-  startFixtureServer,
-  type FixtureServer,
-} from '@/__testutils__/fixtureServer.js';
+import { startFixtureServer, type FixtureServer } from '@/__testutils__/fixtureServer.js';
+import { createSharedSession } from '@/__testutils__/sharedSession.js';
 
 /** The part of an action result this test reads */
 interface ActionData {
@@ -49,20 +46,6 @@ async function bdg(args: string[]): Promise<string> {
 async function act(action: string, ...args: string[]): Promise<ActionData> {
   const out = await bdg(['dom', action, ...args, '--json']);
   return (JSON.parse(out) as { data: ActionData }).data;
-}
-
-/**
- * Start a session on a fixture page.
- *
- * @param url - Page URL
- */
-async function open(url: string): Promise<void> {
-  await cleanupAllSessions();
-  const port = await getFreePort();
-  const started = await runCommand(url, ['--port', String(port), '--headless'], {
-    timeout: 60000,
-  });
-  assert.equal(started.exitCode, 0, started.stderr);
 }
 
 /**
@@ -107,6 +90,7 @@ function assertNoDialog(data: ActionData): void {
 
 void describe('Pre-rendered dialogs in action results (#786)', () => {
   let fixture: FixtureServer;
+  const open = createSharedSession();
 
   before(async () => {
     fixture = await startFixtureServer();
