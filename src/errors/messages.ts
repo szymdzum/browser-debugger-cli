@@ -3753,3 +3753,19 @@ export function retiredNameError(
       }
     : { message: `"${oldSpelling}" was removed`, suggestion: instead.hint };
 }
+
+/**
+ * Error for an option given under both its old and its new spelling.
+ *
+ * @param oldSpelling - Old spelling (`bdg <url> --timeout`)
+ * @param newSpelling - New spelling (`bdg <url> --stop-after`)
+ */
+export function renamedOptionConflictError(
+  oldSpelling: string,
+  newSpelling: string
+): ErrorWithSuggestion {
+  return {
+    message: `"${oldSpelling}" and "${newSpelling}" are the same option`,
+    suggestion: `Give it once, as "${newSpelling}"`,
+  };
+}

@@ -225,7 +225,7 @@ export function registerCleanupCommand(program: Command): void {
   program
     .command('cleanup')
     .description('Clean up stale session files (downloaded files are kept)')
-    .option('-f, --force', 'Kill a running (possibly hung) session, then clean up', false)
+    .option('--force', 'Kill a running (possibly hung) session, then clean up', false)
     .option(
       '--purge',
       "Also delete a named session's directory (Chrome profile, logs, port); needs --session",

@@ -31,7 +31,7 @@ export interface SessionMetadata {
   /** Attached to a tab of a running Chrome with `bdg attach` */
   attached?: boolean | undefined;
   activeTelemetry?: TelemetryType[] | undefined;
-  /** When `--timeout` stops the session (epoch ms) */
+  /** When `--stop-after` stops the session (epoch ms) */
   autoStopAt?: number | undefined;
   /** Viewport the page is emulated at (`--viewport`) */
   viewport?: ViewportSize | undefined;

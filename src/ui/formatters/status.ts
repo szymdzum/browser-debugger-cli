@@ -37,7 +37,7 @@ export interface StatusData {
   targetId?: string | undefined;
   webSocketDebuggerUrl?: string | undefined;
   telemetry?: string[];
-  /** When `--timeout` stops the session (ISO time) */
+  /** When `--stop-after` stops the session (ISO time) */
   autoStopAt?: string;
   /** Viewport given with `--viewport` (`pageState.viewport` is the current one) */
   viewport?: ViewportSize;

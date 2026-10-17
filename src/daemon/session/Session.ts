@@ -227,7 +227,7 @@ export class Session {
   /** Releases of what the session acquired, run last first on stop or a failed start */
   private readonly resources = new ResourceStack(log);
   private timeoutTimer: NodeJS.Timeout | null = null;
-  /** When `--timeout` stops the session (epoch ms) */
+  /** When `--stop-after` stops the session (epoch ms) */
   private autoStopAt: number | undefined;
   private stopping: Promise<void> | null = null;
   /** Why the session was first asked to stop ('normal' = user, signal or abandoned start) */

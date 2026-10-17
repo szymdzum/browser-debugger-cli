@@ -303,9 +303,13 @@ void describe('HAR export with --all', () => {
     await cleanupAllSessions();
     fixture = await startFixtureServer();
     const port = await getFreePort();
-    const result = await runCommand(fixture.url, ['--port', String(port), '--headless', '--all'], {
-      timeout: 60000,
-    });
+    const result = await runCommand(
+      fixture.url,
+      ['--port', String(port), '--headless', '--capture-all'],
+      {
+        timeout: 60000,
+      }
+    );
     assert.equal(result.exitCode, 0, `Start failed: ${result.stderr}`);
     await runJson('dom', [
       'eval',

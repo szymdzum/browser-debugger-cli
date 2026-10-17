@@ -47,11 +47,15 @@ import { devToolsHttpEndpoint, validateChromeWsUrl, validateUrl } from '@/utils/
 export interface CollectorOptions {
   /** Chrome debugging port as provided by the user. */
   port: string;
-  /** Optional auto-stop timeout (seconds, string form). */
+  /** Optional auto-stop (seconds, string form), from `--stop-after`. */
+  stopAfter?: string;
+  /** Old spelling of `stopAfter` (`-t, --timeout`), copied to it by the rename step. */
   timeout?: string;
   /** Custom Chrome profile directory path. */
   userDataDir?: string;
-  /** When true, disables default filtering of noisy data. */
+  /** When true, disables default filtering of noisy data (`--capture-all`). */
+  captureAll?: boolean;
+  /** Old spelling of `captureAll` (`-a, --all`), copied to it by the rename step. */
   all?: boolean;
   /** Maximum response body size in megabytes (default: 5MB). */
   maxBodySize?: string;
@@ -133,15 +137,17 @@ export function applyCollectorOptions(command: Command): Command {
   return command
     .option('-p, --port <number>', PORT_OPTION_DESCRIPTION)
     .option(
-      '-t, --timeout <seconds>',
+      '--stop-after <seconds>',
       'Stop the session this many seconds after the page has loaded (unlimited if not specified)'
     )
+    .option('-t, --timeout <seconds>', 'Old spelling of --stop-after')
     .option('-u, --user-data-dir <path>', 'Chrome user data directory (defaults to session dir)')
     .option(
-      '-a, --all',
+      '--capture-all',
       'Include all data: no tracking/analytics filtering, and capture every response body (incl. binary)',
       false
     )
+    .option('-a, --all', 'Old spelling of --capture-all')
     .option('-m, --max-body-size <megabytes>', 'Maximum response body size in MB', '5')
     .option(
       '--headless',
@@ -264,12 +270,18 @@ function buildSessionOptions(options: CollectorOptions): {
     max: 100,
     required: false,
   });
-  const timeoutRule = positiveIntRule({ name: '--timeout', min: 1, max: 3600, required: false });
+  const stopAfterRule = positiveIntRule({
+    name: '--stop-after',
+    min: 1,
+    max: 3600,
+    required: false,
+  });
   const portRule = positiveIntRule({ name: '--port', min: 1024, max: 65535, required: false });
 
   const maxBodySizeMB =
     options.maxBodySize !== undefined ? maxBodySizeRule.validate(options.maxBodySize) : undefined;
-  const timeout = options.timeout !== undefined ? timeoutRule.validate(options.timeout) : undefined;
+  const timeout =
+    options.stopAfter !== undefined ? stopAfterRule.validate(options.stopAfter) : undefined;
 
   // Merge env var flags with CLI flags (CLI flags come after, taking precedence)
   const envFlags = parseChromeFlags(process.env['BDG_CHROME_FLAGS']);
@@ -288,7 +300,7 @@ function buildSessionOptions(options: CollectorOptions): {
     port: options.port !== undefined ? portRule.validate(options.port) : undefined,
     timeout,
     userDataDir,
-    includeAll: options.all ?? false,
+    includeAll: options.captureAll ?? false,
     maxBodySize: maxBodySizeMB !== undefined ? maxBodySizeMB * 1024 * 1024 : undefined,
     headless: options.headless ?? !hasDisplay(),
     chromeWsUrl: options.chromeWsUrl,

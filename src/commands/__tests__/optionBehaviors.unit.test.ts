@@ -41,12 +41,17 @@ void describe('OPTION_BEHAVIORS', () => {
     assert.deepEqual(repeated, []);
   });
 
-  it('documents the root --headless, --no-headless and --all in help JSON', () => {
+  it('documents the root --headless, --no-headless, --capture-all and --stop-after in help JSON', () => {
     const rootOptions = generateMachineReadableHelp(buildProgram()).command.options;
     const withBehavior = rootOptions
       .filter((option) => option.behavior)
       .map((option) => option.flags);
-    for (const flags of ['--headless', '--no-headless', '-a, --all']) {
+    for (const flags of [
+      '--headless',
+      '--no-headless',
+      '--capture-all',
+      '--stop-after <seconds>',
+    ]) {
       assert.ok(withBehavior.includes(flags), `${flags} has no behavior`);
     }
   });

@@ -9,7 +9,7 @@
 import { Option, type Command } from 'commander';
 
 import { CommandError } from '@/errors/index.js';
-import { retiredNameError } from '@/errors/messages.js';
+import { renamedOptionConflictError, retiredNameError } from '@/errors/messages.js';
 import { deprecatedNameWarning } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { RENAMES, isRetiredName, spelling, type RenameEntry } from '@/utils/renames.js';
@@ -46,9 +46,10 @@ function findCommand(program: Command, words: string): Command {
 }
 
 /**
- * Commander's attribute name of a long option (`--kill-chrome` → `killChrome`).
+ * Commander's attribute name of a long option (`--kill-chrome` → `killChrome`)
+ * or a short-only one (`-f` → `f`).
  *
- * @param flag - Long option
+ * @param flag - Long or short option
  * @returns Attribute name
  */
 function attributeName(flag: string): string {
@@ -62,7 +63,9 @@ function attributeName(flag: string): string {
  * @param entry - Option entry
  */
 function registerOldOption(command: Command, entry: RenameEntry & { kind: 'option' }): void {
-  const own = command.options.find((option) => option.long === entry.old);
+  const own = command.options.find(
+    (option) => option.long === entry.old || option.short === entry.old
+  );
   if (own) {
     own.hideHelp();
     return;
@@ -173,6 +176,31 @@ export function registerRenamedNames(
 }
 
 /**
+ * Give a deprecated option's value to the option that replaces it.
+ *
+ * @param level - Command that has both options
+ * @param entry - Deprecated option entry with a new option
+ * @param oldAttribute - Attribute name of the old option
+ * @throws CommandError (81) when the command line also gave the new option
+ */
+function passToNewOption(
+  level: Command,
+  entry: RenameEntry & { kind: 'option' },
+  oldAttribute: string
+): void {
+  const newAttribute = attributeName(entry.new ?? '');
+  if (level.getOptionValueSource(newAttribute) === 'cli') {
+    const err = renamedOptionConflictError(spelling(entry, 'old'), spelling(entry, 'new'));
+    throw new CommandError(
+      err.message,
+      { suggestion: err.suggestion },
+      EXIT_CODES.INVALID_ARGUMENTS
+    );
+  }
+  level.setOptionValueWithSource(newAttribute, level.getOptionValue(oldAttribute), 'cli');
+}
+
+/**
  * Act on the old spellings the command line used, from the command about
  * to run up to the root: a removed one throws, a deprecated option renamed
  * to another passes its value to the new option, and each deprecated one
@@ -197,11 +225,7 @@ export function applyRenamedNames(
       if (!isUsed(level, entry, oldAttribute)) continue;
       if (entry.stage === 'removed') throw removedError(entry);
       if (entry.kind === 'option' && entry.new !== undefined) {
-        level.setOptionValueWithSource(
-          attributeName(entry.new),
-          level.getOptionValue(oldAttribute),
-          'cli'
-        );
+        passToNewOption(level, entry, oldAttribute);
       }
       warnings.push(deprecationWarning(entry));
     }
@@ -230,7 +254,9 @@ export function currentSubcommands(command: Command): Command[] {
  */
 export function currentOptions(command: Command): Option[] {
   const words = commandWords(command);
-  return command.options.filter((option) => !isRetiredName(words, option.long ?? ''));
+  return command.options.filter(
+    (option) => !isRetiredName(words, option.long ?? option.short ?? '')
+  );
 }
 
 /** Commander's message for a word that is no subcommand */

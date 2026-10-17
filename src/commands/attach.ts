@@ -32,6 +32,7 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 interface AttachOptions extends BaseOptions {
   chromeWsUrl?: string;
   userDataDir?: string;
+  stopAfter?: string;
   timeout?: string;
   quiet?: boolean;
 }
@@ -109,7 +110,8 @@ export function registerAttachCommand(program: Command): void {
       '--user-data-dir <dir>',
       "Chrome profile dir whose DevToolsActivePort names the browser (default: Chrome stable's; for Canary, Edge, Brave…)"
     )
-    .option('--timeout <seconds>', 'Auto-stop the session after this many seconds')
+    .option('--stop-after <seconds>', 'Auto-stop the session after this many seconds')
+    .option('--timeout <seconds>', 'Old spelling of --stop-after')
     .option('-q, --quiet', 'Quiet mode - minimal output for AI agents', false)
     .addOption(jsonOption())
     .action(async (tab: string | undefined, options: AttachOptions) => {
@@ -118,11 +120,14 @@ export function registerAttachCommand(program: Command): void {
       try {
         endpoint = await browserEndpoint(options);
         timeout =
-          options.timeout === undefined
+          options.stopAfter === undefined
             ? undefined
-            : positiveIntRule({ name: '--timeout', min: 1, max: 3600, required: false }).validate(
-                options.timeout
-              );
+            : positiveIntRule({
+                name: '--stop-after',
+                min: 1,
+                max: 3600,
+                required: false,
+              }).validate(options.stopAfter);
       } catch (error) {
         handleValidationError(error, options.json ?? false);
       }
