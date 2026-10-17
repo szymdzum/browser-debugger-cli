@@ -12,6 +12,9 @@ const EVAL_TIMEOUT_DEFAULT_MS = 20_000;
 /** Time after the limit within which a failed evaluate counts as V8 terminating it */
 const TERMINATION_GRACE_DEFAULT_MS = 5_000;
 
+/** Time the script's answer gets to arrive after the page answered the lost-answer check */
+const UNSENT_GRACE_DEFAULT_MS = 12_000;
+
 /** Shortest accepted override: below this the page cannot answer in time */
 const MIN_OVERRIDE_MS = 100;
 
@@ -50,4 +53,15 @@ export function evalTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
  */
 export function terminationGraceMs(env: NodeJS.ProcessEnv = process.env): number {
   return limitMs(env, 'BDG_TEST_EVAL_GRACE_MS', TERMINATION_GRACE_DEFAULT_MS);
+}
+
+/**
+ * The time a script's answer gets to arrive once the page answered the
+ * lost-answer check (`BDG_TEST_EVAL_UNSENT_GRACE_MS` shortens it).
+ *
+ * @param env - Environment to read the test override from
+ * @returns Grace in ms
+ */
+export function unsentGraceMs(env: NodeJS.ProcessEnv = process.env): number {
+  return limitMs(env, 'BDG_TEST_EVAL_UNSENT_GRACE_MS', UNSENT_GRACE_DEFAULT_MS);
 }

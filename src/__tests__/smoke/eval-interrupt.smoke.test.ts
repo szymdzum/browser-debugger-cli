@@ -39,10 +39,26 @@ const LOOP_MS = 20_000;
 const SHORT_LOOP_MS = 3_000;
 
 /**
- * How long another client's script runs while an eval's result is lost: it
- * starts 2 s into that eval and outlasts its answer (about 13 s in)
+ * How long a lost result's answer gets after the page answered the check
+ * (production: 12 s). 3 s keeps the other client's script running about 3 s
+ * before the lost answer can arrive. It only affects lost-answer timing; the lost-result
+ * tests rely on it being well under the 20 s eval limit ({@link LOST_MS}).
  */
-const OTHER_LOOP_MS = 15_000;
+const UNSENT_GRACE_MS = '3000';
+
+/**
+ * Bound for an eval whose result is lost: about 1 s check + 3 s grace (about 6 s
+ * on Linux, up to 12 s on macOS), well under the 20 s limit it would fall back to
+ * (about 25 s with overhead) if the lost-result check never fired
+ */
+const LOST_MS = 18_000;
+
+/**
+ * How long another client's script runs while an eval's result is lost: it
+ * starts as soon as the lost eval's timer fires (right after the 300 MB
+ * string is built, before the lost answer can arrive) and outlasts its answer
+ */
+const OTHER_LOOP_MS = 8_000;
 
 /** Upper bound for every command: well past the loop and the eval's own limit */
 const COMMAND_TIMEOUT_MS = 60_000;
@@ -117,7 +133,10 @@ void describe('Interrupted dom eval', () => {
     const started = await runCommand(
       `${fixture.url}eval-frames`,
       ['--port', String(port), '--headless'],
-      { timeout: COMMAND_TIMEOUT_MS, env: { BDG_DEBUG: '1' } }
+      {
+        timeout: COMMAND_TIMEOUT_MS,
+        env: { BDG_DEBUG: '1', BDG_TEST_EVAL_UNSENT_GRACE_MS: UNSENT_GRACE_MS },
+      }
     );
     assert.equal(started.exitCode, 0, started.stderr);
   });
@@ -306,16 +325,27 @@ void describe('Interrupted dom eval', () => {
   for (const full of [false, true]) {
     void it(`never stops another client's script after an eval whose result was lost${full ? ' (--full)' : ''}`, async () => {
       const armed = full ? 'lost-full-armed' : 'lost-armed';
+      const lostStartedAt = Date.now();
+      let lostEndedAt = 0;
       const lost = startEval(
-        `setTimeout(() => { const r = new XMLHttpRequest(); r.open('GET', '/beacon?${armed}', false); r.send(); }, 2000); 'x'.repeat(300e6)`,
+        `setTimeout(() => { const r = new XMLHttpRequest(); r.open('GET', '/beacon?${armed}', false); r.send(); }, 300); 'x'.repeat(300e6)`,
         undefined,
         { extra: full ? ['--full'] : [] }
-      );
+      ).finally(() => {
+        lostEndedAt = Date.now();
+      });
       await untilBeacon(armed);
       const other = startEval(loopScript(`${armed}-loop`, OTHER_LOOP_MS));
       await untilBeacon(`${armed}-loop`);
+      const otherStartedAt = Date.now();
       const lostResult = await lost;
+      const lostAfter = Date.now() - lostStartedAt;
+      assert.ok(lostAfter < LOST_MS, `the lost result took ${lostAfter} ms (limit ${LOST_MS} ms)`);
       assert.equal(lostResult.exitCode, full ? 81 : 102, shown(lostResult));
+      assert.ok(
+        lostEndedAt > otherStartedAt,
+        `the lost result was answered ${otherStartedAt - lostEndedAt} ms before the other script started`
+      );
       const survivor = await other;
       assert.equal(survivor.exitCode, 0, shown(survivor));
       assert.match(survivor.stdout, /"result":"finished"/, shown(survivor));
