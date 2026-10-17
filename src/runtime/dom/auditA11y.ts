@@ -47,10 +47,16 @@ interface RawIdIssue {
   selector: string | null;
 }
 
-/** What {@link A11Y_IDS_JS} returns */
-interface RawIdScan {
+/** Findings of one id rule: all of them counted, the first ones with selectors */
+interface RawIdList {
   total: number;
   issues: RawIdIssue[];
+}
+
+/** What {@link A11Y_IDS_JS} returns */
+interface RawIdScan {
+  duplicates: RawIdList;
+  references: RawIdList;
   capped: boolean;
 }
 
@@ -60,7 +66,8 @@ interface RawIdScan {
  */
 export const A11Y_IDS_JS = `function (limit, cap) {
   const selectorOf = ${NODE_SELECTOR_FUNCTION};
-  const found = [];
+  const duplicates = [];
+  const references = [];
   const roots = [document];
   let walked = 0;
   let capped = false;
@@ -80,18 +87,21 @@ export const A11Y_IDS_JS = `function (limit, cap) {
       }
     }
     for (const [id, els] of byId) {
-      if (els.length > 1) els.slice(1).forEach((el) => found.push({ el: el, reason: { kind: 'duplicate-id', id: id, total: els.length } }));
+      if (els.length > 1) els.forEach((el) => duplicates.push({ el: el, reason: { kind: 'duplicate-id', id: id, total: els.length } }));
     }
     for (const ref of refs) {
       for (const id of (ref.el.getAttribute(ref.attribute) || '').split(/\\s+/).filter(Boolean)) {
-        if (!root.getElementById(id)) found.push({ el: ref.el, reason: { kind: 'missing-reference', attribute: ref.attribute, id: id } });
+        if (!root.getElementById(id)) references.push({ el: ref.el, reason: { kind: 'missing-reference', attribute: ref.attribute, id: id } });
       }
     }
   }
-  const issues = found.slice(0, limit).map((f) => ({
-    reason: f.reason, tag: f.el.localName, id: f.el.id, selector: selectorOf.call(f.el)
-  }));
-  return { total: found.length, issues: issues, capped: capped };
+  const listed = (found) => ({
+    total: found.length,
+    issues: found.slice(0, limit).map((f) => ({
+      reason: f.reason, tag: f.el.localName, id: f.el.id, selector: selectorOf.call(f.el)
+    }))
+  });
+  return { duplicates: listed(duplicates), references: listed(references), capped: capped };
 }`;
 
 /**
@@ -294,13 +304,18 @@ export async function auditA11y(
     const { truncated, modal } = collected;
     const lookups = new ConcurrencyLimiter(SELECTOR_LOOKUPS);
     const hits = await withoutPlainSvgs(cdp, collected.hits, lookups);
-    const idElements = (ids?.issues ?? []).map((issue) =>
-      issue.selector
-        ? { element: issue.selector, detail: a11yDetail(issue.reason) }
-        : unselectable(issue.tag + (issue.id ? `#${issue.id}` : ''), a11yDetail(issue.reason))
-    );
+    const idEntry = (id: A11yRuleId, list: RawIdList | undefined): AuditA11yRule => ({
+      id,
+      count: list?.total ?? 0,
+      elements: (list?.issues ?? []).map((issue) =>
+        issue.selector
+          ? { element: issue.selector, detail: a11yDetail(issue.reason) }
+          : unselectable(issue.tag + (issue.id ? `#${issue.id}` : ''), a11yDetail(issue.reason))
+      ),
+    });
     const ruleEntry = async (id: A11yRuleId): Promise<AuditA11yRule> => {
-      if (id === 'duplicate-id') return { id, count: ids?.total ?? 0, elements: idElements };
+      if (id === 'duplicate-id') return idEntry(id, ids?.duplicates);
+      if (id === 'aria-reference') return idEntry(id, ids?.references);
       const ruleHits = hits.filter((hit) => hit.rule === id);
       const elements = await Promise.all(
         ruleHits.slice(0, limit).map((hit) => hitElement(cdp, hit, lookups))

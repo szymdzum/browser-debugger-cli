@@ -51,6 +51,7 @@ import {
   formatA11yQueryResult,
   formatA11yNodeWithContext,
 } from '@/ui/formatters/a11y.js';
+import { A11Y_AUDIT_POINTER } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /** Matches `dom a11y query` lists by default in human output (a page can have hundreds of links) */
@@ -286,6 +287,7 @@ export function registerA11yCommands(domCmd: Command): void {
   const a11y = domCmd
     .command('a11y')
     .description('Accessibility tree inspection and semantic queries')
+    .addHelpText('after', A11Y_AUDIT_POINTER)
     .argument(
       '[search]',
       'Quick search: index (describe), CSS selector (#id, .class), pattern with ":" (query), or name search'

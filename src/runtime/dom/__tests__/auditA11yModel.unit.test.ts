@@ -140,4 +140,19 @@ void describe('findAxHits', () => {
     assert.deepEqual(activeModal(nodes), { backendNodeId: 3 });
     assert.equal(activeModal([ax(1, 'RootWebArea', 'p')]), undefined);
   });
+
+  void it('does not count a skip link as text outside landmarks', () => {
+    const link = {
+      ...ax(2, 'link', 'Skip', [3]),
+      properties: [{ name: 'url', value: { type: 'string', value: 'http://x/p#main' } }],
+    };
+    const root = {
+      ...ax(1, 'RootWebArea', 'p', [2, 4]),
+      properties: [{ name: 'url', value: { type: 'string', value: 'http://x/p' } }],
+    };
+    const nodes = [root, link, ax(3, 'StaticText', 'Skip'), ax(4, 'main')] as AxNode[];
+    assert.deepEqual(findAxHits(nodes, { page: true }), [
+      { rule: 'heading-order', reason: { kind: 'no-h1' } },
+    ]);
+  });
 });

@@ -112,12 +112,49 @@ function isLandmark(node: AxNode): boolean {
   return LANDMARK_ROLES.has(role) || (NAMED_LANDMARK_ROLES.has(role) && hasName(node));
 }
 
+/**
+ * A string property of a node.
+ *
+ * @param node - Accessibility node
+ * @param name - Property name
+ * @returns The value, or empty
+ */
+function propertyText(node: AxNode | undefined, name: string): string {
+  const value: unknown = node?.properties?.find((property) => property.name === name)?.value.value;
+  return typeof value === 'string' ? value : '';
+}
+
+/**
+ * A URL without its fragment.
+ *
+ * @param url - URL
+ * @returns The URL up to `#`
+ */
+function withoutHash(url: string): string {
+  return url.split('#')[0] ?? '';
+}
+
+/**
+ * Whether a node is a skip link: a link to a place in the same page
+ * (`href="#main"`), which axe's region rule leaves outside landmarks too.
+ *
+ * @param node - Accessibility node
+ * @param pageUrl - The page's URL without fragment
+ * @returns True for a same-page fragment link
+ */
+function isSkipLink(node: AxNode, pageUrl: string): boolean {
+  if (node.ignored || roleOf(node) !== 'link') return false;
+  const url = propertyText(node, 'url');
+  return url.includes('#') && url.split('#')[1] !== '' && withoutHash(url) === pageUrl;
+}
+
 /** A node with the nearest ancestor that has a DOM element, and whether a landmark is above it */
 interface Visit {
   node: AxNode;
   holder: number | undefined;
   inLandmark: boolean;
   inNamedControl: boolean;
+  inSkipLink: boolean;
 }
 
 /**
@@ -127,12 +164,26 @@ interface Visit {
  * @returns Nodes depth-first from the root
  */
 function inDocumentOrder(nodes: AxNode[]): Visit[] {
+  const pageUrl = withoutHash(
+    propertyText(
+      nodes.find((node) => !node.parentId),
+      'url'
+    )
+  );
   const byId = new Map(nodes.map((node) => [node.nodeId, node]));
   const root = nodes.find((node) => !node.parentId) ?? nodes[0];
   const visits: Visit[] = [];
   const seen = new Set<string>();
   const stack: Visit[] = root
-    ? [{ node: root, holder: undefined, inLandmark: false, inNamedControl: false }]
+    ? [
+        {
+          node: root,
+          holder: undefined,
+          inLandmark: false,
+          inNamedControl: false,
+          inSkipLink: false,
+        },
+      ]
     : [];
   while (stack.length > 0) {
     const visit = stack.pop();
@@ -145,8 +196,9 @@ function inDocumentOrder(nodes: AxNode[]): Visit[] {
     const inNamedControl =
       visit.inNamedControl ||
       (!visit.node.ignored && NAMED_BY_ITSELF_ROLES.has(roleOf(visit.node)) && hasName(visit.node));
+    const inSkipLink = visit.inSkipLink || isSkipLink(visit.node, pageUrl);
     for (const child of children.reverse())
-      stack.push({ node: child, holder, inLandmark, inNamedControl });
+      stack.push({ node: child, holder, inLandmark, inNamedControl, inSkipLink });
   }
   return visits;
 }
@@ -162,7 +214,7 @@ function inDocumentOrder(nodes: AxNode[]): Visit[] {
 function nodeHits(visits: Visit[], page: boolean): { hits: A11yHit[]; outside: number } {
   const hits: A11yHit[] = [];
   const outside = new Set<number>();
-  for (const { node, holder, inLandmark, inNamedControl } of visits) {
+  for (const { node, holder, inLandmark, inNamedControl, inSkipLink } of visits) {
     if (node.ignored) continue;
     const role = roleOf(node);
     const backendNodeId = node.backendDOMNodeId;
@@ -174,7 +226,14 @@ function nodeHits(visits: Visit[], page: boolean): { hits: A11yHit[]; outside: n
         hits.push({ rule: 'control-name', backendNodeId, reason: { kind: 'unnamed' } });
       }
     }
-    if (page && role === 'StaticText' && !inLandmark && hasName(node) && holder !== undefined) {
+    if (
+      page &&
+      role === 'StaticText' &&
+      !inLandmark &&
+      !inSkipLink &&
+      hasName(node) &&
+      holder !== undefined
+    ) {
       outside.add(holder);
     }
   }

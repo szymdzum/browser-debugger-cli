@@ -844,7 +844,8 @@ export const A11Y_RULE_HINTS: Readonly<Record<A11yRuleId, string>> = {
   'control-name': 'label it: a <label for>, aria-label, aria-labelledby, title or visible text',
   'heading-order': 'one h1, then levels without gaps (h1, h2, h3)',
   landmarks: 'put the content in <main>, <header>, <nav> and <footer>',
-  'duplicate-id': 'make ids unique and point aria-labelledby/describedby at ids that exist',
+  'duplicate-id': 'make ids unique',
+  'aria-reference': 'point aria-labelledby/describedby at ids that exist',
 };
 
 /** Examples line of `dom audit a11y --help`: what it checks and does not */
@@ -855,7 +856,8 @@ export const A11Y_AUDIT_RULES_HELP = `Rules of the a11y check (not a full WCAG e
                  a placeholder counts as a name, as Chrome computes it
   heading-order  no h1, more than one h1, skipped levels
   landmarks      no main landmark; text outside any landmark
-  duplicate-id   repeated ids; aria-labelledby/describedby naming no element`;
+  duplicate-id   elements sharing an id
+  aria-reference aria-labelledby/describedby naming no element`;
 
 /**
  * What an `a11y` finding says about its element.
@@ -903,6 +905,10 @@ function skippedLevels(previous: number, level: number): string {
 export function a11yNoSelectorNote(): string {
   return '(no unique selector: find it with bdg dom a11y query)';
 }
+
+/** Pointer under `bdg dom a11y --help` to the page-wide a11y rules */
+export const A11Y_AUDIT_POINTER =
+  '\nTo find a11y problems (missing alt text and names, heading order, landmarks, ids) run: bdg dom audit a11y';
 
 /**
  * Note on an open modal dialog: it hides the rest of the page from screen readers.

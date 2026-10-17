@@ -159,7 +159,7 @@ bdg dom a11y query role=button       # By accessibility role/name
 bdg dom inspect ".card" --why color  # Which CSS rule set a property, and what it overrode
 bdg dom layout ".card"               # Every match: position, size, above/below the fold, hidden, covered
 bdg dom audit                        # Page-wide: contrast, overflow, fixed layers, animations, a11y
-bdg dom audit a11y                   # Missing alt/names, heading order, landmarks, duplicate ids (not full WCAG; a placeholder counts as a name; `<tag#id>` = no unique selector; exit stays 0, gate on `data.a11y.rules[].count`; `--limit` is 1-500, not 0); then bdg dom a11y describe <element>
+bdg dom audit a11y                   # Missing alt/names, heading order, landmarks, duplicate ids, missing aria-labelledby targets (not full WCAG; a placeholder counts as a name; `<tag#id>` = no unique selector; exit stays 0, gate on `data.a11y.rules[].count`; `--limit` is 1-500, not 0); then bdg dom a11y describe <element>
 bdg dom audit contrast --wcag AAA
 bdg css search -- --brand            # Where a CSS text/custom property is set and used (file:line)
 bdg dom listeners "#save"            # Event listeners that run for an element

@@ -150,12 +150,12 @@ function animationsSection(
 function a11ySection(a11y: NonNullable<AuditResult['a11y']>): string[] {
   const failing = a11y.rules.filter((rule) => rule.count > 0);
   const total = failing.reduce((sum, rule) => sum + rule.count, 0);
-  const note = [
-    ...(a11y.modal ? [`  ${a11yModalNote(a11y.modal.element)}`] : []),
-    ...(a11y.truncated ? [`  ${a11yTruncatedNote()}`] : []),
-  ];
-  if (total === 0) return [`A11y: no issues (${a11y.rules.length} rules checked)`, ...note];
+  const modal = a11y.modal ? [`⚠ ${a11yModalNote(a11y.modal.element)}`] : [];
+  const note = a11y.truncated ? [`  ${a11yTruncatedNote()}`] : [];
+  if (total === 0)
+    return [...modal, `A11y: no issues (${a11y.rules.length} rules checked)`, ...note];
   return [
+    ...modal,
     `A11y: ${total} ${total === 1 ? 'issue' : 'issues'} in ${failing.length} of ${a11y.rules.length} rules`,
     ...failing.flatMap((rule) => [
       `  ${rule.id}: ${rule.count} (${A11Y_RULE_HINTS[rule.id]})`,

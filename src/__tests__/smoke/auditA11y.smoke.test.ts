@@ -76,7 +76,7 @@ void describe('dom audit a11y', () => {
     const rules = await rulesOf(['a11y']);
     assert.deepEqual(
       [...rules.keys()],
-      ['img-alt', 'control-name', 'heading-order', 'landmarks', 'duplicate-id']
+      ['img-alt', 'control-name', 'heading-order', 'landmarks', 'duplicate-id', 'aria-reference']
     );
     const names = (id: string): string[] => (rules.get(id)?.elements ?? []).map((e) => e.element);
     assert.equal(
@@ -98,13 +98,15 @@ void describe('dom audit a11y', () => {
     assert.ok(names('control-name').includes('#shadowed'));
     assert.equal(rules.get('heading-order')?.count, 2, 'second h1 and the skip to h4');
     assert.ok(rules.get('landmarks')?.elements.some((e) => /main/.test(e.detail)));
-    assert.equal(rules.get('duplicate-id')?.count, 2, 'one repeated id, one missing target');
+    assert.equal(rules.get('duplicate-id')?.count, 3, 'all three elements sharing the id');
+    assert.equal(rules.get('duplicate-id')?.elements.length, 3, 'count and list agree');
+    assert.equal(rules.get('aria-reference')?.count, 1, 'aria-labelledby naming no element');
   });
 
   void it('runs alone and in the default run; the elements resolve for the next command', async () => {
     const all = JSON.parse(await bdg(['dom', 'audit', '--json'])) as A11yJson;
     assert.ok(all.data.checks.includes('a11y'));
-    assert.equal(all.data.a11y.rules.length, 5);
+    assert.equal(all.data.a11y.rules.length, 6);
     assert.deepEqual(
       (JSON.parse(await bdg(['dom', 'audit', 'a11y', '--json'])) as A11yJson).data.checks,
       ['a11y']
@@ -141,6 +143,7 @@ void describe('dom audit a11y', () => {
     assert.equal(json.data.a11y.modal?.element, '#consent');
     for (const rule of json.data.a11y.rules) assert.equal(rule.count, 0, rule.id);
     const human = await bdg(['dom', 'audit', 'a11y']);
-    assert.match(human, /#consent is a modal dialog: it hides the rest of the page/);
+    assert.match(human, /^⚠ #consent is a modal dialog: it hides the rest of the page/m);
+    assert.ok(human.indexOf('modal dialog') < human.indexOf('A11y:'), 'the note comes first');
   });
 });

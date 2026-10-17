@@ -25,6 +25,7 @@ const A11Y_BAD_HTML = `<!doctype html><title>a11y bad</title>
 <h4>Skipped</h4>
 <div id="dup">one</div>
 <div id="dup">two</div>
+<div id="dup">three</div>
 <p id="ghosted" aria-labelledby="ghost">described by nothing</p>
 <div id="host"></div>
 <iframe srcdoc="<img id='framed' src='y.png'>"></iframe>
@@ -32,7 +33,10 @@ const A11Y_BAD_HTML = `<!doctype html><title>a11y bad</title>
 
 /** Only correct variants, all inside one landmark */
 const A11Y_GOOD_HTML = `<!doctype html><title>a11y good</title>
-<main>
+<a href="#content">Skip to content</a>
+<p style="display:none">Flash text</p>
+<p style="visibility:hidden">Hidden text</p>
+<main id="content">
 <h1>Title</h1>
 <h2>Section</h2>
 <h3>Part</h3>

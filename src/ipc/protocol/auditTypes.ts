@@ -18,7 +18,7 @@ export const AUDIT_CHECKS: readonly AuditCheck[] = [
 
 /** A rule of the `a11y` check, in the order they are shown */
 export type A11yRuleId =
-  'img-alt' | 'control-name' | 'heading-order' | 'landmarks' | 'duplicate-id';
+  'img-alt' | 'control-name' | 'heading-order' | 'landmarks' | 'duplicate-id' | 'aria-reference';
 
 /** Every a11y rule */
 export const A11Y_RULES: readonly A11yRuleId[] = [
@@ -27,6 +27,7 @@ export const A11Y_RULES: readonly A11yRuleId[] = [
   'heading-order',
   'landmarks',
   'duplicate-id',
+  'aria-reference',
 ];
 
 /** One element an a11y rule flags */
