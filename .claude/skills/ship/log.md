@@ -89,6 +89,10 @@ One row per merged PR, appended with `ship log <pr> …` right after the merge. 
 | 2026-10-17 | #814 | - | 2 | 0/2/2 | skip | 0 | sonnet | 112k+57k | #529 silent-caps:115 not reproduced; fixed related silent path (scan not run → moreShownPartial); plausible cause; tester skipped (existing field value) |
 | 2026-10-17 | #816 | - | 1 | 0/1/2 | - | 1 | sonnet | 92k+57k | #809 part: self-updating 44→12.9 s, page-readiness 40→15.6 s (BDG_TEST_PAGE_READY_MS); interactions left (spawn-bound); reviewer mutation found a test waiting out the limit without asserting loading |
 | 2026-10-17 | #815 | - | 1 | 0/3/2 | - | 3 | sonnet | 84k+72k | #809 part: eval-size-probe 60→19.9 s, eval-interrupt 50→37 s (BDG_TEST_EVAL_UNSENT_GRACE_MS); reviewer mutation: lost-result tests passed with check removed; macOS repeat failed 12 s bound (3/10); round 3 owner-approved (implementer's own racy assertion) |
+| 2026-10-17 | #820 | - | 2 | 0/2/2 | 0 | 1 | sonnet | ~420k | D15+D16 0.x: console --follow --ndjson, URL in separator; simplify unified page transitions (text now separates quiet pages); implementer killed PIDs without a PID file |
+| 2026-10-17 | #819 | - | 3 | 0/2/4 | 0 | 1 | opus | ~200k | rename table + warnings envelope; D2 deprecated, D1 removed (81); simplify found silent command stub + cross-parent path; red commit failed type-check (rewritten); contract test built its own session dir (merge-check caught) |
+| 2026-10-17 | #821 | - | 2 | 0/1/4 | 0 | 1 | sonnet | ~100k | D14 backendNodeId (query, get --raw; default dom get view keeps nodeId=a11y id + backendDOMNodeId), D10 newest/first wording, D3 peek note; rebase after #819 hid tail from help json |
+| 2026-10-17 | #822 | - | 2 | 0/1/3 | 0 | 2 | sonnet | ~165k | D4+D13: eval, dom press-key, network cookies canonical, old names deprecated rows; adjacent: usage errors on old spellings now warn + name the new path; hideCommand uses commander _hidden (guarded by tests) |
 
 ## Escaped
 
@@ -114,4 +118,7 @@ Process changes seen in one session only (SKILL.md, Keep the books: a second ses
 | A timing PR also passes the full macOS CI shard under load, not only the repeat run | S17 (#812: repeat ×10 green, the shard red on the case where nothing was kept) | |
 | Ask for merge authority with AskUserQuestion (yes/no options), so a blanket "OK" can't count as a merge yes | S17 (a first "All Ok" didn't count; #813 waited ~1 h ready to merge) | until then, the session prompt can grant it: "Merge authority: yes" |
 | Remove: the fresh-agent test for a flake fix that changes no output | S17 (#812, #813: 0 findings) | sessions with no catch: 1 of 3 |
+| A test builds its own session directory instead of using `testHome` (brief rule or a lint) | S18 (#819: found only by merge-check) | |
+| Watch: an implementer killed PIDs not read from its PID files and left a smoke run hanging (breaks the forbidden block) | S18 (#820) | an existing rule broken, not a gap; a second case asks for a mechanical check |
+| `/simplify` under ~500 product lines runs one agent instead of four | S18 (#820, #822: one was enough; #819: four found a stub that did nothing and a wrong write on a reparent) | |
 

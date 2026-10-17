@@ -16,7 +16,6 @@ import {
   appendSnapshotEntries,
   briefProblems,
   briefVariant,
-  fixtureNamesFor,
   formatDesign,
   formatIssue,
   isAgentCommand,
@@ -1056,16 +1055,12 @@ test('renderBrief with NAME suffixes every path but keeps #N for the issue', () 
   assert.match(review, /issue #529;/);
 });
 
-test('fixtureNamesFor finds the fixtures of a number and of names it starts', () => {
-  const tmp = ['bdg-fixtures-529a.pid', 'bdg-fixtures-529b.pid', 'bdg-fixtures-5290.pid', 'bdg-fixtures-812.pid', 'other.pid'];
-  assert.deepEqual(fixtureNamesFor(['812', '529'], tmp), ['812', '529', '529a', '529b']);
-  assert.deepEqual(fixtureNamesFor(['77'], tmp), ['77']);
-});
 
-test('inScope covers suffixed names of a second PR, not other numbers', () => {
-  assert.equal(inScope('bdg-impl-529a-fixtures.pid', ['529']), true);
-  assert.equal(inScope('bdg-http-529a.pid', ['529']), true);
-  assert.equal(inScope('/tmp/review-529b', ['529']), true);
-  assert.equal(inScope('bdg-impl-5290-fixtures.pid', ['529']), false);
-  assert.equal(inScope('bdg-impl-529-fixtures.pid', ['529']), true);
+test("inScope takes a suffixed name only when listed, never a sibling PR's", () => {
+  assert.equal(inScope('bdg-impl-465a-fixtures.pid', ['822', '465', '465a']), true);
+  assert.equal(inScope('/tmp/review-465a', ['822', '465', '465a']), true);
+  assert.equal(inScope('bdg-fixtures-465c.pid', ['822', '465', '465a']), false);
+  assert.equal(inScope('bdg-impl-465c-fixtures.pid', ['465']), false);
+  assert.equal(inScope('bdg-impl-4650-fixtures.pid', ['465']), false);
+  assert.equal(inScope('bdg-impl-465-fixtures.pid', ['465']), true);
 });

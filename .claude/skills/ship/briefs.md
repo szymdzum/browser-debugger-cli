@@ -61,7 +61,7 @@ Implement issue #<N> in bdg (github.com/szymdzum/browser-debugger-cli). Read the
 **Tests.**
 <!-- red -->
 - **Red commit first.** Turn the issue's reproduction and each **testable** acceptance criterion into failing tests and commit them alone, before any fix: `test: reproduce #<N>` (bug) or `test: specify #<N>` (feature). Tests, fixture pages and empty skeletons only (a new function's signature throwing `not implemented`, so a unit test can import it); otherwise drive the CLI. A criterion that is a measurement or a doc change gets no test: say how you checked it.
-- Run them on that commit: they must fail **on an assertion about the issue** (or the CLI's real output), not on a build or import error.
+- Run them on that commit: they must fail **on an assertion about the issue** (or the CLI's real output), not on a build or import error. Run `npm run type-check` on it too before you push: tsx runs tests without checking types, and gate 3 refuses a red commit that doesn't type-check (S18 #819: history rewritten after the gate).
 - Then fix vertically: one test, then the code that passes it. Never weaken a red assertion in a fix commit; if one was wrong, fix it in a commit of its own and say why in the report.
 - No red commit for docs-only changes, refactors covered by existing tests, or CI/tooling; say which applies.
 <!-- /red -->

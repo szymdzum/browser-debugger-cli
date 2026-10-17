@@ -744,6 +744,39 @@ function freshOriginRef(branch) {
 }
 
 /**
+ * Prepares the orchestrator's /simplify pass on a PR: the PR's worktree, its
+ * base, and the diff in a file, plus the args to pass, since /simplify works
+ * on the current directory (S18: agents started by hand for each worktree).
+ *
+ * @param {string[]} argv `<pr>`
+ */
+function simplify(argv) {
+  const prNumber = argv[0];
+  if (!prNumber) return usage('simplify <pr>');
+  const pr = prInfo(prNumber);
+  const path = worktreeOfBranch(run('git', ['worktree', 'list', '--porcelain']), pr.headRefName);
+  if (!path) {
+    console.log(`FAIL no worktree has branch ${pr.headRefName}: run /simplify where the PR's code is checked out`);
+    return EXIT.failed;
+  }
+  run('git', ['fetch', '-q', 'origin', `pull/${pr.number}/head`]);
+  const base = run('git', ['merge-base', freshOriginRef(pr.baseRefName), pr.headRefOid]);
+  const file = `/tmp/simplify-${pr.number}.diff`;
+  run('git', ['-C', path, 'diff', `--output=${file}`, base, pr.headRefOid]);
+  const lines = productLines(run('git', ['-C', path, 'diff', '--numstat', base, pr.headRefOid]));
+  console.log(
+    [
+      `worktree: ${path}`,
+      `base:     ${base}`,
+      `diff:     ${file} (${lines} product lines)`,
+      `args for /simplify: "Review only the changes in ${file}; the code is in ${path}. Apply your fixes in ${path} and leave them uncommitted."`,
+      `then SendMessage the implementer to run the affected tests and commit the edits as refactor:`,
+    ].join('\n')
+  );
+  return EXIT.ok;
+}
+
+/**
  * Creates an agent worktree on a new branch from origin/main with node_modules linked.
  *
  * @param {string[]} argv `<name> <branch>`, optional `base=<ref>`
@@ -1171,7 +1204,7 @@ async function gates(argv) {
       `7 PR body names its issue: ${named.length ? named.join(', ') : 'no "Closes #<N>" or "Part of #<N>" (add one, or --no-issue for a PR with no issue)'}`
     );
   }
-  const scope = [...new Set([String(pr.number), ...(prIssues(pr.number) ?? []), ...parts])];
+  const scope = prScope(pr);
   const left = leftoverLines(scope);
   gateLine(
     results,
@@ -1449,14 +1482,16 @@ function alive(pid) {
 
 /**
  * True when a PID file or temporary worktree name belongs to one of the
- * given issue or PR numbers (`/tmp/bdg-impl-611-fixtures.pid`, `/tmp/review-611`),
- * including a suffixed name for a second PR of one issue (`529a`, brief NAME=).
+ * given issue or PR numbers or names, matched whole (`/tmp/bdg-impl-611-fixtures.pid`,
+ * `/tmp/review-611`). A suffixed name (`465a`, brief NAME=) is in scope only
+ * when it is listed: the issue number alone never takes in a sibling PR's
+ * `465c` files (S18: 465c's fixtures blocked 465a's merge).
  *
  * @param {string} name
  * @param {string[]} scope
  */
 export function inScope(name, scope) {
-  return scope.some((n) => new RegExp(`(^|[-/])${n}(?:[a-z][\\w]*)?(-|\\.pid$|$)`).test(name));
+  return scope.some((n) => new RegExp(`(^|[-/])${n}(-|\\.pid$|$)`).test(name));
 }
 
 /**
@@ -1517,18 +1552,29 @@ function leftoverLines(scope) {
 }
 
 /**
- * The `ship fixtures` names that belong to these PR or issue numbers: the
- * number itself and a name the number starts with (`529a` for #529, S17's
- * two PRs for one issue).
+ * The name a PR's worktree carries (`../bdg-465a` → `465a`), or null.
  *
- * @param {string[]} numbers
- * @param {string[]} tmpEntries the names in /tmp
+ * @param {string} headRefName
  */
-export function fixtureNamesFor(numbers, tmpEntries) {
-  const names = tmpEntries
-    .map((f) => /^bdg-fixtures-([\w.-]+)\.pid$/.exec(f)?.[1])
-    .filter((name) => name && numbers.some((n) => new RegExp(`^${n}(?:[a-z][\\w-]*)?$`).test(name)));
-  return [...new Set([...numbers, ...names])];
+function ownWorktreeName(headRefName) {
+  const path = worktreeOfBranch(run('git', ['worktree', 'list', '--porcelain']), headRefName);
+  const name = path ? /\/bdg-([\w.-]+)$/.exec(path)?.[1] : null;
+  return name && name !== 'verify' ? name : null;
+}
+
+/**
+ * The names whose files and processes belong to a PR: its number, the
+ * issues it closes or is part of, and its own worktree name. A sibling's
+ * suffixed name is never in it.
+ *
+ * @param {object} pr from prInfo
+ */
+function prScope(pr) {
+  return [
+    ...new Set(
+      [String(pr.number), ...(prIssues(pr.number) ?? []), ...partOfIssues(pr.body), ownWorktreeName(pr.headRefName)].filter(Boolean)
+    ),
+  ];
 }
 
 /** PID file of the fixture server the orchestrator starts for PR or issue N */
@@ -1718,6 +1764,24 @@ function leftovers(argv) {
 }
 
 /**
+ * Fast-forwards the main checkout to origin/main after a merge, when it is
+ * on main. `git merge --ff-only` works with the uncommitted log.md rows that
+ * `ship log` leaves, where `git pull --rebase` refuses (S18).
+ */
+function fastForwardMainCheckout() {
+  const main = mainCheckout();
+  const branch = spawnSync('git', ['-C', main, 'branch', '--show-current'], { encoding: 'utf8' }).stdout.trim();
+  if (branch !== 'main') return console.log(`main checkout is on ${branch || 'a detached HEAD'}: not fast-forwarded`);
+  freshOriginRef('main');
+  const ff = spawnSync('git', ['-C', main, 'merge', '--ff-only', '-q', 'origin/main'], { encoding: 'utf8' });
+  console.log(
+    ff.status === 0
+      ? 'main checkout fast-forwarded to origin/main'
+      : `main checkout not fast-forwarded: ${(ff.stderr || ff.stdout).trim().split('\n')[0]}`
+  );
+}
+
+/**
  * Merges a PR whose gates hold, on the exact head they were checked on, then
  * removes its worktree and branch when the worktree has nothing uncommitted.
  *
@@ -1727,8 +1791,7 @@ async function merge(argv) {
   const prNumber = argv[0];
   if (!prNumber) return usage('merge <pr> --tier=1|2|3 [--macos] [--timing] [--repeat=<run id>] [--no-issue] [--fixes-main]');
   const pr = prInfo(prNumber);
-  const numbers = [String(pr.number), ...(prIssues(pr.number) ?? []), ...partOfIssues(pr.body)];
-  for (const n of fixtureNamesFor(numbers, readdirSync('/tmp')))
+  for (const n of prScope(pr))
     if (stopFixtures(n) === 'stopped') console.log(`stopped your fixtures of ${n} (ship fixtures)`);
   if ((await gates(argv)) !== EXIT.ok) {
     console.log('not merged: a gate failed');
@@ -1765,6 +1828,7 @@ async function merge(argv) {
   console.log(`merged PR #${pr.number} as ${mergeSha}`);
   removeBranchWorktree(pr.headRefName);
   rmSync(`/tmp/ship-mc-${pr.number}.ok`, { force: true });
+  fastForwardMainCheckout();
   console.log(`next: ship ci-wait ${mergeSha} --push`);
   return EXIT.ok;
 }
@@ -2133,6 +2197,7 @@ const COMMANDS = {
     snapshot,
     "session start: snapshot ~/.bdg and ~/Downloads (gate 8); --accept <name>… adds a user's own ~/Downloads or ~/.bdg file to the snapshot; --accept-live accepts all files of the user's live session in ~/.bdg, and its session files written later",
   ],
+  simplify: [simplify, "<pr>: the PR's worktree, base and diff file, and the args for the orchestrator's /simplify pass"],
   fixtures: [
     fixtures,
     '<N> [dir=<worktree>] | <N> --stop: the fixture servers for a tester, from ../bdg-<N>; ship merge stops them',
