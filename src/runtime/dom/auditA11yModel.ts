@@ -22,7 +22,7 @@ export type A11yReason =
 /** An element a rule flags; `backendNodeId` is missing for page-level findings */
 export interface A11yHit {
   rule: A11yRuleId;
-  backendNodeId?: number;
+  backendNodeId?: number | undefined;
   reason: A11yReason;
 }
 
@@ -190,19 +190,13 @@ function headingHits(visits: Visit[]): A11yHit[] {
   let h1Seen = 0;
   for (const node of headings) {
     const level = headingLevel(node);
-    if (level === 1 && ++h1Seen > 1) {
-      hits.push({
-        rule: 'heading-order',
-        ...(node.backendDOMNodeId !== undefined && { backendNodeId: node.backendDOMNodeId }),
-        reason: { kind: 'extra-h1', total: h1Total },
-      });
-    } else if (previous > 0 && level > previous + 1) {
-      hits.push({
-        rule: 'heading-order',
-        ...(node.backendDOMNodeId !== undefined && { backendNodeId: node.backendDOMNodeId }),
-        reason: { kind: 'skipped-level', level, previous },
-      });
-    }
+    const reason: A11yReason | undefined =
+      level === 1 && ++h1Seen > 1
+        ? { kind: 'extra-h1', total: h1Total }
+        : previous > 0 && level > previous + 1
+          ? { kind: 'skipped-level', level, previous }
+          : undefined;
+    if (reason) hits.push({ rule: 'heading-order', backendNodeId: node.backendDOMNodeId, reason });
     previous = level;
   }
   return hits;
@@ -220,17 +214,9 @@ export function findAxHits(nodes: AxNode[], options: { page: boolean }): A11yHit
   const { hits, outside } = nodeHits(visits, options.page);
   if (!options.page) return hits;
   const hasMain = visits.some(({ node }) => !node.ignored && roleOf(node) === 'main');
-  return [
-    ...hits,
-    ...headingHits(visits),
-    ...(hasMain ? [] : [{ rule: 'landmarks' as const, reason: { kind: 'no-main' as const } }]),
-    ...(outside > 0
-      ? [
-          {
-            rule: 'landmarks' as const,
-            reason: { kind: 'outside-landmark' as const, holders: outside },
-          },
-        ]
-      : []),
-  ];
+  hits.push(...headingHits(visits));
+  if (!hasMain) hits.push({ rule: 'landmarks', reason: { kind: 'no-main' } });
+  if (outside > 0)
+    hits.push({ rule: 'landmarks', reason: { kind: 'outside-landmark', holders: outside } });
+  return hits;
 }

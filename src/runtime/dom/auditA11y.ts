@@ -10,6 +10,7 @@ import {
   A11Y_RULES,
   type A11yRuleId,
   type AuditA11yElement,
+  type AuditA11yRule,
   type AuditResult,
 } from '@/ipc/protocol/auditTypes.js';
 import { findAxHits, type A11yHit, type A11yReason } from '@/runtime/dom/auditA11yModel.js';
@@ -60,7 +61,7 @@ export const A11Y_IDS_JS = `function (limit, cap) {
     const refs = [];
     for (const el of root.querySelectorAll('*')) {
       if (++walked > cap) { capped = true; break; }
-      if (el.id) byId.set(el.id, (byId.get(el.id) || []).concat(el));
+      if (el.id) { if (!byId.has(el.id)) byId.set(el.id, []); byId.get(el.id).push(el); }
       for (const attribute of ['aria-labelledby', 'aria-describedby']) {
         if (el.hasAttribute(attribute)) refs.push({ el: el, attribute: attribute });
       }
@@ -114,12 +115,18 @@ async function treeNodes(
  * @returns Hits and whether frames were left out
  */
 async function collectAxHits(cdp: CDPConnection): Promise<{ hits: A11yHit[]; truncated: boolean }> {
-  const { frameTree } = await sendTyped(cdp, 'Page.getFrameTree');
+  const [{ frameTree }, pageNodes] = await Promise.all([
+    sendTyped(cdp, 'Page.getFrameTree'),
+    treeNodes(cdp),
+  ]);
   const frames = childFrameIds(frameTree);
-  const hits = findAxHits(await treeNodes(cdp), { page: true });
-  for (const frameId of frames.slice(0, A11Y_FRAME_CAP)) {
-    hits.push(...findAxHits(await treeNodes(cdp, frameId), { page: false }));
-  }
+  const frameNodes = await Promise.all(
+    frames.slice(0, A11Y_FRAME_CAP).map((frameId) => treeNodes(cdp, frameId))
+  );
+  const hits = [
+    ...findAxHits(pageNodes, { page: true }),
+    ...frameNodes.flatMap((nodes) => findAxHits(nodes, { page: false })),
+  ];
   return { hits, truncated: frames.length > A11Y_FRAME_CAP };
 }
 
@@ -153,11 +160,20 @@ async function hitElement(cdp: CDPConnection, hit: A11yHit): Promise<AuditA11yEl
   const detail = a11yDetail(hit.reason);
   if (hit.backendNodeId === undefined) return { element: PAGE_ELEMENT, detail };
   const selector = await selectorOfNode(cdp, hit.backendNodeId);
-  if (selector) return { element: selector, detail };
-  return {
-    element: await elementLabel(cdp, hit.backendNodeId),
-    detail: `${detail} ${a11yNoSelectorNote()}`,
-  };
+  return selector
+    ? { element: selector, detail }
+    : unselectable(await elementLabel(cdp, hit.backendNodeId), detail);
+}
+
+/**
+ * An element no selector finds alone: its label, and a note saying so.
+ *
+ * @param label - `tag#id` or `tag`
+ * @param detail - What the rule found
+ * @returns The listed element
+ */
+function unselectable(label: string, detail: string): AuditA11yElement {
+  return { element: label, detail: `${detail} ${a11yNoSelectorNote()}` };
 }
 
 /**
@@ -193,25 +209,22 @@ export async function auditA11y(
 ): Promise<NonNullable<AuditResult['a11y']>> {
   await sendTyped(cdp, 'Accessibility.enable', {});
   try {
-    const { hits, truncated } = await collectAxHits(cdp);
-    const ids = await scanIds(cdp, limit);
-    const counts = new Map<A11yRuleId, number>();
-    const listed = new Map<A11yRuleId, AuditA11yElement[]>();
-    for (const hit of hits) {
-      counts.set(hit.rule, (counts.get(hit.rule) ?? 0) + 1);
-      if ((listed.get(hit.rule)?.length ?? 0) >= limit) continue;
-      listed.set(hit.rule, [...(listed.get(hit.rule) ?? []), await hitElement(cdp, hit)]);
-    }
-    const idElements = (ids?.issues ?? []).map((issue) => ({
-      element: issue.selector ?? issue.tag + (issue.id ? `#${issue.id}` : ''),
-      detail: a11yDetail(issue.reason) + (issue.selector ? '' : ` ${a11yNoSelectorNote()}`),
-    }));
+    const [{ hits, truncated }, ids] = await Promise.all([collectAxHits(cdp), scanIds(cdp, limit)]);
+    const idElements = (ids?.issues ?? []).map((issue) =>
+      issue.selector
+        ? { element: issue.selector, detail: a11yDetail(issue.reason) }
+        : unselectable(issue.tag + (issue.id ? `#${issue.id}` : ''), a11yDetail(issue.reason))
+    );
+    const ruleEntry = async (id: A11yRuleId): Promise<AuditA11yRule> => {
+      if (id === 'duplicate-id') return { id, count: ids?.total ?? 0, elements: idElements };
+      const ruleHits = hits.filter((hit) => hit.rule === id);
+      const elements = await Promise.all(
+        ruleHits.slice(0, limit).map((hit) => hitElement(cdp, hit))
+      );
+      return { id, count: ruleHits.length, elements };
+    };
     return {
-      rules: A11Y_RULES.map((id) => ({
-        id,
-        count: id === 'duplicate-id' ? (ids?.total ?? 0) : (counts.get(id) ?? 0),
-        elements: id === 'duplicate-id' ? idElements : (listed.get(id) ?? []),
-      })),
+      rules: await Promise.all(A11Y_RULES.map(ruleEntry)),
       ...((truncated || ids?.capped) && { truncated: true as const }),
     };
   } finally {
