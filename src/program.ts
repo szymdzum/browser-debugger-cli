@@ -37,8 +37,9 @@ function addGlobalOptions(command: Command): void {
 
 /**
  * Build the bdg program with every command registered (and the old
- * spellings of the rename table, hidden), without parsing anything. Commander errors throw instead of exiting; the output
- * configuration is set before commands are registered so they inherit it.
+ * spellings of the rename table, hidden), without parsing anything.
+ * Commander errors throw instead of exiting; the output configuration is set
+ * before commands are registered so they inherit it.
  *
  * @param output - Where Commander writes help and errors
  * @returns Root command

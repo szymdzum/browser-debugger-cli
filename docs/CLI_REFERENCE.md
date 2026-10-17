@@ -1900,6 +1900,8 @@ page, a timeout) print an error envelope per refresh and are retried.
 
 Put `--json` after the command (`bdg peek --json`); `bdg --json peek` also works.
 
+Bare `bdg --json` (or `-j`, with no command and no URL) is an error envelope: `success: false`, exit 81, suggesting `bdg <url>` and `bdg --help --json`. An empty `$URL` in `bdg $URL --json` therefore fails loudly instead of printing the help document; `bdg --help --json` is the machine-readable help.
+
 ### Warnings
 
 `warning` (one string) says how the command ran despite something unusual, for example `--include-sensitive` output that holds credentials. `warnings` (an array of strings) says the command line used an old spelling that still works until 1.0, one text per spelling:
@@ -1926,8 +1928,6 @@ Old spellings are hidden from `--help`, `--help --json` and "Did you mean" sugge
 | `bdg stop --kill-chrome` | deprecated | `bdg stop` (it already closes the Chrome bdg launched; `--kill-chrome` still exits 81 on an attached session) |
 | `bdg <url> --compact` | removed | Drop it (it had no effect) |
 | `bdg cleanup --remove-output` | removed | Drop it (bdg no longer writes `session.json`) |
-
-Bare `bdg --json` (or `-j`, with no command and no URL) is an error envelope: `success: false`, exit 81, suggesting `bdg <url>` and `bdg --help --json`. An empty `$URL` in `bdg $URL --json` therefore fails loudly instead of printing the help document; `bdg --help --json` is the machine-readable help.
 
 ### Machine-readable help
 
