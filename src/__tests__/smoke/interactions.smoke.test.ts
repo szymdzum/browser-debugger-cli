@@ -1121,7 +1121,7 @@ void describe('DOM interactions', () => {
     assert.match(await bdg(['dom', 'get', '55']), /\[Link\] "Link 55"/);
   });
 
-  void it('dom get takes --index (and --nth), and reads the body without a selector', async () => {
+  void it('dom get takes --index (and the deprecated --nth), and reads the body without a selector', async () => {
     assert.match(await bdg(['dom', 'get', 'a', '--index', '2']), /^\[Link\] "Link 2"/);
     assert.match(await bdg(['dom', 'get', 'a', '--nth', '3']), /^\[Link\] "Link 3"/);
     assert.match(await bdg(['dom', 'get', 'a', '--index', '1', '--raw']), /href="#l1"/);
