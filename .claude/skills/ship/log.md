@@ -93,6 +93,12 @@ One row per merged PR, appended with `ship log <pr> …` right after the merge. 
 | 2026-10-17 | #819 | - | 3 | 0/2/4 | 0 | 1 | opus | ~200k | rename table + warnings envelope; D2 deprecated, D1 removed (81); simplify found silent command stub + cross-parent path; red commit failed type-check (rewritten); contract test built its own session dir (merge-check caught) |
 | 2026-10-17 | #821 | - | 2 | 0/1/4 | 0 | 1 | sonnet | ~100k | D14 backendNodeId (query, get --raw; default dom get view keeps nodeId=a11y id + backendDOMNodeId), D10 newest/first wording, D3 peek note; rebase after #819 hid tail from help json |
 | 2026-10-17 | #822 | - | 2 | 0/1/3 | 0 | 2 | sonnet | ~165k | D4+D13: eval, dom press-key, network cookies canonical, old names deprecated rows; adjacent: usage errors on old spellings now warn + name the new path; hideCommand uses commander _hidden (guarded by tests) |
+| 2026-10-17 | #824 | - | 2 | 0/3/2 | 0 | 1 | sonnet | ~520k | D7 D8 D9: --stop-after, --capture-all, cleanup -f rows; short-only row; old+new conflict only on different values (review caught changed exit code for cleanup --aggressive --force); /simplify after fix round (179 lines): one parseStopAfter; my simplify edit missed prettier |
+| 2026-10-17 | #826 | - | 2 | 0/0/2 | skipped | 0 | sonnet | ~130k | Q1 warning→warnings in the two envelope builders, newline split, old-spelling first; Q4 ndjson level docs; CLAUDE.md line by orchestrator; no fresh-agent test (value of an existing --json field) |
+| 2026-10-17 | #825 | - | 2 | 0/3/3 | 0 | 2 | sonnet | ~690k | D6 D11: network/console details, console --page, details + -H rows (value field); /simplify (454 lines) → details option helper; rebase folded passValue into #824's passToNewOption; rebase broke one docs row (caught by re-check) |
+| 2026-10-17 | #827 | - | 2 | 0/0/2 | 0 | 1 | sonnet | ~270k | D5 D12: network document + dom audit --level rows; rebase onto 3 merged PRs; nits: one runHeaders |
+| 2026-10-17 | #828 | - | 1 | 0/3/2 | no | 1 | orchestrator | ~60k | docs sweep: old names only in the deprecations section; review found --timeout note, a self-referring eval aside and the silent --nth alias (→ owner: deprecated row, #829) |
+| 2026-10-17 | #829 | - | 2 | 0/0/2 | 0 | 0 | sonnet | ~160k | --nth deprecated row (owner decision mid-session, found by the docs-sweep review); dom get's own --index/--nth conflict replaced by the table rule |
 
 ## Escaped
 
