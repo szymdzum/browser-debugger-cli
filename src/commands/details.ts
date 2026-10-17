@@ -277,6 +277,7 @@ function usageFailure(error: string): CommandResult<never> {
 
 /**
  * Register `details` on `network` or `console`: the item's id is its argument.
+ * `--json` and `--include-sensitive` given to `console` before `details` count too.
  *
  * @param parent - The `network` or `console` command
  * @param type - What it shows details of
@@ -298,7 +299,14 @@ export function registerDetailsSubcommand(parent: Command, type: 'network' | 'co
   command
     .addOption(includeSensitiveOption())
     .action(async (id: string, options: DetailsCommandOptions) => {
-      await runDetails({ ...options, type, id });
+      const inherited = parent.opts<Pick<DetailsCommandOptions, 'json' | 'includeSensitive'>>();
+      await runDetails({
+        ...options,
+        json: options.json || inherited.json === true,
+        ...((options.includeSensitive || inherited.includeSensitive) && { includeSensitive: true }),
+        type,
+        id,
+      });
     });
 }
 

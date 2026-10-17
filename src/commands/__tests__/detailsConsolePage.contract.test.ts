@@ -134,6 +134,15 @@ void describe('renamed spellings: new, old, human and --json', () => {
   }
 });
 
+void describe('options given to console before details', () => {
+  void it('console --json details 0 answers with the --json envelope', async () => {
+    const before = await runCli(['console', '--json', 'details', '0']);
+    const after = await runCli(['console', 'details', '0', '--json']);
+    assert.equal(before.status, after.status, before.stderr);
+    assert.deepEqual(envelope(before.stdout), envelope(after.stdout));
+  });
+});
+
 void describe('console --page', () => {
   void it('takes current and all in any case', async () => {
     const reference = await runCli(['console']);
