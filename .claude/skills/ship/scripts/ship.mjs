@@ -884,12 +884,18 @@ export function suiteTimes(log) {
 function suiteTimesCommand(argv) {
   const { positional, keys } = parseArgs(argv);
   if (!positional[0]) return usage('suite-times <run id> [<other run id>] [--job=<regex>] [--top=15]');
-  const jobFilter = new RegExp(keys.job ?? 'Smoke');
+  let jobFilter;
+  try {
+    jobFilter = new RegExp(keys.job ?? 'Smoke');
+  } catch (error) {
+    return usage(`suite-times: --job is not a valid regex: ${error.message}`);
+  }
+  const top = Number(keys.top ?? 15) || 15;
   const timesOf = (runId) => {
     const jobs = ghJson(['run', 'view', runId, '--json', 'jobs']).jobs.filter((j) => jobFilter.test(j.name));
     const all = new Map();
     for (const job of jobs) {
-      const log = spawnSync('gh', ['run', 'view', '--job', String(job.databaseId), '--log'], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 }).stdout ?? '';
+      const log = spawnSync('gh', ['run', 'view', '--job', String(job.databaseId), '--log'], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, timeout: WRITE_TIMEOUT_MS }).stdout ?? '';
       const platform = /macOS/.test(job.name) ? 'macOS' : 'Linux';
       for (const [suite, ms] of suiteTimes(log)) all.set(`${suite} [${platform}]`, (all.get(`${suite} [${platform}]`) ?? 0) + ms);
     }
@@ -897,7 +903,7 @@ function suiteTimesCommand(argv) {
   };
   const first = timesOf(positional[0]);
   const second = positional[1] ? timesOf(positional[1]) : null;
-  const rows = [...first].sort((a, b) => b[1] - a[1]).slice(0, Number(keys.top ?? 15));
+  const rows = [...first].sort((a, b) => b[1] - a[1]).slice(0, top);
   for (const [suite, ms] of rows) {
     const other = second?.get(suite);
     console.log(`${(ms / 1000).toFixed(1).padStart(7)} s${second ? ` → ${other === undefined ? '   -' : (other / 1000).toFixed(1).padStart(6)} s` : ''}  ${suite}`);
@@ -1936,7 +1942,9 @@ function orphanWorktreeProcesses(scope) {
 
 /**
  * Processes in `ps -axo pid=,ppid=,command=` output running from a scoped
- * worktree whose PID, and whose parent's PID, no PID file names.
+ * worktree with no PID file on themselves or any ancestor (`cmd & echo $!`
+ * records npx, and the server it starts runs a few levels below). A path
+ * written as `<main>/../bdg-N/` counts as `<parent>/bdg-N/`.
  *
  * @param {string} ps
  * @param {string} parent directory holding the worktrees
@@ -1944,15 +1952,22 @@ function orphanWorktreeProcesses(scope) {
  * @param {Set<number>} pidFiles PIDs read from /tmp/bdg-*.pid
  */
 export function worktreeOrphans(ps, parent, scope, pidFiles) {
-  return ps
+  const procs = ps
     .split('\n')
     .map((line) => /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line))
     .filter(Boolean)
-    .map(([, pid, ppid, command]) => ({ pid: Number(pid), ppid: Number(ppid), command }))
+    .map(([, pid, ppid, command]) => ({ pid: Number(pid), ppid: Number(ppid), command: command.replace(/\/[^/\s]+\/\.\.\//g, '/') }));
+  const parentOf = new Map(procs.map((p) => [p.pid, p.ppid]));
+  const covered = (pid) => {
+    for (let at = pid, hops = 0; at > 1 && hops < 64; at = parentOf.get(at) ?? 0, hops++)
+      if (pidFiles.has(at)) return true;
+    return false;
+  };
+  return procs
     .map((p) => ({ ...p, worktree: new RegExp(`${parent.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/(bdg-[\\w.-]+)/`).exec(p.command)?.[1] }))
     .filter((p) => p.worktree && p.worktree !== 'bdg-verify')
     .filter((p) => !scope || scope.some((n) => p.worktree === `bdg-${n}`))
-    .filter((p) => !pidFiles.has(p.pid) && !pidFiles.has(p.ppid));
+    .filter((p) => !covered(p.pid));
 }
 
 /**

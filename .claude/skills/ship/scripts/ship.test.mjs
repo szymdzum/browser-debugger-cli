@@ -1161,3 +1161,14 @@ test('worktreeOrphans names processes from a scoped worktree that no PID file co
   assert.deepEqual(orphans.map((p) => p.pid), [101]);
   assert.deepEqual(worktreeOrphans(ps, '/dev', undefined, new Set()).map((p) => p.pid), [101, 102, 103]);
 });
+
+test('worktreeOrphans walks up the parents: npx & echo $! covers the server below it', () => {
+  const ps = [
+    '  200     1 npm exec tsx src/__testutils__/serveFixtures.ts',
+    '  201   200 sh -c tsx src/__testutils__/serveFixtures.ts',
+    '  202   201 node /dev/bdg-455/node_modules/.bin/tsx src/__testutils__/serveFixtures.ts',
+    '  203   202 node --import tsx /dev/bdg-455/src/__testutils__/serveFixtures.ts',
+    '  300     1 node /dev/browser-debugger-cli/../bdg-455/dist/index.js',
+  ].join('\n');
+  assert.deepEqual(worktreeOrphans(ps, '/dev', ['455'], new Set([200])).map((p) => p.pid), [300]);
+});
