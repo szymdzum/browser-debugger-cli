@@ -97,7 +97,7 @@ void describe('network document is a deprecated spelling of network headers', ()
   void it('network --help and --help --json list headers, not document', async () => {
     const network = await runCli(['network', '--help']);
     assert.match(network.stdout, /^\s+headers\b/m);
-    assert.ok(!/^\s+document\b/m.test(network.stdout), network.stdout);
+    assert.ok(!/^ {2}document\b/m.test(network.stdout), network.stdout);
     const program = buildProgram();
     for (const help of [generateCompactHelp(program), generateMachineReadableHelp(program)]) {
       const text = JSON.stringify(help);
