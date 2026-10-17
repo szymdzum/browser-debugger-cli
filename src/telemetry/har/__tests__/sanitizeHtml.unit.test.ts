@@ -1,6 +1,6 @@
 /**
  * Form-control values in HTML bodies (#634): the default HAR and
- * `details network --body` mask the `value` of secret-named, hidden and
+ * `network details --body` mask the `value` of secret-named, hidden and
  * password inputs and the text of a secret-named textarea, keep every other
  * value and inline scripts, and `--include-sensitive` keeps everything; the
  * same text under a non-HTML type is left alone.
@@ -161,7 +161,7 @@ void describe('HTML bodies: HAR with --include-sensitive', () => {
   }
 });
 
-void describe('HTML bodies: details network --body', () => {
+void describe('HTML bodies: network details --body', () => {
   for (const row of HTML_SECRET_ROWS) {
     test(`${row.kept ? 'keeps' : 'masks'} ${row.name}`, () => {
       const { value, masked } = maskNetworkRequest(documentRequest(page(row.html)));

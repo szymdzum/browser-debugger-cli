@@ -1,5 +1,5 @@
 /**
- * Response bodies in `details network`: the default cap, `--body-max`,
+ * Response bodies in `network details`: the default cap, `--body-max`,
  * `--no-body`, and why `--body` has nothing to print.
  */
 

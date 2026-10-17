@@ -68,7 +68,7 @@ export const NETWORK_BEHAVIORS: BehaviorTable = {
     whenEnabled:
       'Prints only the response body, whole, for piping (no newline added; control characters escaped only on a terminal); in an HTML body the values of secret form controls are •••• (inline scripts as captured) unless --include-sensitive. Binary bodies come base64-encoded (hint on stderr). --json: data { type: "network-body", requestId, body, bodyLength, base64Encoded?, mimeType? }. --body-max caps it (bodyTruncated: true; on stderr: body cut at N of M characters (--body-max 0 for all))',
     automaticBehavior:
-      'A request without a body to print exits 83 and says why: not captured (binary bodies such as images and fonts are skipped unless the session started with --capture-all; past the session body budget it was evicted), still loading, a WebSocket (messages, not a body), the response has no body (HEAD, 204, 205, 304), or none captured (redirects, failed requests). Network only (details console exits 81)',
+      'A request without a body to print exits 83 and says why: not captured (binary bodies such as images and fonts are skipped unless the session started with --capture-all; past the session body budget it was evicted), still loading, a WebSocket (messages, not a body), the response has no body (HEAD, 204, 205, 304), or none captured (redirects, failed requests). Network only (console details exits 81)',
     tokenImpact:
       'Whole body: a large HTML document is hundreds of KB. Use --body-max or pipe through head/jq',
   },
