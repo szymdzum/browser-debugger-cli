@@ -164,7 +164,7 @@ Local dev servers with self-signed certificates: `bdg https://localhost:5173 --c
 |---|---|
 | **Page** | navigate, reload, back/forward, viewport, phone (`--mobile`) and color-scheme emulation |
 | **Interaction** | click (double, right), fill (React-compatible, file inputs), hover, keys, forms, scroll, wait; shadow DOM and iframes included |
-| **Inspection** | element styles with the CSS cascade, layout and visibility, page-wide audits (contrast, overflow, layers, animations), stylesheet search, accessibility tree, event listeners, screenshots |
+| **Inspection** | element styles with the CSS cascade, layout and visibility, page-wide audits (contrast, overflow, layers, animations, accessibility rules), stylesheet search, accessibility tree, event listeners, screenshots |
 | **Telemetry** | network requests and headers (incl. `Authorization`), HAR export, cookies (incl. `HttpOnly`), console messages, live `peek --follow` |
 | **Accessibility** | accessibility tree, semantic queries (`role:button name:Submit`), contrast checks |
 | **Performance** | metrics, CPU and heap profiling, tracing, CPU and network throttling (raw CDP) |
