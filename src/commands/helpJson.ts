@@ -5,7 +5,6 @@
 import type { Command, Option, Argument } from 'commander';
 import type { EventEmitter } from 'node:events';
 
-
 import { getAllDomainSummaries } from '@/cdp/schema.js';
 import { getOptionBehavior } from '@/commands/optionBehaviors.js';
 import { currentOptions, currentSubcommands } from '@/commands/shared/renamedNames.js';
