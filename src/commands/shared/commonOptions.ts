@@ -65,11 +65,11 @@ export const SELECTOR_OR_INDEX_ARGUMENT = `CSS selector (${SELECTOR_SCOPE}) or n
 
 /** Help text after `dom query`'s options: what the node id in --json is */
 export const NODE_ID_HELP = `
-backendNodeId in --json is the backend node id: pass it to CDP as backendNodeId
-(bdg cdp DOM.resolveNode --params '{"backendNodeId":N}') or to dom get --node-id.
-nodeId (dom query, dom get --raw) has the same value and stays until 1.0; use
-backendNodeId. In dom a11y output nodeId is the accessibility node id (a string)
-and backendDOMNodeId is the DOM one.`;
+backendNodeId in --json (dom query, dom get --raw) is the backend node id: pass it
+to CDP as backendNodeId (bdg cdp DOM.resolveNode --params '{"backendNodeId":N}')
+or to dom get --node-id. nodeId there has the same value and stays until 1.0.
+In the default dom get view and in dom a11y output nodeId is the accessibility
+node id (a string) and backendDOMNodeId is the backend one.`;
 
 /** Help text after `dom query`'s options: what selectors search and what they cannot */
 export const SELECTOR_SCOPE_HELP = `

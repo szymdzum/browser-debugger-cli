@@ -30,6 +30,20 @@ interface HelpNode {
 
 type Idd = Record<string, unknown>;
 
+/** Every command option named `--last` or `--limit`, sorted */
+const EXPECTED_PATHS = [
+  'console --last',
+  'css search --limit',
+  'dom a11y query --limit',
+  'dom a11y tree --limit',
+  'dom audit --limit',
+  'dom query --limit',
+  'dom screenshot --limit',
+  'network list --last',
+  'peek --last',
+  'tail --last',
+].sort();
+
 /**
  * Run a bdg command and assert it succeeded.
  *
@@ -55,13 +69,15 @@ async function dataOf<T>(args: string[]): Promise<T> {
 }
 
 /**
- * Every command node under a root.
+ * Every command node under a root, with its path below the root.
  *
  * @param node - Tree root
+ * @param parent - Path of the parent (empty at the root)
  * @returns The node and all its descendants
  */
-function flatten(node: HelpNode): HelpNode[] {
-  return [node, ...(node.subcommands ?? []).flatMap(flatten)];
+function flatten(node: HelpNode, parent = ''): Array<HelpNode & { path: string }> {
+  const path = `${parent} ${node.name}`.trim();
+  return [{ ...node, path }, ...(node.subcommands ?? []).flatMap((s) => flatten(s, path))];
 }
 
 /**
@@ -85,7 +101,7 @@ void describe('backendNodeId in dom query and dom get (#465 D14)', () => {
     await cleanupAllSessions();
     fixture = await startFixtureServer();
     const port = await getFreePort();
-    await bdg([`${fixture.url}dom-get-context`, '--port', String(port), '--headless']);
+    await bdg([`${fixture.url}backend-node-id`, '--port', String(port), '--headless']);
   });
 
   after(async () => {
@@ -93,53 +109,54 @@ void describe('backendNodeId in dom query and dom get (#465 D14)', () => {
     await fixture.close();
   });
 
-  void it('is next to nodeId on every dom query match', async () => {
-    const data = await dataOf<{ nodes: Idd[] }>(['dom', 'query', 'p']);
-    assert.equal(data.nodes.length, 2);
-    assertBackendIds(data.nodes, 'dom query p');
+  void it('is next to nodeId on every dom query match, frame and shadow root included', async () => {
+    const data = await dataOf<{ nodes: Idd[] }>(['dom', 'query', '.t']);
+    assert.equal(data.nodes.length, 4);
+    assertBackendIds(data.nodes, 'dom query .t');
   });
 
   void it('is next to nodeId on dom get --raw, single, --all and by index', async () => {
-    for (const args of [
-      ['dom', 'get', '#x', '--raw'],
-      ['dom', 'get', 'p', '--raw', '--all'],
-      ['dom', 'get', '0', '--raw'],
-    ]) {
-      assertBackendIds((await dataOf<{ nodes: Idd[] }>(args)).nodes, args.join(' '));
+    for (const [args, count] of [
+      [['dom', 'get', '.t', '--raw'], 1],
+      [['dom', 'get', '.t', '--raw', '--all'], 4],
+      [['dom', 'get', '0', '--raw'], 1],
+      [['dom', 'get', '3', '--raw'], 1],
+    ] as const) {
+      const { nodes } = await dataOf<{ nodes: Idd[] }>([...args]);
+      assert.equal(nodes.length, count, args.join(' '));
+      assertBackendIds(nodes, args.join(' '));
     }
   });
 
-  void it('is the backend id on the semantic dom get node, by selector and index', async () => {
-    const [match] = (await dataOf<{ nodes: Idd[] }>(['dom', 'query', '#x'])).nodes;
-    for (const target of ['#x', '0']) {
-      const data = await dataOf<{ node: Idd }>(['dom', 'get', target]);
-      assert.equal(data.node['backendNodeId'], match?.['nodeId'], `dom get ${target}`);
+  void it('leaves the semantic dom get node to its accessibility id and backendDOMNodeId', async () => {
+    const [match] = (await dataOf<{ nodes: Idd[] }>(['dom', 'query', '.t'])).nodes;
+    for (const target of ['.t', '0']) {
+      const { node } = await dataOf<{ node: Idd }>(['dom', 'get', target]);
+      assert.equal(node['backendDOMNodeId'], match?.['nodeId'], `dom get ${target}`);
+      assert.equal('backendNodeId' in node, false, `dom get ${target}: no backendNodeId`);
     }
   });
 });
 
 void describe('--last and --limit wording in --help --json (#465 D10)', () => {
-  void it('says newest for every --last and first for every --limit', async () => {
+  void it('says "newest N" for every --last and "first N" for every --limit', async () => {
     const result = await runCommand('--help', ['--json', '--full'], { timeout: 30000 });
     const root = (JSON.parse(result.stdout) as { command: HelpNode }).command;
-    let seen = 0;
+    const seen: string[] = [];
     for (const command of flatten(root)) {
       for (const option of command.options ?? []) {
-        const word = /^--last\b|, --last\b/.test(option.flags)
-          ? 'newest'
-          : /^--limit\b|, --limit\b/.test(option.flags)
-            ? 'first'
+        const flag = option.flags.match(/--(?:last|limit)/)?.[0];
+        const phrase = /(^|, )--last\b/.test(option.flags)
+          ? /newest N/
+          : /(^|, )--limit\b/.test(option.flags)
+            ? /first N/i
             : undefined;
-        if (!word) continue;
-        seen += 1;
-        assert.match(
-          option.description,
-          new RegExp(word, 'i'),
-          `${command.name} ${option.flags}: ${option.description}`
-        );
+        if (!phrase) continue;
+        seen.push(`${command.path.replace(/^bdg /, '')} ${flag}`);
+        assert.match(option.description, phrase, `${command.name} ${option.flags}`);
       }
     }
-    assert.ok(seen >= 10, `options checked: ${seen}`);
+    assert.deepEqual(seen.sort(), EXPECTED_PATHS);
   });
 });
 

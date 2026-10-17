@@ -170,7 +170,6 @@ async function handleSemanticGet(
       origin = elementOrigin;
       const data: WithIndexSource<SemanticNodeWithContext> = {
         ...element,
-        node: { ...element.node, backendNodeId: nodeId },
         ...(indexSource && { indexSource }),
       };
       return { success: true, data };

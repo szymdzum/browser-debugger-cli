@@ -613,7 +613,7 @@ export interface DomQueryResult {
     index: number;
     /** Backend node id (stable while the element exists; 0 if unknown) */
     backendNodeId?: number;
-    /** Same as `backendNodeId`; kept until 1.0 */
+    /** Same value as `backendNodeId`; kept until 1.0 */
     nodeId: number;
     tag?: string;
     /** `id`, `name` and `type` attributes, when present */

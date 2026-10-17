@@ -34,7 +34,7 @@ export const DOM_READ_BEHAVIORS: BehaviorTable = {
     whenEnabled:
       'Reads the element with this backend node id and prints its raw HTML (implies --raw)',
     automaticBehavior:
-      'The id is backendNodeId in --json of dom query/get (nodeId there has the same value, kept until 1.0) and backendDOMNodeId in --json of dom a11y describe/query (not the string nodeId of a11y output); it is the backendNodeId of CDP (DOM.resolveNode)',
+      'The id is backendNodeId in --json of dom query and dom get --raw (nodeId there has the same value, kept until 1.0), and backendDOMNodeId in --json of the default dom get view and of dom a11y describe/query (not the string nodeId of a11y output); it is the backendNodeId of CDP (DOM.resolveNode)',
   },
   'get:--index': {
     default: 'Returns the first matching element (body without a selector)',

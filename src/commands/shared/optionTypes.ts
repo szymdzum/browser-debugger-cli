@@ -445,7 +445,7 @@ import type { ColorScheme, ConsoleLevel, ViewportSize } from '@/types.js';
  * By default shows only current navigation; use --history for all.
  */
 export interface ConsoleCommandOptions extends BaseOptions {
-  /** Show last N messages (string from CLI, 0 = all, default: 100) */
+  /** Show the newest N messages (string from CLI, 0 = all, default: 100) */
   last?: string;
   /** List all messages chronologically (default: smart summary) */
   list?: boolean;
@@ -484,7 +484,7 @@ export interface PreviewDisplayOptions {
  */
 export interface PeekCommandOptions
   extends BaseOptions, PreviewDisplayOptions, SensitiveUrlOptions {
-  /** Show last N items (string from CLI, default: 10) */
+  /** Show the newest N items (string from CLI, default: 10) */
   last?: string;
   /** Filter network requests by resource type (comma-separated) */
   type?: string;
@@ -499,7 +499,7 @@ export interface PeekCommandOptions
  * Includes preview options plus last count and update interval.
  */
 export interface TailCommandOptions extends BaseOptions, Omit<PreviewDisplayOptions, 'follow'> {
-  /** Show last N items (string from CLI, default: 10) */
+  /** Show the newest N items (string from CLI, default: 10) */
   last?: string;
   /** Update interval in milliseconds (string from CLI, default: 1000) */
   interval?: string;

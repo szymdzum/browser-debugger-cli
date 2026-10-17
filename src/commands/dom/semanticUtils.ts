@@ -18,8 +18,7 @@ import { elementTextLine, emptyElementLine } from '@/ui/messages/commands.js';
  * Accessibility node paired with its surrounding DOM context for display.
  */
 export interface SemanticNodeWithContext {
-  /** The accessibility node; `backendNodeId` is the DOM node's backend id (`dom get` adds it) */
-  node: A11yNode & { backendNodeId?: number };
+  node: A11yNode;
   domContext: DomContext | null;
 }
 

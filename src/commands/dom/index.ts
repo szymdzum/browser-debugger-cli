@@ -140,7 +140,7 @@ export function registerDomCommands(program: Command): void {
     .addOption(new Option('--nth <n>', 'Alias of --index').argParser(integerOption(0)).hideHelp())
     .option(
       '--node-id <id>',
-      'Get the element with this backend node id (nodeId in --json of dom query/get, backendDOMNodeId in --json of dom a11y describe/query; implies --raw)',
+      'Get the element with this backend node id (backendNodeId in --json of dom query and dom get --raw, backendDOMNodeId in --json of dom a11y describe/query; implies --raw)',
       integerOption(1)
     )
     .option('-j, --json', 'Output as JSON')
