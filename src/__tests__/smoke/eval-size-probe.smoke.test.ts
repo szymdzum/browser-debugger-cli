@@ -20,8 +20,17 @@ import {
 const FAST_MS = 30_000;
 
 /**
+ * Bound for a lost result: about 1 s check + 4 s grace (7 s locally), and well
+ * under the 20 s eval limit it would fall back to if the lost-result check
+ * never fired, so the tests fail when it does not.
+ */
+const LOST_MS = 12_000;
+
+/**
  * How long a lost result's answer gets after the page answered the check
- * (production: 12 s). The results here are lost or small, so none needs it.
+ * (production: 12 s). It only affects lost-answer timing; the lost-result
+ * tests rely on it being well under the 20 s eval limit ({@link LOST_MS}).
+ * The results here are lost or small, so none needs it.
  */
 const UNSENT_GRACE_MS = '4000';
 
@@ -63,10 +72,10 @@ void describe('dom eval size probe', () => {
   void it('a 300 MB string fails within seconds, with and without --full', async () => {
     const plain = await timedEval(`'x'.repeat(300e6)`);
     assert.equal(plain.exitCode, 102, plain.stderr.slice(0, 200));
-    assert.ok(plain.ms < FAST_MS, `${plain.ms} ms`);
+    assert.ok(plain.ms < LOST_MS, `${plain.ms} ms`);
     const full = await timedEval(`'x'.repeat(300e6)`, ['--full']);
     assert.equal(full.exitCode, 81, full.stderr.slice(0, 200));
-    assert.ok(full.ms < FAST_MS, `${full.ms} ms`);
+    assert.ok(full.ms < LOST_MS, `${full.ms} ms`);
   });
 
   void it('a 300 MB Map fails within seconds, with and without --full', async () => {
@@ -77,7 +86,7 @@ void describe('dom eval size probe', () => {
         [81, 102].includes(result.exitCode),
         `${result.exitCode}: ${result.stderr.slice(0, 200)}`
       );
-      assert.ok(result.ms < FAST_MS, `${result.ms} ms`);
+      assert.ok(result.ms < LOST_MS, `${result.ms} ms`);
     }
   });
 

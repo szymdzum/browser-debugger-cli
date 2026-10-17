@@ -40,9 +40,17 @@ const SHORT_LOOP_MS = 3_000;
 
 /**
  * How long a lost result's answer gets after the page answered the check
- * (production: 12 s)
+ * (production: 12 s). It only affects lost-answer timing; the lost-result
+ * tests rely on it being well under the 20 s eval limit ({@link LOST_MS}).
  */
 const UNSENT_GRACE_MS = '4000';
+
+/**
+ * Bound for an eval whose result is lost: about 1 s check + 4 s grace (5 s in),
+ * well under the 20 s limit it would fall back to if the lost-result check
+ * never fired
+ */
+const LOST_MS = 12_000;
 
 /**
  * How long another client's script runs while an eval's result is lost: it
@@ -315,6 +323,7 @@ void describe('Interrupted dom eval', () => {
   for (const full of [false, true]) {
     void it(`never stops another client's script after an eval whose result was lost${full ? ' (--full)' : ''}`, async () => {
       const armed = full ? 'lost-full-armed' : 'lost-armed';
+      const lostStartedAt = Date.now();
       const lost = startEval(
         `setTimeout(() => { const r = new XMLHttpRequest(); r.open('GET', '/beacon?${armed}', false); r.send(); }, 2000); 'x'.repeat(300e6)`,
         undefined,
@@ -324,6 +333,8 @@ void describe('Interrupted dom eval', () => {
       const other = startEval(loopScript(`${armed}-loop`, OTHER_LOOP_MS));
       await untilBeacon(`${armed}-loop`);
       const lostResult = await lost;
+      const lostAfter = Date.now() - lostStartedAt;
+      assert.ok(lostAfter < LOST_MS, `the lost result took ${lostAfter} ms (limit ${LOST_MS} ms)`);
       assert.equal(lostResult.exitCode, full ? 81 : 102, shown(lostResult));
       const survivor = await other;
       assert.equal(survivor.exitCode, 0, shown(survivor));
