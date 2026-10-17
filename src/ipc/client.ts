@@ -614,7 +614,7 @@ export async function domLayout(
   return sendCommand('dom_layout', params);
 }
 
-/** Page-wide checks: contrast, overflow, layers, animations. */
+/** Page-wide checks: contrast, overflow, layers, animations, a11y. */
 export async function domAudit(
   params: NoType<(typeof COMMANDS)['dom_audit']['requestSchema']>
 ): Promise<ClientResponse<'dom_audit'>> {

@@ -94,9 +94,10 @@ void describe('dom audit a11y', () => {
     const all = JSON.parse(await bdg(['dom', 'audit', '--json'])) as A11yJson;
     assert.ok(all.data.checks.includes('a11y'));
     assert.equal(all.data.a11y.rules.length, 5);
-    assert.deepEqual(JSON.parse(await bdg(['dom', 'audit', 'a11y', '--json'])).data.checks, [
-      'a11y',
-    ]);
+    assert.deepEqual(
+      (JSON.parse(await bdg(['dom', 'audit', 'a11y', '--json'])) as A11yJson).data.checks,
+      ['a11y']
+    );
     for (const element of ['#pic', '#plain', '#icon']) {
       assert.match(await bdg(['dom', 'a11y', 'describe', element]), /\w/);
       assert.match(await bdg(['dom', 'get', element]), /\w/);

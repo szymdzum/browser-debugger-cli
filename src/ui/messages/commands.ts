@@ -6,6 +6,7 @@
  */
 
 import type { ErrorWithSuggestion } from '@/errors/messages.js';
+import type { A11yRuleId } from '@/ipc/protocol/auditTypes.js';
 import type { DomFrame, PageLoadingState, PendingRequestInfo } from '@/ipc/protocol/commands.js';
 import type {
   ActionError,
@@ -29,6 +30,7 @@ import type {
 } from '@/ipc/protocol/domTypes.js';
 import type { InspectVisibility } from '@/ipc/protocol/inspectTypes.js';
 import type { OpenedTab, TabInfo, TabRef, TabSwitchInfo } from '@/ipc/protocol/tabTypes.js';
+import type { A11yReason } from '@/runtime/dom/auditA11yModel.js';
 import { MASKED_VALUE } from '@/runtime/dom/elementInfo.js';
 import type { DelegationNote } from '@/runtime/dom/listenerSummary.js';
 import type { WaitCondition, WaitSnapshot } from '@/runtime/dom/waitCondition.js';
@@ -834,6 +836,79 @@ export function auditUncertainContrastNote(count: number): string {
  */
 export function auditCanvasNote(count: number): string {
   return `(+ ${count} canvas ${count === 1 ? 'element' : 'elements'}: animations drawn by scripts on ${count === 1 ? 'it are' : 'them are'} not listed)`;
+}
+
+/** Fix hint per `dom audit a11y` rule */
+export const A11Y_RULE_HINTS: Readonly<Record<A11yRuleId, string>> = {
+  'img-alt': 'give the image alt text, or alt="" when it only decorates',
+  'control-name': 'label it: a <label for>, aria-label, aria-labelledby, title or visible text',
+  'heading-order': 'one h1, then levels without gaps (h1, h2, h3)',
+  landmarks: 'put the content in <main>, <header>, <nav> and <footer>',
+  'duplicate-id': 'make ids unique and point aria-labelledby/describedby at ids that exist',
+};
+
+/** Examples line of `dom audit a11y --help`: what it checks and does not */
+export const A11Y_AUDIT_RULES_HELP = `Rules of the a11y check (not a full WCAG engine; it reads the computed accessibility tree):
+  img-alt        images without an accessible name (alt="" and aria-hidden are fine)
+  control-name   inputs, selects, buttons and links without a name (icon-only buttons)
+  heading-order  no h1, more than one h1, skipped levels
+  landmarks      no main landmark; text outside any landmark
+  duplicate-id   repeated ids; aria-labelledby/describedby naming no element`;
+
+/**
+ * What an `a11y` finding says about its element.
+ *
+ * @param reason - Why the rule flagged it
+ * @returns Detail text
+ */
+export function a11yDetail(reason: A11yReason): string {
+  switch (reason.kind) {
+    case 'unnamed':
+      return 'no accessible name';
+    case 'no-h1':
+      return 'the page has no h1';
+    case 'extra-h1':
+      return `one of ${reason.total} h1 (note: a page usually has one)`;
+    case 'skipped-level':
+      return `h${reason.level} follows h${reason.previous}, skipping ${skippedLevels(reason.previous, reason.level)}`;
+    case 'no-main':
+      return 'no main landmark';
+    case 'outside-landmark':
+      return `${reason.holders} ${reason.holders === 1 ? 'element holds' : 'elements hold'} text outside any landmark`;
+    case 'duplicate-id':
+      return `id "${reason.id}" is used by ${reason.total} elements`;
+    case 'missing-reference':
+      return `${reason.attribute} names no element with id "${reason.id}"`;
+  }
+}
+
+/**
+ * The heading levels a jump skips.
+ *
+ * @param previous - Level before
+ * @param level - Level after
+ * @returns e.g. `h2, h3`
+ */
+function skippedLevels(previous: number, level: number): string {
+  return Array.from({ length: level - previous - 1 }, (_, i) => `h${previous + 1 + i}`).join(', ');
+}
+
+/**
+ * Note on an a11y finding no selector finds alone.
+ *
+ * @returns Note
+ */
+export function a11yNoSelectorNote(): string {
+  return '(no unique selector: find it with bdg dom a11y query)';
+}
+
+/**
+ * Note of an a11y check that did not cover the whole page.
+ *
+ * @returns Note
+ */
+export function a11yTruncatedNote(): string {
+  return '(the id scan or the frame list hit its cap: the page has more)';
 }
 
 /**
@@ -2206,8 +2281,12 @@ Examples:
   bdg dom audit contrast --wcag AAA   Text below WCAG AAA, weakest first
   bdg dom audit overflow              What scrolls sideways, cut-off text, scaled images
   bdg dom audit layers animations     Fixed/sticky elements and running animations
+  bdg dom audit a11y                  Missing alt text and names, heading order, landmarks, duplicate ids
 
-Follow up on a finding with bdg dom inspect <element> (e.g. --why color).`;
+Follow up on a finding with bdg dom inspect <element> (e.g. --why color), or
+bdg dom a11y describe <element> for an a11y finding.
+
+${A11Y_AUDIT_RULES_HELP}`;
 
 /** Examples under `bdg css search --help` */
 export const CSS_SEARCH_HELP_EXAMPLES = `

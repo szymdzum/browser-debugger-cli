@@ -8,6 +8,7 @@ import { CommandError } from '@/errors/index.js';
 import { operationFailedError } from '@/errors/messages.js';
 import type { AuditResult } from '@/ipc/protocol/auditTypes.js';
 import type { DomAuditCommand } from '@/ipc/protocol/commands.js';
+import { auditA11y } from '@/runtime/dom/auditA11y.js';
 import { buildAudit } from '@/runtime/dom/auditModel.js';
 import { AUDIT_PAGE_JS, type RawAudit } from '@/runtime/dom/auditScripts.js';
 import { callFunctionInBdgWorld } from '@/runtime/page/bdgWorld.js';
@@ -38,9 +39,7 @@ export async function auditPage(cdp: CDPConnection, params: DomAuditCommand): Pr
     );
     throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SCRIPT_ERROR);
   }
-  return buildAudit(raw, {
-    checks: params.checks,
-    level: params.level ?? 'AA',
-    limit: params.limit ?? DEFAULT_AUDIT_LIMIT,
-  });
+  const limit = params.limit ?? DEFAULT_AUDIT_LIMIT;
+  const audit = buildAudit(raw, { checks: params.checks, level: params.level ?? 'AA', limit });
+  return params.checks.includes('a11y') ? { ...audit, a11y: await auditA11y(cdp, limit) } : audit;
 }

@@ -31,7 +31,7 @@ function ax(id: number, role: string, name = '', childIds: number[] = [], level?
     ...(level !== undefined && {
       properties: [{ name: 'level', value: { type: 'integer', value: level } }],
     }),
-  } as AxNode;
+  };
 }
 
 void describe('findAxHits', () => {
@@ -52,6 +52,22 @@ void describe('findAxHits', () => {
         ['img-alt', 2],
         ['control-name', 4],
       ]
+    );
+  });
+
+  void it('leaves out an unnamed image inside a named button or link', () => {
+    const hits = findAxHits(
+      [
+        ax(1, 'RootWebArea', 'p', [2, 4]),
+        ax(2, 'button', 'Go', [3]),
+        ax(3, 'image'),
+        ax(4, 'image'),
+      ],
+      { page: false }
+    );
+    assert.deepEqual(
+      hits.map((hit) => hit.backendNodeId),
+      [4]
     );
   });
 

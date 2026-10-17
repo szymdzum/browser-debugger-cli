@@ -2,7 +2,7 @@
  * `bdg dom audit [check...]` - page-wide checks without a screenshot or
  * `eval`: text below a WCAG contrast level, what makes the page scroll
  * sideways and cut-off text and scaled images, fixed and sticky layers, and
- * running animations.
+ * running animations, and a few accessibility rules (`a11y`).
  */
 
 import { InvalidArgumentError } from 'commander';
@@ -37,7 +37,7 @@ export function registerAuditCommand(dom: Command): void {
   dom
     .command('audit')
     .description(
-      'Page-wide checks: text below WCAG contrast, sideways scroll and cut-off text, scaled images, fixed/sticky layers, animations'
+      'Page-wide checks: text below WCAG contrast, sideways scroll and cut-off text, scaled images, fixed/sticky layers, animations, accessibility rules (alt text, names, headings, landmarks, ids)'
     )
     .argument('[checks...]', `Checks to run: ${AUDIT_CHECKS.join(', ')} (default: all)`, checkList)
     .option('--wcag <level>', 'WCAG level text must reach: AA or AAA (default: AA)', levelOption)
