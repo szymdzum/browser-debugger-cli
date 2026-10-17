@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-10-17
+
+**The last 0.x release.** bdg 1.0 renames a set of commands and flags (#465). In 0.20.0 every old spelling still works, prints one `Warning:` line on stderr (in `--json`: an entry in the envelope's `warnings` array) and is hidden from help; **in 1.0 each one stops working** and exits 81 naming its replacement. Switch scripts and notes now; the warnings name the new spelling.
+
+| Old | Use instead |
+|---|---|
+| `bdg tail` | `bdg peek --follow` |
+| `bdg details network <id>` / `bdg details console <n>` | `bdg network details <id>` / `bdg console details <n>` |
+| `bdg network document` | `bdg network headers` |
+| `bdg dom eval` | `bdg eval` |
+| `bdg dom pressKey` | `bdg dom press-key` |
+| `bdg network getCookies` | `bdg network cookies` |
+| `bdg cleanup --aggressive`, `bdg cleanup -f` | `bdg cleanup --force` |
+| `bdg <url> -t/--timeout`, `bdg attach --timeout` | `--stop-after` (same unit: seconds) |
+| `bdg <url> -a/--all` | `bdg <url> --capture-all` (`--all` of the `dom` commands is unchanged) |
+| `bdg console -H/--history` | `bdg console --page all` |
+| `bdg dom audit --level` | `bdg dom audit --wcag` |
+| `bdg dom get --nth` | `bdg dom get --index` |
+| `bdg stop --kill-chrome` | `bdg stop` (it already closes the Chrome bdg launched) |
+| envelope field `warning` (string) | `warnings` (array); both are written in 0.x |
+
+### Breaking
+
+- **`bdg <url> --compact` and `bdg cleanup --remove-output` are removed** (#819, part of #465). Both did nothing any more (`session.json` is no longer written). They exit 81 with `"…" was removed` and what to do; drop the flag.
+
+### Added
+
+- **Rename table and `warnings` in the `--json` envelope** (#819, part of #465). One table (`src/utils/renames.ts`) drives every old spelling: it keeps working, warns, and is hidden from help, `--help --json` and typo suggestions. The warning goes to stderr in human mode and into `warnings: [...]` in the envelope, on success and error; `warnings` is absent when empty. Usage errors on an old spelling carry the warning too (#822).
+- **New names** (all part of #465): `bdg eval`, `bdg dom press-key`, `bdg network cookies` (#822); `bdg <url> --stop-after <seconds>`, `bdg attach … --stop-after <seconds>`, `bdg <url> --capture-all` (#824); `bdg network details <id>`, `bdg console details <n>`, `bdg console --page current|all` (#825); `bdg dom audit --wcag AA|AAA` (#827). The old spellings are in the table above.
+- **`console --follow --ndjson`** (#820, part of #742): one JSON object per line, a `page` record when the stream reaches another page and a `message` record per console message (its console type is `level`; `console --json` calls it `type`). In 1.0 this becomes the `--follow --json` shape.
+- **`backendNodeId` in `dom query --json` and `dom get --raw --json`** (#821, part of #465), next to `nodeId` (same value; `nodeId` there is dropped in 1.0).
+
+### Changed
+
+- **An old and a new spelling given together** (#824): with the same value they pass (with the warning), with different values they exit 81 (`"bdg <url> --timeout" and "bdg <url> --stop-after" are the same option, given different values`). `dom get --index 1 --nth 2` keeps exiting 81, now with this message (#829).
+- **A command's own warning is also in `warnings`** (#826, part of #465). Wherever the envelope had the string `warning` (e.g. `bdg cdp` with a method missing from the bundled protocol, `--include-sensitive`), the same text is now in `warnings` too, after any old-spelling warnings; a warning of several lines is one entry per line. `warning` stays in 0.x and is removed in 1.0: read `warnings`.
+- **Follow-mode page separator names the page** (#820, part of #742): `── Next page: <url> (navigation #N) ──`.
+- **"newest N" / "first N" wording** for `--last` and `--limit` everywhere (#821, part of #465).
+- **Docs and the bdg skill use only the new names** (#828, #829); old ones are listed under "Renamed and deprecated names" in `docs/CLI_REFERENCE.md`.
+
+### Fixed
+
+- **`dom screenshot` of an element beyond the viewport** returns only once the page has its size back (#813, part of #529).
+- **`New text:` under load names the message, not its container** (#812): when the 5 ms snapshot budget ran out, `(div#flash-messages)` could be reported instead of `(div#flash.flash.error)`.
+- **A `Shown:` list whose page scan did not run** says the scan was cut short (`moreShownPartial`) (#814, part of #529).
+- **`peek -n/--network` no longer prints a stale deprecation note** (#821); it works as before.
+
+### Internal
+
+- **Shorter smoke suites** (#815, #816, part of #809): eval size probe 60 → 20 s, interrupted eval 50 → 37 s, self-updating 44 → 13 s, page readiness 40 → 16 s (`BDG_TEST_EVAL_UNSENT_GRACE_MS`, `BDG_TEST_PAGE_READY_MS`).
+
 ## [0.19.0] - 2026-10-16
 
 No breaking changes. Two behaviour changes are worth a look before upgrading. A start interrupted by the user now force-kills its Chrome after 500 ms, and HAR `bodySize` has new values. Both are listed first under Changed.
