@@ -27,7 +27,7 @@ export function addEnvelopeWarning(warning: string): void {
  * @returns `{ warnings }` or an empty object
  */
 function warningsField(): { warnings?: string[] } {
-  return envelopeWarnings.length > 0 ? { warnings: [...envelopeWarnings] } : {};
+  return envelopeWarnings.length > 0 ? { warnings: envelopeWarnings } : {};
 }
 
 /**

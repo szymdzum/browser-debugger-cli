@@ -9,17 +9,10 @@
 import { Option, type Command } from 'commander';
 
 import { CommandError } from '@/errors/index.js';
-import { removedNameError, renamedNameError } from '@/errors/messages.js';
+import { retiredNameError } from '@/errors/messages.js';
 import { deprecatedNameWarning } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import {
-  RENAMES,
-  isOptionEntry,
-  isRetiredName,
-  newSpelling,
-  oldSpelling,
-  type RenameEntry,
-} from '@/utils/renames.js';
+import { RENAMES, isRetiredName, spelling, type RenameEntry } from '@/utils/renames.js';
 
 /**
  * The words of a command below the root, as the rename table writes them.
@@ -67,25 +60,32 @@ function attributeName(flag: string): string {
  * @param command - Command the option belongs to
  * @param entry - Option entry
  */
-function registerOldOption(command: Command, entry: RenameEntry): void {
+function registerOldOption(command: Command, entry: RenameEntry & { kind: 'option' }): void {
   const own = command.options.find((option) => option.long === entry.old);
   if (own) {
     own.hideHelp();
     return;
   }
   const flags = entry.takesValue ? `${entry.old} <value>` : entry.old;
-  command.addOption(new Option(flags, `Old spelling of ${oldSpelling(entry)}`).hideHelp());
+  command.addOption(new Option(flags, `Old spelling of ${spelling(entry, 'old')}`).hideHelp());
 }
 
 /**
- * Register an old command no module registers any more: hidden, taking any
- * arguments and options, so the preAction hook can name its replacement.
+ * Check an old command: a deprecated one must still be registered by its
+ * module (hidden), so it keeps working; a removed one gets a hidden stub
+ * taking any arguments and options, whose preAction check exits 81.
  *
  * @param parent - Command the old command belongs to
  * @param entry - Command entry
+ * @throws Error for a deprecated command no module registers (a table bug)
  */
-function registerOldCommand(parent: Command, entry: RenameEntry): void {
-  if (parent.commands.some((command) => command.name() === entry.old)) return;
+function registerOldCommand(parent: Command, entry: RenameEntry & { kind: 'command' }): void {
+  const registered = parent.commands.some((command) => command.name() === entry.old);
+  if (entry.stage === 'deprecated') {
+    if (!registered) throw new Error(`Rename table: "${spelling(entry, 'old')}" is not registered`);
+    return;
+  }
+  if (registered) return;
   parent
     .command(entry.old, { hidden: true })
     .argument('[args...]')
@@ -98,21 +98,14 @@ function registerOldCommand(parent: Command, entry: RenameEntry): void {
  * option given on the command line, or this command reached by its old name.
  *
  * @param level - Command at one level of the action command's chain
- * @param entry - Rename entry
+ * @param entry - Rename entry of this level (options) or of its parent (commands)
+ * @param oldAttribute - Attribute name of an option entry's old option
  * @returns True when used
  */
-function isUsed(level: Command, entry: RenameEntry): boolean {
-  if (isOptionEntry(entry)) {
-    return (
-      entry.command === commandWords(level) &&
-      level.getOptionValueSource(attributeName(entry.old)) === 'cli'
-    );
-  }
-  return (
-    level.parent !== null &&
-    entry.command === commandWords(level.parent) &&
-    entry.old === level.name()
-  );
+function isUsed(level: Command, entry: RenameEntry, oldAttribute: string): boolean {
+  return entry.kind === 'option'
+    ? level.getOptionValueSource(oldAttribute) === 'cli'
+    : entry.old === level.name();
 }
 
 /**
@@ -122,28 +115,15 @@ function isUsed(level: Command, entry: RenameEntry): boolean {
  * @returns Command error (81) naming the new spelling or what to do instead
  */
 function removedError(entry: RenameEntry): CommandError {
-  const replacement = newSpelling(entry);
-  const err =
-    replacement === undefined
-      ? removedNameError(oldSpelling(entry), entry.hint ?? '')
-      : renamedNameError(oldSpelling(entry), replacement);
+  const err = retiredNameError(
+    spelling(entry, 'old'),
+    entry.new === undefined ? { hint: entry.hint } : { newSpelling: spelling(entry, 'new') }
+  );
   return new CommandError(
     err.message,
     { suggestion: err.suggestion },
     EXIT_CODES.INVALID_ARGUMENTS
   );
-}
-
-/**
- * Hand a deprecated option's value to the option that replaces it.
- *
- * @param level - Command the option belongs to
- * @param entry - Deprecated option entry
- */
-function forwardOption(level: Command, entry: RenameEntry): void {
-  if (!isOptionEntry(entry) || entry.new === undefined) return;
-  const value: unknown = level.getOptionValue(attributeName(entry.old));
-  level.setOptionValueWithSource(attributeName(entry.new), value, 'cli');
 }
 
 /**
@@ -153,19 +133,17 @@ function forwardOption(level: Command, entry: RenameEntry): void {
  * @returns Warning text
  */
 function deprecationWarning(entry: RenameEntry): string {
-  const replacement = newSpelling(entry);
-  const instead = replacement === undefined ? (entry.hint ?? '') : `use "${replacement}"`;
-  return deprecatedNameWarning(oldSpelling(entry), instead);
+  const instead = entry.new === undefined ? entry.hint : `use "${spelling(entry, 'new')}"`;
+  return deprecatedNameWarning(spelling(entry, 'old'), instead);
 }
 
 /**
- * Register every old spelling of the table that its command does not
- * register itself: a hidden option (taking a value when the entry says so),
- * or a hidden command taking any arguments and options. An option a command
- * registers itself is hidden from help.
+ * Register every old spelling of the table (see {@link registerOldOption}
+ * and {@link registerOldCommand}).
  *
  * @param program - Root command with all commands registered
  * @param table - Rename table
+ * @throws Error for an entry whose command, or deprecated old command, is not registered
  */
 export function registerRenamedNames(
   program: Command,
@@ -173,7 +151,7 @@ export function registerRenamedNames(
 ): void {
   for (const entry of table) {
     const command = findCommand(program, entry.command);
-    if (isOptionEntry(entry)) registerOldOption(command, entry);
+    if (entry.kind === 'option') registerOldOption(command, entry);
     else registerOldCommand(command, entry);
   }
 }
@@ -195,10 +173,20 @@ export function applyRenamedNames(
 ): string[] {
   const warnings: string[] = [];
   for (let level: Command | null = actionCommand; level; level = level.parent) {
+    const words = commandWords(level);
+    const parentWords = level.parent ? commandWords(level.parent) : undefined;
     for (const entry of table) {
-      if (!isUsed(level, entry)) continue;
+      if (entry.command !== (entry.kind === 'option' ? words : parentWords)) continue;
+      const oldAttribute = entry.kind === 'option' ? attributeName(entry.old) : '';
+      if (!isUsed(level, entry, oldAttribute)) continue;
       if (entry.stage === 'removed') throw removedError(entry);
-      forwardOption(level, entry);
+      if (entry.kind === 'option' && entry.new !== undefined) {
+        level.setOptionValueWithSource(
+          attributeName(entry.new),
+          level.getOptionValue(oldAttribute),
+          'cli'
+        );
+      }
       warnings.push(deprecationWarning(entry));
     }
   }

@@ -436,7 +436,10 @@ export function assertNotMistypedCommand(program: Command, argv: string[]): void
   const similar = group
     ? [`${group.name()} ${first}`]
     : rest.length > 0 && BARE_WORD.test(first)
-      ? findSimilarCommands(first, commandNames)
+      ? findSimilarCommands(
+          first,
+          currentSubcommands(program).map((command) => command.name())
+        )
       : [];
   if (similar.length === 0) return;
   const err = unknownCommandError(first, similar);
@@ -466,9 +469,9 @@ function validateStartInput(
       EXIT_CODES.INVALID_ARGUMENTS
     );
   }
-  const commandNames = program.commands.map((command) => command.name());
+  const commandNames = currentSubcommands(program).map((command) => command.name());
   assertNotCommandTypo(url, commandNames);
-  assertNotSpacedCommand(url, program.commands);
+  assertNotSpacedCommand(url, currentSubcommands(program));
   assertValidUrl(url);
   getIPCRequestTimeout();
   assertStateNotAttached(options);

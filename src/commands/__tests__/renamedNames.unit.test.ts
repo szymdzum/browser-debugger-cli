@@ -11,19 +11,40 @@ import { describe, it } from 'node:test';
 
 import { Command } from 'commander';
 
-import { applyRenamedNames, registerRenamedNames } from '@/commands/shared/renamedNames.js';
+import {
+  applyRenamedNames,
+  currentSubcommands,
+  registerRenamedNames,
+} from '@/commands/shared/renamedNames.js';
 import { CommandError } from '@/errors/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import { RENAMES, isRetiredName, oldSpelling, type RenameEntry } from '@/utils/renames.js';
+import { buildProgram } from '@/program.js';
+import { RENAMES, isRetiredName, spelling, type RenameEntry } from '@/utils/renames.js';
 import { findSimilarCommands } from '@/utils/suggestions.js';
 
 const TABLE: readonly RenameEntry[] = [
-  { command: '', old: 'gone', new: 'fresh', stage: 'removed' },
-  { command: 'run', old: '--old-name', new: '--new-name', stage: 'deprecated', takesValue: true },
-  { command: 'run', old: '--old-size', new: '--size', stage: 'removed', takesValue: true },
+  { kind: 'command', command: '', old: 'gone', new: 'fresh', stage: 'removed' },
+  { kind: 'command', command: 'grp', old: 'moved', new: 'fresh', stage: 'deprecated' },
+  {
+    kind: 'option',
+    command: 'run',
+    old: '--old-name',
+    new: '--new-name',
+    stage: 'deprecated',
+    takesValue: true,
+  },
+  {
+    kind: 'option',
+    command: 'run',
+    old: '--old-size',
+    new: '--size',
+    stage: 'removed',
+    takesValue: true,
+  },
 ];
 
 interface Parsed {
+  ran?: string;
   opts?: Record<string, unknown>;
   args?: string[];
   warnings: string[];
@@ -38,7 +59,15 @@ interface Parsed {
 async function parse(argv: string[]): Promise<Parsed> {
   const parsed: Parsed = { warnings: [] };
   const program = new Command('bdg').exitOverride();
-  program.command('fresh').action(() => undefined);
+  program.command('fresh').action(() => {
+    parsed.ran = 'fresh';
+  });
+  program
+    .command('grp')
+    .command('moved', { hidden: true })
+    .action(() => {
+      parsed.ran = 'grp moved';
+    });
   program
     .command('run')
     .option('--new-name <name>', 'Name')
@@ -83,6 +112,23 @@ void describe('rename mechanism (injected table)', () => {
       ['gone', 'x', '--flag'],
       '"bdg gone" was renamed to "bdg fresh"',
       'Use "bdg fresh"'
+    );
+  });
+
+  void it('a deprecated command moved to another parent runs, warning with its full new path', async () => {
+    const parsed = await parse(['grp', 'moved']);
+    assert.equal(parsed.ran, 'grp moved');
+    assert.deepEqual(parsed.warnings, [
+      '"bdg grp moved" is deprecated and will be removed in 1.0: use "bdg fresh"',
+    ]);
+  });
+
+  void it('a deprecated command no module registers is a table bug', () => {
+    const program = new Command('bdg');
+    program.command('grp');
+    assert.throws(
+      () => registerRenamedNames(program, [TABLE[1] as RenameEntry]),
+      /"bdg grp moved" is not registered/
     );
   });
 
@@ -134,18 +180,20 @@ void describe('rename mechanism (injected table)', () => {
 void describe('old spellings in suggestions', () => {
   void it('isRetiredName knows old commands and options by their command', () => {
     assert.equal(isRetiredName('', 'gone', TABLE), true);
+    assert.equal(isRetiredName('grp', 'moved', TABLE), true);
     assert.equal(isRetiredName('run', '--old-name', TABLE), true);
     assert.equal(isRetiredName('', '--old-name', TABLE), false);
     assert.equal(isRetiredName('', 'fresh', TABLE), false);
   });
 
   void it('a typo near an old command name never suggests it', () => {
-    assert.deepEqual(findSimilarCommands('tial', ['tail', 'peek', 'status']), []);
-    assert.deepEqual(findSimilarCommands('staus', ['tail', 'peek', 'status']), ['status']);
+    const names = currentSubcommands(buildProgram()).map((command) => command.name());
+    assert.deepEqual(findSimilarCommands('tial', names), []);
+    assert.deepEqual(findSimilarCommands('staus', names), ['status']);
   });
 
-  void it('oldSpelling puts a root option after the start URL', () => {
-    const spellings = RENAMES.map(oldSpelling);
+  void it('spelling puts a root option after the start URL', () => {
+    const spellings = RENAMES.map((entry) => spelling(entry, 'old'));
     assert.ok(spellings.includes('bdg tail'));
     assert.ok(spellings.includes('bdg <url> --compact'));
     assert.ok(spellings.includes('bdg cleanup --aggressive'));
@@ -160,9 +208,9 @@ void describe('CLI reference', () => {
     const rows = section.split('\n').filter((line) => line.startsWith('| `bdg'));
     assert.equal(rows.length, RENAMES.length, 'one row per entry');
     for (const entry of RENAMES) {
-      const row = rows.find((line) => line.startsWith(`| \`${oldSpelling(entry)}\` |`));
-      assert.ok(row, `row for ${oldSpelling(entry)}`);
-      assert.ok(row.includes(entry.stage), `${oldSpelling(entry)} is ${entry.stage}`);
+      const row = rows.find((line) => line.startsWith(`| \`${spelling(entry, 'old')}\` |`));
+      assert.ok(row, `row for ${spelling(entry, 'old')}`);
+      assert.ok(row.includes(entry.stage), `${spelling(entry, 'old')} is ${entry.stage}`);
     }
   });
 });

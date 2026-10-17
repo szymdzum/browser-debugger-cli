@@ -5,11 +5,7 @@
 import type { Command, CommanderError } from 'commander';
 
 import { commandPath } from '@/commands/helpJson.js';
-import {
-  commandWords,
-  currentOptions,
-  currentSubcommands,
-} from '@/commands/shared/renamedNames.js';
+import { currentOptions, currentSubcommands } from '@/commands/shared/renamedNames.js';
 import { CommandError } from '@/errors/index.js';
 import {
   didYouMeanSuggestion,
@@ -61,8 +57,7 @@ export function assertKnownHelpTopic(program: Command, topic: string[], viaHelp 
     if (!sub) {
       const [closest] = findSimilarCommands(
         word,
-        command.commands.map((c) => c.name()),
-        commandWords(command)
+        currentSubcommands(command).map((c) => c.name())
       );
       const err =
         path.length === 0 && !viaHelp

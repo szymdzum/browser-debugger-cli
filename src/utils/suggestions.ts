@@ -3,7 +3,6 @@
  */
 
 import { levenshteinDistance } from '@/utils/levenshtein.js';
-import { isRetiredName } from '@/utils/renames.js';
 
 interface SimilarityOptions {
   maxDistance?: number;
@@ -189,20 +188,13 @@ const MIN_COMMAND_TYPO_LENGTH = 3;
 
 /**
  * Command names close to a mistyped word: at least 3 characters, within
- * {@link scaledMaxDistance} edits, case folded. Old spellings from the
- * rename table are never suggested.
+ * {@link scaledMaxDistance} edits, case folded. Callers pass current names
+ * only (`currentSubcommands`), so an old spelling is never suggested.
  *
  * @param word - Word as typed
- * @param commandNames - Subcommand names of one command to compare with
- * @param parent - Words of that command below `bdg` (`''` for the root)
+ * @param commandNames - Command names to compare with
  * @returns Close command names, best first
  */
-export function findSimilarCommands(
-  word: string,
-  commandNames: readonly string[],
-  parent = ''
-): string[] {
-  if (word.length < MIN_COMMAND_TYPO_LENGTH) return [];
-  const current = commandNames.filter((name) => !isRetiredName(parent, name));
-  return findSimilar(word, current);
+export function findSimilarCommands(word: string, commandNames: readonly string[]): string[] {
+  return word.length < MIN_COMMAND_TYPO_LENGTH ? [] : findSimilar(word, commandNames);
 }

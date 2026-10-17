@@ -380,6 +380,7 @@ function convertCompactCommand(command: Command): CompactCommand {
   const aliases = command.aliases();
   const args = command.registeredArguments.map(argumentTerm).join(' ');
   const options = currentOptions(command).filter((option) => !option.hidden);
+  const subcommands = currentSubcommands(command);
   return {
     name: command.name(),
     ...(aliases.length > 0 && { aliases }),
@@ -396,8 +397,8 @@ function convertCompactCommand(command: Command): CompactCommand {
         })
       ),
     }),
-    ...(command.commands.length > 0 && {
-      subcommands: currentSubcommands(command).map(convertCompactCommand),
+    ...(subcommands.length > 0 && {
+      subcommands: subcommands.map(convertCompactCommand),
     }),
   };
 }
