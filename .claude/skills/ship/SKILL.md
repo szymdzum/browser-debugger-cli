@@ -38,7 +38,7 @@ Files:
 ```
 #<N> <slug>  tier <1|2|3>
 - [ ] Implementer: ship brief implementer N=<N> BRANCH=<type>/<slug> → fill scope → spawn (background)
-- [ ] Product diff over 150 lines (after the draft PR, before the reviewer; again if fix rounds take it over): you run `/simplify` in the PR's worktree and leave its edits uncommitted; SendMessage the implementer to run the affected tests and commit them as `refactor:`, or you add "nothing to simplify" to the PR body (`ship gates` checks it)
+- [ ] Product diff over 150 lines (after the draft PR, before the reviewer; again if fix rounds take it over): you run `/simplify` on the PR's worktree (`ship simplify <pr>` writes the diff to a file and prints the args, since `/simplify` works on the current directory) and leave its edits uncommitted; SendMessage the implementer to run the affected tests and commit them as `refactor:`, or you add "nothing to simplify" to the PR body (`ship gates` checks it)
 - [ ] Report ends with `PR <url> HEAD <sha>`; ship ci-wait <pr> (background, 60-minute timeout)
 - [ ] Reviewer: ship brief reviewer … → findings to the same implementer
 - [ ] Tester (tier 2–3): ship brief tester … → findings routed
@@ -96,7 +96,7 @@ A red `main` is fixed before any new work; the PR that fixes it merges with `--f
 
 ## Keep the books
 
-- **`ship log <pr>`** after each merge (rows accumulate in the main checkout's `log.md`, with a copy in `~/.cache/ship/log-rows.md`; the session's retro PR commits them, after `ship log --pending` shows none lost: S15's rows vanished before the commit): tier, review findings as `blocking/should-fix/nit`, tester bugs, fix rounds, implementer model, subagent tokens, a note. When a bug is later found in a merged change, add it under **Escaped** in `log.md`.
+- **`ship log <pr>`** after each merge (`ship merge` fast-forwards the main checkout first, which `git pull --rebase` refuses with the uncommitted rows; rows accumulate in the main checkout's `log.md`, with a copy in `~/.cache/ship/log-rows.md`; the session's retro PR commits them, after `ship log --pending` shows none lost: S15's rows vanished before the commit): tier, review findings as `blocking/should-fix/nit`, tester bugs, fix rounds, implementer model, subagent tokens, a note. When a bug is later found in a merged change, add it under **Escaped** in `log.md`.
 - **Roadmap #466:** one update at the session end (done / new / moved); re-read the body right before editing.
 - **Fix, file or record:** every finding from any step is fixed now, filed as a verified issue, or recorded as a known limit; never only "out of scope". File only what earns a priority:
   - `priority: high`: bdg changes the page under test, or tells the agent something false about what an action or command did.
