@@ -57,6 +57,15 @@ export type RenameEntry = (CommandRename | OptionRename) & Replacement;
 /** Every old spelling bdg still recognizes */
 export const RENAMES: readonly RenameEntry[] = [
   { kind: 'command', command: '', old: 'tail', new: 'peek --follow', stage: 'deprecated' },
+  { kind: 'command', command: 'dom', old: 'eval', new: 'eval', stage: 'deprecated' },
+  { kind: 'command', command: 'dom', old: 'pressKey', new: 'dom press-key', stage: 'deprecated' },
+  {
+    kind: 'command',
+    command: 'network',
+    old: 'getCookies',
+    new: 'network cookies',
+    stage: 'deprecated',
+  },
   {
     kind: 'option',
     command: 'cleanup',

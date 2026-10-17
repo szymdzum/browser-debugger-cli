@@ -13,6 +13,7 @@ import { retiredNameError } from '@/errors/messages.js';
 import { deprecatedNameWarning } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { RENAMES, isRetiredName, spelling, type RenameEntry } from '@/utils/renames.js';
+import { findSimilarCommands } from '@/utils/suggestions.js';
 
 /**
  * The words of a command below the root, as the rename table writes them.
@@ -215,4 +216,38 @@ export function currentSubcommands(command: Command): Command[] {
 export function currentOptions(command: Command): Option[] {
   const words = commandWords(command);
   return command.options.filter((option) => !isRetiredName(words, option.long ?? ''));
+}
+
+/** Commander's message for a word that is no subcommand */
+const UNKNOWN_COMMAND = /unknown command '([^']+)'/;
+
+/**
+ * The new spelling of an old command that a mistyped subcommand is close to:
+ * `bdg dom evl` is a typo of the old `dom eval`, so it suggests `bdg eval`
+ * (Commander only compares with current names, which cannot include a
+ * command that moved to another parent).
+ *
+ * @param command - Command that reported the unknown subcommand
+ * @param message - Commander's error message
+ * @param table - Rename table
+ * @returns Suggestion naming the new spelling, if the word is close to an old one
+ */
+export function renamedCommandSuggestion(
+  command: Command,
+  message: string,
+  table: readonly RenameEntry[] = RENAMES
+): string | undefined {
+  const word = UNKNOWN_COMMAND.exec(message)?.[1];
+  if (word === undefined) return undefined;
+  const words = commandWords(command);
+  const entries = table.filter(
+    (entry): entry is RenameEntry & { kind: 'command'; new: string } =>
+      entry.kind === 'command' && entry.command === words && entry.new !== undefined
+  );
+  const [closest] = findSimilarCommands(
+    word,
+    entries.map((entry) => entry.old)
+  );
+  const entry = entries.find((candidate) => candidate.old === closest);
+  return entry && `Did you mean: ${spelling(entry, 'new')}?`;
 }

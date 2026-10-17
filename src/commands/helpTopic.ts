@@ -5,7 +5,11 @@
 import type { Command, CommanderError } from 'commander';
 
 import { commandPath } from '@/commands/helpJson.js';
-import { currentOptions, currentSubcommands } from '@/commands/shared/renamedNames.js';
+import {
+  currentOptions,
+  currentSubcommands,
+  renamedCommandSuggestion,
+} from '@/commands/shared/renamedNames.js';
 import { CommandError } from '@/errors/index.js';
 import {
   didYouMeanSuggestion,
@@ -195,7 +199,12 @@ export function usageErrorDetails(
   if (error.code === 'commander.excessArguments') {
     return { message, suggestion: excessArgumentsSuggestion(command) ?? help };
   }
-  if (!flag) return { message, suggestion: suggestion ?? help };
+  if (!flag) {
+    return {
+      message,
+      suggestion: suggestion ?? renamedCommandSuggestion(command, message) ?? help,
+    };
+  }
   const typed = typedOption(flag, argv);
   const closest = closestOption(/^-[^-]../.test(typed) ? `-${typed}` : typed, command);
   return {

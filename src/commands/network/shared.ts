@@ -96,13 +96,17 @@ function headersResult(
 }
 
 /**
- * Register getCookies command.
+ * Add the cookies command: `network cookies`, and the old spelling
+ * `network getCookies` (a hidden, deprecated row of the rename table) with
+ * the same options.
  *
  * @param networkCmd - Network parent command
+ * @param name - Command name
+ * @param hidden - Whether the command is hidden from help
  */
-export function registerGetCookiesCommand(networkCmd: Command): void {
+function addCookiesCommand(networkCmd: Command, name: string, hidden: boolean): void {
   networkCmd
-    .command('getCookies')
+    .command(name, { hidden })
     .description('List cookies from the current page')
     .option('--url <url>', 'Filter cookies by URL')
     .addOption(jsonOption())
@@ -137,6 +141,16 @@ export function registerGetCookiesCommand(networkCmd: Command): void {
         formatCookies
       );
     });
+}
+
+/**
+ * Register the cookies command and its old spelling.
+ *
+ * @param networkCmd - Network parent command
+ */
+export function registerCookiesCommands(networkCmd: Command): void {
+  addCookiesCommand(networkCmd, 'cookies', false);
+  addCookiesCommand(networkCmd, 'getCookies', true);
 }
 
 /**
