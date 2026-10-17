@@ -133,7 +133,7 @@ interface BlockedField {
   message: string;
 }
 
-/** What the tests read of `dom click --json` and `dom pressKey --json` */
+/** What the tests read of `dom click --json` and `dom press-key --json` */
 interface ActionJson {
   submitBlocked?: BlockedField[];
 }
@@ -325,10 +325,10 @@ void describe('secret labels', () => {
       { field: 'nick', message: NICK_TEXT },
     ]);
 
-    const press = await bdg(['dom', 'pressKey', '#pw', 'Enter']);
-    assert.doesNotMatch(press, PASSWORD_LENGTH, 'dom pressKey shows the password length');
+    const press = await bdg(['dom', 'press-key', '#pw', 'Enter']);
+    assert.doesNotMatch(press, PASSWORD_LENGTH, 'dom press-key shows the password length');
     assert.match(press, /^⚠ Submit blocked: pw: tooShort: at least 8 characters; nick: /m);
-    const pressJson = await bdgJson<ActionJson>(['dom', 'pressKey', '#pw', 'Enter']);
+    const pressJson = await bdgJson<ActionJson>(['dom', 'press-key', '#pw', 'Enter']);
     assert.deepEqual(pressJson.submitBlocked?.[0], { field: 'pw', message: TOO_SHORT });
 
     const submit = await bdg(['dom', 'submit', '#vault'], 81);
@@ -343,7 +343,7 @@ void describe('secret labels', () => {
       'the validation alert in the a11y tree shows the password length'
     );
     assert.match(tree, /\[Alert\] "••••"/);
-    assert.match(tree, /^Secret values shown as •••• \(read them with bdg dom eval\)$/m);
+    assert.match(tree, /^Secret values shown as •••• \(read them with bdg eval\)$/m);
     assert.equal(
       (await bdgJson<{ masked?: boolean }>(['dom', 'a11y', 'tree', '--limit', '0'])).masked,
       true

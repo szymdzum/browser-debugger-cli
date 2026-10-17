@@ -129,6 +129,63 @@ function modifiersOption(value: string): string {
 }
 
 /**
+ * Add the press-key command: `dom press-key`, and the old spelling
+ * `dom pressKey` (a deprecated row of the rename table) with the same
+ * options.
+ *
+ * @param parent - The `dom` command
+ * @param name - Command name
+ */
+function addPressKeyCommand(parent: Command, name: string): void {
+  parent
+    .command(name)
+    .description('Press a key on an element (for Enter-to-submit, keyboard navigation)')
+    .argument('<selectorOrIndex>', SELECTOR_OR_INDEX_ARGUMENT)
+    .argument(
+      '<key>',
+      'Key to press: a name (Enter, Tab, Escape, Space, ArrowUp, Shift, F5, NumpadEnter), a character (a, A, 5, ., _, /) or a DOM code name (Period); a capital or shifted symbol (A, ?, _) implies Shift; unknown names list the keys'
+    )
+    .option('--index <n>', 'Element index if selector matches multiple (0-based)', integerOption(0))
+    .option('--times <n>', 'Press key multiple times (1-1000, default: 1)', integerOption(1, 1000))
+    .option(
+      '--modifiers <mods>',
+      'Modifier keys: shift,ctrl,alt,meta (comma-separated; aliases cmd, control, option); for shortcuts, e.g. press-key "#t" a --modifiers ctrl',
+      modifiersOption
+    )
+    .option('--no-wait', 'Skip waiting for network stability after key press')
+    .addOption(dialogOption())
+    .addOption(promptTextOption())
+    .addOption(jsonOption())
+    .action(async (selectorOrIndex: string, key: string, options: PressKeyCommandOptions) => {
+      await runCommand(
+        async () => {
+          const dialogs = dialogChoice(options);
+          return runElementCommand<Parameters<typeof domPressKey>[0], PressKeyResult>({
+            selectorOrIndex,
+            index: options.index,
+            buildRequest: (target, source) => ({
+              ...target,
+              ...(source && { listIndex: source.index }),
+              ...dialogs,
+              key,
+              ...(options.times !== undefined && { times: options.times }),
+              ...(options.modifiers !== undefined && { modifiers: options.modifiers }),
+              wait: options.wait !== false,
+            }),
+            call: domPressKey,
+            command: 'press-key',
+            action: 'press key',
+            failureSuggestion: 'Verify the selector matches a focusable element',
+          });
+        },
+        options,
+        formatPressKeyOutput,
+        { sent: 'key press' }
+      );
+    });
+}
+
+/**
  * Register form interaction commands.
  *
  * @param program - Commander program instance
@@ -281,52 +338,8 @@ export function registerFormInteractionCommands(program: Command): void {
       );
     });
 
-  domCommand
-    .command('pressKey')
-    .description('Press a key on an element (for Enter-to-submit, keyboard navigation)')
-    .argument('<selectorOrIndex>', SELECTOR_OR_INDEX_ARGUMENT)
-    .argument(
-      '<key>',
-      'Key to press: a name (Enter, Tab, Escape, Space, ArrowUp, Shift, F5, NumpadEnter), a character (a, A, 5, ., _, /) or a DOM code name (Period); a capital or shifted symbol (A, ?, _) implies Shift; unknown names list the keys'
-    )
-    .option('--index <n>', 'Element index if selector matches multiple (0-based)', integerOption(0))
-    .option('--times <n>', 'Press key multiple times (1-1000, default: 1)', integerOption(1, 1000))
-    .option(
-      '--modifiers <mods>',
-      'Modifier keys: shift,ctrl,alt,meta (comma-separated; aliases cmd, control, option); for shortcuts, e.g. pressKey "#t" a --modifiers ctrl',
-      modifiersOption
-    )
-    .option('--no-wait', 'Skip waiting for network stability after key press')
-    .addOption(dialogOption())
-    .addOption(promptTextOption())
-    .addOption(jsonOption())
-    .action(async (selectorOrIndex: string, key: string, options: PressKeyCommandOptions) => {
-      await runCommand(
-        async () => {
-          const dialogs = dialogChoice(options);
-          return runElementCommand<Parameters<typeof domPressKey>[0], PressKeyResult>({
-            selectorOrIndex,
-            index: options.index,
-            buildRequest: (target, source) => ({
-              ...target,
-              ...(source && { listIndex: source.index }),
-              ...dialogs,
-              key,
-              ...(options.times !== undefined && { times: options.times }),
-              ...(options.modifiers !== undefined && { modifiers: options.modifiers }),
-              wait: options.wait !== false,
-            }),
-            call: domPressKey,
-            command: 'pressKey',
-            action: 'press key',
-            failureSuggestion: 'Verify the selector matches a focusable element',
-          });
-        },
-        options,
-        formatPressKeyOutput,
-        { sent: 'key press' }
-      );
-    });
+  addPressKeyCommand(domCommand, 'press-key');
+  addPressKeyCommand(domCommand, 'pressKey');
 
   domCommand
     .command('scroll')
@@ -831,7 +844,7 @@ function formatSubmitOutput(result: ActionOutput<SubmitResult>): string {
 }
 
 /**
- * Format pressKey command output for human-readable display.
+ * Format press-key command output for human-readable display.
  */
 function formatPressKeyOutput(result: ActionOutput<PressKeyResult>): string {
   const details: [string, string][] = [

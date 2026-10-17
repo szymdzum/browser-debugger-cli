@@ -1,5 +1,5 @@
 /**
- * `dom eval` results: evals that run at the same time do not free each
+ * `eval` results: evals that run at the same time do not free each
  * other's result before it is copied (#584).
  */
 

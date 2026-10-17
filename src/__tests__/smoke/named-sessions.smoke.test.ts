@@ -137,7 +137,7 @@ void describe('named sessions', () => {
   void it('sends each command to its own session', async () => {
     const titles = await Promise.all(
       names.map((name) =>
-        runJson<{ result: string }>('dom', ['eval', 'document.title', '--session', name])
+        runJson<{ result: string }>('eval', ['document.title', '--session', name])
       )
     );
     assert.deepEqual(

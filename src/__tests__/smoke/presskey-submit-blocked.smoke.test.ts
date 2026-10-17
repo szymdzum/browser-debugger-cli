@@ -1,7 +1,7 @@
 /**
  * Enter blocked by validation smoke test (#591).
  *
- * `dom pressKey <field> Enter` (or Space on a submit button) in a form
+ * `dom press-key <field> Enter` (or Space on a submit button) in a form
  * the browser submits implicitly (it has a submit button, or a single text
  * field) and whose constraint
  * validation blocks the submit is reported like such a `dom click`:
@@ -46,7 +46,7 @@ interface BlockedField {
   message: string;
 }
 
-/** What the tests read of `dom pressKey --json` */
+/** What the tests read of `dom press-key --json` */
 interface PressKeyJson {
   submitBlocked?: BlockedField[];
   submitBlockedOmitted?: number;
@@ -75,7 +75,7 @@ async function bdg(args: string[], expectedExit = 0): Promise<string> {
  * @returns Evaluation result
  */
 async function evaluate(expression: string): Promise<unknown> {
-  const output = await bdg(['dom', 'eval', expression, '--json']);
+  const output = await bdg(['eval', expression, '--json']);
   return (JSON.parse(output) as { data: { result: unknown } }).data.result;
 }
 
@@ -92,11 +92,11 @@ async function validationMessage(selector: string): Promise<unknown> {
 /**
  * Press a key and return the JSON data.
  *
- * @param args - Target, key and options of `dom pressKey`
- * @returns `data` of `dom pressKey --json`
+ * @param args - Target, key and options of `dom press-key`
+ * @returns `data` of `dom press-key --json`
  */
 async function pressKeyJson(...args: string[]): Promise<PressKeyJson> {
-  const output = await bdg(['dom', 'pressKey', ...args, '--json']);
+  const output = await bdg(['dom', 'press-key', ...args, '--json']);
   return (JSON.parse(output) as { data: PressKeyJson }).data;
 }
 
@@ -114,7 +114,7 @@ after(async () => {
   await fixture.close();
 });
 
-void describe('dom pressKey Enter in a form with a submit button', () => {
+void describe('dom press-key Enter in a form with a submit button', () => {
   /** The browser's message for an empty required field */
   let requiredMessage: unknown;
 
@@ -125,7 +125,7 @@ void describe('dom pressKey Enter in a form with a submit button', () => {
   });
 
   void it('says the submit was blocked and names the field (#591)', async () => {
-    const output = await bdg(['dom', 'pressKey', 'input[name=city]', 'Enter']);
+    const output = await bdg(['dom', 'press-key', 'input[name=city]', 'Enter']);
     assert.match(output, /^⚠ Key Pressed \(submit blocked\)/);
     assert.ok(
       output.includes(`Submit blocked: city: ${String(requiredMessage)}`),
@@ -152,7 +152,7 @@ void describe('dom pressKey Enter in a form with a submit button', () => {
 
   void it('names two invalid fields, separated by "; "', async () => {
     const mailMessage = await validationMessage('[name=mail]');
-    const output = await bdg(['dom', 'pressKey', '[name=first]', 'Enter']);
+    const output = await bdg(['dom', 'press-key', '[name=first]', 'Enter']);
     assert.ok(
       output.includes(
         `Submit blocked: first: ${String(requiredMessage)}; mail: ${String(mailMessage)}`
@@ -167,7 +167,7 @@ void describe('dom pressKey Enter in a form with a submit button', () => {
   });
 
   void it('reports Space on a submit button, which clicks it on keyup', async () => {
-    const output = await bdg(['dom', 'pressKey', '#light-go', 'Space']);
+    const output = await bdg(['dom', 'press-key', '#light-go', 'Space']);
     assert.match(output, /^⚠ Key Pressed \(submit blocked\)/);
     assert.ok(
       output.includes(`Submit blocked: city: ${String(requiredMessage)}`),
@@ -186,7 +186,7 @@ void describe('dom pressKey Enter in a form with a submit button', () => {
   });
 
   void it('reports a blocked submit once for --times 2', async () => {
-    const output = await bdg(['dom', 'pressKey', '[name=city]', 'Enter', '--times', '2']);
+    const output = await bdg(['dom', 'press-key', '[name=city]', 'Enter', '--times', '2']);
     assert.match(output, /^⚠ Key Pressed \(submit blocked\)/);
     assert.equal(output.split('Submit blocked: ').length - 1, 1, output);
     const data = await pressKeyJson('[name=city]', 'Enter', '--times', '2');
@@ -197,7 +197,7 @@ void describe('dom pressKey Enter in a form with a submit button', () => {
 
   void it('leaves Enter in a valid form unchanged', async () => {
     await bdg(['dom', 'fill', '[name=city]', 'Paris']);
-    const output = await bdg(['dom', 'pressKey', '[name=city]', 'Enter']);
+    const output = await bdg(['dom', 'press-key', '[name=city]', 'Enter']);
     assert.doesNotMatch(output, /submit blocked/i);
     assert.deepEqual(await evaluate('window.submitted'), ['light']);
   });
@@ -219,7 +219,7 @@ void describe('dom pressKey Enter in a form with a submit button', () => {
   });
 });
 
-void describe('dom pressKey Enter in forms without a usable submit button', () => {
+void describe('dom press-key Enter in forms without a usable submit button', () => {
   /** The browser's message for an empty required field */
   let requiredMessage: unknown;
 
@@ -230,7 +230,7 @@ void describe('dom pressKey Enter in forms without a usable submit button', () =
   });
 
   void it('reports a form with a single field and no button', async () => {
-    const output = await bdg(['dom', 'pressKey', '[name=nick]', 'Enter']);
+    const output = await bdg(['dom', 'press-key', '[name=nick]', 'Enter']);
     assert.match(output, /^⚠ Key Pressed \(submit blocked\)/);
     assert.ok(
       output.includes(`Submit blocked: nick: ${String(requiredMessage)}`),
@@ -246,7 +246,7 @@ void describe('dom pressKey Enter in forms without a usable submit button', () =
   });
 
   void it('reports a submit the page blocks in its own Enter handler (preventDefault, requestSubmit)', async () => {
-    const output = await bdg(['dom', 'pressKey', '[name=handle]', 'Enter']);
+    const output = await bdg(['dom', 'press-key', '[name=handle]', 'Enter']);
     assert.match(output, /^⚠ Key Pressed \(submit blocked\)/);
     assert.ok(
       output.includes(`Submit blocked: handle: ${String(requiredMessage)}`),
@@ -256,7 +256,7 @@ void describe('dom pressKey Enter in forms without a usable submit button', () =
   });
 
   void it('reports Enter in a textarea whose handler cancels the newline and submits (#605)', async () => {
-    const output = await bdg(['dom', 'pressKey', 'textarea[name=q]', 'Enter']);
+    const output = await bdg(['dom', 'press-key', 'textarea[name=q]', 'Enter']);
     assert.match(output, /^⚠ Key Pressed \(submit blocked\)/);
     assert.ok(
       output.includes(`Submit blocked: q: ${String(requiredMessage)}`),
@@ -275,7 +275,7 @@ void describe('dom pressKey Enter in forms without a usable submit button', () =
   });
 
   void it('names a field once when the page and Enter both try to submit', async () => {
-    const output = await bdg(['dom', 'pressKey', '[name=alias]', 'Enter']);
+    const output = await bdg(['dom', 'press-key', '[name=alias]', 'Enter']);
     assert.equal(output.split('alias: ').length - 1, 1, output);
     const data = await pressKeyJson('[name=alias]', 'Enter');
     assert.deepEqual(data.submitBlocked, [{ field: 'alias', message: requiredMessage }]);
@@ -332,7 +332,7 @@ void describe('dom pressKey Enter in forms without a usable submit button', () =
   });
 
   void it('leaves Enter in a textarea unchanged', async () => {
-    const output = await bdg(['dom', 'pressKey', '[name=body]', 'Enter']);
+    const output = await bdg(['dom', 'press-key', '[name=body]', 'Enter']);
     assert.match(output, /^✓ Key Pressed/);
     assert.equal(await evaluate("document.querySelector('[name=body]').value"), '\n');
     assert.deepEqual(await evaluate('window.submitted'), []);

@@ -59,7 +59,7 @@ async function bdg(args: string[]): Promise<string> {
  * @returns Evaluation result
  */
 async function evaluate(expression: string): Promise<unknown> {
-  const output = await bdg(['dom', 'eval', expression, '--json']);
+  const output = await bdg(['eval', expression, '--json']);
   return (JSON.parse(output) as { data: { result: unknown } }).data.result;
 }
 

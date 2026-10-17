@@ -80,7 +80,7 @@ function isRuntimeEvaluateResult(value: unknown): value is Protocol.Runtime.Eval
 }
 
 /**
- * Execute a `bdg dom eval` script in browser context via CDP, in a block
+ * Execute a `bdg eval` script in browser context via CDP, in a block
  * named `bdg-eval` (see {@link wrapEvalScript})
  *
  * @param cdp - CDP connection instance
@@ -138,7 +138,7 @@ export async function executeScript(
 }
 
 /**
- * Wait for a returned promise and use its value, as `dom eval` always has
+ * Wait for a returned promise and use its value, as `eval` always has
  * (REPL mode awaits top-level `await` but returns a promise value as is).
  *
  * @param cdp - CDP connection
@@ -184,7 +184,7 @@ export function describeException(details: Protocol.Runtime.ExceptionDetails): s
 }
 
 /**
- * Message of an exception of a `bdg dom eval` script, at the script's own
+ * Message of an exception of a `bdg eval` script, at the script's own
  * positions.
  *
  * @param details - Exception details
@@ -195,13 +195,13 @@ function describeEvalFailure(details: Protocol.Runtime.ExceptionDetails): string
 }
 
 /**
- * Counter giving each `bdg dom eval` its own object group for the objects it
+ * Counter giving each `bdg eval` its own object group for the objects it
  * creates: evals may run concurrently, and one must not free another's
  * result before it is copied.
  */
 let evaluations = 0;
 
-/** Result of `bdg dom eval`: a JSON-safe value plus its JavaScript type. */
+/** Result of `bdg eval`: a JSON-safe value plus its JavaScript type. */
 export interface EvalResult {
   /** JSON value, or a readable description for values JSON cannot represent */
   value: unknown;
@@ -801,7 +801,7 @@ export async function settledWithin<T>(
   );
 }
 
-/** Where a `bdg dom eval` script runs (default: the page's main frame) */
+/** Where a `bdg eval` script runs (default: the page's main frame) */
 export interface EvalTarget {
   /** Session of an attached target (out-of-process iframe) */
   sessionId?: string;
@@ -819,7 +819,7 @@ export interface EvalTarget {
   abandoned?: AbortSignal;
 }
 
-/** A `bdg dom eval` the daemon has not answered yet */
+/** A `bdg eval` the daemon has not answered yet */
 interface PendingEvaluation {
   /**
    * Settles once its script cannot hold the page any more: answered, or (a
@@ -837,7 +837,7 @@ interface PendingEvaluation {
 }
 
 /**
- * `bdg dom eval` evaluations the daemon has not answered yet, in the order
+ * `bdg eval` evaluations the daemon has not answered yet, in the order
  * they were sent; one set for every target, as a same-process iframe's
  * script runs on the page's thread though it is sent on another connection
  */
@@ -845,7 +845,7 @@ const pendingEvaluations = new Set<PendingEvaluation>();
 
 /**
  * Whether a raw `bdg cdp` call runs a page script that the daemon stops
- * when its client disconnects, like a `dom eval` script.
+ * when its client disconnects, like a `eval` script.
  *
  * @param method - CDP method
  * @returns True for `Runtime.evaluate` and `Runtime.callFunctionOn`
@@ -959,7 +959,7 @@ function stopWhenAbandoned(
     abandoned?.removeEventListener('abort', stop);
     entry.markIdle();
   };
-  log.debug(`dom eval sent (${pendingEvaluations.size} pending)`);
+  log.debug(`eval sent (${pendingEvaluations.size} pending)`);
   evaluation.then(answered, answered);
   if (abandoned?.aborted) stop();
   else abandoned?.addEventListener('abort', stop, { once: true });
@@ -968,7 +968,7 @@ function stopWhenAbandoned(
 
 /**
  * Send a raw `bdg cdp` script call (see {@link stopsScriptWhenAbandoned})
- * on the page, tracked like a `dom eval`: its script is stopped when its
+ * on the page, tracked like a `eval`: its script is stopped when its
  * client disconnects before the call settled, with the same guards
  * ({@link stopWhenAbandoned}), and later evals wait for it as for an eval.
  * Its tracking's `scriptFinished` is never called (a raw call's lost reply
@@ -1220,7 +1220,7 @@ async function pageContextLostError(error: unknown, cdp: CDPSender): Promise<Com
 }
 
 /**
- * `Runtime.evaluate` options of a `bdg dom eval` script.
+ * `Runtime.evaluate` options of a `bdg eval` script.
  *
  * @param target - Execution context to run in
  * @param objectGroup - The eval's object group
@@ -1242,7 +1242,7 @@ function evaluateOptions(
 }
 
 /**
- * Evaluate a `bdg dom eval` script.
+ * Evaluate a `bdg eval` script.
  *
  * Runs like the DevTools console (REPL mode: top-level `await` works, the
  * last expression's value is the result) in a block, so top-level

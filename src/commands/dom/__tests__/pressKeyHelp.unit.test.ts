@@ -1,5 +1,5 @@
 /**
- * `bdg dom pressKey --help` states the `--times` range (#612).
+ * `bdg dom press-key --help` states the `--times` range (#612).
  */
 
 import * as assert from 'node:assert/strict';
@@ -9,13 +9,13 @@ import { Command } from 'commander';
 
 import { registerFormInteractionCommands } from '@/commands/dom/formInteraction.js';
 
-void describe('dom pressKey --help', () => {
+void describe('dom press-key --help', () => {
   const program = new Command();
   program.command('dom');
   registerFormInteractionCommands(program);
   const pressKey = program.commands
     .find((cmd) => cmd.name() === 'dom')
-    ?.commands.find((cmd) => cmd.name() === 'pressKey');
+    ?.commands.find((cmd) => cmd.name() === 'press-key');
 
   void it('shows the range --times accepts', () => {
     assert.ok(pressKey, 'pressKey is registered');

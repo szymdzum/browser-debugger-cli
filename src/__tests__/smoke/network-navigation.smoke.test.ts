@@ -94,7 +94,7 @@ void describe('Network and navigation', () => {
   });
 
   void it('lists a repeated header value once and the remote port', async () => {
-    await runJson('dom', ['eval', "fetch('/repeated-headers').then((r) => r.status)"]);
+    await runJson('eval', ["fetch('/repeated-headers').then((r) => r.status)"]);
     const data = await runJson<{ requests: ListedRequest[] }>('network', ['list', '--last', '0']);
     const request = data.requests.find((r) => r.url.endsWith('/repeated-headers'));
     assert.ok(request, `Requests: ${JSON.stringify(data.requests)}`);
@@ -148,7 +148,7 @@ void describe('Network list window and failures', () => {
     const burst =
       'Promise.allSettled([...Array(15).keys()].map((i) => fetch("/?n=" + i))' +
       '.concat(fetch("http://127.0.0.1:1/refused"))).then(() => "done")';
-    await runJson('dom', ['eval', burst]);
+    await runJson('eval', [burst]);
   });
 
   after(async () => {
@@ -402,7 +402,7 @@ void describe('WebSocket connections', () => {
   });
 
   void it('exports the messages to HAR', async () => {
-    await runJson('dom', ['eval', 'window.socket.close()']);
+    await runJson('eval', ['window.socket.close()']);
     const file = path.join(makeTempDir('bdg-har-'), 'ws.har');
     const result = await runCommand('network', ['har', file], { timeout: 30000 });
     assert.equal(result.exitCode, 0, result.stderr);
@@ -467,7 +467,7 @@ void describe('Network list by page and size, details body options (#451)', () =
       timeout: 60000,
     });
     assert.equal(result.exitCode, 0, `Start failed: ${result.stderr}`);
-    await runJson('dom', ['eval', 'fetch("/not-found.png").then((r) => r.status)']);
+    await runJson('eval', ['fetch("/not-found.png").then((r) => r.status)']);
     const navigated = await runCommand('page', ['navigate', `${fixture.url}?second`], {
       timeout: 30000,
     });

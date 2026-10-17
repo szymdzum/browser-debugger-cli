@@ -33,6 +33,7 @@ import { handleDomScreenshot } from '@/commands/dom/screenshot.js';
 import { registerWaitCommand } from '@/commands/dom/wait.js';
 import {
   EVAL_SCOPE_HELP,
+  jsonOption,
   SELECTOR_OR_INDEX_ARGUMENT,
   QUERY_CLASS_HELP,
   NODE_ID_HELP,
@@ -48,8 +49,31 @@ import type {
 import { integerOption, screenshotFormatOption } from '@/commands/shared/validation.js';
 import { MAX_VALUE_LENGTH, QUERY_JSON_LIST_LIMIT } from '@/constants.js';
 
-/** Help of `--full` on `dom eval` and the `eval` shortcut */
+/** Help of `--full` on `eval` */
 const EVAL_FULL_HELP = `Print the whole value (default: the first ${MAX_VALUE_LENGTH} characters; a string result in JSON too)`;
+
+/**
+ * Add the `eval` command: `bdg eval`, and the old spelling `bdg dom eval` (a
+ * deprecated row of the rename table) with the same options.
+ *
+ * @param parent - Root program, or the `dom` command for the old spelling
+ */
+function addEvalCommand(parent: Command): void {
+  parent
+    .command('eval')
+    .description('Evaluate JavaScript expression in the page context')
+    .argument('<script>', 'JavaScript to execute (e.g., "document.title", "window.location.href")')
+    .option(
+      '--frame <frame>',
+      'Evaluate in an iframe, cross-origin ones included: index (from dom frames; 87 when stale), name/id attribute, or part of the name, id or URL'
+    )
+    .option('--full', EVAL_FULL_HELP)
+    .addOption(jsonOption())
+    .addHelpText('after', EVAL_SCOPE_HELP)
+    .action(async (script: string, options: DomEvalCommandOptions) => {
+      await handleDomEval(script, options);
+    });
+}
 
 /**
  * Register DOM telemetry commands on the root Commander program.
@@ -84,31 +108,8 @@ export function registerDomCommands(program: Command): void {
       await handleDomQuery(selector, options);
     });
 
-  dom
-    .command('eval')
-    .description('Evaluate JavaScript expression in the page context')
-    .argument('<script>', 'JavaScript to execute (e.g., "document.title", "window.location.href")')
-    .option(
-      '--frame <frame>',
-      'Evaluate in an iframe, cross-origin ones included: index (from dom frames; 87 when stale), name/id attribute, or part of the name, id or URL'
-    )
-    .option('--full', EVAL_FULL_HELP)
-    .option('-j, --json', 'Output as JSON')
-    .addHelpText('after', EVAL_SCOPE_HELP)
-    .action(async (script: string, options: DomEvalCommandOptions) => {
-      await handleDomEval(script, options);
-    });
-
-  program
-    .command('eval', { hidden: true })
-    .description('Shortcut for: bdg dom eval')
-    .argument('<script>', 'JavaScript to execute')
-    .option('--frame <frame>', 'Evaluate in an iframe (see dom frames)')
-    .option('--full', EVAL_FULL_HELP)
-    .option('-j, --json', 'Output as JSON')
-    .action(async (script: string, options: DomEvalCommandOptions) => {
-      await handleDomEval(script, options);
-    });
+  addEvalCommand(program);
+  addEvalCommand(dom);
 
   dom
     .command('frames')

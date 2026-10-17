@@ -52,13 +52,13 @@ async function cdp<T = Record<string, unknown>>(
 }
 
 /**
- * Run `bdg dom eval <script> --json` and return its result.
+ * Run `bdg eval <script> --json` and return its result.
  *
  * @param script - Expression
  * @returns The evaluated value
  */
 async function evaluate(script: string): Promise<unknown> {
-  const result = await runCommand('dom', ['eval', script, '--json'], { timeout: 60000 });
+  const result = await runCommand('eval', [script, '--json'], { timeout: 60000 });
   assert.equal(result.exitCode, 0, result.stderr);
   return (JSON.parse(result.stdout) as { data: { result: unknown } }).data.result;
 }
@@ -197,7 +197,7 @@ void describe('bdg cdp events', () => {
     }
   });
 
-  void it('hints dom eval, not dom query, for a plain Runtime.evaluate (#554)', async () => {
+  void it('hints eval, not dom query, for a plain Runtime.evaluate (#554)', async () => {
     const outputs: string[] = [];
     for (let call = 0; call < 2; call++) {
       const result = await runCommand(

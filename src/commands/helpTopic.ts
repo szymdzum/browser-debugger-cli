@@ -5,7 +5,12 @@
 import type { Command, CommanderError } from 'commander';
 
 import { commandPath } from '@/commands/helpJson.js';
-import { currentOptions, currentSubcommands } from '@/commands/shared/renamedNames.js';
+import {
+  currentOptions,
+  currentSubcommands,
+  renamedCommandPath,
+  renamedCommandSuggestion,
+} from '@/commands/shared/renamedNames.js';
 import { CommandError } from '@/errors/index.js';
 import {
   didYouMeanSuggestion,
@@ -161,9 +166,9 @@ function excessArgumentsSuggestion(command: Command): string | undefined {
   const taken = command.registeredArguments;
   const last = taken.at(-1);
   if (!last || last.variadic || !isSplitArgument(command, last.name())) return undefined;
-  if (last.name() === 'script')
-    return quoteScriptSuggestion(commandPath(command), command.args.length);
-  return quotedArgumentsSuggestion(commandPath(command), command.args, taken.length);
+  const path = renamedCommandPath(command) ?? commandPath(command);
+  if (last.name() === 'script') return quoteScriptSuggestion(path, command.args.length);
+  return quotedArgumentsSuggestion(path, command.args, taken.length);
 }
 
 /**
@@ -185,7 +190,7 @@ export function usageErrorDetails(
   argv: string[] = process.argv,
   bareGroup = false
 ): { message: string; suggestion: string } {
-  const help = usageHelpSuggestion(commandPath(command));
+  const help = usageHelpSuggestion(renamedCommandPath(command) ?? commandPath(command));
   const { message, suggestion } = splitCommanderHint(error.message);
   const flag = error.code === 'commander.unknownOption' && UNKNOWN_OPTION.exec(message)?.[1];
   if (error.code === 'commander.help' || (bareGroup && flag && JSON_FLAGS.includes(flag))) {
@@ -195,7 +200,12 @@ export function usageErrorDetails(
   if (error.code === 'commander.excessArguments') {
     return { message, suggestion: excessArgumentsSuggestion(command) ?? help };
   }
-  if (!flag) return { message, suggestion: suggestion ?? help };
+  if (!flag) {
+    return {
+      message,
+      suggestion: suggestion ?? renamedCommandSuggestion(command, message) ?? help,
+    };
+  }
   const typed = typedOption(flag, argv);
   const closest = closestOption(/^-[^-]../.test(typed) ? `-${typed}` : typed, command);
   return {

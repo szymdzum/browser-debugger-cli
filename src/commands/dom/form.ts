@@ -152,7 +152,7 @@ function buildInteractionWarning(raw: RawField): string | undefined {
   }
 
   if (type === 'textbox') {
-    return 'Custom textbox - if fill has no effect, click it and type with pressKey (one key per call)';
+    return 'Custom textbox - if fill has no effect, click it and type with press-key (one key per call)';
   }
 
   return 'Custom component - standard fill may not work';

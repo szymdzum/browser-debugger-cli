@@ -184,9 +184,9 @@ void describe('names not in the table', () => {
 
 void describe('old names as argument values', () => {
   for (const argv of [
-    ['dom', 'eval', 'tail', '--json'],
+    ['eval', 'tail', '--json'],
     ['dom', 'fill', 'input', '--json', '--', '--aggressive'],
-    ['dom', 'eval', '--json', '--', '--kill-chrome'],
+    ['eval', '--json', '--', '--kill-chrome'],
   ]) {
     void it(`bdg ${argv.join(' ')}: no warning, no warnings field`, async () => {
       const run = await runCli(argv);

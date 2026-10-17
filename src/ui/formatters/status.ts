@@ -181,7 +181,7 @@ export function formatSessionStatus(
     .blank()
     .section('Commands:', [
       `Peek data:       ${sessionCommand('bdg peek', sessionName ?? null)}`,
-      `Run JavaScript:  ${sessionCommand('bdg dom eval <script>', sessionName ?? null)}`,
+      `Run JavaScript:  ${sessionCommand('bdg eval <script>', sessionName ?? null)}`,
       `End session:     ${sessionCommand('bdg stop', sessionName ?? null)}`,
     ]);
 

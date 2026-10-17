@@ -203,7 +203,7 @@ export const MAX_TOTAL_BODY_BYTES = 100 * 1024 * 1024;
 // ============================================================================
 
 /**
- * Characters of one value `dom get --raw` and `dom eval` print (human output,
+ * Characters of one value `dom get --raw` and `eval` print (human output,
  * and eval string results and outer HTML in JSON)
  */
 export const MAX_VALUE_LENGTH = 20_000;
@@ -247,7 +247,7 @@ export const CHROME_POST_DATA_LIMIT = 1 * 1024 * 1024; // 1MB
 /** Matches `dom query` and `dom a11y query` list with `--json` and no `--limit` */
 export const QUERY_JSON_LIST_LIMIT = 100;
 
-/** Elements of an array result `dom eval --json` lists (the rest are counted as omitted) */
+/** Elements of an array result `eval --json` lists (the rest are counted as omitted) */
 export const EVAL_JSON_ARRAY_LIMIT = 100;
 
 /** Matches `dom layout` measures per command (the rest are counted as omitted) */
@@ -283,7 +283,7 @@ export const DEFAULT_PAGE_READINESS_TIMEOUT_MS = 2000;
 export const MAX_JSONL_BUFFER_SIZE = 256 * 1024 * 1024;
 
 /**
- * Largest result `bdg dom eval --full` returns, in bytes of output (UTF-8 bytes
+ * Largest result `bdg eval --full` returns, in bytes of output (UTF-8 bytes
  * of a string, or of the formatted JSON of an object or array): 50 MiB. A larger
  * one is refused (exit 81): bigger results took the CLI 37 times their size in
  * memory, and 200 MB crashed it.
@@ -291,7 +291,7 @@ export const MAX_JSONL_BUFFER_SIZE = 256 * 1024 * 1024;
 export const EVAL_FULL_MAX_BYTES = 50 * 1024 * 1024;
 
 /**
- * Cap on what the page counts of a `bdg dom eval` object result without
+ * Cap on what the page counts of a `bdg eval` object result without
  * `--full`: 256 MiB, counted in characters (string lengths and keys, a lower
  * bound), not bytes. Chrome never answers a command whose serialized answer is
  * larger, and non-ASCII text takes more of it per character (about 60 million

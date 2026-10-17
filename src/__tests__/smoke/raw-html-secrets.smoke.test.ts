@@ -224,13 +224,11 @@ void describe('Secrets in raw HTML (#583)', () => {
 
   void it('masks a copy: the page keeps its values and no custom element is constructed', async () => {
     const before = await bdgJson<{ result: unknown }>([
-      'dom',
       'eval',
       '[window.badges, document.querySelector("#pass").getAttribute("value")]',
     ]);
     await bdg(['dom', 'get', '#signup', '--raw']);
     const afterRead = await bdgJson<{ result: unknown }>([
-      'dom',
       'eval',
       '[window.badges, document.querySelector("#pass").getAttribute("value")]',
     ]);
@@ -261,7 +259,6 @@ void describe('Secrets in raw HTML (#583)', () => {
     assert.doesNotMatch(nested, /DEEPSECRET/);
     assert.match(nested, /••••/);
     const page = await bdgJson<{ result: unknown }>([
-      'dom',
       'eval',
       'document.querySelector("#plain-frame").outerHTML',
     ]);
@@ -401,7 +398,7 @@ void describe('Secrets in raw HTML (#583)', () => {
   void it('says when a value was masked: a footer line, and masked: true in JSON', async () => {
     await bdg(['page', 'navigate', `${fixture.url}raw-secrets`]);
     const lines = (await bdg(['dom', 'get', '#pass', '--raw'])).trimEnd().split('\n');
-    assert.equal(lines.at(-1), 'Secret values shown as •••• (read them with bdg dom eval)');
+    assert.equal(lines.at(-1), 'Secret values shown as •••• (read them with bdg eval)');
     const masked = await bdgJson<{ nodes: Array<{ masked?: boolean }> }>([
       'dom',
       'get',

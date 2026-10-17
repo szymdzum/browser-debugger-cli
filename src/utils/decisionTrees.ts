@@ -66,12 +66,12 @@ export const DECISION_TREES: Record<string, DecisionTree> = {
       },
       {
         question: 'Need to press a key (Enter, Tab, Escape)?',
-        yesCommand: 'dom pressKey',
+        yesCommand: 'dom press-key',
         noAction: 'next',
       },
       {
         question: 'Need to execute custom JavaScript?',
-        yesCommand: 'dom eval',
+        yesCommand: 'eval',
         noAction: 'next',
       },
       {
@@ -92,7 +92,7 @@ export const DECISION_TREES: Record<string, DecisionTree> = {
       },
       {
         question: 'Need to get cookies?',
-        yesCommand: 'network getCookies',
+        yesCommand: 'network cookies',
         noAction: 'next',
       },
       {

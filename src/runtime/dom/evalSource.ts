@@ -1,5 +1,5 @@
 /**
- * The source a `bdg dom eval` script runs as: the script in a block, so its
+ * The source a `bdg eval` script runs as: the script in a block, so its
  * top-level `const`/`let`/`class` stay local to that eval instead of staying
  * in the page's global lexical scope (REPL mode still gives the block's
  * completion value and allows top-level `await`; `var` and function
@@ -10,17 +10,17 @@
  * `"use strict"` the script starts with, which would no longer be a
  * directive inside the block): Chrome's line numbers are one more than the
  * script's, which {@link evalLine} and {@link withEvalPositions} take back
- * in console messages and dom eval errors (a stack the script reads itself,
+ * in console messages and eval errors (a stack the script reads itself,
  * `new Error().stack`, keeps them).
  */
 
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { compiles, MAX_COMPILED_LENGTH } from '@/runtime/dom/topLevelAwait.js';
 
-/** Source URL of `bdg dom eval` scripts */
+/** Source URL of `bdg eval` scripts */
 const EVAL_SOURCE_URL = 'bdg-eval';
 
-/** A stack frame's dom eval position (`    at f (bdg-eval:2:7)`), not one in a message */
+/** A stack frame's eval position (`    at f (bdg-eval:2:7)`), not one in a message */
 const STACK_POSITION = new RegExp(`^(\\s+at\\s.*?)\\b${EVAL_SOURCE_URL}:(\\d+):(\\d+)`, 'gm');
 
 /** A hashbang line at the start of a script */
@@ -53,7 +53,7 @@ function isStrict(script: string): boolean {
 }
 
 /**
- * The source sent to the page for a dom eval script. A hashbang becomes a
+ * The source sent to the page for a eval script. A hashbang becomes a
  * `//` comment of the same length; a strict directive is repeated before
  * the block. A script that does not compile on its own (a SyntaxError, or a
  * `}` that would close the block) is sent without the block, so it fails
@@ -76,14 +76,14 @@ export function wrapEvalScript(script: string): string {
  *
  * @param url - Source URL of the script
  * @param lineNumber - 0-based line
- * @returns The line without the block's first line for a dom eval script
+ * @returns The line without the block's first line for a eval script
  */
 export function evalLine(url: string, lineNumber: number): number {
   return url === EVAL_SOURCE_URL && lineNumber > 0 ? lineNumber - 1 : lineNumber;
 }
 
 /**
- * A text's dom eval stack frame positions as the user wrote the script
+ * A text's eval stack frame positions as the user wrote the script
  * (positions in the message itself are left as written).
  *
  * @param text - Error description or stack
@@ -96,7 +96,7 @@ export function withEvalPositions(text: string): string {
 }
 
 /**
- * Message of a dom eval exception, at the user's positions. An exception
+ * Message of a eval exception, at the user's positions. An exception
  * without a stack (a SyntaxError) gets its position as a stack line (its
  * 0-based line in the source is the script's 1-based line).
  *

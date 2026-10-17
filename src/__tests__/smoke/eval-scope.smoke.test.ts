@@ -1,7 +1,7 @@
 /**
- * `bdg dom eval` scope smoke test (#743).
+ * `bdg eval` scope smoke test (#743).
  *
- * A dom eval script's top-level `const`/`let`/`class` stay local to that
+ * A eval script's top-level `const`/`let`/`class` stay local to that
  * eval: they are not left in the page's global lexical scope, where they
  * would collide with a later `bdg cdp Runtime.evaluate` or a page script.
  * `var` and function declarations stay global, as explicit globals. Each
@@ -151,12 +151,12 @@ async function runJson(args: string[]): Promise<{ exitCode: number } & Envelope>
  * `typeof` of a name in the page, read with a plain `Runtime.evaluate`.
  *
  * @param name - Global name
- * @param frame - Frame to read in (`dom eval --frame`), else the page
+ * @param frame - Frame to read in (`eval --frame`), else the page
  * @returns The type
  */
 async function typeOfGlobal(name: string, frame?: string): Promise<unknown> {
   if (frame) {
-    return (await runJson(['dom', 'eval', `typeof ${name}`, '--frame', frame])).data?.result;
+    return (await runJson(['eval', `typeof ${name}`, '--frame', frame])).data?.result;
   }
   const params = JSON.stringify({ expression: `typeof ${name}`, returnByValue: true });
   const result = await runJson(['cdp', 'Runtime.evaluate', '--params', params]);
@@ -164,7 +164,7 @@ async function typeOfGlobal(name: string, frame?: string): Promise<unknown> {
     ?.value;
 }
 
-void describe('dom eval scope', () => {
+void describe('eval scope', () => {
   let fixture: FixtureServer;
 
   before(async () => {
@@ -184,14 +184,14 @@ void describe('dom eval scope', () => {
 
   void it('keeps values, exit codes and errors, and leaves only explicit globals', async () => {
     for (const row of CASES) {
-      const json = await runJson(['dom', 'eval', row.script]);
+      const json = await runJson(['eval', row.script]);
       assert.equal(json.exitCode, row.exitCode, `${row.script}: ${json.error ?? ''}`);
       if (row.error) {
         assert.match(json.error ?? '', row.error, row.script);
       } else {
         if ('result' in row) assert.deepEqual(json.data?.result, row.result, row.script);
         if (row.type) assert.equal(json.data?.type, row.type, row.script);
-        const human = await runCommand('dom', ['eval', row.script], { timeout: 60000 });
+        const human = await runCommand('eval', [row.script], { timeout: 60000 });
         assert.equal(human.stdout.trimEnd(), row.printed, row.script);
       }
       for (const [name, type] of Object.entries(row.globals ?? {})) {
@@ -201,20 +201,20 @@ void describe('dom eval scope', () => {
   });
 
   void it('leaves the name free for bdg cdp and a later page script', async () => {
-    assert.equal((await runJson(['dom', 'eval', 'const t = 1; t'])).data?.result, 1);
-    assert.equal((await runJson(['dom', 'eval', 'const t = 1; t'])).data?.result, 1);
+    assert.equal((await runJson(['eval', 'const t = 1; t'])).data?.result, 1);
+    assert.equal((await runJson(['eval', 'const t = 1; t'])).data?.result, 1);
     const params = JSON.stringify({ expression: 'const t = 2; t', returnByValue: true });
     const cdp = await runJson(['cdp', 'Runtime.evaluate', '--params', params]);
     assert.equal(cdp.exitCode, 0, cdp.error);
     const pageScript = `const s = document.createElement('script');
 s.textContent = 'let pageT = 5; window.pageScriptRan = pageT';
 document.head.append(s); window.pageScriptRan`;
-    assert.equal((await runJson(['dom', 'eval', 'let pageT = 1; pageT'])).data?.result, 1);
-    assert.equal((await runJson(['dom', 'eval', pageScript])).data?.result, 5);
+    assert.equal((await runJson(['eval', 'let pageT = 1; pageT'])).data?.result, 1);
+    assert.equal((await runJson(['eval', pageScript])).data?.result, 5);
   });
 
   void it('names console messages bdg-eval at the line and column of the script', async () => {
-    assert.equal((await runJson(['dom', 'eval', 'console.error("from-eval-743"); 1'])).exitCode, 0);
+    assert.equal((await runJson(['eval', 'console.error("from-eval-743"); 1'])).exitCode, 0);
     const json = await runJson(['console']);
     const errors = (json.data as unknown as { errors: Array<{ text: string; source?: unknown }> })
       .errors;
@@ -228,7 +228,7 @@ document.head.append(s); window.pageScriptRan`;
     const navigated = await runCommand('page', ['navigate', `${fixture.url}eval-frames`]);
     assert.equal(navigated.exitCode, 0, navigated.stderr);
     for (let run = 0; run < 2; run++) {
-      const first = await runJson(['dom', 'eval', 'const fr = 3; fr', '--frame', 'same']);
+      const first = await runJson(['eval', 'const fr = 3; fr', '--frame', 'same']);
       assert.equal(first.data?.result, 3, first.error);
     }
     assert.equal(await typeOfGlobal('fr', 'same'), 'undefined');

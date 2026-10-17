@@ -1,5 +1,5 @@
 /**
- * Bounded `dom eval --json` smoke test (#478).
+ * Bounded `eval --json` smoke test (#478).
  *
  * On a page with 20,000 elements, an array or object result in `--json`
  * stays within about 20 KB and says how much it left out (`count`/`omitted`,
@@ -37,7 +37,7 @@ interface EvalData {
 }
 
 /**
- * Run `dom eval <expression> --json` and assert it succeeded.
+ * Run `eval <expression> --json` and assert it succeeded.
  *
  * @param expression - Script
  * @param extra - Extra flags
@@ -47,14 +47,14 @@ async function evalJson(
   expression: string,
   extra: string[] = []
 ): Promise<{ stdout: string; data: EvalData }> {
-  const result = await runCommand('dom', ['eval', expression, '--json', ...extra], {
+  const result = await runCommand('eval', [expression, '--json', ...extra], {
     timeout: 60000,
   });
   assert.equal(result.exitCode, 0, result.stderr);
   return { stdout: result.stdout, data: (JSON.parse(result.stdout) as { data: EvalData }).data };
 }
 
-void describe('dom eval --json bounds', () => {
+void describe('eval --json bounds', () => {
   let fixture: FixtureServer;
 
   before(async () => {

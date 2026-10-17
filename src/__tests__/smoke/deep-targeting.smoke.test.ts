@@ -40,7 +40,7 @@ async function runJson<T>(command: string, args: string[]): Promise<T> {
  * @returns Its value
  */
 async function evaluate(expression: string): Promise<unknown> {
-  return (await runJson<{ result: unknown }>('dom', ['eval', expression])).result;
+  return (await runJson<{ result: unknown }>('eval', [expression])).result;
 }
 
 /**
@@ -111,7 +111,7 @@ void describe('Shadow DOM and iframe targeting', () => {
   void it('targets query indices inside frames', async () => {
     await runJson('dom', ['query', 'button']);
     await runJson('dom', ['click', '1']);
-    await runJson('dom', ['pressKey', '#frame-input', 'Enter']);
+    await runJson('dom', ['press-key', '#frame-input', 'Enter']);
 
     assert.match(String(await evaluate('window.events.join()')), /frame-click,frame-key:Enter$/);
   });
@@ -148,7 +148,7 @@ void describe('Shadow DOM and iframe targeting', () => {
   });
 
   void it('passes selectors with quotes, backslashes and </script> to the page intact (#617)', async () => {
-    const added = await runCommand('dom', ['eval', ADD_ODD_ELEMENTS]);
+    const added = await runCommand('eval', [ADD_ODD_ELEMENTS]);
     assert.equal(added.exitCode, 0, added.stderr);
 
     const hidden = await runCommand('dom', ['query', `p${ODD_ATTRIBUTE}:visible`]);

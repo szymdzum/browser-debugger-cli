@@ -85,7 +85,7 @@ function errorTexts(data: ActionData): string[] {
  * @returns `id type InputEvent|Event inputType data` lines
  */
 async function takeInputLog(): Promise<string[]> {
-  const output = await bdg(['dom', 'eval', 'window.inputLog.splice(0)', '--json']);
+  const output = await bdg(['eval', 'window.inputLog.splice(0)', '--json']);
   return (JSON.parse(output) as { data: { result: string[] } }).data.result;
 }
 
@@ -159,7 +159,7 @@ void describe('Errors an action caused', () => {
     assert.deepEqual(errorTexts(await act(['fill', '#field', 'x'])), [
       'Uncaught Error: input exploded',
     ]);
-    assert.deepEqual(errorTexts(await act(['pressKey', '#field', 'Enter'])), [
+    assert.deepEqual(errorTexts(await act(['press-key', '#field', 'Enter'])), [
       'Uncaught Error: key exploded',
     ]);
     assert.deepEqual(errorTexts(await act(['hover', '#hover-box'])), [
@@ -224,7 +224,6 @@ void describe('Errors an action caused', () => {
   void it('updates a React-style controlled input through its value tracker', async () => {
     assert.equal(errorTexts(await act(['fill', '#controlled', 'Ada'])).length, 0);
     const shown = await bdg([
-      'dom',
       'eval',
       '[document.getElementById("controlled").value, document.getElementById("controlled-state").textContent].join("|")',
     ]);
@@ -239,7 +238,7 @@ void describe('Errors an action caused', () => {
       'rejecting beforeinput InputEvent insertText kept',
       'rejecting input InputEvent insertText kept',
     ]);
-    assert.match(await bdg(['dom', 'eval', 'document.getElementById("rejecting").value']), /kept/);
+    assert.match(await bdg(['eval', 'document.getElementById("rejecting").value']), /kept/);
   });
 
   void it('reports the errors of the page a click navigated to', async () => {

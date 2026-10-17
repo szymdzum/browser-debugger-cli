@@ -3,7 +3,7 @@
  *
  * A page that logs a 500 KB string, throws a 100 KB Error and holds a 3 MB
  * DOM: `peek` and the `console` summary print no message longer than
- * `console --list` does, `dom get --raw` and `dom eval` print a cut value with
+ * `console --list` does, `dom get --raw` and `eval` print a cut value with
  * a pointer naming `--full`, JSON values over the cap carry `truncatedFrom`,
  * and `--full` gives every value back byte for byte.
  */
@@ -90,7 +90,7 @@ void describe('Long values', () => {
     await cleanupAllSessions();
     fixture = await startFixtureServer();
     await bdg([`${fixture.url}interactions`, '--port', String(await getFreePort()), '--headless']);
-    await bdg(['dom', 'eval', SETUP_SCRIPT]);
+    await bdg(['eval', SETUP_SCRIPT]);
     await waitForThrownError();
   });
 
@@ -110,10 +110,10 @@ void describe('Long values', () => {
     }
   });
 
-  void it('dom get --raw and dom eval print the cap and a pointer naming --full', async () => {
+  void it('dom get --raw and eval print the cap and a pointer naming --full', async () => {
     for (const args of [
       ['dom', 'get', 'body', '--raw'],
-      ['dom', 'eval', 'document.documentElement.outerHTML'],
+      ['eval', 'document.documentElement.outerHTML'],
     ]) {
       const output = await bdg(args);
       assert.ok(output.length < MAX_VALUE_LENGTH + 100, `${args.join(' ')}: ${output.length}`);
@@ -134,7 +134,6 @@ void describe('Long values', () => {
     );
 
     const evaluated = await bdgJson<{ result: string; truncatedFrom?: number }>([
-      'dom',
       'eval',
       'document.body.outerHTML',
     ]);
@@ -143,12 +142,11 @@ void describe('Long values', () => {
   });
 
   void it('--full returns the full values byte for byte', async () => {
-    const html = (
-      await bdgJson<{ result: string }>(['dom', 'eval', 'document.body.outerHTML', '--full'])
-    ).result;
+    const html = (await bdgJson<{ result: string }>(['eval', 'document.body.outerHTML', '--full']))
+      .result;
     assert.ok(html.length > DOM_LENGTH);
     assert.equal(await bdg(['dom', 'get', 'body', '--raw', '--full']), `${html}\n`);
-    assert.equal(await bdg(['dom', 'eval', 'document.body.outerHTML', '--full']), `${html}\n`);
+    assert.equal(await bdg(['eval', 'document.body.outerHTML', '--full']), `${html}\n`);
 
     const data = await bdgJson<ConsoleData>(['console', '--list', '--full']);
     assert.ok(data.messages?.some((message) => message.text === 'L'.repeat(LOGGED_LENGTH)));

@@ -54,7 +54,7 @@ export const PATTERNS: PatternDefinition[] = [
     name: 'cookies_with_cdp',
     cdpMethods: ['Network.getAllCookies', 'Network.getCookies'],
     threshold: 1,
-    alternative: 'bdg network getCookies',
+    alternative: 'bdg network cookies',
   },
   {
     name: 'network_body_fetching',

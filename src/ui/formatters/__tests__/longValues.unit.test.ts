@@ -144,7 +144,7 @@ void describe('console messages in JSON', () => {
   });
 });
 
-void describe('dom get --raw and dom eval human output', () => {
+void describe('dom get --raw and eval human output', () => {
   const html = `<body>${'D'.repeat(3_000_000)}</body>`;
 
   void it('dom get --raw prints the cap and a pointer naming --full', () => {
@@ -160,7 +160,7 @@ void describe('dom get --raw and dom eval human output', () => {
     assert.ok(all.length < 3 * MAX_VALUE_LENGTH, `--all is ${all.length} chars`);
   });
 
-  void it('dom eval prints the cap and a pointer naming --full', () => {
+  void it('eval prints the cap and a pointer naming --full', () => {
     const output = formatDomEval({ result: html, type: 'string' });
     assert.ok(output.length < MAX_VALUE_LENGTH + 100, `eval is ${output.length} chars`);
     assert.match(output, /more chars \(use --full\)$/);

@@ -4,7 +4,7 @@
  * `dom a11y describe` shows relation properties (`labelledby`, …) by the
  * ids of the related elements, in human output and `--json`, and never
  * prints `undefined` (on `/shadow-forms`, a field with `aria-labelledby`).
- * Action echoes (`dom pressKey`, `dom fill`, `dom click`, `dom hover`) name
+ * Action echoes (`dom press-key`, `dom fill`, `dom click`, `dom hover`) name
  * a field by its label or unique `name` (`input[name=email]`), without a
  * position among its siblings that reads like a match count next to
  * "3 elements match" (on `/implicit-submit`, the sign-up form of the
@@ -99,7 +99,7 @@ void describe('action echoes on the sign-up form (#614)', () => {
   });
 
   void it('names the field pressKey hit by its name, without a sibling position', async () => {
-    const output = await bdg(['dom', 'pressKey', '#signup input', 'Enter']);
+    const output = await bdg(['dom', 'press-key', '#signup input', 'Enter']);
     assert.match(output, /3 elements match/);
     assert.equal(elementRow(output), 'input[name=email]');
     assert.doesNotMatch(output, /\(\d+(st|nd|rd|th) of \d+\)/);
@@ -122,7 +122,6 @@ void describe('action echoes on the sign-up form (#614)', () => {
 
   void it('keeps the position for siblings sharing a name and a label', async () => {
     await bdg([
-      'dom',
       'eval',
       `document.body.insertAdjacentHTML('beforeend', '<div id="twins"><span id="twin-label">Twin</span>' +
         '<input name="twin" aria-labelledby="twin-label"><input name="twin" aria-labelledby="twin-label"></div>'); 1`,
@@ -136,13 +135,12 @@ void describe('action echoes on the sign-up form (#614)', () => {
         'input[name=twin] (2nd of 2) "Twin"'
       );
     } finally {
-      await bdg(['dom', 'eval', "document.getElementById('twins').remove(); 1"]);
+      await bdg(['eval', "document.getElementById('twins').remove(); 1"]);
     }
   });
 
   void it('names a button with text by its aria-labelledby', async () => {
     await bdg([
-      'dom',
       'eval',
       `document.body.insertAdjacentHTML('beforeend', '<div id="hl-box"><span id="hl">Hover me</span>' +
         '<button id="hl-btn" aria-labelledby="hl">btn</button></div>'); 1`,
@@ -153,13 +151,13 @@ void describe('action echoes on the sign-up form (#614)', () => {
         'button#hl-btn "Hover me"'
       );
     } finally {
-      await bdg(['dom', 'eval', "document.getElementById('hl-box').remove(); 1"]);
+      await bdg(['eval', "document.getElementById('hl-box').remove(); 1"]);
     }
   });
 
   void it('names a password field by its name, never its value', async () => {
     await bdg(['dom', 'fill', '#signup [name=password]', 'hunter2-614']);
-    const output = await bdg(['dom', 'pressKey', '#signup [name=password]', 'a']);
+    const output = await bdg(['dom', 'press-key', '#signup [name=password]', 'a']);
     assert.equal(elementRow(output), 'input[name=password]');
     assert.doesNotMatch(output, /hunter2-614/);
   });

@@ -1,5 +1,5 @@
 /**
- * Shared helper for DOM element commands (fill, click, submit, pressKey).
+ * Shared helper for DOM element commands (fill, click, submit, press-key).
  *
  * Captures the common flow: resolve selector/index → call IPC → normalize errors.
  * Keeps individual command handlers focused on option wiring and output formatting.

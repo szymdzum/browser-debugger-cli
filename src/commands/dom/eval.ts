@@ -1,5 +1,5 @@
 /**
- * `bdg dom eval` — evaluate a JavaScript expression in the page context, or
+ * `bdg eval` — evaluate a JavaScript expression in the page context, or
  * in one of its iframes with `--frame`.
  *
  * CLI-side handler. Actual evaluation happens in the daemon via the
@@ -17,7 +17,7 @@ import { evalFrameLine, warningMessage } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
- * Handle `bdg dom eval <script> [--frame <frame>]`. With `--frame`, the
+ * Handle `bdg eval <script> [--frame <frame>]`. With `--frame`, the
  * frame the script ran in is a `Frame:` line on stderr (JSON: `frame`), and
  * a warning about how the result was copied goes there too (JSON:
  * `warning`), so stdout stays the bare value for pipes. Long values are cut

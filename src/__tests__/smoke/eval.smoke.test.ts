@@ -1,5 +1,5 @@
 /**
- * `bdg dom eval` smoke test.
+ * `bdg eval` smoke test.
  *
  * Values JSON cannot represent must come back as readable descriptions with
  * their type (not `undefined` or `{}`), script exceptions are user errors
@@ -34,7 +34,7 @@ async function evaluate(
   expression: string,
   timeout = 60000
 ): Promise<{ exitCode: number; data?: EvalData; error?: string }> {
-  const result = await runCommand('dom', ['eval', expression, '--json'], { timeout });
+  const result = await runCommand('eval', [expression, '--json'], { timeout });
   const envelope = JSON.parse(result.stdout) as { data?: EvalData; error?: string };
   return { exitCode: result.exitCode, ...envelope };
 }
@@ -95,7 +95,7 @@ async function consoleErrorsOnceReported(expected: RegExp): Promise<string[]> {
   }
 }
 
-void describe('dom eval', () => {
+void describe('eval', () => {
   let fixture: FixtureServer;
 
   before(async () => {
@@ -116,15 +116,15 @@ void describe('dom eval', () => {
   });
 
   void it('prints string results raw in human mode and other values as JSON', async () => {
-    const text = await runCommand('dom', ['eval', '"a \\"quoted\\"\\nline"'], { timeout: 60000 });
+    const text = await runCommand('eval', ['"a \\"quoted\\"\\nline"'], { timeout: 60000 });
     assert.equal(text.exitCode, 0, text.stderr);
     assert.equal(text.stdout.trimEnd(), 'a "quoted"\nline');
-    const object = await runCommand('dom', ['eval', '({ a: "x" })'], { timeout: 60000 });
+    const object = await runCommand('eval', ['({ a: "x" })'], { timeout: 60000 });
     assert.deepEqual(JSON.parse(object.stdout), { a: 'x' });
-    const number = await runCommand('dom', ['eval', '1 + 1'], { timeout: 60000 });
+    const number = await runCommand('eval', ['1 + 1'], { timeout: 60000 });
     assert.equal(number.stdout.trim(), '2');
     assert.equal((await evaluate('"a \\"quoted\\""')).data?.result, 'a "quoted"');
-    const ambiguous = await runCommand('dom', ['eval', 'JSON.stringify([1, 2])'], {
+    const ambiguous = await runCommand('eval', ['JSON.stringify([1, 2])'], {
       timeout: 60000,
     });
     assert.equal(ambiguous.stdout.trim(), '"[1,2]"');

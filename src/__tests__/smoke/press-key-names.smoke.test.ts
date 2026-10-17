@@ -1,5 +1,5 @@
 /**
- * `dom pressKey` key names smoke test (#612).
+ * `dom press-key` key names smoke test (#612).
  *
  * On `/key-log` the page records the `keydown` events it gets. Punctuation,
  * a shifted symbol, a capital, a modifier key, `NumpadEnter` and a DOM code
@@ -42,7 +42,7 @@ async function bdg(args: string[], expectedExit = 0): Promise<string> {
  * @returns Entries as `key|code|shiftKey`
  */
 async function keyLog(): Promise<string[]> {
-  const output = await bdg(['dom', 'eval', 'window.keyLog', '--json']);
+  const output = await bdg(['eval', 'window.keyLog', '--json']);
   return (JSON.parse(output) as { data: { result: string[] } }).data.result;
 }
 
@@ -60,7 +60,7 @@ after(async () => {
   await fixture.close();
 });
 
-void describe('dom pressKey key names (#612)', () => {
+void describe('dom press-key key names (#612)', () => {
   void it('dispatches punctuation, shifted symbols, modifiers and code names like Chrome', async () => {
     const pressed: Array<[string, string]> = [
       ['.', '.|Period|false'],
@@ -70,7 +70,7 @@ void describe('dom pressKey key names (#612)', () => {
       ['NumpadEnter', 'Enter|NumpadEnter|false'],
       ['Period', '.|Period|false'],
     ];
-    for (const [name] of pressed) await bdg(['dom', 'pressKey', '#field', name]);
+    for (const [name] of pressed) await bdg(['dom', 'press-key', '#field', name]);
     assert.deepEqual(
       await keyLog(),
       pressed.map(([, entry]) => entry)
@@ -78,20 +78,20 @@ void describe('dom pressKey key names (#612)', () => {
   });
 
   void it('types a punctuation character into the field', async () => {
-    await bdg(['dom', 'eval', "document.getElementById('field').value = ''"]);
-    await bdg(['dom', 'pressKey', '#field', '/']);
-    const output = await bdg(['dom', 'eval', "document.getElementById('field').value"]);
+    await bdg(['eval', "document.getElementById('field').value = ''"]);
+    await bdg(['dom', 'press-key', '#field', '/']);
+    const output = await bdg(['eval', "document.getElementById('field').value"]);
     assert.match(output, /\//);
   });
 
   void it('rejects short unknown input without a function key suggestion', async () => {
-    const output = await bdg(['dom', 'pressKey', '#field', 'Foo'], 81);
+    const output = await bdg(['dom', 'press-key', '#field', 'Foo'], 81);
     assert.doesNotMatch(output, /F1, F2|Did you mean/);
     assert.match(output, /Keys: .*F1-F12/);
   });
 
   void it('asks for a key name when it is empty', async () => {
-    const output = await bdg(['dom', 'pressKey', '#field', ''], 81);
+    const output = await bdg(['dom', 'press-key', '#field', ''], 81);
     assert.match(output, /key name required/i);
   });
 });

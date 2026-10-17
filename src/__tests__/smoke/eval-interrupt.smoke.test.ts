@@ -1,5 +1,5 @@
 /**
- * An interrupted `bdg dom eval` stops its script on the page (#713).
+ * An interrupted `bdg eval` stops its script on the page (#713).
  *
  * When the CLI that sent an eval exits (Ctrl-C, SIGTERM) while the script
  * still runs, the daemon terminates the script instead of letting it run to
@@ -13,7 +13,7 @@
  * Signals are sent once the command is known to be where the test needs
  * it: a looping script has told the fixture server it started (a
  * synchronous `/beacon?…` request before the loop), and a queued eval has
- * been sent to Chrome (the daemon's `dom eval sent` debug line in
+ * been sent to Chrome (the daemon's `eval sent` debug line in
  * `daemon.log`, the session runs with `BDG_DEBUG=1`). Times are measured,
  * and commands are awaited, not slept for.
  */
@@ -67,7 +67,7 @@ const COMMAND_TIMEOUT_MS = 60_000;
 const ANSWER_WITHIN_MS = 3_000;
 
 /** The daemon's debug line for an eval sent to Chrome */
-const EVAL_SENT_LINE = 'dom eval sent';
+const EVAL_SENT_LINE = 'eval sent';
 
 /**
  * A script that tells the fixture server it started, then busy-waits.
@@ -123,7 +123,7 @@ async function untilEvalsSent(count: number): Promise<void> {
   assert.ok(evalsSent() >= count, `the daemon sent ${evalsSent()} evals, expected ${count}`);
 }
 
-void describe('Interrupted dom eval', () => {
+void describe('Interrupted eval', () => {
   let fixture: FixtureServer;
 
   before(async () => {
@@ -164,7 +164,7 @@ void describe('Interrupted dom eval', () => {
   }
 
   /**
-   * Run `dom eval --json`; it is interrupted when `stop` aborts.
+   * Run `eval --json`; it is interrupted when `stop` aborts.
    *
    * @param script - Script
    * @param stop - Aborted to send `signal`
@@ -177,7 +177,7 @@ void describe('Interrupted dom eval', () => {
     options: { frame?: string; signal?: NodeJS.Signals; extra?: string[] } = {}
   ): Promise<CommandResult> {
     const extra = [...frameArgs(options.frame), ...(options.extra ?? [])];
-    return runCommand('dom', ['eval', script, ...extra, '--json'], {
+    return runCommand('eval', [script, ...extra, '--json'], {
       timeout: COMMAND_TIMEOUT_MS,
       ...(stop && { interrupt: stop }),
       ...(options.signal && { interruptWith: options.signal }),
@@ -185,7 +185,7 @@ void describe('Interrupted dom eval', () => {
   }
 
   /**
-   * Start `dom eval 1+1` and wait until the daemon has sent it to Chrome,
+   * Start `eval 1+1` and wait until the daemon has sent it to Chrome,
    * where it waits behind the running script.
    *
    * @param stop - Aborted to send SIGINT
@@ -199,21 +199,21 @@ void describe('Interrupted dom eval', () => {
   }
 
   /**
-   * Run `dom eval 1+1` and measure how long it took.
+   * Run `eval 1+1` and measure how long it took.
    *
    * @param frame - `--frame` value, if any
    * @returns The result and its duration
    */
   async function timedEval(frame?: string): Promise<{ result: CommandResult; ms: number }> {
     const startedAt = Date.now();
-    const result = await runCommand('dom', ['eval', '1+1', ...frameArgs(frame)], {
+    const result = await runCommand('eval', ['1+1', ...frameArgs(frame)], {
       timeout: COMMAND_TIMEOUT_MS,
     });
     return { result, ms: Date.now() - startedAt };
   }
 
   /**
-   * Check that `dom eval 1+1` answers at once.
+   * Check that `eval 1+1` answers at once.
    *
    * @param frame - `--frame` value, if any
    */

@@ -13,6 +13,7 @@ import { retiredNameError } from '@/errors/messages.js';
 import { deprecatedNameWarning } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { RENAMES, isRetiredName, spelling, type RenameEntry } from '@/utils/renames.js';
+import { findSimilarCommands } from '@/utils/suggestions.js';
 
 /**
  * The words of a command below the root, as the rename table writes them.
@@ -71,8 +72,22 @@ function registerOldOption(command: Command, entry: RenameEntry & { kind: 'optio
 }
 
 /**
+ * Hide a registered command from help. Commander has no public call for it
+ * (`hidden` is an option of `.command()` only), so this sets its private
+ * `_hidden` flag (commander ^15). A commander upgrade that breaks it fails
+ * the contract test "help lists only the new names"
+ * (`canonicalNames.contract.test.ts`) and the unit test "a deprecated old
+ * command is registered and hidden from help" (`renamedNames.unit.test.ts`).
+ *
+ * @param command - Registered command
+ */
+function hideCommand(command: Command): void {
+  (command as unknown as { _hidden: boolean })._hidden = true;
+}
+
+/**
  * Check an old command: a deprecated one must still be registered by its
- * module (hidden), so it keeps working; a removed one gets a hidden stub
+ * module, so it keeps working, and is hidden here; a removed one gets a hidden stub
  * taking any arguments and options, whose preAction check exits 81.
  *
  * @param parent - Command the old command belongs to
@@ -80,9 +95,10 @@ function registerOldOption(command: Command, entry: RenameEntry & { kind: 'optio
  * @throws Error for a deprecated command no module registers (a table bug)
  */
 function registerOldCommand(parent: Command, entry: RenameEntry & { kind: 'command' }): void {
-  const registered = parent.commands.some((command) => command.name() === entry.old);
+  const registered = parent.commands.find((command) => command.name() === entry.old);
   if (entry.stage === 'deprecated') {
     if (!registered) throw new Error(`Rename table: "${spelling(entry, 'old')}" is not registered`);
+    hideCommand(registered);
     return;
   }
   if (registered) return;
@@ -215,4 +231,62 @@ export function currentSubcommands(command: Command): Command[] {
 export function currentOptions(command: Command): Option[] {
   const words = commandWords(command);
   return command.options.filter((option) => !isRetiredName(words, option.long ?? ''));
+}
+
+/** Commander's message for a word that is no subcommand */
+const UNKNOWN_COMMAND = /unknown command '([^']+)'/;
+
+/**
+ * The new spelling of an old command that a mistyped subcommand is close to:
+ * `bdg dom evl` is a typo of the old `dom eval`, so it suggests `bdg eval`
+ * (Commander only compares with current names, which cannot include a
+ * command that moved to another parent).
+ *
+ * @param command - Command that reported the unknown subcommand
+ * @param message - Commander's error message
+ * @param table - Rename table
+ * @returns Suggestion naming the new spelling, if the word is close to an old one
+ */
+export function renamedCommandSuggestion(
+  command: Command,
+  message: string,
+  table: readonly RenameEntry[] = RENAMES
+): string | undefined {
+  const word = UNKNOWN_COMMAND.exec(message)?.[1];
+  if (word === undefined) return undefined;
+  const words = commandWords(command);
+  const entries = table.filter(
+    (entry) => entry.kind === 'command' && entry.command === words && entry.new !== undefined
+  );
+  const [closest] = findSimilarCommands(
+    word,
+    entries.map((entry) => entry.old)
+  );
+  const entry = entries.find((candidate) => candidate.old === closest);
+  return entry && `Did you mean: ${spelling(entry, 'new')}?`;
+}
+
+/**
+ * The new spelling of a command reached by a deprecated old name, so a usage
+ * error points at the command that exists (`bdg dom press-key`, not
+ * `bdg dom pressKey`).
+ *
+ * @param command - Command a usage error came from
+ * @param table - Rename table
+ * @returns `bdg …` spelling of the new command, if this one is a deprecated old name
+ */
+export function renamedCommandPath(
+  command: Command,
+  table: readonly RenameEntry[] = RENAMES
+): string | undefined {
+  const parentWords = command.parent ? commandWords(command.parent) : undefined;
+  const entry = table.find(
+    (row) =>
+      row.kind === 'command' &&
+      row.stage === 'deprecated' &&
+      row.new !== undefined &&
+      row.command === parentWords &&
+      row.old === command.name()
+  );
+  return entry && spelling(entry, 'new');
 }

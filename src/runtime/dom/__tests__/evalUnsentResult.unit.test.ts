@@ -1,5 +1,5 @@
 /**
- * `dom eval` whose result Chrome cannot send (about 256 MiB and more, Chrome
+ * `eval` whose result Chrome cannot send (about 256 MiB and more, Chrome
  * never answers): the error names the result, not a promise (#687).
  */
 

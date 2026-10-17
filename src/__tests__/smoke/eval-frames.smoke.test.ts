@@ -1,5 +1,5 @@
 /**
- * `bdg dom frames` and `bdg dom eval --frame` smoke test.
+ * `bdg dom frames` and `bdg eval --frame` smoke test.
  *
  * A same-origin iframe and a cross-origin one (`localhost` vs `127.0.0.1`,
  * which Chrome runs out of process) are listed, scripts run in each frame's
@@ -37,7 +37,7 @@ async function runJson<T>(args: string[]): Promise<{ exitCode: number } & Envelo
   return { exitCode: result.exitCode, ...(JSON.parse(result.stdout) as Envelope<T>) };
 }
 
-void describe('dom eval --frame', () => {
+void describe('eval --frame', () => {
   let fixture: FixtureServer;
 
   before(async () => {
@@ -77,19 +77,18 @@ void describe('dom eval --frame', () => {
       query.suggestion ?? '',
       /The page has cross-origin iframes, which are not searched/
     );
-    assert.match(query.suggestion ?? '', /bdg dom eval --frame <n>/);
+    assert.match(query.suggestion ?? '', /bdg eval --frame <n>/);
     const click = await runJson<never>(['dom', 'click', '#missing']);
     assert.equal(click.exitCode, EXIT_CODES.RESOURCE_NOT_FOUND);
     assert.match(click.suggestion ?? '', /The page has cross-origin iframes/);
     const inspect = await runJson<never>(['dom', 'inspect', '#missing']);
     assert.equal(inspect.exitCode, EXIT_CODES.RESOURCE_NOT_FOUND);
     assert.match(inspect.suggestion ?? '', /The page has cross-origin iframes/);
-    assert.match(inspect.suggestion ?? '', /bdg dom eval --frame <n>/);
+    assert.match(inspect.suggestion ?? '', /bdg eval --frame <n>/);
   });
 
   void it('evaluates in a same-origin iframe', async () => {
     const { exitCode, data } = await runJson<{ result: unknown; frame: string }>([
-      'dom',
       'eval',
       'document.querySelector(".note").textContent',
       '--frame',
@@ -102,7 +101,6 @@ void describe('dom eval --frame', () => {
 
   void it('evaluates in a cross-origin iframe with top-level await', async () => {
     const { exitCode, data } = await runJson<{ result: unknown; frame: string }>([
-      'dom',
       'eval',
       'await Promise.resolve(location.hostname)',
       '--frame',
@@ -114,16 +112,16 @@ void describe('dom eval --frame', () => {
   });
 
   void it('fails with 81 for an ambiguous frame and 83 for an unknown one', async () => {
-    const ambiguous = await runJson(['dom', 'eval', '1', '--frame', 'frame']);
+    const ambiguous = await runJson(['eval', '1', '--frame', 'frame']);
     assert.equal(ambiguous.exitCode, EXIT_CODES.INVALID_ARGUMENTS);
     assert.match(ambiguous.suggestion ?? '', /\[0\].*\n.*\[1\]/);
-    const unknown = await runJson(['dom', 'eval', '1', '--frame', 'nope']);
+    const unknown = await runJson(['eval', '1', '--frame', 'nope']);
     assert.equal(unknown.exitCode, EXIT_CODES.RESOURCE_NOT_FOUND);
     assert.match(unknown.suggestion ?? '', /Available frames/);
   });
 
   void it('reports a script error in a frame as exit 91', async () => {
-    const result = await runJson(['dom', 'eval', 'missingName', '--frame', '1']);
+    const result = await runJson(['eval', 'missingName', '--frame', '1']);
     assert.equal(result.exitCode, EXIT_CODES.SCRIPT_ERROR);
     assert.match(result.error ?? '', /missingName is not defined/);
   });
@@ -138,13 +136,12 @@ void describe('dom eval --frame', () => {
     assert.equal(result.exitCode, 0, result.stderr);
     assert.deepEqual(JSON.parse(result.stdout), { title: '' });
     assert.match(result.stderr, /^Frame: http:\/\/127\.0\.0\.1:\d+\/deep-frame$/m);
-    const quiet = await runCommand('dom', ['eval', '1', '--frame', 'same', '-q']);
+    const quiet = await runCommand('eval', ['1', '--frame', 'same', '-q']);
     assert.equal(quiet.stderr, '');
   });
 
   void it('reports a frame that navigates while the script runs as 83', async () => {
     const result = await runJson([
-      'dom',
       'eval',
       'location.href = "/deep-frame?next"; await new Promise(() => {})',
       '--frame',
@@ -173,13 +170,7 @@ void describe('dom eval --frame', () => {
       'top:false',
     ]);
     assert.equal(byId.get('inner')?.parentIndex, byId.get('sd')?.index);
-    const sandboxed = await runJson<{ result: unknown }>([
-      'dom',
-      'eval',
-      'origin',
-      '--frame',
-      'sb',
-    ]);
+    const sandboxed = await runJson<{ result: unknown }>(['eval', 'origin', '--frame', 'sb']);
     assert.equal(sandboxed.data?.result, 'null');
   });
 
@@ -192,29 +183,17 @@ void describe('dom eval --frame', () => {
     assert.deepEqual(await names(), ['shadowed', 'cross', 'last']);
     assert.deepEqual(await names(), ['shadowed', 'cross', 'last']);
 
-    const added = await runJson(['dom', 'eval', 'await addFirst()']);
+    const added = await runJson(['eval', 'await addFirst()']);
     assert.equal(added.exitCode, 0, added.error);
-    const stale = await runJson(['dom', 'eval', 'window.name', '--frame', '0']);
+    const stale = await runJson(['eval', 'window.name', '--frame', '0']);
     assert.equal(stale.exitCode, EXIT_CODES.STALE_CACHE);
     assert.match(stale.error ?? '', /Frame index 0 is stale/);
     assert.match(stale.suggestion ?? '', /Re-run bdg dom frames/);
-    const byName = await runJson<{ result: unknown }>([
-      'dom',
-      'eval',
-      'window.name',
-      '--frame',
-      'cross',
-    ]);
+    const byName = await runJson<{ result: unknown }>(['eval', 'window.name', '--frame', 'cross']);
     assert.equal(byName.data?.result, 'cross', 'names still work');
 
     assert.deepEqual(await names(), ['first', 'shadowed', 'cross', 'last']);
-    const fresh = await runJson<{ result: unknown }>([
-      'dom',
-      'eval',
-      'window.name',
-      '--frame',
-      '0',
-    ]);
+    const fresh = await runJson<{ result: unknown }>(['eval', 'window.name', '--frame', '0']);
     assert.equal(fresh.exitCode, 0, fresh.error);
     assert.equal(fresh.data?.result, 'first');
   });

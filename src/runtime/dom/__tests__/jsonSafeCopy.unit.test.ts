@@ -1,5 +1,5 @@
 /**
- * The page-side copy of `dom eval` results keeps what JSON would lose.
+ * The page-side copy of `eval` results keeps what JSON would lose.
  * It is run in a VM context, like the page would run it.
  */
 

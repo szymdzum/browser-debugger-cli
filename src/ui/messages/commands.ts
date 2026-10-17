@@ -1012,7 +1012,7 @@ export function colorSchemeLabel(scheme: string, emulated: boolean): string {
  * @returns Suggestion naming them and a way around
  */
 export function brokenByReplacedBuiltinsSuggestion(replaced: readonly string[]): string {
-  return `The page replaced built-ins bdg's action script uses (${replaced.join(', ')}), which may have broken it; if so, act on the element with ${sessionCommand("bdg dom eval '…'")} instead`;
+  return `The page replaced built-ins bdg's action script uses (${replaced.join(', ')}), which may have broken it; if so, act on the element with ${sessionCommand("bdg eval '…'")} instead`;
 }
 
 /**
@@ -1993,7 +1993,7 @@ export function queryNextSteps(index: number): string {
 }
 
 /**
- * Header of `bdg dom eval --frame` output naming the frame the script ran in.
+ * Header of `bdg eval --frame` output naming the frame the script ran in.
  *
  * @param url - Frame URL
  * @returns e.g. `Frame: https://pay.example/`
@@ -2003,7 +2003,7 @@ export function evalFrameLine(url: string): string {
 }
 
 /**
- * Warning on a `dom eval` result the browser copied because the page
+ * Warning on a `eval` result the browser copied because the page
  * replaced built-ins bdg's own copy uses.
  *
  * @param replaced - Their dotted names (all are named)
@@ -2014,7 +2014,7 @@ export function evalCopiedByBrowserWarning(replaced: readonly string[]): string 
 }
 
 /**
- * Warning on a `dom eval` result shown as its preview: the page replaced
+ * Warning on a `eval` result shown as its preview: the page replaced
  * built-ins bdg's copy uses and the browser could not copy it either (a
  * cycle or a BigInt inside).
  *
@@ -2244,7 +2244,7 @@ export function moreCharsNote(count: number): string {
  * @returns The note, naming how to read a value
  */
 export function rawHtmlMaskedNote(): string {
-  return `Secret values shown as ${MASKED_VALUE} (read them with ${sessionCommand('bdg dom eval')})`;
+  return `Secret values shown as ${MASKED_VALUE} (read them with ${sessionCommand('bdg eval')})`;
 }
 
 /**

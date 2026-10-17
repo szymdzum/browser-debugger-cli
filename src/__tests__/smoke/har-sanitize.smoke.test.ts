@@ -61,7 +61,7 @@ async function waitForLogins(): Promise<void> {
     const requests = (
       JSON.parse(result.stdout) as { data: { requests: Array<{ url: string; status?: number }> } }
     ).data.requests;
-    const title = await runCommand('dom', ['eval', 'document.title', '--json'], {
+    const title = await runCommand('eval', ['document.title', '--json'], {
       timeout: 30000,
     });
     if (

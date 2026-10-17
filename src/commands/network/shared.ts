@@ -1,7 +1,7 @@
 /**
  * Shared utilities and helper commands for network subcommands.
  *
- * Contains getCookies and headers commands, plus shared data fetching utilities.
+ * Contains cookies and headers commands, plus shared data fetching utilities.
  */
 
 import type { Command } from 'commander';
@@ -96,13 +96,16 @@ function headersResult(
 }
 
 /**
- * Register getCookies command.
+ * Add the cookies command: `network cookies`, and the old spelling
+ * `network getCookies` (a deprecated row of the rename table) with
+ * the same options.
  *
  * @param networkCmd - Network parent command
+ * @param name - Command name
  */
-export function registerGetCookiesCommand(networkCmd: Command): void {
+function addCookiesCommand(networkCmd: Command, name: string): void {
   networkCmd
-    .command('getCookies')
+    .command(name)
     .description('List cookies from the current page')
     .option('--url <url>', 'Filter cookies by URL')
     .addOption(jsonOption())
@@ -137,6 +140,16 @@ export function registerGetCookiesCommand(networkCmd: Command): void {
         formatCookies
       );
     });
+}
+
+/**
+ * Register the cookies command and its old spelling.
+ *
+ * @param networkCmd - Network parent command
+ */
+export function registerCookiesCommands(networkCmd: Command): void {
+  addCookiesCommand(networkCmd, 'cookies');
+  addCookiesCommand(networkCmd, 'getCookies');
 }
 
 /**

@@ -42,7 +42,7 @@ Exit codes tell the agent what to do next, not just whether it failed. bdg follo
 130/143  Interrupted by Ctrl-C / SIGTERM (shell convention)
 ```
 
-Agent decision logic: 0 proceed; 80-99 do not retry the same call, fix the input or pick another resource (`81` invalid arguments, `83` not found, `87` stale cache: re-run the query, `91` the page's JavaScript threw during an action or `dom eval`: fix the script or the page, not the call); 100-119 usually transient or a bug, retry once with backoff or report. The full list is in `bdg --help --json` under `exitCodes`.
+Agent decision logic: 0 proceed; 80-99 do not retry the same call, fix the input or pick another resource (`81` invalid arguments, `83` not found, `87` stale cache: re-run the query, `91` the page's JavaScript threw during an action or `eval`: fix the script or the page, not the call); 100-119 usually transient or a bug, retry once with backoff or report. The full list is in `bdg --help --json` under `exitCodes`.
 
 *Source: Square Engineering, "Command Line Observability with Semantic Exit Codes" (January 2023)*
 

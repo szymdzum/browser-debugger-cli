@@ -142,7 +142,7 @@ export const EXIT_CODE_REGISTRY: readonly ExitCodeEntry[] = [
     code: EXIT_CODES.SCRIPT_ERROR,
     name: 'SCRIPT_ERROR',
     description:
-      "Page JavaScript threw: the script passed to bdg dom eval, or the page's own code during an action (dom click, fill, press)",
+      "Page JavaScript threw: the script passed to bdg eval, or the page's own code during an action (dom click, fill, press)",
   },
   {
     code: EXIT_CODES.CHROME_LAUNCH_FAILURE,

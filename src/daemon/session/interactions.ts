@@ -1,5 +1,5 @@
 /**
- * Running page interactions (fill, click, submit, pressKey, scroll) one at a
+ * Running page interactions (fill, click, submit, press-key, scroll) one at a
  * time, reporting the dialogs, network requests and page changes they caused,
  * and whether the page was still changing when they returned.
  */
@@ -219,7 +219,7 @@ function consoleMessagesLogged(store: TelemetryStore): number {
 /**
  * Create the runner for a session's interactions.
  *
- * Interactions share the page's focus and keyboard: two concurrent `pressKey`
+ * Interactions share the page's focus and keyboard: two concurrent `press-key`
  * commands would interleave keystrokes into each other's field, so they are
  * queued. After each one, the bound target (`window.__bdgTarget`) is removed
  * from the page (without waiting: during a pending navigation that takes until
@@ -239,7 +239,7 @@ function consoleMessagesLogged(store: TelemetryStore): number {
  * effect wait included) are answered as it chose (`dialogs`); because
  * interactions are queued, its choice never reaches another interaction, and
  * it is cleared when it returns, so a dialog a timer opens later gets the
- * session default. A command that is not an interaction (`dom eval`, `cdp`)
+ * session default. A command that is not an interaction (`eval`, `cdp`)
  * running meanwhile shares its choice.
  * Tabs and windows opened meanwhile
  * are added as `opened`, and a switch made because the session's tab closed

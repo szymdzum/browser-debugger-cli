@@ -8,7 +8,7 @@
 import type { CdpEventOutput, CdpEventRecord } from '@/ipc/protocol/cdpEventTypes.js';
 import { capLength } from '@/utils/strings.js';
 
-/** Characters of events an answer without `--out` carries (as `dom eval --json`) */
+/** Characters of events an answer without `--out` carries (as `eval --json`) */
 export const EVENT_OUTPUT_MAX_CHARS = 20_000;
 
 /** Caps of an event buffer */

@@ -75,9 +75,9 @@ node id (a string) and backendDOMNodeId is the backend one.`;
 export const SELECTOR_SCOPE_HELP = `
 Selectors search the page, open shadow roots and same-origin iframes (nested ones
 included). They cannot reach into closed shadow roots or cross-origin iframes:
-use bdg dom eval --frame <frame> for those (see bdg dom frames).`;
+use bdg eval --frame <frame> for those (see bdg dom frames).`;
 
-/** Help text after `dom eval`'s options: what a script leaves on the page */
+/** Help text after `eval`'s options: what a script leaves on the page */
 export const EVAL_SCOPE_HELP = `
 The script runs like the DevTools console (top-level await; the value of the
 last expression is the result), in a block of its own: its top-level const,

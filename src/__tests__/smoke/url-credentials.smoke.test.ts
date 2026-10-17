@@ -103,7 +103,7 @@ async function bdgJson<T>(
 async function waitForTitle(title: string): Promise<void> {
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline) {
-    const result = await runCommand('dom', ['eval', 'document.title', '--json'], {
+    const result = await runCommand('eval', ['document.title', '--json'], {
       timeout: 30000,
     });
     if (result.stdout.includes(`"${title}"`)) return;

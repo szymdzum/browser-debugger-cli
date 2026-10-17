@@ -211,7 +211,6 @@ void describe('Tabs', () => {
     assert.equal(info.url, `${fixture.url}tabs`);
 
     const token = await bdgJson<{ result: unknown }>([
-      'dom',
       'eval',
       "document.getElementById('token').textContent",
     ]);
@@ -242,7 +241,6 @@ void describe('Tabs', () => {
     await bdg(['dom', 'click', '#open-loader']);
     await waitUntil('the loader to log and fetch', async () => {
       const token = await bdgJson<{ result: unknown }>([
-        'dom',
         'eval',
         "document.getElementById('token').textContent",
       ]);
@@ -268,7 +266,7 @@ void describe('Tabs', () => {
   void it('refuses the first action after a window closed itself, naming the move (90)', async () => {
     await bdg(['dom', 'click', '#open-selfclose']);
     await bdg(['page', 'switch', 'tabs-selfclose']);
-    await bdg(['dom', 'eval', 'setTimeout(() => window.close(), 50); 1']);
+    await bdg(['eval', 'setTimeout(() => window.close(), 50); 1']);
     await waitForSessionOn(`${fixture.url}tabs`);
 
     const refused = await bdgEnvelope(['dom', 'click', '#token']);
@@ -287,7 +285,7 @@ void describe('Tabs', () => {
   void it('reports such a move on the next read-only command, which still runs', async () => {
     await bdg(['dom', 'click', '#open-selfclose']);
     await bdg(['page', 'switch', 'tabs-selfclose']);
-    await bdg(['dom', 'eval', 'setTimeout(() => window.close(), 50); 1']);
+    await bdg(['eval', 'setTimeout(() => window.close(), 50); 1']);
     await waitForSessionOn(`${fixture.url}tabs`);
 
     const missing = await run(['dom', 'query', '#selfclose']);

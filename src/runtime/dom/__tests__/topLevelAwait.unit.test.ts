@@ -1,5 +1,5 @@
 /**
- * `await` detection of `bdg dom eval` scripts (#729): V8 tells a top-level
+ * `await` detection of `bdg eval` scripts (#729): V8 tells a top-level
  * `await` from the word in a string, comment, regex or nested function.
  */
 

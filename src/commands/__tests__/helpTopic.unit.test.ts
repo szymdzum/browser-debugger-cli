@@ -229,7 +229,7 @@ function excessArgumentsDetails(args: string[]): { message: string; suggestion: 
       .action(() => undefined);
   }
   dom
-    .command('pressKey')
+    .command('press-key')
     .argument('<selectorOrIndex>')
     .argument('<key>')
     .action(() => undefined);
@@ -274,7 +274,7 @@ void describe('usageErrorDetails for too many arguments', () => {
 
   void it('does not join the surplus words where that could name another element or drop an option', () => {
     for (const args of [
-      ['dom', 'pressKey', '#a', 'Enter', 'x'],
+      ['dom', 'press-key', '#a', 'Enter', 'x'],
       ['dom', 'click', '#a', '#b'],
       ['dom', 'scroll', '#a', '#b'],
       ['dom', 'get', '0', '1'],

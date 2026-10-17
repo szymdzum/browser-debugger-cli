@@ -1,5 +1,5 @@
 /**
- * Bounds of a `dom eval --json` result (#478): one eval must not put
+ * Bounds of a `eval --json` result (#478): one eval must not put
  * megabytes into an agent's context.
  */
 
@@ -7,7 +7,7 @@ import { EVAL_JSON_ARRAY_LIMIT, MAX_VALUE_LENGTH } from '@/constants.js';
 import { capLength } from '@/utils/strings.js';
 
 /**
- * The `result` of `dom eval --json`, and what was left out of it. A string
+ * The `result` of `eval --json`, and what was left out of it. A string
  * `result` with `truncatedFrom` while `type` is `object` is the start of
  * the value's JSON text, not a string the script returned.
  */

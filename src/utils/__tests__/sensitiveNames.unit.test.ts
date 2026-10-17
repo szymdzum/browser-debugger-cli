@@ -12,7 +12,7 @@ import { SENSITIVE_NAME_JS, isSensitiveName } from '@/utils/sensitiveNames.js';
 /**
  * Names and whether they count as secret. Rows marked "accepted" are
  * ordinary names that match a credential word; masking them only hides a
- * value `bdg dom eval` still reads, and the HAR sanitiser redacted them
+ * value `bdg eval` still reads, and the HAR sanitiser redacted them
  * before this rule was shared.
  */
 const DECISIONS: ReadonlyArray<readonly [name: string, secret: boolean]> = [

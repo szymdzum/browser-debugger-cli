@@ -1,5 +1,5 @@
 /**
- * Fixture page for the key names of `dom pressKey` (#612), served by the
+ * Fixture page for the key names of `dom press-key` (#612), served by the
  * fixture server: `/key-log` has a text field (`#field`) and logs every
  * `keydown` it gets, as `key|code|shiftKey` in a `<li>` of `#log` and as an
  * entry of `window.keyLog`, so a test reads exactly what the page saw

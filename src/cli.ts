@@ -338,6 +338,7 @@ function handleUsageError(error: CommanderError, program: Command, jsonMode: boo
   const bareGroup =
     command.commands.length > 0 && words.length === commandPath(command).split(' ').length - 1;
   const { message, suggestion } = usageErrorDetails(error, command, process.argv, bareGroup);
+  reportDeprecations(applyRenamedNames(command), jsonMode);
   if (jsonMode) {
     console.log(stringifyEnvelope(OutputBuilder.buildJsonError(message, { exitCode, suggestion })));
   } else if (error.code !== 'commander.help') {

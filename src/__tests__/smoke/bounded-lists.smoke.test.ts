@@ -69,7 +69,7 @@ void describe('Bounded list output', () => {
     await cleanupAllSessions();
     fixture = await startFixtureServer();
     await bdg([`${fixture.url}interactions`, '--port', String(await getFreePort()), '--headless']);
-    await bdg(['dom', 'eval', `document.body.innerHTML = ${JSON.stringify(LINKS_HTML)}; 1`]);
+    await bdg(['eval', `document.body.innerHTML = ${JSON.stringify(LINKS_HTML)}; 1`]);
   });
 
   after(async () => {
@@ -89,7 +89,7 @@ void describe('Bounded list output', () => {
     await listJson(['dom', 'query', 'a']);
     assert.match(await bdg(['dom', 'get', '250']), /Link 250/);
     await bdg(['dom', 'click', '250']);
-    const hit = await bdg(['dom', 'eval', 'window.hit']);
+    const hit = await bdg(['eval', 'window.hit']);
     assert.match(hit, /250/);
   });
 
@@ -107,7 +107,7 @@ void describe('Bounded list output', () => {
     await listJson(['dom', 'a11y', 'query', 'role:link']);
     assert.match(await bdg(['dom', 'get', '250']), /Link 250/);
     await bdg(['dom', 'click', '250']);
-    assert.match(await bdg(['dom', 'eval', 'window.hit']), /250/);
+    assert.match(await bdg(['eval', 'window.hit']), /250/);
   });
 
   void it('dom a11y tree --json is bounded like human output, with --limit and --depth', async () => {

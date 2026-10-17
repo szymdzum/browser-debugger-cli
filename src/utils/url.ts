@@ -176,7 +176,7 @@ export function validateUrl(url: string): ValidationResult {
   if (urlLower.startsWith('javascript:')) {
     return invalid(
       `Cannot start a session on a javascript: URL`,
-      `Open a page first, then run the script: ${sessionCommand('bdg about:blank')} && ${sessionCommand("bdg dom eval '...'")}`
+      `Open a page first, then run the script: ${sessionCommand('bdg about:blank')} && ${sessionCommand("bdg eval '...'")}`
     );
   }
   if (urlLower.startsWith('vbscript:')) {

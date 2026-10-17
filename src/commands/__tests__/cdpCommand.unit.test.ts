@@ -1,6 +1,6 @@
 /**
  * `bdg cdp` with a domain name lists its methods, a method whose result
- * reports a page exception fails like `dom eval`, methods missing from the
+ * reports a page exception fails like `eval`, methods missing from the
  * bundled protocol are sent anyway, and `--describe` shows redirects, enums
  * and types.
  */

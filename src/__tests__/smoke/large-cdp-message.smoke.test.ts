@@ -1,7 +1,7 @@
 /**
  * Large CDP message smoke test (#487).
  *
- * A CDP message over 100 MiB (a 110 MiB `dom eval` result) used to end the
+ * A CDP message over 100 MiB (a 110 MiB `eval` result) used to end the
  * whole session: ws refused the frame and closed the socket. It must come
  * back truncated as usual, and the session must keep running. One session,
  * one large message, to keep CI fast.
@@ -43,7 +43,7 @@ void describe('Large CDP message', () => {
   });
 
   void it('returns a 110 MiB eval result truncated and keeps the session', async () => {
-    const result = await runCommand('dom', ['eval', LARGE_RESULT, '--json'], { timeout: 90000 });
+    const result = await runCommand('eval', [LARGE_RESULT, '--json'], { timeout: 90000 });
     assert.equal(result.exitCode, 0, `${result.stdout}${result.stderr}`);
     assert.ok(result.stdout.length < MAX_OUTPUT_BYTES, `${result.stdout.length} bytes`);
     const data = (JSON.parse(result.stdout) as { data: { result: unknown } }).data;

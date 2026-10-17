@@ -1,7 +1,7 @@
 /**
  * `bdg dom wait [selector]` - wait until elements appear, become visible,
  * contain a text or are gone, and/or the page has loaded, instead of
- * polling with `sleep` and `dom eval`.
+ * polling with `sleep` and `eval`.
  */
 
 import type { Command } from 'commander';

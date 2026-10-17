@@ -1,5 +1,5 @@
 /**
- * `bdg dom frames` — list the page's iframes (the values `dom eval --frame` accepts).
+ * `bdg dom frames` — list the page's iframes (the values `eval --frame` accepts).
  *
  * CLI-side handler. Frames are discovered in the daemon via the `dom_frames`
  * IPC command, out-of-process (cross-site) ones included.

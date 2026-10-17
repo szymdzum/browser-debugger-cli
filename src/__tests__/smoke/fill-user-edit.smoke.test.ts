@@ -5,7 +5,7 @@
  * entered. `dom fill` enters text in a text-like field as a user would, so
  * after filling a value shorter than `minlength` the field is invalid: the
  * fill warns, `dom form` lists the field as invalid, and a `dom click` on
- * the submit button or `dom pressKey Enter` reports `submitBlocked` (on
+ * the submit button or `dom press-key Enter` reports `submitBlocked` (on
  * `/fill-user-edit`: a password, a nickname, a textarea, and a field in an
  * open shadow root). The events are those of typing (`beforeinput` and
  * `input`, `insertText`, trusted). A value long enough submits, and a
@@ -87,7 +87,7 @@ async function json<T>(args: string[]): Promise<T> {
  * @returns Evaluation result
  */
 async function evaluate(expression: string): Promise<unknown> {
-  return (await json<{ result: unknown }>(['dom', 'eval', expression])).result;
+  return (await json<{ result: unknown }>(['eval', expression])).result;
 }
 
 /**
@@ -148,7 +148,7 @@ void describe('dom fill enters text as a user edit (#592)', () => {
     assert.equal(state.tooShort, true);
     const press = await json<{ submitBlocked?: BlockedField[] }>([
       'dom',
-      'pressKey',
+      'press-key',
       '#nick',
       'Enter',
     ]);

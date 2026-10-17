@@ -109,7 +109,7 @@ void describe('sessions of different session directories', () => {
     assert.notEqual(targetA, targetB);
 
     const titles = await Promise.all(
-      sessions.map((s) => runJson<{ result: string }>(s, 'dom', ['eval', 'document.title']))
+      sessions.map((s) => runJson<{ result: string }>(s, 'eval', ['document.title']))
     );
     assert.deepEqual(
       titles.map((title) => title.data.result),
