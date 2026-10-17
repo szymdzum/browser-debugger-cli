@@ -40,7 +40,7 @@ export function registerAuditCommand(dom: Command): void {
     )
     .argument('[checks...]', `Checks to run: ${AUDIT_CHECKS.join(', ')} (default: all)`, checkList)
     .option('--level <level>', 'WCAG level text must reach: AA or AAA (default: AA)', levelOption)
-    .option('--limit <n>', 'Findings listed per check (default: 20)', integerOption(1, 500))
+    .option('--limit <n>', 'First N findings listed per check (default: 20)', integerOption(1, 500))
     .addOption(jsonOption())
     .addHelpText('after', AUDIT_HELP_EXAMPLES)
     .action(async (checks: AuditCheck[] | undefined, options: AuditCommandOptions) => {

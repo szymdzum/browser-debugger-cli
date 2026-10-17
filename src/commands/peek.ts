@@ -264,7 +264,7 @@ export function registerPeekCommand(program: Command): void {
     .option('-f, --follow', 'Watch for updates (like tail -f)', false)
     .addOption(includeSensitiveOption())
     .option('--interval <ms>', 'Refresh interval of --follow in ms, 100-60000 (default: 1000)')
-    .option('--last <count>', 'Show last N items, 0 for all', '10')
+    .option('--last <count>', 'Show the newest N items, 0 for all', '10')
     .option(
       '--type <types>',
       'Filter network requests by resource type (comma-separated: Document,XHR,Fetch,etc.)'
@@ -276,11 +276,6 @@ export function registerPeekCommand(program: Command): void {
     )
     .action(async (options: PeekCommandOptions) => {
       showBothSectionsWhenBothRequested(options);
-      if (options.network && !options.json) {
-        console.error(
-          'Note: "bdg peek --network" is deprecated. Use "bdg network list" for enhanced filtering.'
-        );
-      }
       const parsed = parsePeekOptions(options);
       const { lastN, resourceTypes } = parsed;
       const baseOptions = previewDisplayOptions(options, lastN);

@@ -317,7 +317,7 @@ export function registerA11yCommands(domCmd: Command): void {
     )
     .option(
       '--limit <n>',
-      `Nodes to list (default: ${A11Y_TREE_LIMIT}, also with --json; 0 = all listed nodes (text boxes and empty wrappers are always skipped))`,
+      `First N nodes to list (default: ${A11Y_TREE_LIMIT}, also with --json; 0 = all listed nodes (text boxes and empty wrappers are always skipped))`,
       integerOption(0)
     )
     .option(
@@ -339,7 +339,7 @@ export function registerA11yCommands(domCmd: Command): void {
     )
     .option(
       '--limit <n>',
-      `Matches to list (default: ${A11Y_QUERY_LIMIT}, ${QUERY_JSON_LIST_LIMIT} with --json; 0 = all); all are indexed`,
+      `First N matches to list (default: ${A11Y_QUERY_LIMIT}, ${QUERY_JSON_LIST_LIMIT} with --json; 0 = all); all are indexed`,
       integerOption(0)
     )
     .addOption(jsonOption())

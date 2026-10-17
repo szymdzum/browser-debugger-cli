@@ -682,6 +682,7 @@ function queryNode(
   return {
     index,
     nodeId: backendNodeId,
+    backendNodeId,
     tag,
     ...identifyingAttributes(attributes, element.tag),
     ...(keys && { attributes: keys }),
@@ -962,6 +963,7 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
     const classes = elementClasses(attributes);
     return {
       nodeId: desc.backendNodeId,
+      backendNodeId: desc.backendNodeId,
       tag: desc.nodeName.toLowerCase(),
       ...(Object.keys(attributes).length > 0 && { attributes }),
       classes,

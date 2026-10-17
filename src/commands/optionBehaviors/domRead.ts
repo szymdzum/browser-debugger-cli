@@ -34,7 +34,7 @@ export const DOM_READ_BEHAVIORS: BehaviorTable = {
     whenEnabled:
       'Reads the element with this backend node id and prints its raw HTML (implies --raw)',
     automaticBehavior:
-      'The id is nodeId in --json of dom query/get and backendDOMNodeId in --json of dom a11y describe/query (not the string nodeId of a11y output); it is the backendNodeId of CDP (DOM.resolveNode)',
+      'The id is backendNodeId in --json of dom query/get (nodeId there has the same value, kept until 1.0) and backendDOMNodeId in --json of dom a11y describe/query (not the string nodeId of a11y output); it is the backendNodeId of CDP (DOM.resolveNode)',
   },
   'get:--index': {
     default: 'Returns the first matching element (body without a selector)',
@@ -47,7 +47,7 @@ export const DOM_READ_BEHAVIORS: BehaviorTable = {
     default:
       'dom query and dom a11y query list the first 50 matches and say how many more there are; --json lists the first 100 with count (all matches) and omitted (the rest)',
     whenEnabled:
-      'Lists that many matches (0 = all), in human and JSON output; count is always the total, JSON omitted the rest',
+      'Lists the first N matches (0 = all), in human and JSON output; count is always the total, JSON omitted the rest',
     automaticBehavior:
       'Matches are cached for index-based access (bdg dom click 55 works even when 50 are listed): all of them for dom a11y query, the first 1000 (or --limit, if higher) for dom query, which describes only those, so a page with 50000 matches answers in under a second; an element the page and frame trees both report is listed once. Indices work with click, fill, hover, pressKey, scroll, submit, layout, get and listeners, also for elements of a cross-origin iframe of the same site (a consent dialog), whose scripts then run in that frame. One cache holds the last dom query, dom form or dom a11y query list of the session (replaced in one step, so a reader never sees a partial one); each index-based success names it (From …, or the Element row of actions; JSON indexSource), a query that matched nothing leaves an empty list (an index then says so, 81), and index commands run in parallel with one of these list commands may resolve against the new list',
     tokenImpact:
@@ -57,7 +57,7 @@ export const DOM_READ_BEHAVIORS: BehaviorTable = {
     default:
       'dom a11y tree lists the first 50 meaningful nodes depth-first, in human and JSON output; JSON count is the whole tree = nodes listed + omitted (cut by --limit/--depth) + skipped (never listed)',
     whenEnabled:
-      'Lists that many nodes; 0 = all listed nodes (text boxes and empty wrappers are always skipped)',
+      'Lists the first N nodes; 0 = all listed nodes (text boxes and empty wrappers are always skipped)',
     automaticBehavior:
       'Ignored nodes, text boxes, blank text, text repeating its parent name and nameless layout wrappers (generic, none, presentation, layout tables) are never listed (JSON skipped counts them); their children move up a level. For the raw tree with every node use bdg cdp Accessibility.getFullAXTree --json. JSON nodes carry depth (0 = root) instead of childIds; nodes outside the root (frame content) follow the root tree',
     tokenImpact:

@@ -612,6 +612,8 @@ export interface DomQueryResult {
   nodes: Array<{
     index: number;
     /** Backend node id (stable while the element exists; 0 if unknown) */
+    backendNodeId?: number;
+    /** Same as `backendNodeId`; kept until 1.0 */
     nodeId: number;
     tag?: string;
     /** `id`, `name` and `type` attributes, when present */
@@ -655,6 +657,9 @@ export interface DomQueryResult {
  */
 export interface DomGetResult {
   nodes: Array<{
+    /** Backend node id */
+    backendNodeId?: number;
+    /** Same as `backendNodeId`; kept until 1.0 */
     nodeId: number;
     tag?: string;
     attributes?: Record<string, unknown>;
