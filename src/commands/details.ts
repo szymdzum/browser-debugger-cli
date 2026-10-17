@@ -302,8 +302,10 @@ export function registerDetailsSubcommand(parent: Command, type: 'network' | 'co
       const inherited = parent.opts<Pick<DetailsCommandOptions, 'json' | 'includeSensitive'>>();
       await runDetails({
         ...options,
-        json: options.json || inherited.json === true,
-        ...((options.includeSensitive || inherited.includeSensitive) && { includeSensitive: true }),
+        json: options.json === true || inherited.json === true,
+        ...((options.includeSensitive === true || inherited.includeSensitive === true) && {
+          includeSensitive: true,
+        }),
         type,
         id,
       });
