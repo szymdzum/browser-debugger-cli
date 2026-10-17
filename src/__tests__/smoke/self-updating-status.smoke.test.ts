@@ -9,7 +9,7 @@
  * element scopes `Shown:` like `[role=search]`.
  *
  * Each page counts its own updates in `window.ticks`; a test waits for three
- * of them (an observable event) before it acts. Nothing sleeps.
+ * of them (the layout-sensitive page for six) (an observable event) before it acts. Nothing sleeps.
  */
 
 import * as assert from 'node:assert/strict';
@@ -55,21 +55,41 @@ async function click(selector: string): Promise<ActionData> {
   return (JSON.parse(await bdg(['dom', 'click', selector, '--json'])) as { data: ActionData }).data;
 }
 
+/** Updates a page has made before a test acts (pages without a ticker start at 3) */
+const MIN_TICKS = 3;
+
 /**
- * Start a session on a fixture page and wait until the page has updated
- * itself three times (`window.ticks`).
+ * Updates the appending ticker's page needs: more than the 5 elements it
+ * keeps, so the layout under the click has stopped growing
+ */
+const APPEND_TICKS = 6;
+
+/** Whether the file's one session is running (the first page starts it, later ones navigate) */
+let sessionRunning = false;
+
+/**
+ * Open a fixture page in the file's session, starting it on the first call,
+ * and wait until the page has updated itself `minTicks` times (`window.ticks`).
+ * A navigation gives each test a fresh document without a new Chrome; it
+ * does not wait for the page to settle (a ticker never lets it), the tick
+ * count on the new URL is the event waited for.
  *
  * @param url - Page URL
+ * @param minTicks - Updates to wait for
  */
-async function open(url: string): Promise<void> {
-  await cleanupAllSessions();
-  const port = await getFreePort();
-  const started = await runCommand(url, ['--port', String(port), '--headless'], {
-    timeout: 60000,
-  });
-  assert.equal(started.exitCode, 0, started.stderr);
-  const expression =
-    'new Promise((resolve) => { const check = () => (window.ticks >= 3 ? resolve(true) : setTimeout(check, 20)); check(); })';
+async function open(url: string, minTicks = MIN_TICKS): Promise<void> {
+  if (sessionRunning) {
+    await bdg(['page', 'navigate', url, '--no-wait']);
+  } else {
+    await cleanupAllSessions();
+    const port = await getFreePort();
+    const started = await runCommand(url, ['--port', String(port), '--headless'], {
+      timeout: 60000,
+    });
+    assert.equal(started.exitCode, 0, started.stderr);
+    sessionRunning = true;
+  }
+  const expression = `new Promise((resolve) => { const check = () => (location.href === ${JSON.stringify(url)} && window.ticks >= ${minTicks} ? resolve(true) : setTimeout(check, 20)); check(); })`;
   await bdg([
     'cdp',
     'Runtime.evaluate',
@@ -138,7 +158,7 @@ void describe('Self-updating regions in action results (#774)', () => {
   });
 
   void it('a3 a ticker appending elements does not keep the click still changing', async () => {
-    await open(`${fixture.url}self-status-append`);
+    await open(`${fixture.url}self-status-append`, APPEND_TICKS);
     const data = await click('#rows');
     assert.equal(data.settled, undefined, JSON.stringify(data));
     assert.equal(data.pending?.domChanging, undefined, JSON.stringify(data));

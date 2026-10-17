@@ -52,11 +52,13 @@ void describe('Page readiness', () => {
   let fixture: FixtureServer;
 
   before(async () => {
+    process.env['BDG_TEST_PAGE_READY_MS'] = '3000';
     await cleanupAllSessions();
     fixture = await startFixtureServer();
   });
 
   after(async () => {
+    delete process.env['BDG_TEST_PAGE_READY_MS'];
     await cleanupAllSessions();
     await fixture.close();
   });
