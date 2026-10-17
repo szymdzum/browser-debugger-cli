@@ -74,7 +74,7 @@ export function registerDomCommands(program: Command): void {
     .argument('<selector>', 'CSS selector (e.g., ".error", "#app", "button")')
     .option(
       '--limit <n>',
-      `Matches to list (default: ${QUERY_LIST_LIMIT}, ${QUERY_JSON_LIST_LIMIT} with --json; 0 = all); the first ${QUERY_CACHE_LIMIT} (or more with a higher limit) are indexed`,
+      `First N matches to list (default: ${QUERY_LIST_LIMIT}, ${QUERY_JSON_LIST_LIMIT} with --json; 0 = all); the first ${QUERY_CACHE_LIMIT} (or more with a higher limit) are indexed`,
       integerOption(0)
     )
     .option('-j, --json', 'Output as JSON')
@@ -140,7 +140,7 @@ export function registerDomCommands(program: Command): void {
     .addOption(new Option('--nth <n>', 'Alias of --index').argParser(integerOption(0)).hideHelp())
     .option(
       '--node-id <id>',
-      'Get the element with this backend node id (nodeId in --json of dom query/get, backendDOMNodeId in --json of dom a11y describe/query; implies --raw)',
+      'Get the element with this backend node id (backendNodeId in --json of dom query and dom get --raw, backendDOMNodeId in --json of dom a11y describe/query; implies --raw)',
       integerOption(1)
     )
     .option('-j, --json', 'Output as JSON')
@@ -178,7 +178,7 @@ export function registerDomCommands(program: Command): void {
     .option('--scroll <selector>', 'Scroll element into view before capture')
     .option('-f, --follow', 'Continuous capture mode to directory')
     .option('--interval <ms>', 'Capture interval for --follow (default: 1000)')
-    .option('--limit <count>', 'Max frames for --follow')
+    .option('--limit <count>', 'Stop --follow after the first N frames')
     .option('-j, --json', 'Output as JSON')
     .action(
       async (path: string, target: string | undefined, options: DomScreenshotCommandOptions) => {

@@ -77,7 +77,7 @@ interface NetworkListCommandOptions extends BaseOptions, SensitiveUrlOptions {
   sort?: SortKey;
 }
 
-const networkLastOption = new Option('--last <n>', 'Show last N requests (0 = all)').default(
+const networkLastOption = new Option('--last <n>', 'Show the newest N requests (0 = all)').default(
   String(DEFAULT_LAST)
 );
 

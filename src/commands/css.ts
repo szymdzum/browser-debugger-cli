@@ -37,7 +37,7 @@ export function registerCssCommands(program: Command): void {
       '<text>',
       'Text to find (case-insensitive), e.g. oklch( or .btn-primary; put -- before one that starts with - (-- --brand)'
     )
-    .option('--limit <n>', 'Matches listed (default: 20)', integerOption(1, 500))
+    .option('--limit <n>', 'First N matches listed (default: 20)', integerOption(1, 500))
     .addOption(jsonOption())
     .addHelpText('after', CSS_SEARCH_HELP_EXAMPLES)
     .action(async (text: string, options: CssSearchOptions) => {

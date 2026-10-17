@@ -145,7 +145,7 @@ bdg --session other state load login.json       # Into a running session, then r
 ### Preview collected data
 ```bash
 bdg peek                        # Last 10 items (compact format)
-bdg peek --last 50              # Show last 50 items
+bdg peek --last 50              # Show the newest 50 items
 bdg peek --network              # Show only network requests
 bdg peek --console              # Show only console messages
 bdg peek --type Document        # Filter by resource type (Document requests only)
@@ -186,7 +186,7 @@ bdg peek --type Script --last 100
 ### Continuous monitoring
 ```bash
 bdg peek --follow                     # Live updates every second (like tail -f)
-bdg peek --follow --last 50           # Show last 50 items
+bdg peek --follow --last 50           # Show the newest 50 items
 bdg peek --follow --console           # Show only console messages
 bdg peek --follow --type XHR,Fetch    # Only API requests
 bdg peek --follow --interval 2000     # Custom update interval (100-60000 ms)
@@ -398,7 +398,7 @@ bdg dom get "#tinymce"                        # [Generic] "Rich Text Area…" + 
 bdg dom get "h1" --raw                        # Get full HTML with attributes
 bdg dom get "button" --raw --all             # Get all matching elements
 bdg dom get "button" --raw --index 2         # Get 3rd matching element (0-based)
-bdg dom get --node-id 123                    # Get by backend node id (nodeId in dom query/get --json, backendDOMNodeId in dom a11y describe/query --json)
+bdg dom get --node-id 123                    # Get by backend node id (backendNodeId in dom query and dom get --raw --json, backendDOMNodeId in dom a11y describe/query --json)
 bdg dom get body --raw --full                # All of the HTML (default: the first 20000 characters)
 
 # JSON output
@@ -459,9 +459,9 @@ bdg dom query "div" --limit 0                 # Every match (slower on a large p
 
 **Output:**
 - Each match shows its `type` only when the page sets the attribute, as written (`<input type="EMAIL">`). An implicit type (a field without `type` is text, a `<button>` in a form submits) is not shown, because no selector `[type=…]` matches it; `--json` `attributes.type` is the live type (`text`, `submit`) and `dom get --json` has the written one as `typeAttribute`
-- Shows the count of all matches and a preview of the first 50 (`--json`: 100), with `... and 49953 more (--limit 0 lists all; indices 0-999 work with other commands)`; `--limit <n>` lists that many (0 = all). JSON has `count` (all matches), `nodes` (the listed ones), `omitted` and, when not every match can be used by index, `indexed`
+- Shows the count of all matches and a preview of the first 50 (`--json`: 100), with `... and 49953 more (--limit 0 lists all; indices 0-999 work with other commands)`; `--limit <n>` lists the first N (0 = all). JSON has `count` (all matches), `nodes` (the listed ones), `omitted` and, when not every match can be used by index, `indexed`
 - The first 1000 matches (or `--limit` of them, if more) are described and cached, so indices past the listed ones work with other commands; an index past them says so and how to index more. A page with 50000 matches answers in about half a second instead of 20 s
-- `nodeId` (in `--json`, and as the number shown by `dom get --node-id`) is the **backend node id**: use it as `backendNodeId` with CDP (`bdg cdp DOM.resolveNode --params '{"backendNodeId":N}'`; `DOM.describeNode` and `DOM.getBoxModel` take `backendNodeId` directly; `DOM.getAttributes` and the other methods that take a `nodeId` do not accept it). In `dom a11y` output (`describe`, `query`) `nodeId` is the accessibility node id (a string) and `backendDOMNodeId` is the DOM one.
+- `backendNodeId` (in `--json`, and as the number shown by `dom get --node-id`) is the **backend node id**; `nodeId` has the same value and stays until 1.0, so use `backendNodeId`. Use it with CDP (`bdg cdp DOM.resolveNode --params '{"backendNodeId":N}'`; `DOM.describeNode` and `DOM.getBoxModel` take `backendNodeId` directly; `DOM.getAttributes` and the other methods that take a `nodeId` do not accept it). `dom get --raw --json` has it too, next to `nodeId`. In the default `dom get --json` view `node.nodeId` is the accessibility id and `node.backendDOMNodeId` the backend one; the same holds in `dom a11y` output (`describe`, `query`), where `nodeId` is the accessibility node id (a string) and `backendDOMNodeId` is the DOM one.
 - Lists nodeId, tag, the first class and how many more there are (`class="px-2 +4"`, the count `dom inspect` shows as `(+4)`; on utility-CSS pages the full list was most of a row), and text preview (the text as rendered: hidden parts left out). Declaration-like tokens (ending in `:`, `;` or `,`, as in `class="brush: js;"`) are left out of the row and of the count, as in `dom inspect`. `--json` has every class in `classes` (`[]` when it has none), as do `dom get <index> --json` (`domContext.classes`) and `dom get <index> --raw`; human `dom get` output names classes only for an element without an accessible name
 - Each match shows the attributes that identify it by its type, in its tag: id, name and type, then for `img` the file name of `src` and `alt`, for `a` its `href`, for `input` its placeholder and current value (checkboxes and radios their `value` attribute and `checked`), for `textarea` its name, placeholder and value, for `button` its type (in a form also without a type attribute: `submit`), for `select` its name and the selected option (`selected="Price (low to high)"`), for `iframe` the host of `src`, and for `form` its `action` and `method`, e.g. `[0] <img src="…/sl-404-Cq1a9k9X.jpg" alt="Sauce Labs Backpack" class="inventory_item_img">`. Absolute URLs keep `//` before the host (`href="//saucelabs.com"`) so they do not read as relative paths; values over 40 characters are cut in the middle. `--json` has the full values in `attributes` on each node (an object; keys by element type as above, all strings except `checked`, a boolean; absent for other elements), e.g. `{ "src": "/assets/sl-404-Cq1a9k9X.jpg", "alt": "…" }`; `dom get` shows the same attributes after the role (`[Image] "Sauce Labs Backpack" src="…/sl-404-Cq1a9k9X.jpg"`, `domContext.attributes` in JSON, also in `dom a11y describe`), leaving out values equal to the accessible name
 - Secret values never leave the page, in human output or JSON: a hidden input's value is not read, and the value (or a select's selected option) of a sensitive field is replaced by `••••` whatever its length. Sensitive means a password field (live type or type attribute), a field masked by CSS (`-webkit-text-security`), `autocomplete` `cc-*`, `one-time-code`, `current-password` or `new-password`, or a field whose name, id or autocomplete is a secret field name (one list for DOM masking and HAR export, see [Secret field names](#secret-field-names): passwords incl. `pass` and `pw`, one-time codes, PINs, card data, API keys, tokens, secrets, sessions, CSRF fields; this covers a password field switched to text by a "show password" button), or a text-like control (a text, search, tel, email, url, number or password input, a textarea, a select; not a contenteditable element, whose text is not masked) whose label text is a secret field name: its `aria-label`, the text of its `aria-labelledby` targets, its `<label for>` or wrapping label, its placeholder or title (`<input aria-label="Password">`, `<label>Token <input></label>`, a placeholder `API key`, a label `Security code`). A "Show password" checkbox or a button is never masked by its label. The trade-off is over-masking: a field whose label text merely mentions a secret term is masked too (`Session name`, a search box with the placeholder `Search tokens`, and the first field of `<label>Username <input> Password <input></label>`, which Chrome gives the whole label text); `bdg dom eval` reads such a value. A secret select shows no option text (no text preview; `dom form --json` lists its options as `••••`). `dom get` and `a11y describe` mask the accessibility value of such a field too (`domContext.sensitive: true`), and the part of an accessible name or description that comes from a secret field through `aria-labelledby` or `aria-describedby` (`Confirm ••••` for a field labelled by a card number field; a description wholly). `dom get --raw` and `dom get --node-id` mask the same fields in the HTML (see Raw HTML output). There is no opt-out: `bdg dom eval` reads a value as it is (`bdg dom eval 'document.querySelector("#pw").value'`)
@@ -663,7 +663,7 @@ bdg css search -- --brand              # A text that starts with - goes after --
 - **layers**: `position: fixed` and `sticky` elements with their `z-index`, viewport position and size.
 - **animations**: running CSS animations, transitions and Web Animations, with duration, iterations and whether scrolling drives them. Animations scripts draw on a `<canvas>` cannot be seen; visible canvas elements are counted (`(+ 1 canvas element: …)`, JSON `canvases`).
 
-`--limit <n>` lists that many findings per check (default 20; the rest are counted). Follow up on a finding with `bdg dom inspect <element>` (`--why color`, `--rules`). JSON: `{ checks, walked, capped?, contrast?: { level, checked, failing, items: [{ element, text, ratio, color, background, size, weight, inView, approximate? }] }, overflow?: { pageWidth, viewportWidth, scrollsSideways, wide, truncated, images }, layers?, animations?, canvases? }`.
+`--limit <n>` lists the first N findings per check (default 20; the rest are counted). Follow up on a finding with `bdg dom inspect <element>` (`--why color`, `--rules`). JSON: `{ checks, walked, capped?, contrast?: { level, checked, failing, items: [{ element, text, ratio, color, background, size, weight, inView, approximate? }] }, overflow?: { pageWidth, viewportWidth, scrollsSideways, wide, truncated, images }, layers?, animations?, canvases? }`.
 
 `css search <text>` finds a text (case-insensitive) in every stylesheet of the page, cross-origin ones included (Chrome reads their text, which page scripts cannot), and prints each match's place (`app.css:12`, `bootstrap.min.css:5:52628`, `<style> in index.html:40`) and the rule around it. Use it for "where is `--brand` set", "which rules use `oklch(`" or a class's rules across files.
 
@@ -1148,7 +1148,7 @@ bdg dom screenshot btn.png "#submit" --padding 16         # 16px of page around 
 # Custom quality
 bdg dom screenshot high-res.jpg --quality 100
 
-# A frame every second into a directory (--interval 100-60000 ms, --limit n frames)
+# A frame every second into a directory (--interval 100-60000 ms, --limit n: stop after the first n frames)
 bdg dom screenshot ./frames --follow
 ```
 
@@ -1509,7 +1509,7 @@ bdg console -H
 bdg console --list
 bdg console -l
 
-# List the last N messages (also without --list)
+# List the newest N messages (also without --list)
 bdg console --last 50
 
 # Stream console messages in real-time
@@ -1527,7 +1527,7 @@ bdg console --list --full
 ```
 
 **Default behavior:**
-- `--last <n>` lists the last N messages (like `--list`; without it the summary is shown)
+- `--last <n>` lists the newest N messages (like `--list`; without it the summary is shown)
 - `[n]` in a list is the message's position in the session (what `bdg details console <n>` takes); when the page or level filter left messages out between listed ones, a note under the list says how many and why (`not listed in between: 1 message from another page load (-H lists all)`)
 - Shows messages from **current page load only** (most recent navigation)
 - `--level <lvl>` says what it hid from the current page (`--history`: all pages): `3 messages hidden by --level error (3 info)` under the header, `hiddenByLevel: { info: 3 }` in JSON (absent when none; `summary.total` counts the listed messages only).

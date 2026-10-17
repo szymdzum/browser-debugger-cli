@@ -50,7 +50,7 @@ const DEFAULT_LAST = 100;
 
 const consoleLastOption = new Option(
   '--last <n>',
-  `List the last N console messages (0 = all; default: ${DEFAULT_LAST} with --list or --follow)`
+  `List the newest N console messages (0 = all; default: ${DEFAULT_LAST} with --list or --follow)`
 );
 
 /**

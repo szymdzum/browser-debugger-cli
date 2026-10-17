@@ -50,7 +50,7 @@ export interface ConsoleFormatOptions {
   list?: boolean | undefined;
   /** Follow mode (live streaming) */
   follow?: boolean | undefined;
-  /** Limit to last N messages */
+  /** Limit to the newest N messages */
   last?: number | undefined;
   /** Show messages from all navigations (default: current only) */
   history?: boolean | undefined;

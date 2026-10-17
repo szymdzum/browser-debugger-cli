@@ -24,7 +24,7 @@ export function registerTailCommand(program: Command): void {
     .option('-c, --console', 'Show only console messages', false)
     .option(
       '--last <count>',
-      'Show last N items (network requests + console messages), 0 for all',
+      'Show the newest N items (network requests + console messages), 0 for all',
       '10'
     )
     .option('--interval <ms>', 'Update interval in milliseconds', '1000')
