@@ -68,10 +68,9 @@ function trackCurrentPage(cdp: CDPConnection, store: TelemetryStore, logger: Log
     if (store.targetInfo) store.setTargetInfo({ ...store.targetInfo, ...fields });
   };
   const refreshTitle = (): void => {
-    cdp
-      .send('Runtime.evaluate', { expression: 'document.title', returnByValue: true })
+    sendTyped(cdp, 'Runtime.evaluate', { expression: 'document.title', returnByValue: true })
       .then((response) => {
-        const value = (response as { result?: { value?: unknown } }).result?.value;
+        const value: unknown = response.result.value;
         if (typeof value === 'string') update({ title: value });
       })
       .catch((error: unknown) => {

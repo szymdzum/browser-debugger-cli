@@ -175,7 +175,8 @@ export class TypedCDPConnection {
  * @param cdp - Anything with a `send`
  * @param method - CDP method name
  * @param params - Command parameters (type-checked), if any
- * @param options - `signal`: stops waiting when it aborts (as `CDPConnection.send`)
+ * @param options - `signal` stops waiting when it aborts; it goes as the 4th argument
+ *   of `CDPConnection.send`, with the sessionId slot `undefined`
  * @returns Promise resolving to the command's response (type-safe)
  */
 export async function sendTyped<T extends keyof ProtocolMapping.Commands>(
