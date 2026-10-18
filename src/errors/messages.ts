@@ -20,8 +20,6 @@ export * from './messages/tabs.js';
 export {
   NO_MATCH_PREFIX,
   NO_MATCH_SUFFIX,
-  noMatchMessage,
-  A11Y_NAME_QUERY_EXAMPLE,
   pageStillLoadingHint,
   withLoadingHint,
 } from './messages/shared.js';
