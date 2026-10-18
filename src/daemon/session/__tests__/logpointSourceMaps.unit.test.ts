@@ -7,8 +7,8 @@
 
 import assert from 'node:assert/strict';
 import * as http from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { after, before, describe, it } from 'node:test';
+import type { AddressInfo } from 'node:net';
 
 import {
   mapKey,

@@ -142,7 +142,7 @@ export async function readLimitedText(response: Response, maxBytes: number): Pro
     await response.body?.cancel().catch(() => undefined);
     throw tooBig;
   }
-  const reader = response.body?.getReader();
+  const reader = response.body?.getReader() as ReadableStreamDefaultReader<Uint8Array> | undefined;
   if (!reader) return '';
   const chunks: Uint8Array[] = [];
   let received = 0;

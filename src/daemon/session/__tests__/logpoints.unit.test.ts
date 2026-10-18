@@ -7,8 +7,8 @@
 
 import assert from 'node:assert/strict';
 import * as http from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { describe, it } from 'node:test';
+import type { AddressInfo } from 'node:net';
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import { Logpoints } from '@/daemon/session/logpoints.js';
