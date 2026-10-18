@@ -6,6 +6,8 @@
  */
 
 import assert from 'node:assert/strict';
+import * as http from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { describe, it } from 'node:test';
 
 import type { CDPConnection } from '@/connection/cdp.js';
@@ -106,5 +108,56 @@ void describe('logpoints and Chrome', () => {
       (error: unknown) => (error as { exitCode?: number }).exitCode === 84
     );
     assert.equal(logpoints.size, 1);
+  });
+
+  void it('maps are fetched only for logpoints that wait for a file, not for ones bound by URL', async () => {
+    let fetched = 0;
+    const server = http.createServer((_req, res) => {
+      fetched++;
+      res.end('{"version":3,"sources":[],"mappings":""}');
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    try {
+      const handlers = new Map<string, (event: unknown) => void>();
+      const cdp = fakeCdp();
+      (cdp as { on: unknown }).on = (method: string, handler: (event: unknown) => void) => {
+        handlers.set(method, handler);
+        return () => undefined;
+      };
+      const send = cdp.send.bind(cdp);
+      (cdp as { send: unknown }).send = (method: string, params?: Record<string, unknown>) =>
+        method === 'Debugger.setBreakpointByUrl' && String(params?.['urlRegex']).includes('app')
+          ? Promise.resolve({
+              breakpointId: 'b-app',
+              locations: [{ scriptId: '1', lineNumber: 2, columnNumber: 0 }],
+            })
+          : send(method, params);
+      const logpoints = new Logpoints(() => 0);
+      logpoints.follow(cdp);
+      const parsed = (scriptId: string, url: string, hash: string, sourceMapURL?: string): void =>
+        handlers.get('Debugger.scriptParsed')?.({
+          scriptId,
+          url,
+          endLine: 10,
+          endColumn: 0,
+          hash,
+          ...(sourceMapURL && { sourceMapURL }),
+        });
+      parsed('1', 'http://h/app.js', 'a');
+      await logpoints.add(cdp, PARAMS);
+      parsed('2', `${origin}/one.js`, 'b', `${origin}/one.js.map`);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      assert.equal(fetched, 0, 'bound by URL: no map is fetched');
+      await logpoints.add(cdp, { ...PARAMS, file: 'lazy.js', line: 2 });
+      parsed('3', `${origin}/two.js`, 'c', `${origin}/two.js.map`);
+      for (let waited = 0; fetched === 0 && waited < 50; waited++) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      assert.equal(fetched, 1, 'a waiting logpoint reads the map');
+    } finally {
+      server.closeAllConnections();
+      server.close();
+    }
   });
 });

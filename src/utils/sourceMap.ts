@@ -36,7 +36,12 @@ export interface GeneratedPosition {
   source: string;
   /** The original line it stands for, 1-based */
   originalLine: number;
+  /** The line's other segments in this source, by generated position (at most {@link MAX_ALTERNATIVES}) */
+  alternatives: Array<{ line: number; column: number }>;
 }
+
+/** Other generated positions of an original line a lookup keeps */
+const MAX_ALTERNATIVES = 32;
 
 /** What {@link lookupGenerated} found */
 export type GeneratedLookup =
@@ -220,7 +225,9 @@ export function indexSourceMap(map: SourceMap, baseUrl: string): SourceMapIndex 
     else lines.set(key, entry);
   }
   return {
-    sources: map.sources.map((source) => resolveSource(source, map.sourceRoot, baseUrl)),
+    sources: map.sources.map((source) =>
+      source === '' ? '' : resolveSource(source, map.sourceRoot, baseUrl)
+    ),
     lines,
     size: map.mappings.length,
   };
@@ -251,6 +258,33 @@ function isBetter(
   if (candidateFits !== bestFits) return candidateFits;
   if (candidateColumn === bestColumn) return earlier;
   return candidateFits ? candidateColumn > bestColumn : candidateColumn < bestColumn;
+}
+
+/**
+ * The other generated positions of an original line, by generated position.
+ *
+ * @param entry - The line's `[genLine, genColumn, origColumn, …]` triples
+ * @param chosen - The segment lookup picked
+ * @returns 1-based positions without the chosen one
+ */
+function alternativesOf(
+  entry: number[],
+  chosen: MappingSegment
+): Array<{ line: number; column: number }> {
+  const others: Array<{ line: number; column: number }> = [];
+  for (let at = 0; at < entry.length; at += 3) {
+    const line = (entry[at] ?? 0) + 1;
+    const column = (entry[at + 1] ?? 0) + 1;
+    if (line === chosen.genLine + 1 && column === chosen.genColumn + 1) continue;
+    others.push({ line, column });
+  }
+  others.sort((a, b) => a.line - b.line || a.column - b.column);
+  return others
+    .filter(
+      (place, at) =>
+        at === 0 || place.line !== others[at - 1]?.line || place.column !== others[at - 1]?.column
+    )
+    .slice(0, MAX_ALTERNATIVES);
 }
 
 /**
@@ -291,6 +325,7 @@ export function lookupIndexed(
         column: best.genColumn + 1,
         source: index.sources[source] ?? '',
         originalLine: line,
+        alternatives: alternativesOf(entry ?? [], best),
       });
     }
   }

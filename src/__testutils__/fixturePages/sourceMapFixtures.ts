@@ -39,6 +39,10 @@ export const PAIR_LINES = {
   inFirst: 2,
   /** `const tripled = a * 3;` in `second` */
   inSecond: 6,
+  /** `return tripled;` in `second` */
+  returnInSecond: 7,
+  /** `}` closing `second`: its place in the bundle is the slot `return tripled;` already uses */
+  closeSecond: 8,
 } as const;
 
 /** Lines of `src/inline.ts` (original) */
@@ -95,6 +99,7 @@ const MIN_ANCHORS: Anchor[] = [
   { genLine: 0, needle: 'function second', source: 0, origLine: 5 },
   { genLine: 0, needle: 'var t', source: 0, origLine: 6, origColumn: 2 },
   { genLine: 0, needle: 'return t', source: 0, origLine: 7, origColumn: 2 },
+  { genLine: 0, needle: 't}doc', source: 0, origLine: 8, origColumn: 9 },
 ];
 
 const MIN_MAP = buildSourceMap({

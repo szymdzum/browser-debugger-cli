@@ -141,6 +141,21 @@ export function logpointSamePlaceError(where: string): ErrorWithSuggestion {
 }
 
 /**
+ * Every generated place of an original line is shared with another statement.
+ *
+ * @param file - File as typed
+ * @param line - Line asked for
+ * @returns Error
+ */
+export function logpointMergedLineError(file: string, line: number): ErrorWithSuggestion {
+  return {
+    message: `${file}:${line} has no generated place of its own (the compiler merged it into another statement, e.g. after a return)`,
+    suggestion:
+      'A logpoint there would log the values of another path; set it on the next line, or on the statement that runs first',
+  };
+}
+
+/**
  * A loaded script that has no code at the line.
  *
  * @param file - File as typed

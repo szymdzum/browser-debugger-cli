@@ -17,6 +17,7 @@ import {
   duplicateLogpointError,
   logpointFileNotLoadedWarning,
   logpointNoCodeError,
+  logpointMergedLineError,
   logpointNoMappedCodeError,
   logpointNotFoundError,
   logpointSourceMapWarning,
@@ -129,6 +130,10 @@ interface TargetResolution {
   lastLine?: number;
   /** Source maps that could not be used */
   failures: string[];
+  /** Source maps that had not answered when the lookup stopped waiting */
+  unread: ScriptWithMap[];
+  /** The source maps name the line, but every generated place of it is shared with another statement */
+  merged?: boolean;
 }
 
 /** A logpoint in the registry */
@@ -246,11 +251,16 @@ export class Logpoints {
           url: event.url,
           endLine: event.endLine,
           endColumn: event.endColumn,
+          hash: event.hash,
           ...(event.sourceMapURL && { sourceMapURL: event.sourceMapURL }),
         };
         this.scripts.set(event.scriptId, script);
         if (event.sourceMapURL)
-          this.mapLoadedScript(cdp, { url: event.url, sourceMapURL: event.sourceMapURL });
+          this.mapLoadedScript(cdp, {
+            url: event.url,
+            sourceMapURL: event.sourceMapURL,
+            hash: event.hash,
+          });
       }),
       cdp.on('Debugger.globalObjectCleared', () => this.pageCleared(cdp)),
       cdp.on<Protocol.Debugger.BreakpointResolvedEvent>('Debugger.breakpointResolved', (event) => {
@@ -598,8 +608,11 @@ export class Logpoints {
     };
     await this.checkCondition(cdp, spec);
     const matcher = new RegExp(scriptUrlPattern(file));
-    const resolution = await this.resolveTargets(spec, matcher);
+    const resolution = await this.resolveTargets(cdp, spec, matcher);
     if (resolution.noCode) throw this.noCodeError(file, line, resolution.lastLine);
+    if (resolution.merged) {
+      throw commandError(logpointMergedLineError(file, line), EXIT_CODES.RESOURCE_NOT_FOUND);
+    }
     const point: Logpoint = {
       ...spec,
       matcher,
@@ -619,8 +632,19 @@ export class Logpoints {
       );
       throw this.noCodeError(file, line, resolution.lastLine);
     }
+    if (this.sharesPlaceWithOthers(point)) {
+      await this.removeBreakpoints(
+        cdp,
+        point.breakpoints.map((breakpoint) => breakpoint.id)
+      );
+      throw commandError(
+        logpointSamePlaceError(logpointPlace(file, line, column)),
+        EXIT_CODES.RESOURCE_ALREADY_EXISTS
+      );
+    }
     this.nextId++;
     this.points.set(id, point);
+    resolution.unread.forEach((script) => this.mapLoadedScript(cdp, script));
     return {
       id,
       requested: { file, line, ...(column !== undefined && { column }) },
@@ -638,21 +662,96 @@ export class Logpoints {
    * scripts by URL, also ones loaded later) and, when no loaded script URL
    * ends with it, the generated places of the source maps that name it.
    */
-  private async resolveTargets(spec: LogpointSpec, matcher: RegExp): Promise<TargetResolution> {
+  private async resolveTargets(
+    cdp: CDPConnection,
+    spec: LogpointSpec,
+    matcher: RegExp
+  ): Promise<TargetResolution> {
     const scripts = [...this.scripts.values()];
     const matching = scripts.filter((script) => matcher.test(script.url));
     const byUrl = this.urlTarget(spec);
     if (matching.length > 0) {
       const last = Math.max(...matching.map(lastLine));
       const noCode = spec.line > last;
-      return { targets: noCode ? [] : [byUrl], noCode, lastLine: last, failures: [] };
+      return { targets: noCode ? [] : [byUrl], noCode, lastLine: last, failures: [], unread: [] };
     }
     const mapped = await this.maps.resolve(scripts, matcher, spec.line, spec.column);
+    const own = await this.ownPlaces(cdp, mapped.targets);
     return {
-      targets: [byUrl, ...mapped.targets],
+      targets: [byUrl, ...own],
       noCode: mapped.targets.length === 0 && mapped.noCode,
       failures: mapped.failures,
+      unread: mapped.targets.length === 0 ? mapped.unread : [],
+      merged: mapped.targets.length > 0 && own.length === 0,
     };
+  }
+
+  /**
+   * Whether a source-mapped logpoint resolved to a generated place another
+   * logpoint already has (two original lines can compile to one place).
+   */
+  private sharesPlaceWithOthers(point: Logpoint): boolean {
+    return point.bound.some(
+      (place) =>
+        place.source !== undefined &&
+        [...this.points.values()].some((other) =>
+          other.bound.some(
+            (own) => own.url === place.url && own.line === place.line && own.column === place.column
+          )
+        )
+    );
+  }
+
+  /**
+   * The generated places of source-mapped targets that run only for their
+   * original line. Chrome keeps one break location per position: the end of
+   * a `return` statement is also where the next statement starts, so a
+   * logpoint set at that start would fire on the return path with the
+   * values of the wrong branch. Such a place is left for the line's next
+   * segment (one Chrome can break at, else the first not shared).
+   */
+  private async ownPlaces(
+    cdp: CDPConnection,
+    targets: BreakpointTarget[]
+  ): Promise<BreakpointTarget[]> {
+    const own = await Promise.all(targets.map((target) => this.ownPlace(cdp, target)));
+    return own.flatMap((target) => (target ? [target] : []));
+  }
+
+  private async ownPlace(
+    cdp: CDPConnection,
+    target: BreakpointTarget
+  ): Promise<BreakpointTarget | undefined> {
+    const scriptId = [...this.scripts.entries()].find(
+      ([, script]) => script.url === target.url
+    )?.[0];
+    if (scriptId === undefined || target.column === undefined) return target;
+    const candidates = [
+      { line: target.line, column: target.column },
+      ...(target.alternatives ?? []),
+    ];
+    const ordered = [...candidates].sort((a, b) => a.line - b.line || a.column - b.column);
+    const first = ordered[0];
+    const last = ordered[ordered.length - 1];
+    if (!first || !last) return target;
+    const response = await sendTyped(cdp, 'Debugger.getPossibleBreakpoints', {
+      start: { scriptId, lineNumber: first.line - 1, columnNumber: first.column - 1 },
+      end: { scriptId, lineNumber: last.line - 1, columnNumber: last.column },
+    }).catch((error: unknown) => {
+      log.debug(`Break locations not read: ${getErrorMessage(error)}`);
+      return undefined;
+    });
+    if (!response) return target;
+    const at = (line: number, column: number): string => `${line}:${column}`;
+    const places = response.locations.map((location) => ({
+      key: at(location.lineNumber + 1, (location.columnNumber ?? 0) + 1),
+      isReturn: location.type === 'return',
+    }));
+    const returns = new Set(places.filter((place) => place.isReturn).map((place) => place.key));
+    const breakable = new Set(places.map((place) => place.key));
+    const safe = candidates.filter((place) => !returns.has(at(place.line, place.column)));
+    const chosen = safe.find((place) => breakable.has(at(place.line, place.column))) ?? safe[0];
+    return chosen && { ...target, line: chosen.line, column: chosen.column };
   }
 
   private urlTarget(spec: LogpointSpec): BreakpointTarget {
@@ -735,15 +834,20 @@ export class Logpoints {
    * matches are set from its map when it names the file.
    */
   private mapLoadedScript(cdp: CDPConnection, script: ScriptWithMap): void {
-    if (this.points.size === 0) return;
     const key = mapKey(script);
+    const waiting = (): Logpoint[] =>
+      [...this.points.values()].filter(
+        (point) =>
+          !point.breakpoints.some((breakpoint) => breakpoint.mapKey === key) &&
+          !this.hasScriptMatching(point.matcher)
+      );
+    if (waiting().length === 0) return;
     void this.maps
       .index(script)
       .then((index) =>
         this.serialized(async () => {
-          for (const point of this.points.values()) {
-            if (point.breakpoints.some((breakpoint) => breakpoint.mapKey === key)) continue;
-            if (this.hasScriptMatching(point.matcher)) continue;
+          for (const point of waiting()) {
+            await this.dropSuperseded(cdp, point, script);
             const { targets } = this.maps.targetsIn(
               index,
               script,
@@ -751,14 +855,38 @@ export class Logpoints {
               point.line,
               point.column
             );
-            if (targets.length === 0) continue;
-            await this.applyTargets(cdp, point, targets).catch((error: unknown) =>
+            const own = await this.ownPlaces(cdp, targets);
+            if (own.length === 0) continue;
+            await this.applyTargets(cdp, point, own).catch((error: unknown) =>
               log.debug(`Not set from a source map: ${getErrorMessage(error)}`)
             );
           }
         })
       )
       .catch((error: unknown) => log.debug(`Source map not used: ${getErrorMessage(error)}`));
+  }
+
+  /**
+   * A rebuilt bundle keeps its URL but not its content: the places set from
+   * the map of its earlier build are taken back before the new map is used.
+   */
+  private async dropSuperseded(
+    cdp: CDPConnection,
+    point: Logpoint,
+    script: ScriptWithMap
+  ): Promise<void> {
+    const stale = point.breakpoints.filter((breakpoint) =>
+      breakpoint.mapKey?.startsWith(`${script.url}\n`)
+    );
+    if (stale.length === 0) return;
+    point.breakpoints = point.breakpoints.filter((breakpoint) => !stale.includes(breakpoint));
+    point.bound = point.bound.filter(
+      (place) => place.source === undefined || place.url !== script.url
+    );
+    await this.removeBreakpoints(
+      cdp,
+      stale.map((breakpoint) => breakpoint.id)
+    );
   }
 
   private hasScriptMatching(matcher: RegExp): boolean {

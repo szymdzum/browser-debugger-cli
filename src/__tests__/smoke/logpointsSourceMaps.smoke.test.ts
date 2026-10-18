@@ -17,6 +17,7 @@ import { after, afterEach, before, describe, it } from 'node:test';
 
 import { runCommand } from '@/__testutils__/commandRunner.js';
 import { cleanupAllSessions } from '@/__testutils__/daemonHelpers.js';
+import { DISCOUNT_LINES } from '@/__testutils__/fixturePages/esbuildSourceMapFixtures.js';
 import {
   CART_LINES,
   INLINE_LINES,
@@ -261,6 +262,98 @@ void describe('logpoints on source-mapped bundles (#848, part 2)', () => {
     assert.equal(back.logpoints?.[0]?.id, created.id);
     const tabs = await json<{ tabs: Array<{ index: number }> }>(['page', 'tabs']);
     await bdg(['page', 'close', String(tabs.tabs.length - 1)]);
+  });
+
+  void it('esbuild output: a line after a return fires on the path that reaches it, not on the return path', async () => {
+    await bdg(['page', 'navigate', `${fixtures.url}sm-esbuild/shop`]);
+    try {
+      const created = await json<Logged>([
+        'debug',
+        'log',
+        `src/discount.ts:${DISCOUNT_LINES.rate}`,
+        'cart.coupon',
+      ]);
+      assert.equal(created.state, 'bound');
+      await bdg(['dom', 'click', '#checkout']);
+      assert.deepEqual(await hitValues(created.id), [], 'no coupon: the line never runs');
+      await bdg(['dom', 'click', '#coupon']);
+      await bdg(['dom', 'click', '#checkout']);
+      const values = await hitValues(created.id);
+      assert.equal(values.length, 1);
+      assert.equal((values[0]?.['cart.coupon'] as { percent?: number } | null)?.percent, 10);
+    } finally {
+      await bdg(['page', 'navigate', `${fixtures.url}source-maps`]);
+    }
+  });
+
+  void it('two original lines that compile to one generated place: the second is 84', async () => {
+    const first = await json<Logged>([
+      'debug',
+      'log',
+      `src/pair.ts:${PAIR_LINES.returnInSecond}`,
+      'a',
+    ]);
+    const failed = await json<{ error: string }>(
+      ['debug', 'log', `src/pair.ts:${PAIR_LINES.closeSecond}`, 'a'],
+      84
+    );
+    assert.match(failed.error, /already has a breakpoint/);
+    assert.deepEqual(
+      (await listed()).map((lp) => lp.id),
+      [first.id]
+    );
+  });
+
+  void it('a reload with a rebuilt map (same URLs) binds the new generated place', async () => {
+    const bundle = (banner: string[]): string[] => [
+      ...banner,
+      'function run(x) {',
+      '  var y = x + 1;',
+      '  return y;',
+      '}',
+    ];
+    const served = [bundle([]), bundle(['// banner', '// banner'])];
+    const mapOf = (generated: string[]): string =>
+      buildSourceMap({
+        sources: ['src/rebuilt.ts'],
+        segments: anchorSegments(generated, [
+          { genLine: generated.length - 4, needle: 'function', source: 0, origLine: 1 },
+          { genLine: generated.length - 3, needle: 'var y', source: 0, origLine: 2, origColumn: 2 },
+        ]),
+      });
+    let version = 0;
+    const server = http.createServer((req, res) => {
+      const generated = served[version] ?? [];
+      const body =
+        req.url === '/b.js.map'
+          ? mapOf(generated)
+          : req.url === '/b.js'
+            ? [...generated, '//# sourceMappingURL=b.js.map'].join('\n')
+            : '<!doctype html><title>rebuilt</title><script src="/b.js"></script>';
+      res.writeHead(200, { 'Cache-Control': 'no-store' });
+      res.end(body);
+    });
+    const port = await getFreePort();
+    await new Promise<void>((resolve) => server.listen(port, '127.0.0.1', resolve));
+    try {
+      await bdg(['page', 'navigate', `http://127.0.0.1:${port}/`]);
+      const created = await json<Logged>(['debug', 'log', 'src/rebuilt.ts:2', 'x']);
+      assert.equal(created.bound[0]?.line, 2);
+      version = 1;
+      await bdg(['page', 'reload']);
+      const deadline = Date.now() + 30000;
+      for (;;) {
+        const entry = (await listed()).find((lp) => lp.id === created.id);
+        if (entry?.bound.length === 1 && entry.bound[0]?.line === 4) break;
+        assert.ok(Date.now() < deadline, `never rebound: ${JSON.stringify(entry)}`);
+      }
+      await bdg(['eval', 'run(5)']);
+      assert.deepEqual(await hitValues(created.id), [{ x: 5 }]);
+    } finally {
+      server.closeAllConnections();
+      await new Promise((resolve) => server.close(resolve));
+      await bdg(['page', 'navigate', `${fixtures.url}source-maps`]);
+    }
   });
 
   void it('a file no map names is pending, and the warning says which maps could not be used', async () => {
