@@ -428,6 +428,8 @@ export interface TimingVerdictContext {
   transferredBytes?: number;
   /** The remote address looks like a proxy on this machine */
   localProxy?: boolean;
+  /** How a request that got its headers ended early (`errorText`, `canceled`) */
+  endedEarly?: { errorText: string; canceled: boolean };
 }
 
 /**
@@ -444,7 +446,15 @@ export function timingVerdict(breakdown: TimingPhases, context: TimingVerdictCon
     dominant === 'download' && context.transferredBytes !== undefined
       ? ` (${formatBytes(context.transferredBytes)} in ${ms} ms)`
       : '';
-  let verdict = `Most of the time (${ms} of ${totalMs} ms) was spent in ${dominant}${size}: ${PHASE_MEANING[dominant]}`;
+  const meaning =
+    context.endedEarly && dominant === 'wait'
+      ? 'server time (TTFB) up to then, nothing to fix in the page for that part'
+      : PHASE_MEANING[dominant];
+  const { endedEarly } = context;
+  const lead = endedEarly
+    ? `${endedEarly.canceled ? 'Cancelled' : 'Failed'} after ${totalMs} ms (${endedEarly.errorText}); up to then most of the time (${ms} ms) was in`
+    : `Most of the time (${ms} of ${totalMs} ms) was spent in`;
+  let verdict = `${lead} ${dominant}${size}: ${meaning}`;
   if (dominant === 'queued' && context.protocol === 'http/1.1') {
     verdict += ' (HTTP/1.1: Chrome opens at most 6 connections per host)';
   }

@@ -126,4 +126,11 @@ void describe('network details timing', () => {
     });
     assert.match(text.stdout, /Chrome opens at most 6 connections per host/);
   });
+
+  void it('says a fetch aborted mid-body was cancelled', async () => {
+    const [id] = await idsOf('/trickle');
+    assert.ok(id, 'no /trickle request');
+    const text = await runCommand('network', ['details', id, '--no-body'], { timeout: 30000 });
+    assert.match(text.stdout, /Cancelled after \d+ ms \(net::ERR_ABORTED\); up to then/);
+  });
 });

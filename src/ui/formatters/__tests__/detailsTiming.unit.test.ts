@@ -107,4 +107,31 @@ void describe('network details Timing rows', () => {
     assert.match(formatNetworkDetails(proxied), /local proxy's/);
     assert.doesNotMatch(formatNetworkDetails(request()), /local proxy's/);
   });
+
+  void it('says a request cancelled mid-body was cut short, not that the download was slow', () => {
+    const { loadingFinishedTime, ...rest } = request({
+      errorText: 'net::ERR_ABORTED',
+      canceled: true,
+      duration: 700,
+      timing: { requestTime: 100.0, sendStart: 1, sendEnd: 2, receiveHeadersEnd: 100 },
+    });
+    void loadingFinishedTime;
+    assert.match(
+      formatNetworkDetails(rest),
+      /Cancelled after 700 ms \(net::ERR_ABORTED\); up to then most of the time \(600 ms\) was in download/
+    );
+    assert.doesNotMatch(formatNetworkDetails(rest), /Most of the time/);
+  });
+
+  void it('scopes the server-time claim to the part before a failure', () => {
+    const { loadingFinishedTime, ...rest } = request({
+      errorText: 'net::ERR_CONNECTION_RESET',
+      duration: 1002,
+    });
+    void loadingFinishedTime;
+    assert.match(
+      formatNetworkDetails(rest),
+      /Failed after 1002 ms \(net::ERR_CONNECTION_RESET\); up to then .* in wait: server time \(TTFB\) up to then/
+    );
+  });
 });

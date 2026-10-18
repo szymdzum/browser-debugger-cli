@@ -7,6 +7,7 @@
  *
  * - `/wait` sends its headers after {@link DELAY_MS}: the server took the time.
  * - `/download` sends its headers at once and its body over {@link DELAY_MS}.
+ * - `/trickle` is `/download` that the page aborts after 250 ms.
  * - `/hold`: the first {@link CONNECTION_LIMIT} requests that arrive are held
  *   for {@link DELAY_MS}, the rest are answered at once. Chrome opens at most
  *   6 HTTP/1.1 connections per host, so the 7th and 8th request wait in
@@ -31,8 +32,9 @@ const DOWNLOAD_CHUNKS = 7;
 
 const PAGE = `<!doctype html><title>start</title>
 <script>
+const cut = (url) => { const c = new AbortController(); setTimeout(() => c.abort(), 250); return fetch(url, { signal: c.signal }).then((r) => r.text()).catch(() => {}); };
 const read = (url) => fetch(url).then((r) => r.text());
-Promise.all([read('/wait'), read('/download')])
+Promise.all([read('/wait'), read('/download'), cut('/trickle')])
   .then(() => Promise.all(Array.from({ length: ${HOLD_REQUESTS} }, (_, i) => read('/hold?i=' + i))))
   .then(() => { document.title = 'done'; });
 </script>`;
@@ -79,7 +81,7 @@ export async function startTimingServer(): Promise<TimingServer> {
   const server = http.createServer((req, res) => {
     const route = new URL(req.url ?? '/', 'http://timing').pathname;
     if (route === '/wait') reply(res, DELAY_MS);
-    else if (route === '/download') trickleBody(res);
+    else if (route === '/download' || route === '/trickle') trickleBody(res);
     else if (route === '/hold') reply(res, ++holdArrivals <= CONNECTION_LIMIT ? DELAY_MS : 0);
     else {
       res.writeHead(200, { 'Content-Type': 'text/html' });

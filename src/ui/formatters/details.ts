@@ -181,6 +181,9 @@ function timingRows(request: NetworkRequest): Array<[string, string]> {
           transferredBytes: request.encodedDataLength,
         }),
         localProxy: looksLikeLocalProxy(request),
+        ...(request.errorText !== undefined && {
+          endedEarly: { errorText: request.errorText, canceled: request.canceled === true },
+        }),
       }),
     ],
   ];
