@@ -1613,7 +1613,7 @@ async function acceptLiveSession(dir) {
 async function snapshot(argv = []) {
   const dirs = { bdg: join(homedir(), '.bdg'), downloads: join(homedir(), 'Downloads') };
   const parsed = parseSnapshotArgs(argv, dirs);
-  if ('error' in parsed) return usage(`snapshot [--accept <name>… | --accept-live]: ${parsed.error}`);
+  if ('error' in parsed) return usage(`snapshot [--accept <name>… | --accept-live | --accept-main]: ${parsed.error}`);
   if (parsed.acceptLive) return acceptLiveSession(dirs.bdg);
   if (parsed.acceptMain) {
     writeFileSync(SNAPSHOT.main, mainCheckoutStatus().join('\n'));
@@ -2019,8 +2019,9 @@ export function isSessionFileName(name) {
  * included.
  */
 function mainCheckoutStatus() {
-  const out = spawnSync('git', ['-C', mainCheckout(), 'status', '--porcelain', '--untracked-files=all'], { encoding: 'utf8' }).stdout ?? '';
-  return out.split('\n').filter(Boolean);
+  const r = spawnSync('git', ['-C', mainCheckout(), 'status', '--porcelain', '--untracked-files=all'], { encoding: 'utf8' });
+  if (r.status !== 0) throw new Error(`git status in the main checkout failed: ${(r.stderr || '').trim()}`);
+  return (r.stdout ?? '').split('\n').filter(Boolean);
 }
 
 /**
