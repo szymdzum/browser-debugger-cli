@@ -34,6 +34,10 @@ const REPO_DIR = dirname(dirname(fileURLToPath(import.meta.url)));
 const execFileAsync = promisify(execFile);
 const GH_TIMEOUT_MS = 60_000;
 const DEFAULT_RUNS = 20;
+const CHILD_EXIT_WAIT_MS = 2000;
+/** @type {Set<import('node:child_process').ChildProcess>} */
+const running = new Set();
+let stopping = false;
 
 /**
  * Median of a non-empty list of numbers.
@@ -139,12 +143,19 @@ export function formatTable(rows) {
  * @returns {Promise<string>}
  */
 async function gh(args) {
-  const { stdout } = await execFileAsync('gh', args, {
+  if (stopping) throw new Error('interrupted');
+  const call = execFileAsync('gh', args, {
     cwd: REPO_DIR,
     encoding: 'utf8',
     timeout: GH_TIMEOUT_MS,
   });
-  return stdout;
+  running.add(call.child);
+  try {
+    const { stdout } = await call;
+    return stdout;
+  } finally {
+    running.delete(call.child);
+  }
 }
 
 /**
@@ -172,6 +183,24 @@ function readShards(dir) {
 }
 
 /**
+ * Kills the running `gh` children and waits (bounded) for them to exit, so
+ * none is still writing into the temp directory.
+ *
+ * @returns {Promise<void>}
+ */
+async function stopChildren() {
+  const exits = [...running].map(
+    (child) =>
+      new Promise((resolve) => (child.exitCode === null ? child.once('exit', resolve) : resolve()))
+  );
+  for (const child of running) child.kill('SIGTERM');
+  await Promise.race([
+    Promise.all(exits),
+    new Promise((resolve) => setTimeout(resolve, CHILD_EXIT_WAIT_MS)),
+  ]);
+}
+
+/**
  * Removes the temp directory on SIGINT/SIGTERM and exits 130/143.
  *
  * @param {string} dir
@@ -181,7 +210,9 @@ function cleanOnSignal(dir) {
     ['SIGINT', 130],
     ['SIGTERM', 143],
   ]) {
-    process.once(signal, () => {
+    process.once(signal, async () => {
+      stopping = true;
+      await stopChildren();
       rmSync(dir, { recursive: true, force: true });
       process.exit(code);
     });
