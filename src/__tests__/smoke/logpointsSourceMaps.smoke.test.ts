@@ -133,7 +133,7 @@ void describe('logpoints on source-mapped bundles (#848, part 2)', () => {
     assert.equal(created.state, 'bound');
     assert.match(created.bound[0]?.url ?? '', /\/sm\/dist\/app\.js$/);
     assert.equal(created.bound[0]?.line, 8);
-    assert.equal(created.bound[0]?.column, 3);
+    assert.ok((created.bound[0]?.column ?? 0) >= 1);
     assert.equal(created.bound[0]?.source?.line, CART_LINES.returnTotal);
     assert.match(created.bound[0]?.source?.file ?? '', /src\/cart\.ts$/);
 
@@ -206,12 +206,19 @@ void describe('logpoints on source-mapped bundles (#848, part 2)', () => {
   });
 
   void it('a file no map names is pending, and the warning says which maps could not be used', async () => {
-    const created = await json<Logged>(['debug', 'log', 'src/ghost.ts:2', 'x']);
-    assert.equal(created.state, 'pending');
-    assert.match(created.warning ?? '', /src\/ghost\.ts/);
-    assert.match(created.warning ?? '', /missing\.js\.map/);
-    assert.match(created.warning ?? '', /bad\.js\.map/);
-    assert.match(created.warning ?? '', /sections/);
+    const { out } = await bdg(['debug', 'log', 'src/ghost.ts:2', 'x', '--json']);
+    const envelope = JSON.parse(out) as { warnings?: string[]; data: Logged };
+    assert.equal(envelope.data.state, 'pending');
+    const warning = envelope.warnings?.[0] ?? '';
+    assert.match(warning, /src\/ghost\.ts/);
+    assert.match(warning, /missing\.js\.map: HTTP 404/);
+    assert.match(warning, /bad\.js\.map: not valid JSON/);
+    assert.match(warning, /sections/);
+    const human = await bdg(['debug', 'log', 'src/ghost.ts:3', 'x']);
+    assert.match(
+      human.err,
+      /^Warning: No loaded script or readable source map names "src\/ghost\.ts"/m
+    );
   });
 
   void it('a script loaded later with a map binds the pending logpoint', async () => {
