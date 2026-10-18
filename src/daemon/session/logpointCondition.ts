@@ -12,7 +12,8 @@
  * its own lines inside `(…)`, so a trailing `//` comment cannot swallow what follows.
  * A hit also reports the stack frame of the condition itself, whose `eval at
  * … (script URL:line:column)` names the script it ran in; an error is reported
- * the same way, at most `max` of them.
+ * the same way, at most `max` of them. Each expression has its own try/catch, so
+ * one that throws does not hide the others.
  */
 
 /** Name of the binding the condition reports hits through (a page global) */
@@ -77,18 +78,33 @@ export function buildLogpointCondition(spec: LogpointConditionSpec): string {
   const state = JSON.stringify(LOGPOINT_STATE);
   const binding = JSON.stringify(LOGPOINT_BINDING);
   const guard = spec.guard === undefined ? '' : `if (!(\n${spec.guard}\n)) return false;\n    `;
-  const values = spec.expressions.map((expression) => `__lp_ser((\n${expression}\n), 0, [])`);
+  const values = spec.expressions
+    .map(
+      (expression, index) =>
+        `try { __lp_v.push(__lp_ser((\n${expression}\n), 0, [])); } catch (__lp_e) { __lp_v.push(null); __lp_fail(__lp_e, ${index}); }`
+    )
+    .join('\n    ');
   return `(() => {
   var __lp_st = globalThis[${state}] || (globalThis[${state}] = {});
   var __lp_c = __lp_st[${id}] || (__lp_st[${id}] = { hits: 0, errors: 0, last: '' });
+  var __lp_msg = function (e) {
+    return (e && e.name ? e.name + ': ' : '') + (e && e.message ? e.message : String(e));
+  };
   try {
     ${guard}__lp_c.hits++;
     if (__lp_c.hits > ${JSON.stringify(spec.max)}) return false;
     var __lp_ser = __lp_st.ser || (__lp_st.ser = ${SERIALIZER});
-    globalThis[${binding}](JSON.stringify({ i: ${id}, s: String(new Error().stack).split('\\n')[1], v: [${values.join(', ')}] }));
+    var __lp_v = [], __lp_x = {};
+    var __lp_fail = function (e, index) {
+      __lp_c.errors++;
+      __lp_c.last = __lp_msg(e);
+      __lp_x[index] = __lp_c.last;
+    };
+    ${values}
+    globalThis[${binding}](JSON.stringify({ i: ${id}, s: String(new Error().stack).split('\\n')[1], v: __lp_v, x: __lp_x }));
   } catch (__lp_e) {
     __lp_c.errors++;
-    __lp_c.last = (__lp_e && __lp_e.name ? __lp_e.name + ': ' : '') + (__lp_e && __lp_e.message ? __lp_e.message : String(__lp_e));
+    __lp_c.last = __lp_msg(__lp_e);
     if (__lp_c.errors <= ${JSON.stringify(spec.max)}) {
       try { globalThis[${binding}](JSON.stringify({ i: ${id}, e: __lp_c.last })); } catch (__lp_f) {}
     }

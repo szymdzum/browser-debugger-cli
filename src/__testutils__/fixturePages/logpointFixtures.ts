@@ -27,7 +27,9 @@ export const APP_JS_LINES = {
   /** Lines with code, enough for more logpoints than a session allows */
   codeLines: [2, 3, 4, 6, 7, 8, 11, 12, 13, 16, 17, 18],
   /** Last line of the file */
-  last: 28,
+  /** `const early = 5;`: a variable declared on the line, not yet readable there */
+  tdzDecl: 30,
+  last: 33,
 } as const;
 
 /** Line of `return which;` in both `util.js` */
@@ -62,6 +64,11 @@ function pauseHere() {
 document.getElementById('checkout').addEventListener('click', checkout);
 document.getElementById('loop').addEventListener('click', sumLoop);
 document.getElementById('pause').addEventListener('click', pauseHere);
+function tdz() {
+  const early = 5;
+  return early;
+}
+document.getElementById('tdz').addEventListener('click', tdz);
 `;
 
 /** The page */
@@ -70,6 +77,7 @@ const LOGPOINTS_HTML = `<!doctype html><html><head><title>logpoints</title></hea
 <button id="noop" onclick="document.getElementById('out').textContent = 'Nothing'">No-op</button>
 <button id="loop">Loop</button>
 <button id="pause">Pause</button>
+<button id="tdz">Tdz</button>
 <a id="open-tab" href="/logpoints" target="_blank">Open</a>
 <button id="load-late" onclick="var s = document.createElement('script'); s.src = new URLSearchParams(location.search).get('late'); document.head.appendChild(s)">Load late</button>
 <p id="out"></p>

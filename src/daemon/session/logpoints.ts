@@ -35,6 +35,7 @@ import type {
   LogpointHit,
   LogpointValue,
 } from '@/ipc/protocol/debugTypes.js';
+import { withTdzHint } from '@/ui/messages/commands.js';
 import { raceTimeout } from '@/utils/async.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { displayUrl } from '@/utils/displayUrl.js';
@@ -71,6 +72,17 @@ interface Script {
   url: string;
   endLine: number;
   endColumn: number;
+}
+
+/** A hit as the page reported it */
+interface ParsedHit {
+  id: string;
+  values: LogpointValue[];
+  /** Messages of the expressions that threw, by index */
+  failures: Record<string, string>;
+  url?: string;
+  /** The guard threw */
+  error?: string;
 }
 
 /** A stored hit with its place in the order hits arrived */
@@ -267,7 +279,7 @@ export class Logpoints {
           hits,
           dropped: Math.max(0, hits - point.max),
           errors: counted?.errors ?? 0,
-          ...(counted?.last && { lastError: counted.last }),
+          ...(counted?.last && { lastError: withTdzHint(counted.last) }),
         };
       }),
     };
@@ -372,7 +384,7 @@ export class Logpoints {
         line: point.bound[0]?.line ?? point.line,
         ...(errors > 0 && { error: point.lastError ?? '', errors }),
       };
-      const since = point.hits.filter((hit) => hit.seq > mark.seq);
+      const since = point.hits.filter((hit) => hit.seq > mark.seq && hit.error === undefined);
       const urls = new Set(point.bound.map((bound) => bound.url));
       if (urls.size > 1 && since.length > 0) {
         return [...new Set(since.map((hit) => hit.url))].map((url) => {
@@ -381,11 +393,13 @@ export class Logpoints {
             ...base,
             values: own[0]?.values ?? {},
             hits: own.length,
+            ...(own[0]?.errors && { failed: own[0].errors }),
             ...(url !== undefined && { url }),
           };
         });
       }
-      return [{ ...base, values: since[0]?.values ?? {}, hits: count }];
+      const failed = since[0]?.errors;
+      return [{ ...base, values: since[0]?.values ?? {}, hits: count, ...(failed && { failed }) }];
     });
   }
 
@@ -430,13 +444,17 @@ export class Logpoints {
     const parsed = this.parseHit(payload);
     const point = parsed && this.points.get(parsed.id);
     if (!parsed || !point) return;
-    if (parsed.error !== undefined) {
-      point.errorsReceived++;
-      point.lastError = parsed.error;
-      return;
+    const failed = Object.entries(parsed.failures).map(
+      ([index, message]) =>
+        [point.expressions[Number(index)] ?? index, withTdzHint(message)] as const
+    );
+    const errors = parsed.error === undefined ? failed.length : 1;
+    if (errors > 0) {
+      point.errorsReceived += errors;
+      point.lastError = parsed.error ?? failed[failed.length - 1]?.[1] ?? '';
     }
     const navigationId = this.navigationId();
-    point.received++;
+    if (parsed.error === undefined) point.received++;
     this.seq++;
     if (point.loadId !== navigationId) {
       point.loadId = navigationId;
@@ -445,7 +463,10 @@ export class Logpoints {
     if (point.storedInLoad >= MAX_STORED_HITS) return;
     point.storedInLoad++;
     const values = Object.fromEntries(
-      point.expressions.map((expression, index) => [expression, parsed.values[index]])
+      point.expressions
+        .map((expression, index) => [expression, parsed.values[index], index] as const)
+        .filter(([, , index]) => !(String(index) in parsed.failures))
+        .map(([expression, value]) => [expression, value])
     );
     point.hits.push({
       id: point.id,
@@ -454,25 +475,27 @@ export class Logpoints {
       navigationId,
       seq: this.seq,
       ...(parsed.url !== undefined && { url: parsed.url }),
+      ...(failed.length > 0 && { errors: Object.fromEntries(failed) }),
+      ...(parsed.error !== undefined && { error: withTdzHint(parsed.error) }),
     });
     if (point.hits.length > MAX_RETAINED_HITS) point.hits.shift();
   }
 
-  private parseHit(
-    payload: string
-  ): { id: string; values: LogpointValue[]; url?: string; error?: string } | undefined {
+  private parseHit(payload: string): ParsedHit | undefined {
     try {
-      const { i, v, s, e } = JSON.parse(payload) as {
+      const { i, v, s, e, x } = JSON.parse(payload) as {
         i?: unknown;
         v?: unknown;
         s?: unknown;
         e?: unknown;
+        x?: unknown;
       };
       if (typeof i !== 'string') return undefined;
-      if (typeof e === 'string') return { id: i, values: [], error: e };
+      if (typeof e === 'string') return { id: i, values: [], failures: {}, error: e };
       if (!Array.isArray(v)) return undefined;
       const url = typeof s === 'string' ? scriptOfFrame(s) : undefined;
-      return { id: i, values: v as LogpointValue[], ...(url !== undefined && { url }) };
+      const failures = typeof x === 'object' && x !== null ? (x as Record<string, string>) : {};
+      return { id: i, values: v as LogpointValue[], failures, ...(url !== undefined && { url }) };
     } catch (error) {
       log.debug(`Hit not parsed: ${getErrorMessage(error)}`);
     }

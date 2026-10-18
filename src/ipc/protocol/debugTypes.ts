@@ -88,6 +88,10 @@ export interface LogpointHit {
   navigationId: number;
   /** Script the line ran in (URL as shown; absent when the page hid it) */
   url?: string;
+  /** Expressions that threw on this hit, by label (their values are not in `values`) */
+  errors?: Record<string, string>;
+  /** The `--if` guard threw: nothing was logged for this hit */
+  error?: string;
 }
 
 /** debug_hits: the hits, oldest first */
@@ -120,6 +124,8 @@ export interface LogpointActionHit {
   hits: number;
   /** Script of these hits, when more than one script matched the file (one entry per script) */
   url?: string;
+  /** Expressions that threw on the first hit during the action, by label */
+  failed?: Record<string, string>;
   /** The last error an expression threw during the action (absent when none did) */
   error?: string;
   /** How many times an expression threw during the action (with `error`) */

@@ -126,8 +126,9 @@ export const NO_LOGPOINTS_TEXT = 'No logpoints. Set one with: bdg debug log <fil
  */
 export function logpointHitText(hit: LogpointHit): string {
   const time = new Date(hit.ts).toISOString().slice(11, 23);
-  const values = valuesText(hit.values);
-  return `${hit.id}  ${time}  ${values || '(hit)'}${hit.url ? `  [${hit.url}]` : ''}`;
+  const parts = [valuesText(hit.values), ...failuresText(hit.errors)].filter(Boolean);
+  if (hit.error !== undefined) parts.push(`threw ${hit.error}`);
+  return `${hit.id}  ${time}  ${parts.join(' ') || '(hit)'}${hit.url ? `  [${hit.url}]` : ''}`;
 }
 
 /** Output of `bdg debug hits` without hits */
@@ -161,15 +162,45 @@ export function logpointsClearedText(data: DebugClearData): string {
  *   `logpoint lp1 app.js:5 threw ReferenceError: …` line when an expression threw
  */
 export function logpointActionText(hit: LogpointActionHit): string {
-  const values = valuesText(hit.values);
   const count = hit.hits > 1 ? ` (${hit.hits} hits)` : '';
   const head = `logpoint ${hit.id} ${hit.file}:${hit.line}${hit.url ? ` [${hit.url}]` : ''}`;
-  const lines = hit.hits > 0 ? [`${head}${values ? `: ${values}` : ''}${count}`] : [];
-  if (hit.error !== undefined) {
+  const parts = [valuesText(hit.values), ...failuresText(hit.failed)].filter(Boolean);
+  const lines =
+    hit.hits > 0 ? [`${head}${parts.length ? `: ${parts.join(' ')}` : ''}${count}`] : [];
+  if (hit.error !== undefined && !(hit.hits > 0 && hit.failed)) {
     const repeats = (hit.errors ?? 1) > 1 ? ` (${hit.errors}x)` : '';
     lines.push(`${head} threw ${hit.error}${repeats}`);
   }
   return lines.join('\n');
+}
+
+/**
+ * Expressions that threw as `label threw message` words.
+ *
+ * @param errors - Messages by label
+ * @returns One text per expression
+ */
+function failuresText(errors: Record<string, string> | undefined): string[] {
+  return Object.entries(errors ?? {}).map(
+    ([label, message]) => `${label} threw ${shortText(message)}`
+  );
+}
+
+/** What to do about a variable declared on the logpoint's own line */
+const TDZ_HINT =
+  'values are those before the line runs: set the logpoint on the next line to see a variable declared on this one';
+
+/**
+ * Chrome's "Cannot access 'x' from debugger" (a `const` or `let` of the
+ * logpoint's own line) with the way out.
+ *
+ * @param message - Error message of an expression
+ * @returns The message, with a hint when it is that error
+ */
+export function withTdzHint(message: string): string {
+  return /Cannot access '.*' (from debugger|before initialization)/.test(message)
+    ? `${message} (${TDZ_HINT})`
+    : message;
 }
 
 /**

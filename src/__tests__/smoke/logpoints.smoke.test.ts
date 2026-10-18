@@ -270,7 +270,7 @@ void describe('logpoints (#848)', () => {
     assert.match(
       human.out,
       new RegExp(
-        `logpoint ${created.id} ${APP}:${LINE} threw ReferenceError: missingVariable is not defined`
+        `logpoint ${created.id} ${APP}:${LINE}: missingVariable threw ReferenceError: missingVariable is not defined`
       )
     );
     const clicked = await json<{
@@ -279,6 +279,78 @@ void describe('logpoints (#848)', () => {
     const entry = clicked.logpoints?.find((lp) => lp.id === created.id);
     assert.match(entry?.error ?? '', /ReferenceError: missingVariable is not defined/);
     assert.equal(entry?.errors, 1);
+  });
+
+  void it('one bad expression does not hide the others, in the report and in debug hits', async () => {
+    const created = await json<{ id: string }>([
+      'debug',
+      'log',
+      `${APP}:${LINE}`,
+      'missing',
+      'total',
+      'discount',
+    ]);
+    const human = await bdg(['dom', 'click', '#checkout']);
+    assert.match(
+      human.out,
+      /logpoint lp\d+ app\.js:8: total=25 discount=0.5 missing threw ReferenceError: missing is not defined/
+    );
+    const clicked = await json<{
+      logpoints?: Array<{
+        values: Record<string, unknown>;
+        failed?: Record<string, string>;
+        errors?: number;
+      }>;
+    }>(['dom', 'click', '#checkout']);
+    assert.deepEqual(clicked.logpoints?.[0]?.values, { total: 25, discount: 0.5 });
+    assert.match(clicked.logpoints?.[0]?.failed?.['missing'] ?? '', /ReferenceError/);
+    assert.equal(clicked.logpoints?.[0]?.errors, 1);
+    const hits = await json<{
+      hits: Array<{ values: Record<string, unknown>; errors?: Record<string, string> }>;
+    }>(['debug', 'hits', created.id]);
+    assert.equal(hits.hits.length, 2);
+    assert.deepEqual(hits.hits[0]?.values, { total: 25, discount: 0.5 });
+    assert.match(hits.hits[0]?.errors?.['missing'] ?? '', /ReferenceError/);
+    assert.match(
+      (await bdg(['debug', 'hits', created.id])).out,
+      /total=25 discount=0.5 missing threw ReferenceError/
+    );
+    assert.equal((await listed()).find((lp) => lp.id === created.id)?.errors, 2);
+  });
+
+  void it('a guard that throws logs no hit, counts the error and shows it in debug hits', async () => {
+    const created = await json<{ id: string }>([
+      'debug',
+      'log',
+      `${APP}:${LINE}`,
+      'total',
+      '--if',
+      'missing',
+    ]);
+    const human = await bdg(['dom', 'click', '#checkout']);
+    assert.match(
+      human.out,
+      /logpoint lp\d+ app\.js:8 threw ReferenceError: missing is not defined/
+    );
+    const hits = await json<{ hits: Array<{ error?: string; values: object }> }>([
+      'debug',
+      'hits',
+      created.id,
+    ]);
+    assert.match(hits.hits[0]?.error ?? '', /ReferenceError/);
+    assert.deepEqual(hits.hits[0]?.values, {});
+    assert.equal((await listed()).find((lp) => lp.id === created.id)?.errors, 1);
+  });
+
+  void it('a variable declared on the logpoint line gets the hint', async () => {
+    await bdg(['debug', 'log', `${APP}:${APP_JS_LINES.tdzDecl}`, 'early']);
+    const human = await bdg(['dom', 'click', '#tdz']);
+    assert.match(
+      human.out,
+      /early threw .*Cannot access 'early'.*set the logpoint on the next line/
+    );
+    const entry = (await listed())[0];
+    assert.match(entry?.lastError ?? '', /set the logpoint on the next line/);
   });
 
   void it('hits carry the script URL: two util.js in different directories bind both', async () => {
