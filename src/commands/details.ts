@@ -17,6 +17,7 @@ import { getDetails } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
 import { maskNetworkRequest, type Masked } from '@/telemetry/networkMasking.js';
 import { capResponseBody, missingBodyReason } from '@/telemetry/responseBody.js';
+import { timingBreakdown } from '@/telemetry/timingBreakdown.js';
 import type { NetworkRequest } from '@/types.js';
 import { formatNetworkDetails, formatConsoleDetails } from '@/ui/formatters/details.js';
 import {
@@ -200,7 +201,12 @@ function detailsResult(
     : shown.value;
   return {
     success: true,
-    data: { type: 'network', item, ...(shown.masked && { masked: true as const }) },
+    data: {
+      type: 'network',
+      item,
+      timingBreakdown: timingBreakdown(item),
+      ...(shown.masked && { masked: true as const }),
+    },
   };
 }
 

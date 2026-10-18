@@ -6,6 +6,11 @@
 
 import { MAX_BLOCKED_COOKIES, MAX_NETWORK_REQUESTS, MAX_TOTAL_BODY_BYTES } from '@/constants.js';
 import { MASKED_VALUE } from '@/runtime/dom/elementInfo.js';
+import type {
+  TimingPhase,
+  TimingPhases,
+  TimingUnavailableReason,
+} from '@/telemetry/timingBreakdown.js';
 import type { BlockedCookie } from '@/types.js';
 import { pluralize } from '@/ui/formatting.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
@@ -378,3 +383,59 @@ export function base64BodyHint(): string {
 /** `network document --help` note (the deprecated spelling): this command shows headers, not the body */
 export const NETWORK_DOCUMENT_BODY_NOTE =
   'Note: Shows headers only. The HTML body is in: bdg network details <id> --body';
+
+/** What each dominant phase of a request means (`network details` Timing verdict) */
+const PHASE_MEANING: Record<TimingPhase, string> = {
+  queued: 'the request waited for a connection or a free slot (connection limit or low priority)',
+  dns: 'DNS lookup',
+  connect: 'opening a new connection (no keep-alive or preconnect)',
+  tls: 'a new TLS handshake (no keep-alive or preconnect)',
+  send: 'sending the request',
+  wait: 'server time (TTFB), nothing to fix in the page',
+  download: 'a large or slow response body',
+};
+
+/** Why `network details` shows no phases, by reason (`unavailable` in --json) */
+const UNAVAILABLE_TEXT: Record<TimingUnavailableReason, string> = {
+  cache: 'none (served from cache, no network)',
+  pending: 'none (request still pending)',
+  failed: 'none (request failed)',
+  'no-timing': 'none (Chrome reported no timing, as for a data: URL)',
+};
+
+/**
+ * The phases on one line, those that did not happen left out.
+ *
+ * @param phases - Phases in ms
+ * @returns e.g. `queued 11 ms · send 1 ms · wait 1000 ms · download 38 ms`
+ */
+export function timingPhasesLine(phases: TimingPhases['phases']): string {
+  return Object.entries(phases)
+    .map(([phase, ms]) => `${phase} ${ms} ms`)
+    .join(' · ');
+}
+
+/**
+ * The line that names the phase that took most of a request's time.
+ *
+ * @param breakdown - Phases of the request
+ * @param protocol - Protocol of the response (`http/1.1`, `h2`, `h3`)
+ * @returns e.g. `Most of the time (820 of 1240 ms) was spent in queued: …`
+ */
+export function timingVerdict(breakdown: TimingPhases, protocol?: string): string {
+  const { dominant, phases, totalMs } = breakdown;
+  const verdict = `Most of the time (${phases[dominant] ?? 0} of ${totalMs} ms) was spent in ${dominant}: ${PHASE_MEANING[dominant]}`;
+  return dominant === 'queued' && protocol === 'http/1.1'
+    ? `${verdict} (HTTP/1.1: Chrome opens at most 6 connections per host)`
+    : verdict;
+}
+
+/**
+ * Why `network details` shows no phases.
+ *
+ * @param reason - Why the request has no breakdown
+ * @returns Text for the Timing row
+ */
+export function timingUnavailableText(reason: TimingUnavailableReason): string {
+  return UNAVAILABLE_TEXT[reason];
+}

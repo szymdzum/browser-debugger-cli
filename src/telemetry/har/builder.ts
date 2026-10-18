@@ -22,6 +22,7 @@ import type * as Http from 'node:http';
 
 import { sanitizeEntry } from '@/telemetry/har/sanitize.js';
 import { skippedBodyReason } from '@/telemetry/networkRetention.js';
+import { offsetSpan } from '@/telemetry/timingBreakdown.js';
 import type { NetworkRequest, WebSocketFrame } from '@/types.js';
 import { harSanitizedComment } from '@/ui/messages/networkMessages.js';
 
@@ -315,10 +316,7 @@ function buildPostData(req: NetworkRequest): PostData | undefined {
  * @returns Duration in ms, or -1
  */
 function span(start: number | undefined, end: number | undefined): number {
-  if (start === undefined || end === undefined || start < 0 || end < 0 || end < start) {
-    return UNKNOWN_TIMING;
-  }
-  return end - start;
+  return offsetSpan(start, end) ?? UNKNOWN_TIMING;
 }
 
 /**
