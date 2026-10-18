@@ -6,8 +6,13 @@
 
 import { MAX_BLOCKED_COOKIES, MAX_NETWORK_REQUESTS, MAX_TOTAL_BODY_BYTES } from '@/constants.js';
 import { MASKED_VALUE } from '@/runtime/dom/elementInfo.js';
+import type {
+  TimingPhase,
+  TimingPhases,
+  TimingUnavailableReason,
+} from '@/telemetry/timingBreakdown.js';
 import type { BlockedCookie } from '@/types.js';
-import { pluralize } from '@/ui/formatting.js';
+import { formatBytes, pluralize } from '@/ui/formatting.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 
 /**
@@ -378,3 +383,94 @@ export function base64BodyHint(): string {
 /** `network document --help` note (the deprecated spelling): this command shows headers, not the body */
 export const NETWORK_DOCUMENT_BODY_NOTE =
   'Note: Shows headers only. The HTML body is in: bdg network details <id> --body';
+
+/** What each dominant phase of a request means (`network details` Timing verdict) */
+const PHASE_MEANING: Record<TimingPhase, string> = {
+  queued: 'the request waited for a connection or a free slot (connection limit or low priority)',
+  dns: 'DNS lookup',
+  connect: 'opening a new connection (no keep-alive or preconnect)',
+  tls: 'a new TLS handshake (no keep-alive or preconnect)',
+  send: 'sending the request',
+  wait: 'server time (TTFB), nothing to fix in the page',
+  download: 'a large body, or a server sending it slowly',
+};
+
+/** Why `network details` shows no phases, by reason (`unavailable` in --json) */
+const UNAVAILABLE_TEXT: Record<TimingUnavailableReason, string> = {
+  cache: 'none (served from cache, no network)',
+  pending: 'none (request still pending)',
+  failed: 'none (request failed)',
+  'service-worker': 'none (answered by a service worker, no network timing)',
+  'no-timing': 'none (Chrome reported no timing, as for a data: URL)',
+};
+
+/**
+ * The phases on one line, those that did not happen left out.
+ *
+ * @param phases - Phases in ms
+ * @returns e.g. `queued 11 ms · send 1 ms · wait 1000 ms · download 38 ms`
+ */
+export function timingPhasesLine(phases: TimingPhases['phases']): string {
+  return Object.entries(phases)
+    .map(([phase, ms]) => `${phase} ${ms} ms`)
+    .join(' · ');
+}
+
+/** Verdict of a request whose every phase took under 1 ms */
+const TOO_FAST_VERDICT = 'Too fast to split (every phase under 1 ms)';
+
+/** What the verdict says about a request that went through a proxy on this machine */
+const LOCAL_PROXY_VERDICT_NOTE =
+  "Protocol and connection/wait times are the local proxy's (a buffering proxy turns a streamed body into wait; HTTP/1.1 may be the proxy's), not the site's";
+
+/** What the verdict knows about the request besides its phases */
+export interface TimingVerdictContext {
+  /** Protocol of the response (`http/1.1`, `h2`, `h3`) */
+  protocol?: string;
+  /** Bytes received (`encodedDataLength`) */
+  transferredBytes?: number;
+  /** The remote address looks like a proxy on this machine */
+  localProxy?: boolean;
+  /** How a request that got its headers ended early (`errorText`, `canceled`) */
+  endedEarly?: { errorText: string; canceled: boolean };
+}
+
+/**
+ * The line that names the phase that took most of a request's time.
+ *
+ * @param breakdown - Phases of the request
+ * @param context - Protocol, size and proxy of the request
+ * @returns e.g. `Most of the time (820 of 1240 ms) was spent in queued: …`
+ */
+export function timingVerdict(breakdown: TimingPhases, context: TimingVerdictContext = {}): string {
+  const { dominant, phases, totalMs } = breakdown;
+  if (dominant === undefined) return TOO_FAST_VERDICT;
+  const ms = phases[dominant] ?? 0;
+  const size =
+    dominant === 'download' && context.transferredBytes !== undefined
+      ? ` (${formatBytes(context.transferredBytes)} in ${ms} ms)`
+      : '';
+  const meaning =
+    context.endedEarly && dominant === 'wait'
+      ? 'server time (TTFB) up to then, nothing to fix in the page for that part'
+      : PHASE_MEANING[dominant];
+  const { endedEarly } = context;
+  const lead = endedEarly
+    ? `${endedEarly.canceled ? 'Cancelled' : 'Failed'} after ${totalMs} ms (${endedEarly.errorText}); up to then most of the time (${ms} ms) was in`
+    : `Most of the time (${ms} of ${totalMs} ms) was spent in`;
+  let verdict = `${lead} ${dominant}${size}: ${meaning}`;
+  if (dominant === 'queued' && context.protocol === 'http/1.1') {
+    verdict += ' (HTTP/1.1: Chrome opens at most 6 connections per host)';
+  }
+  return context.localProxy ? `${verdict}. ${LOCAL_PROXY_VERDICT_NOTE}` : verdict;
+}
+
+/**
+ * Why `network details` shows no phases.
+ *
+ * @param reason - Why the request has no breakdown
+ * @returns Text for the Timing row
+ */
+export function timingUnavailableText(reason: TimingUnavailableReason): string {
+  return UNAVAILABLE_TEXT[reason];
+}

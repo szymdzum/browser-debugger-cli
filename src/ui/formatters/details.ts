@@ -1,5 +1,6 @@
 import { skippedBodyReason } from '@/telemetry/networkRetention.js';
 import { capResponseBody, type BodyOptions, type CappedRequest } from '@/telemetry/responseBody.js';
+import { timingBreakdown } from '@/telemetry/timingBreakdown.js';
 import type { NetworkRequest, ConsoleMessage, WebSocketFrame } from '@/types.js';
 import { formatFramePosition, formatTimestamp } from '@/ui/formatters/console/shared.js';
 import { headerValueLines } from '@/ui/formatters/networkHeaders.js';
@@ -11,6 +12,9 @@ import {
   blockedCookiesOmittedNote,
   bodyCutNote,
   localProxyNote,
+  timingPhasesLine,
+  timingUnavailableText,
+  timingVerdict,
 } from '@/ui/messages/networkMessages.js';
 import { truncateByLength } from '@/utils/strings.js';
 import { safeParseUrl } from '@/utils/url.js';
@@ -158,6 +162,34 @@ export function remoteAddress(request: NetworkRequest): string {
 }
 
 /**
+ * The Timing rows: the phases on one line and what dominated, or why there
+ * are no phases.
+ *
+ * @param request - Captured request
+ * @returns One or two label/value rows
+ */
+function timingRows(request: NetworkRequest): Array<[string, string]> {
+  const breakdown = timingBreakdown(request);
+  if ('unavailable' in breakdown) return [['Timing', timingUnavailableText(breakdown.unavailable)]];
+  return [
+    ['Timing', timingPhasesLine(breakdown.phases)],
+    [
+      '',
+      timingVerdict(breakdown, {
+        ...(request.protocol !== undefined && { protocol: request.protocol }),
+        ...(request.encodedDataLength !== undefined && {
+          transferredBytes: request.encodedDataLength,
+        }),
+        localProxy: looksLikeLocalProxy(request),
+        ...(request.errorText !== undefined && {
+          endedEarly: { errorText: request.errorText, canceled: request.canceled === true },
+        }),
+      }),
+    ],
+  ];
+}
+
+/**
  * Summary rows of a request: identity, outcome, timing and size.
  *
  * @param request - Captured request
@@ -174,6 +206,7 @@ function requestSummaryRows(request: NetworkRequest): Array<[string, string]> {
     ['Started', formatTimestamp(request.timestamp)],
     ['Duration', request.duration === undefined ? 'pending' : `${Math.round(request.duration)} ms`],
   ];
+  rows.push(...timingRows(request));
   if (request.encodedDataLength !== undefined) {
     const decoded = request.decodedBodyLength;
     const sizes = [`${formatBytes(request.encodedDataLength)} transferred`];

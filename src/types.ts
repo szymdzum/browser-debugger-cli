@@ -166,10 +166,6 @@ export interface NetworkRequest {
     connectEnd?: number;
     sslStart?: number;
     sslEnd?: number;
-    workerStart?: number;
-    workerReady?: number;
-    workerFetchStart?: number;
-    workerRespondWithSettled?: number;
     sendStart?: number;
     sendEnd?: number;
     pushStart?: number;
@@ -193,6 +189,10 @@ export interface NetworkRequest {
   /** Port Chrome connected to (CDP `remotePort`) */
   serverPort?: number;
   connection?: string;
+  /** A service worker answered the request (CDP `response.fromServiceWorker`) */
+  fromServiceWorker?: true;
+  /** Protocol of the response (`http/1.1`, `h2`, `h3`; CDP `response.protocol`) */
+  protocol?: string;
   /** Status text sent by the server (empty for HTTP/2) */
   statusText?: string;
   /** `responseBody` is base64 (binary content) */

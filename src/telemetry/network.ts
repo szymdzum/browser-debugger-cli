@@ -207,6 +207,8 @@ function applyResponse(
       receiveHeadersEnd: timing.receiveHeadersEnd,
     };
   }
+  if (response.fromServiceWorker) request.fromServiceWorker = true;
+  if (response.protocol) request.protocol = response.protocol;
   if (remoteIPAddress) request.serverIPAddress = remoteIPAddress;
   if (remotePort) request.serverPort = remotePort;
   if (connectionId !== undefined) request.connection = String(connectionId);

@@ -83,7 +83,8 @@ export class OutputFormatter {
   }
 
   keyValue(key: string, value: string, keyWidth?: number): this {
-    const formatted = keyWidth ? `${key}:`.padEnd(keyWidth) + value : `${key}: ${value}`;
+    const label = key === '' ? '' : `${key}:`;
+    const formatted = keyWidth ? label.padEnd(keyWidth) + value : `${label} ${value}`.trimStart();
     this.lines.push(formatted);
     return this;
   }
