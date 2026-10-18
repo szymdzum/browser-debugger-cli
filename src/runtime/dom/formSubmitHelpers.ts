@@ -309,17 +309,14 @@ async function triggerSubmit(
   selector: string,
   index: number | undefined
 ): Promise<{ failure: SubmitResult } | { clicked: boolean; element?: string | undefined }> {
-  const response = (await callFunctionInMainWorld(cdp, {
+  const response = await callFunctionInMainWorld(cdp, {
     functionDeclaration: PREPARE_SUBMIT_SCRIPT,
     arguments: [...selectorArgs(selector), index ?? null].map((value) => ({ value })),
     returnByValue: true,
     userGesture: true,
-  })) as {
-    result?: { value?: PrepareResult };
-    exceptionDetails?: Protocol.Runtime.ExceptionDetails;
-  };
+  });
   if (response.exceptionDetails) throwIfInvalidSelector(response.exceptionDetails, selector);
-  const prepared = response.result?.value;
+  const prepared = response.result.value as PrepareResult | undefined;
 
   if (!prepared || prepared.action === 'fail') {
     const reason = prepared?.reason ?? 'not-found';

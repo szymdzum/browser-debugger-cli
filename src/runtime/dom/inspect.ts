@@ -324,13 +324,13 @@ async function resolveCachedNode(
   backendNodeId: number,
   objectGroup: string
 ): Promise<string | undefined> {
-  const resolved = (await resolveNodeInBdgWorld(cdp, { backendNodeId, objectGroup }).catch(
+  const resolved = await resolveNodeInBdgWorld(cdp, { backendNodeId, objectGroup }).catch(
     (error: unknown) => {
       log.debug(`Node ${backendNodeId} not resolved: ${getErrorMessage(error)}`);
-      return {};
+      return undefined;
     }
-  )) as Partial<Protocol.DOM.ResolveNodeResponse>;
-  const objectId = resolved.object?.objectId;
+  );
+  const objectId = resolved?.object.objectId;
   if (!objectId) return undefined;
   const connected = await callOn<boolean>(
     cdp,

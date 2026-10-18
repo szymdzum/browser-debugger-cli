@@ -5,7 +5,6 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import {
   NO_MATCH_PREFIX,
@@ -197,21 +196,16 @@ export async function pressKeyElement(
       returnByValue: true,
     });
 
-    const focusCdpResponse = focusResponse as {
-      exceptionDetails?: Protocol.Runtime.ExceptionDetails;
-      result?: { value?: unknown };
-    };
-
-    if (focusCdpResponse.exceptionDetails) {
-      throwIfInvalidSelector(focusCdpResponse.exceptionDetails, selector);
+    if (focusResponse.exceptionDetails) {
+      throwIfInvalidSelector(focusResponse.exceptionDetails, selector);
       throw new ActionScriptError(
         'press',
-        exceptionSummary(focusCdpResponse.exceptionDetails),
+        exceptionSummary(focusResponse.exceptionDetails),
         selector
       );
     }
 
-    const focusResult = focusCdpResponse.result?.value as {
+    const focusResult = focusResponse.result?.value as {
       success: boolean;
       reason?: string;
       error?: string;

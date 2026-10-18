@@ -5,7 +5,7 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import type { Protocol } from '@/connection/typed-cdp.js';
+import { sendTyped } from '@/connection/typed-cdp.js';
 import type { CssSearchMatch, CssSearchResult } from '@/ipc/protocol/auditTypes.js';
 import type { CssSearchCommand } from '@/ipc/protocol/commands.js';
 import { enableStyleDomains } from '@/runtime/dom/inspect.js';
@@ -64,9 +64,7 @@ export async function searchStyleSheets(
  */
 async function sheetText(cdp: CDPConnection, styleSheetId: string): Promise<string> {
   try {
-    const response = (await cdp.send('CSS.getStyleSheetText', {
-      styleSheetId,
-    })) as Protocol.CSS.GetStyleSheetTextResponse;
+    const response = await sendTyped(cdp, 'CSS.getStyleSheetText', { styleSheetId });
     return response.text;
   } catch (error) {
     log.debug(`No text for stylesheet ${styleSheetId}: ${getErrorMessage(error)}`);

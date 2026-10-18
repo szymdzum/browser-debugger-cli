@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { sendTyped } from '@/connection/typed-cdp.js';
+import { sendToBrowserTyped, sendTyped } from '@/connection/typed-cdp.js';
 
 /**
  * A sender recording the arguments of its calls.
@@ -38,5 +38,23 @@ describe('sendTyped', () => {
     const { cdp, calls } = recordingSender();
     await sendTyped(cdp, 'Page.getFrameTree');
     assert.deepEqual(calls[0], ['Page.getFrameTree', undefined, undefined, undefined]);
+  });
+});
+
+describe('sendToBrowserTyped', () => {
+  it('sends on the browser connection and returns the reply', async () => {
+    const calls: unknown[][] = [];
+    const cdp = {
+      sendToBrowser: (...args: unknown[]): Promise<unknown> => {
+        calls.push(args);
+        return Promise.resolve({ sessionId: 's1' });
+      },
+    } as Parameters<typeof sendToBrowserTyped>[0];
+    const result = await sendToBrowserTyped(cdp, 'Target.attachToTarget', {
+      targetId: 't1',
+      flatten: true,
+    });
+    assert.deepEqual(result, { sessionId: 's1' });
+    assert.deepEqual(calls, [['Target.attachToTarget', { targetId: 't1', flatten: true }]]);
   });
 });

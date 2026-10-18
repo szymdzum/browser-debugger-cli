@@ -9,7 +9,7 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import { sendTyped, type Protocol } from '@/connection/typed-cdp.js';
+import { sendTyped } from '@/connection/typed-cdp.js';
 import { LAYOUT_ELEMENT_LIMIT } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
 import { operationFailedError } from '@/errors/messages.js';
@@ -347,13 +347,13 @@ async function measureNode(
   backendNodeId: number,
   objectGroup: string
 ): Promise<RawLayout> {
-  const resolved = (await resolveNodeInBdgWorld(cdp, { backendNodeId, objectGroup }).catch(
+  const resolved = await resolveNodeInBdgWorld(cdp, { backendNodeId, objectGroup }).catch(
     (error: unknown) => {
       log.debug(`Node ${backendNodeId} not resolved: ${getErrorMessage(error)}`);
-      return {};
+      return undefined;
     }
-  )) as Partial<Protocol.DOM.ResolveNodeResponse>;
-  const objectId = resolved.object?.objectId;
+  );
+  const objectId = resolved?.object.objectId;
   if (!objectId) return { count: 0, elements: [] };
   const response = await sendTyped(cdp, 'Runtime.callFunctionOn', {
     objectId,

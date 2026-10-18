@@ -4,7 +4,6 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import { NO_MATCH_PREFIX, NO_MATCH_SUFFIX, scrollNoEffectWarning } from '@/errors/messages.js';
 import type { ScrollResult } from '@/ipc/protocol/domTypes.js';
@@ -192,31 +191,26 @@ export async function scrollPage(
         returnByValue: true,
       });
 
-      const cdpResponse = response as {
-        exceptionDetails?: Protocol.Runtime.ExceptionDetails;
-        result?: { value?: unknown };
-      };
-
-      if (cdpResponse.exceptionDetails) {
-        throwIfInvalidSelector(cdpResponse.exceptionDetails, selector);
+      if (response.exceptionDetails) {
+        throwIfInvalidSelector(response.exceptionDetails, selector);
         return {
           success: false,
           exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
           scrollType: 'element',
-          error: `Script execution failed: ${cdpResponse.exceptionDetails.text}`,
+          error: `Script execution failed: ${response.exceptionDetails.text}`,
           suggestion: `Verify element exists: bdg dom query "${selector}"`,
         };
       }
 
-      if (cdpResponse.result?.value && isScrollResult(cdpResponse.result.value)) {
+      if (response.result?.value && isScrollResult(response.result.value)) {
         return withMultipleMatchesWarning(
-          cdpResponse.result.value,
+          response.result.value,
           options.index,
           'scrolled to the first'
         );
       }
 
-      const scriptResult = cdpResponse.result?.value as {
+      const scriptResult = response.result?.value as {
         success?: boolean;
         error?: string;
         reason?: 'range';
@@ -255,22 +249,17 @@ export async function scrollPage(
       returnByValue: true,
     });
 
-    const cdpResponse = response as {
-      exceptionDetails?: Protocol.Runtime.ExceptionDetails;
-      result?: { value?: unknown };
-    };
-
-    if (cdpResponse.exceptionDetails) {
+    if (response.exceptionDetails) {
       return {
         success: false,
         exitCode: EXIT_CODES.SOFTWARE_ERROR,
         scrollType: 'offset',
-        error: `Script execution failed: ${cdpResponse.exceptionDetails.text}`,
+        error: `Script execution failed: ${response.exceptionDetails.text}`,
       };
     }
 
-    if (cdpResponse.result?.value && isScrollResult(cdpResponse.result.value)) {
-      return withNoEffectWarning(cdpResponse.result.value as PageScrollResult, options);
+    if (response.result?.value && isScrollResult(response.result.value)) {
+      return withNoEffectWarning(response.result.value as PageScrollResult, options);
     }
 
     return {

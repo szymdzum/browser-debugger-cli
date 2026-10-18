@@ -14,6 +14,7 @@ import { getErrorMessage } from '@/utils/errors.js';
 
 import { DEFAULT_CDP_CONFIG, WEBSOCKET_CONFIG, UTF8_ENCODING } from './config.js';
 import { CDPConnectionError, CDPProtocolError, CDPTimeoutError } from './errors.js';
+import { sendToBrowserTyped } from './typed-cdp.js';
 
 const CONNECTION_TIMEOUT_ERROR = 'Connection timeout';
 const WEBSOCKET_CONNECTION_CLOSED_ERROR = 'WebSocket connection closed';
@@ -886,11 +887,8 @@ export class CDPConnection implements CDPEventSource {
     const noAnswer = new Promise<false>((resolve) => {
       timer = setTimeout(() => resolve(false), TAB_CHECK_TIMEOUT_MS);
     });
-    const listed = this.sendToBrowser('Target.getTargets').then(
-      (reply) =>
-        !(reply as { targetInfos: { targetId: string }[] }).targetInfos.some(
-          (target) => target.targetId === targetId
-        ),
+    const listed = sendToBrowserTyped(this, 'Target.getTargets').then(
+      (reply) => !reply.targetInfos.some((target) => target.targetId === targetId),
       () => false
     );
     try {
