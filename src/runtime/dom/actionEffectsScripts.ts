@@ -157,7 +157,8 @@ export const MESSAGE_CHROME_JS = `(node) => {
  * their text (parts matching {@link MESSAGE_CHROME_JS}, such as the "×"
  * close link, left out). Elements are filtered first, then the first
  * {@link MAX_MESSAGES} kept, and the whole pass stops after
- * {@link MESSAGES_BUDGET_MS}, except that it still looks at up to
+ * {@link MESSAGES_BUDGET_MS} (or, with `budgetCandidates`, a test's override,
+ * after that many candidates), except that it still looks at up to
  * {@link MAX_LATE_CANDIDATES} more elements: until the first message is kept,
  * then those inside the last one kept (so a container is not reported in
  * place of the message inside it that the budget cut off). Only the innermost
@@ -174,7 +175,7 @@ export const MESSAGE_CHROME_JS = `(node) => {
  * element (a validation message rendered into a re-rendered app root) gets
  * none.
  */
-const MESSAGES_JS = `(ids, marked, churned, fresh) => {
+const MESSAGES_JS = `(ids, marked, churned, fresh, budgetCandidates) => {
   const deadline = performance.now() + ${MESSAGES_BUDGET_MS};
   const description = ${ELEMENT_DESCRIPTION_JS};
   const chrome = ${MESSAGE_CHROME_JS};
@@ -207,9 +208,10 @@ const MESSAGES_JS = `(ids, marked, churned, fresh) => {
   };
   const found = [];
   let late = 0;
+  let seen = 0;
   for (const el of document.querySelectorAll(${JSON.stringify(MESSAGE_CANDIDATES)})) {
     if (found.length >= ${MAX_MESSAGES}) break;
-    if (performance.now() > deadline) {
+    if (budgetCandidates === undefined ? performance.now() > deadline : seen++ >= budgetCandidates) {
       const last = found[found.length - 1];
       if (late++ >= ${MAX_LATE_CANDIDATES} || (last && !last.el.contains(el))) break;
     }
@@ -726,10 +728,11 @@ export const START_DUE_TIMERS_SCRIPT = `globalThis.__bdgDueTimers = (${DUE_TIMER
 export const AWAIT_DUE_TIMERS_SCRIPT = 'globalThis.__bdgDueTimers';
 
 /**
- * Read after an action, called with `(stop, shown, focus)`: `stop` also stops
+ * Read after an action, called with `(stop, shown, focus, budget)`: `stop` also stops
  * watching, `shown` lists the elements the action showed
  * ({@link SHOWN_ELEMENTS_JS}), `focus` says where focus moved to away from
- * the field the page got `input` on ({@link OUTCOMES_JS}). Returns the URL, the messages shown and,
+ * the field the page got `input` on ({@link OUTCOMES_JS}), `budget` a test's
+ * candidate count for the message snapshot's budget (or undefined). Returns the URL, the messages shown and,
  * when the snapshot is still there (same document), the number of changes
  * counted (plus one when the page scrolled after the press), why "no
  * effect" could not be claimed ({@link UNCERTAIN_JS}) and whether the page
@@ -738,9 +741,9 @@ export const AWAIT_DUE_TIMERS_SCRIPT = 'globalThis.__bdgDueTimers';
  * {@link MAX_ALSO_CHANGING}). `fresh` means a new document (everything
  * shown is new).
  */
-export const EFFECTS_READ_SCRIPT = `((stop, shown, focus) => {
+export const EFFECTS_READ_SCRIPT = `((stop, shown, focus, budget) => {
   const state = window.__bdgEffects;
-  if (!state) return { href: location.href, fresh: true, messages: (${MESSAGES_JS})({ map: new WeakMap(), next: 1 }, undefined, undefined, true) };
+  if (!state) return { href: location.href, fresh: true, messages: (${MESSAGES_JS})({ map: new WeakMap(), next: 1 }, undefined, undefined, true, budget) };
   if (!state.stopped) state.flush();
   if (stop) {
     state.stop();
@@ -753,7 +756,7 @@ export const EFFECTS_READ_SCRIPT = `((stop, shown, focus) => {
     fresh: false,
     changes: state.changes + (scrolled ? 1 : 0),
     uncertain: (${UNCERTAIN_JS})(state, document.activeElement),
-    messages: (${MESSAGES_JS})(state.ids, state.marked, state.churned),
+    messages: (${MESSAGES_JS})(state.ids, state.marked, state.churned, false, budget),
     alsoChanging: Array.from(state.alsoChanging).filter((el) => el.isConnected).slice(0, ${MAX_ALSO_CHANGING})
       .map(${ELEMENT_DESCRIPTION_JS}),
     settle: (${SETTLE_JS})(state),

@@ -43,6 +43,7 @@ import {
   type ActivityListener,
   type NavigationEvents,
 } from '@/runtime/dom/pageActivity.js';
+import { messagesBudgetCandidates } from '@/runtime/dom/evalLimits.js';
 import { evaluateInBdgWorld, hasBdgWorld } from '@/runtime/page/bdgWorld.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { delay, raceTimeout } from '@/utils/async.js';
@@ -953,7 +954,7 @@ async function readPage(
   options: { stop: boolean; reportShown: boolean; focus: boolean; stalls?: boolean }
 ): Promise<ReadSnapshot | undefined> {
   if (watch.listener.navigationPending()) return undefined;
-  const expression = `(${EFFECTS_READ_SCRIPT})(${options.stop}, ${options.reportShown}, ${options.focus})`;
+  const expression = `(${EFFECTS_READ_SCRIPT})(${options.stop}, ${options.reportShown}, ${options.focus}, ${String(messagesBudgetCandidates())})`;
   const answered = await letDueTimersRun(watch);
   const answer = answered
     ? await pageAnswer(

@@ -65,3 +65,22 @@ export function terminationGraceMs(env: NodeJS.ProcessEnv = process.env): number
 export function unsentGraceMs(env: NodeJS.ProcessEnv = process.env): number {
   return limitMs(env, 'BDG_TEST_EVAL_UNSENT_GRACE_MS', UNSENT_GRACE_DEFAULT_MS);
 }
+
+/** Most candidates a test override may let the message snapshot examine before its budget is spent */
+const MAX_MESSAGES_BUDGET_CANDIDATES = 100;
+
+/**
+ * Number of candidates after which the message snapshot counts its budget as
+ * spent, instead of its milliseconds (`BDG_TEST_MESSAGES_BUDGET_CANDIDATES`),
+ * so a test makes the budget run out in the same place on any machine. A
+ * whole number from 0 to 100; anything else is ignored.
+ *
+ * @param env - Environment to read the test override from
+ * @returns Candidates examined before the budget is spent, or undefined for the time budget
+ */
+export function messagesBudgetCandidates(env: NodeJS.ProcessEnv = process.env): number | undefined {
+  const raw = env['BDG_TEST_MESSAGES_BUDGET_CANDIDATES'];
+  if (raw === undefined || !/^\d+$/.test(raw)) return undefined;
+  const value = Number(raw);
+  return value <= MAX_MESSAGES_BUDGET_CANDIDATES ? value : undefined;
+}

@@ -92,7 +92,7 @@ class FakeCdp {
   get readsSent(): boolean[] {
     return this.expressions
       .filter((e) => e.includes('const scrolled'))
-      .map((e) => /\(true, (true|false), (true|false)\)$/.test(e));
+      .map((e) => /\(true, (true|false), (true|false), (undefined|\d+)\)$/.test(e));
   }
 
   /** Stall scripts sent so far: `start`, `read` and `stop`, in order */
@@ -292,7 +292,7 @@ void describe('watchActionEffects', () => {
       reportShown: true,
     });
     assert.deepEqual(effects.shown, shown);
-    assert.ok(cdp.expressions.some((e) => e.endsWith('(false, true, false)')));
+    assert.ok(cdp.expressions.some((e) => e.endsWith('(false, true, false, undefined)')));
     watch.dispose();
   });
 
