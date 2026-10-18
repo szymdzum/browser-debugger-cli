@@ -106,6 +106,8 @@ One row per merged PR, appended with `ship log <pr> …` right after the merge. 
 | 2026-10-18 | #841 | - | 1 | 0/2/2 | 0 | 1 | sonnet | 345k | #797c runtime/dom via sendTyped (38+9 casts → 0 +2 the regex missed); gate 1 counted the review-fix refactor: commit as simplify; /simplify nothing |
 | 2026-10-18 | #842 | - | 1 | 0/0/2 | 0 | 0 | sonnet | 181k | #809c interrupt-envelope 27.2→10.7 / 29.8→11.9 s, eval 22.2→17.1 / 24.9→21.5 s; press-check unchanged; mutations guard all; 1 extra mutation asked (test 10) |
 | 2026-10-18 | #840 | #837 | 2 | 0/4/4 | 5 | 4 | sonnet | 500k | #837 timing phases; tester bugs: data: as cache, unread 500 hidden as failed, cancelled read as server time, too-fast verdict (mine); rounds 3+4 owner yes, plus a tests-only abort-after-headers commit |
+| 2026-10-18 | #846 | #797 | 1 | 0/1/0 | - | 1 | sonnet | 146k | #797 part 4 (last): pageReadiness, css/search, sendToBrowserTyped (attach, getTargets, isTabGone), bdgWorld helper call sites; reviewer found isTabGone left; implementer killed 4 PIDs from ps (hung tabs smoke on stale dist) |
+| 2026-10-18 | #845 | #807 | 1 | 0/2/3 | - | 1 | sonnet | 127k | #807 SMOKE_CONCURRENCY=2; slowest shard Linux 290→210 s, macOS 411→274 s; repeat x10 Node 22 green Linux+macOS (18 timing files); merged on owner's go before the Node 26 repeat finished; first ship repeat --node=26 hung 30 min |
 
 ## Escaped
 
@@ -138,4 +140,9 @@ Process changes seen in one session only (SKILL.md, Keep the books: a second ses
 | The reviewer brief says when a `refactor:` commit came from the orchestrator's `/simplify`: check bounds and parallelism | S20 (#833: an unbounded `Promise.all`, ~1500 CDP calls in flight, caught by luck) | S21: /simplify changed nothing, no such commit |
 | For a feature that states a cause (a verdict), the orchestrator checks the edge cases on the final head before merging: zeros, an abort, cache, `data:` URLs | S21 (#840: "0 of 1 ms … 6 connections", found by hand after four rounds) | same family as the "Heuristics pass their own fixtures" trap |
 | Remove: the orchestrator's `/simplify` for 200–500 product lines | S21 (#840 265 lines, #841 300 lines: nothing found) | sessions with nothing found: 1 of 3; S19 #825 (454 lines) did find reuse |
+| A third case of an implementer killing processes found by listing, after the #836 check existed: the trigger was a smoke run hanging on an old build | S22 (#846; earlier S18 #820, S20 #797b) | the brief now says rebuild and stop, never kill; the hang's cause is unconfirmed (the #771 dist guard compares `src/` mtimes with `dist/index.js` and should have refused a stale build); a fourth case asks for a mechanical check of the report |
+| One repeat dispatch covers Node 22 and 26 (the workflow's `node` input as a list) instead of two dispatches in sequence | S22 (#845: two ×10 repeats in a row, ~2 h for a tier 1 CI change) | |
+| A fix commit with no logic change (comments, a dead branch removed) is checked by the orchestrator with `git diff`, like a one-line wording fix | S22 (#845 round 1: 9 comment lines and a dead branch) | |
+| A cleanup session (bookkeeping, closing near-done issues) every few sessions | S22 (~20 min closed #529, #742, #809 without code) | |
+| For a tier 1 CI change, the repeat on one Node is enough before merging; the other Node versions are covered by the full shards | S22 (#845 merged before the Node 26 repeat finished, owner's call) | depends on the Node 26 result (run 39134559027) |
 

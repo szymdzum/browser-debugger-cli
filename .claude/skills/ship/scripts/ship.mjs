@@ -605,13 +605,28 @@ async function runWaitLoop(id) {
  * @param {string[]} argv `<pr> <smoke files...>`, optional `--repeat=10 --node=22|24|26` (files space-separated; no brace expansion)
  */
 async function repeat(argv) {
+  const { keys } = parseArgs(argv);
+  return withWaiterDeadline(keys.timeout ?? 10, () => repeatLoop(argv));
+}
+
+/**
+ * The body of `ship repeat`, inside a total deadline (default 10 minutes),
+ * with a status line before each step: in S22 a dispatch hung 30 minutes
+ * with no output, and nothing said which step it was on.
+ *
+ * @param {string[]} argv
+ */
+async function repeatLoop(argv) {
   const { positional, keys, flags } = parseArgs(argv);
   const [prNumber, ...files] = positional;
   if (!prNumber || files.length === 0)
-    return usage('repeat <pr> <smoke files...> [--repeat=10] [--node=22|24|26] [--replace]');
+    return usage('repeat <pr> <smoke files...> [--repeat=10] [--node=22|24|26] [--replace] [--timeout=<minutes>]');
   const dispatch = repeatDispatch(files, keys);
   if (dispatch.error) return usage(dispatch.error);
+  const status = (text) => console.log(`· ${text}`);
+  status(`reading PR #${prNumber}`);
   const pr = prInfo(prNumber);
+  waiterState.subject = `repeat on PR #${pr.number}`;
   const dispatchRuns = () =>
     ghJson([
       'run',
@@ -627,6 +642,7 @@ async function repeat(argv) {
       '--limit',
       '20',
     ]) ?? [];
+  status(`listing repeat runs on ${pr.headRefName}`);
   let running = unfinishedRepeat(dispatchRuns());
   if (running && flags.has('replace')) {
     console.log(`cancelling repeat run ${running.databaseId} (--replace)`);
@@ -647,6 +663,7 @@ async function repeat(argv) {
     return EXIT.failed;
   }
   const before = new Set(dispatchRuns().map((r) => r.databaseId));
+  status(`dispatching ci.yml on ${pr.headRefName} (${dispatch.args.filter((a) => a.startsWith('node=') || a.startsWith('repeat=')).join(', ')})`);
   run(
     'gh',
     [
@@ -661,6 +678,7 @@ async function repeat(argv) {
     ],
     { timeoutMs: WRITE_TIMEOUT_MS }
   );
+  status('waiting for the run to show up (up to 50 s)');
   for (let i = 0; i < 10; i++) {
     await sleep(5000);
     const hit = dispatchRuns().find(
@@ -1492,8 +1510,9 @@ export function strayClosingCommits(log, closes) {
 }
 
 /**
- * Issue numbers a PR body names with `Part of #N` (a PR that does one part
- * of an issue, which stays open), as strings; fenced code is ignored. S17:
+ * Issue numbers a PR body names with `Part of #N` at the start of a line
+ * (optionally a list item or quote), as strings; fenced code is ignored.
+ * "Last part of #797" in a sentence doesn't count (S22). S17:
  * five PRs made by `ship brief … PART=1` failed gate 7 and needed
  * `--no-issue`, which hides a missing issue entirely.
  *
@@ -1502,7 +1521,7 @@ export function strayClosingCommits(log, closes) {
 export function partOfIssues(body) {
   const text = withoutFencedCode(body);
   const ref = `(?:#|https://github\\.com/${REPO}/issues/)(\\d+)(?![\\w/-])`;
-  const found = [...text.matchAll(new RegExp(`\\bpart of:?\\s+${ref}`, 'gi'))];
+  const found = [...text.matchAll(new RegExp(`^[ \\t]*(?:[-*>][ \\t]+)?part of:?\\s+${ref}`, 'gim'))];
   return [...new Set(found.map((m) => m[1]))];
 }
 
@@ -2647,7 +2666,7 @@ const COMMANDS = {
     '<role> N=<issue> [PR=<pr>] KEY=value… [--out=<file>]: render a brief (quotes the issue; PR fills BASE/HEAD/RED/BRANCH); --check=<file>: refuse an empty or unfilled brief',
   ],
   'ci-wait': [ciWait, '<pr> [--head=<sha>] | <sha> --push: wait for CI (+ Security); --head waits for that pushed commit; exit 3 when superseded'],
-  repeat: [repeat, '<pr> <smoke files…> [--node=22|24|26] [--replace]: dispatch the repeat=10 run on the PR head; --replace cancels a running one first'],
+  repeat: [repeat, '<pr> <smoke files…> [--node=22|24|26] [--replace] [--timeout=10]: dispatch the repeat=10 run on the PR head; --replace cancels a running one first'],
   'run-wait': [
     runWait,
     '<run id> [--timeout=<min>]: wait for a dispatched run, print its jobs; exit 4 on timeout',

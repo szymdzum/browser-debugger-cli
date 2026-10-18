@@ -1053,7 +1053,7 @@ test('briefVariant: tier 1 drops the red-commit rules, a part says Part of inste
 });
 
 test('partOfIssues reads "Part of #N" in any case, not fenced code or other numbers', () => {
-  assert.deepEqual(partOfIssues('Part of #529. Also part of: #809'), ['529', '809']);
+  assert.deepEqual(partOfIssues('Part of #529.\nPart of: #809'), ['529', '809']);
   assert.deepEqual(partOfIssues('part of https://github.com/szymdzum/browser-debugger-cli/issues/465'), ['465']);
   assert.deepEqual(partOfIssues('```\nPart of #1\n```\nCloses #2 #3'), []);
   assert.deepEqual(partOfIssues('part of #12a'), []);
@@ -1206,4 +1206,10 @@ test('proxyNote tells agents that run bdg to bypass a configured proxy', () => {
   const note = proxyNote({ HTTPS_PROXY: 'http://127.0.0.1:9000', http_proxy: 'x' }, 'reviewer');
   assert.match(note, /env -u HTTPS_PROXY -u http_proxy bdg/);
   assert.match(note, /--no-proxy-server/);
+});
+
+test('partOfIssues counts "Part of #N" only at the start of a line, not in a sentence', () => {
+  assert.deepEqual(partOfIssues('Last part of #797: the remaining areas.\n\nCloses #797'), []);
+  assert.deepEqual(partOfIssues('- Part of #465\n> part of #742'), ['465', '742']);
+  assert.deepEqual(partOfIssues('  Part of #529'), ['529']);
 });
