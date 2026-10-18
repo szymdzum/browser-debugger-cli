@@ -327,14 +327,17 @@ function span(start: number | undefined, end: number | undefined): number {
  * `blocked` is Chrome's queue (0 when there was none), `connect` includes
  * TLS and `ssl` repeats it (HAR 1.2), proxy resolution is part of `connect`.
  * A phase that did not happen is -1 (`dns`, `connect`, `ssl`); `send`, `wait`
- * and `receive` are never negative.
+ * and `receive` are never negative. The phases are rounded one by one and
+ * the total once, so the rounding remainder goes into `receive` (into `wait`
+ * where `receive` would turn negative): the phases then add up to `totalMs`.
  *
  * @param phases - Phases of the timing breakdown, in ms
+ * @param totalMs - Total of the breakdown, in ms
  * @returns HAR timings
  */
-function timingsFromPhases(phases: TimingPhases['phases']): Timings {
+function timingsFromPhases(phases: TimingPhases['phases'], totalMs: number): Timings {
   const { connect, tls } = phases;
-  return {
+  const timings = {
     blocked: phases.queued ?? 0,
     dns: phases.dns ?? UNKNOWN_TIMING,
     connect:
@@ -344,6 +347,10 @@ function timingsFromPhases(phases: TimingPhases['phases']): Timings {
     wait: phases.wait ?? 0,
     receive: phases.download ?? 0,
   };
+  const remainder = totalMs - calculateTotalTime(timings);
+  const receive = Math.max(0, timings.receive + remainder);
+  const wait = Math.max(0, timings.wait + remainder - (receive - timings.receive));
+  return { ...timings, wait, receive };
 }
 
 /**
@@ -360,7 +367,7 @@ function timingsFromPhases(phases: TimingPhases['phases']): Timings {
  */
 function buildTimings(req: NetworkRequest): Timings {
   const breakdown = timingBreakdown(req);
-  if ('phases' in breakdown) return timingsFromPhases(breakdown.phases);
+  if ('phases' in breakdown) return timingsFromPhases(breakdown.phases, breakdown.totalMs);
   const t = req.timing;
   if (!t || req.fromCache) {
     return {
@@ -406,7 +413,8 @@ function buildCache(): Cache {
  * @returns Total time in milliseconds
  *
  * @remarks
- * Sums all timing phases (except SSL which overlaps with connect).
+ * Sums blocked, dns, connect, send, wait and receive; `ssl` is left out because
+ * `connect` already includes it (HAR 1.2).
  * Returns 0 if no timing data available.
  */
 function calculateTotalTime(timings: Timings): number {

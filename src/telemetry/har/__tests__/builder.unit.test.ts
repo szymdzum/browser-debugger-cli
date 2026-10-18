@@ -507,14 +507,12 @@ describe('HAR Builder', () => {
         },
         loadingFinishedTime: 1000.451,
       };
-      const breakdown = timingBreakdown(request);
-      assert.ok('phases' in breakdown);
-
       const { timings, time } = getFirstEntry(buildHAR([request], baseMetadata).log.entries);
 
-      assert.equal(timings.blocked, breakdown.phases.queued);
-      assert.ok((timings.blocked ?? -1) > 0);
-      assert.ok(Math.abs(time - breakdown.totalMs) <= 2, `time ${time} vs ${breakdown.totalMs}`);
+      assert.equal(timings.blocked, 300);
+      assert.equal(timings.dns, -1);
+      assert.equal(timings.connect, -1);
+      assert.equal(time, 451);
     });
 
     test('a fresh connection splits into the breakdown phases (#847)', () => {
@@ -538,29 +536,62 @@ describe('HAR Builder', () => {
         },
         loadingFinishedTime: 1000.401,
       };
-      const breakdown = timingBreakdown(request);
-      assert.ok('phases' in breakdown);
-      const p = breakdown.phases;
 
       const { timings, time } = getFirstEntry(buildHAR([request], baseMetadata).log.entries);
 
-      assert.equal(timings.blocked, p.queued);
-      assert.equal(timings.dns, p.dns);
-      assert.equal(timings.connect, (p.connect ?? 0) + (p.tls ?? 0));
-      assert.equal(timings.ssl, p.tls);
-      assert.equal(timings.send, p.send);
-      assert.equal(timings.wait, p.wait);
-      assert.equal(timings.receive, p.download);
+      assert.deepEqual(timings, {
+        blocked: 200,
+        dns: 20,
+        connect: 50,
+        ssl: 30,
+        send: 1,
+        wait: 100,
+        receive: 30,
+      });
+      assert.equal(time, 401);
+    });
+
+    test('time equals the total of details when the phases are fractions (#847)', () => {
+      const request: NetworkRequest = {
+        requestId: 'req-1',
+        url: 'https://example.com/fractions',
+        method: 'GET',
+        timestamp: Date.now(),
+        sentTime: 1000,
+        timing: {
+          requestTime: 1000.00049,
+          dnsStart: 0,
+          dnsEnd: 0.49,
+          connectStart: 0.49,
+          connectEnd: 1.47,
+          sslStart: 0.98,
+          sslEnd: 1.47,
+          sendStart: 1.47,
+          sendEnd: 1.96,
+          receiveHeadersEnd: 2.45,
+        },
+        loadingFinishedTime: 1000.00343,
+      };
+      const breakdown = timingBreakdown(request);
+      assert.ok('phases' in breakdown);
+
+      const { timings, time } = getFirstEntry(buildHAR([request], baseMetadata).log.entries);
+
+      assert.equal(breakdown.totalMs, 3);
+      assert.equal(time, 3);
       assert.equal(
-        time,
         (timings.blocked ?? 0) +
           (timings.dns ?? 0) +
           (timings.connect ?? 0) +
           (timings.send ?? 0) +
           (timings.wait ?? 0) +
-          (timings.receive ?? 0)
+          (timings.receive ?? 0),
+        time
       );
-      assert.ok(Math.abs(time - breakdown.totalMs) <= 2);
+      assert.ok(Object.values(timings).every((ms) => ms >= -1));
+      assert.ok(
+        (timings.send ?? -1) >= 0 && (timings.wait ?? -1) >= 0 && (timings.receive ?? -1) >= 0
+      );
     });
   });
 
