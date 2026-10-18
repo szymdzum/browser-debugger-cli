@@ -14,6 +14,7 @@ import type {
   InvalidField,
   TriggeredRequest,
 } from '@/ipc/protocol/domTypes.js';
+import type { LogpointActionHit } from '@/ipc/protocol/debugTypes.js';
 import type { OpenedTab, TabClosedSwitch } from '@/ipc/protocol/tabTypes.js';
 import {
   pendingChanges,
@@ -32,6 +33,9 @@ import { watchActionErrors } from './actionErrors.js';
 import { watchTriggeredRequests, type CollectedRequests } from './triggeredRequests.js';
 
 const log = createLogger('dom');
+
+/** Logpoints an action's report lists */
+const MAX_REPORTED_LOGPOINTS = 3;
 
 /** What an interaction caused besides its own result */
 interface InteractionReport extends ActionEffects {
@@ -207,6 +211,23 @@ async function blockedSubmit(
 }
 
 /**
+ * The logpoints that logged during an action, as many as the report lists.
+ *
+ * @param hit - Every logpoint hit during the action
+ * @returns `logpoints` and `moreLogpoints` (absent when none)
+ */
+function logpointReport(
+  hit: LogpointActionHit[]
+): Pick<ActionEffects, 'logpoints' | 'moreLogpoints'> {
+  if (hit.length === 0) return {};
+  const more = hit.length - MAX_REPORTED_LOGPOINTS;
+  return {
+    logpoints: hit.slice(0, MAX_REPORTED_LOGPOINTS),
+    ...(more > 0 && { moreLogpoints: more }),
+  };
+}
+
+/**
  * Console messages the session has logged, dropped ones included.
  *
  * @param store - Session store
@@ -267,6 +288,7 @@ export function createInteractionRunner(
       const firstDialog = store.dialogs.length;
       const firstDownload = store.downloads.length;
       const firstConsoleMessage = consoleMessagesLogged(store);
+      const logpointMark = store.logpoints.hitMark();
       const firstOpened = tabs?.openedCount() ?? 0;
       const collectRequests =
         options.reportRequests === false ? undefined : watchTriggeredRequests(store);
@@ -303,6 +325,7 @@ export function createInteractionRunner(
           ...otherChanges,
           ...(domChanges !== undefined && !errors?.errors?.length && { domChanges }),
           ...errors,
+          ...logpointReport(store.logpoints.hitsSince(logpointMark)),
           ...(pending && { settled: false as const, pending }),
           ...blocked,
           ...(store.fetchInterceptionEnabled &&

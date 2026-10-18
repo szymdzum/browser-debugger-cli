@@ -34,6 +34,7 @@ type Idd = Record<string, unknown>;
 const EXPECTED_PATHS = [
   'console --last',
   'css search --limit',
+  'debug hits --last',
   'dom a11y query --limit',
   'dom a11y tree --limit',
   'dom audit --limit',

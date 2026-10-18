@@ -15,6 +15,7 @@ import type { Option } from 'commander';
 import type { OptionBehavior } from '@/commands/helpJson.js';
 import { CDP_BEHAVIORS } from '@/commands/optionBehaviors/cdp.js';
 import { CONSOLE_BEHAVIORS } from '@/commands/optionBehaviors/console.js';
+import { DEBUG_BEHAVIORS } from '@/commands/optionBehaviors/debug.js';
 import { DOM_ACTION_BEHAVIORS } from '@/commands/optionBehaviors/domActions.js';
 import { DOM_READ_BEHAVIORS } from '@/commands/optionBehaviors/domRead.js';
 import { NETWORK_BEHAVIORS } from '@/commands/optionBehaviors/network.js';
@@ -35,6 +36,7 @@ export const BEHAVIOR_TABLES: readonly BehaviorTable[] = [
   SESSION_BEHAVIORS,
   STATE_BEHAVIORS,
   CDP_BEHAVIORS,
+  DEBUG_BEHAVIORS,
 ];
 
 /**

@@ -7,6 +7,7 @@
  * here lets runtime and transport evolve independently.
  */
 
+import type { LogpointActionHit } from '@/ipc/protocol/debugTypes.js';
 import type { OpenedTab, TabRef } from '@/ipc/protocol/tabTypes.js';
 import type { FormStep, FieldOption, ViewportPosition } from '@/types.js';
 
@@ -234,6 +235,13 @@ export interface ActionEffects {
   replacedBuiltins?: string[];
   /** Downloads that began during the action (absent when none did) */
   downloads?: DownloadInfo[];
+  /**
+   * Logpoints (`bdg debug log`) that logged during the action, at most 3
+   * (absent when none did): their first hit's values and how many hits
+   */
+  logpoints?: LogpointActionHit[];
+  /** How many more logpoints logged than `logpoints` lists */
+  moreLogpoints?: number;
   /** Console errors and uncaught exceptions logged during the action (at most 3 distinct; absent when none) */
   errors?: ActionError[];
   /** How many more distinct errors there were than `errors` lists */

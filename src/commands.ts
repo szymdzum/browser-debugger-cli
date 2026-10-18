@@ -5,6 +5,7 @@ import { registerCdpCommand } from '@/commands/cdp.js';
 import { registerCleanupCommand } from '@/commands/cleanup.js';
 import { registerConsoleCommand } from '@/commands/console.js';
 import { registerCssCommands } from '@/commands/css.js';
+import { registerDebugCommands } from '@/commands/debug.js';
 import { registerDetailsCommand } from '@/commands/details.js';
 import { registerFormInteractionCommands } from '@/commands/dom/formInteraction.js';
 import { registerDomCommands } from '@/commands/dom/index.js';
@@ -56,6 +57,7 @@ export const commandRegistry: CommandRegistrar[] = [
   registerFormInteractionCommands,
   registerPageCommands,
   registerCssCommands,
+  registerDebugCommands,
 
   addCommandGroup('CDP Commands:'),
   registerCdpCommand,

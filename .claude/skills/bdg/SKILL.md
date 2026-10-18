@@ -174,6 +174,20 @@ text   Arial 600 16/24 · color #1a1a1a · contrast 17.4 AAA on #fff · align st
 
 Colors follow prefers-color-scheme, the system setting (even headless): pin it with `--color-scheme light|dark` at start or `page emulate`.
 
+## Values at a Line (Logpoints)
+
+Why is the total wrong? Log the values the page's code had at a line, without editing the app and without pausing the page:
+
+```bash
+bdg debug log app.js:8 total discount     # file = end of a script URL, 1-based line; each expression its own argument
+bdg dom click "#checkout"                 # report: logpoint lp1 app.js:8: total=25 discount=0.5
+bdg debug hits --json                     # every hit, structured values
+bdg debug log app.js:12                   # no expression: a hit counter - did this line run at all? (debug list: hits)
+bdg debug clear                           # when done
+```
+
+Values are those before the line runs. Expressions run in the page. `debugger;` statements do not pause while logpoints exist. A hot line logs at most 100 hits per page load (`--max`); the rest are `dropped`. Exit 83 = no such script or line (Did you mean), 84 = already set there, 81 = bad expression/location or more than 10 logpoints.
+
 ## Run JavaScript
 
 `bdg eval` returns the value of an expression:

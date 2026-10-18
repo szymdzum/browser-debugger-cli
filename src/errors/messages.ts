@@ -17,6 +17,7 @@ export * from './messages/domRead.js';
 export * from './messages/network.js';
 export * from './messages/eval.js';
 export * from './messages/tabs.js';
+export * from './messages/debug.js';
 export {
   NO_MATCH_PREFIX,
   NO_MATCH_SUFFIX,

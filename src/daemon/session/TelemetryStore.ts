@@ -1,3 +1,5 @@
+import { Logpoints } from './logpoints.js';
+
 import { MAX_CONSOLE_MESSAGES } from '@/constants.js';
 import type { DialogInfo } from '@/ipc/protocol/domTypes.js';
 import type { TabSwitchInfo } from '@/ipc/protocol/tabTypes.js';
@@ -59,6 +61,8 @@ export class TelemetryStore {
   pageCrashedAt: number | undefined;
   /** The session's latest move to another tab; undefined while it stayed on its first tab */
   tabSwitch: TabSwitchInfo | undefined;
+  /** Logpoints set with `bdg debug log` (gone with the session) */
+  readonly logpoints = new Logpoints(() => this.getCurrentNavigationId?.() ?? 0);
   /** Set after `bdg cdp Fetch.enable` until `Fetch.disable`: matching requests pause until continued */
   fetchInterceptionEnabled = false;
   getCurrentNavigationId: (() => number) | null = null;

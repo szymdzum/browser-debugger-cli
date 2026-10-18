@@ -19,6 +19,7 @@ export * from './commands/inspect.js';
 export * from './commands/page.js';
 export * from './commands/wait.js';
 export * from './commands/screenshot.js';
+export * from './commands/debug.js';
 export {
   shownByText,
   maskedText,

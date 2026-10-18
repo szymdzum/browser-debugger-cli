@@ -70,6 +70,8 @@ import {
   openedTabText,
   tabClosedText,
   moreErrorsText,
+  logpointActionText,
+  moreLogpointsText,
   moreMessagesText,
   alsoChangingText,
   moreShownText,
@@ -654,6 +656,8 @@ function formatActionOutput(
     ],
     keyWidth
   );
+  for (const hit of result.logpoints ?? []) fmt.text(logpointActionText(hit));
+  if (result.moreLogpoints) fmt.text(moreLogpointsText(result.moreLogpoints));
 
   const omitted = result.triggeredRequestsOmitted;
   const requests = formatTriggeredRequestLines(result.triggeredRequests ?? [], omitted);

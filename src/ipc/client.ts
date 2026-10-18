@@ -689,3 +689,48 @@ export async function domWait(
 ): Promise<ClientResponse<'dom_wait'>> {
   return sendCommand('dom_wait', params, waitingTimeoutMs(params.timeout));
 }
+
+/**
+ * Set a logpoint.
+ *
+ * @param params - Location, expressions, guard and limit
+ * @returns The logpoint set
+ */
+export async function debugLog(
+  params: NoType<(typeof COMMANDS)['debug_log']['requestSchema']>
+): Promise<ClientResponse<'debug_log'>> {
+  return sendCommand('debug_log', params);
+}
+
+/**
+ * List the session's logpoints.
+ *
+ * @returns Logpoints with their hit counts
+ */
+export async function debugList(): Promise<ClientResponse<'debug_list'>> {
+  return sendCommand('debug_list', {});
+}
+
+/**
+ * Read what logpoints logged.
+ *
+ * @param params - Logpoint, count and page scope
+ * @returns Hits
+ */
+export async function debugHits(
+  params: NoType<(typeof COMMANDS)['debug_hits']['requestSchema']>
+): Promise<ClientResponse<'debug_hits'>> {
+  return sendCommand('debug_hits', params);
+}
+
+/**
+ * Remove a logpoint, or all.
+ *
+ * @param params - Logpoint id (none: all)
+ * @returns Ids removed
+ */
+export async function debugClear(
+  params: NoType<(typeof COMMANDS)['debug_clear']['requestSchema']>
+): Promise<ClientResponse<'debug_clear'>> {
+  return sendCommand('debug_clear', params);
+}
