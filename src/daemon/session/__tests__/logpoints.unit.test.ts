@@ -81,4 +81,30 @@ void describe('logpoints and Chrome', () => {
     assert.ok(methods(cdp).includes('Debugger.disable'));
     assert.equal(logpoints.size, 1);
   });
+
+  void it('Chrome refusing a second breakpoint at a place is 84, and nothing is kept', async () => {
+    const logpoints = new Logpoints(() => 0);
+    const cdp = fakeCdp();
+    const send = cdp.send.bind(cdp);
+    (cdp as { send: unknown }).send = (method: string, params?: Record<string, unknown>) =>
+      method === 'Debugger.setBreakpointByUrl'
+        ? Promise.reject(new Error('Breakpoint at specified location already exists.'))
+        : send(method, params);
+    await assert.rejects(
+      logpoints.add(cdp, PARAMS),
+      (error: unknown) => (error as { exitCode?: number }).exitCode === 84
+    );
+    assert.equal(logpoints.size, 0);
+  });
+
+  void it('a column of 1 is the same place as no column', async () => {
+    const logpoints = new Logpoints(() => 0);
+    const cdp = fakeCdp();
+    await logpoints.add(cdp, PARAMS);
+    await assert.rejects(
+      logpoints.add(cdp, { ...PARAMS, column: 1 }),
+      (error: unknown) => (error as { exitCode?: number }).exitCode === 84
+    );
+    assert.equal(logpoints.size, 1);
+  });
 });

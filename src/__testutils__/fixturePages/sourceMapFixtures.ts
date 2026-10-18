@@ -132,6 +132,7 @@ const SOURCE_MAPS_HTML = `<!doctype html><html><head><title>source maps</title><
 <button id="first">First</button>
 <button id="second">Second</button>
 <button id="inline">Inline</button>
+<a id="open-tab" href="/source-maps" target="_blank">Open</a>
 <p id="out"></p>
 <script src="/sm/dist/app.js"></script>
 <script src="/sm/dist/min.js"></script>

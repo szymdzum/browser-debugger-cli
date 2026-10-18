@@ -237,6 +237,32 @@ void describe('logpoints on source-mapped bundles (#848, part 2)', () => {
     assert.equal(entry?.bound[0]?.source?.line, CART_LINES.returnTotal);
   });
 
+  void it('a source-mapped logpoint survives a tab switch, fires on the new tab and comes back', async () => {
+    const created = await json<Logged>([
+      'debug',
+      'log',
+      `src/cart.ts:${CART_LINES.returnTotal}`,
+      'total',
+    ]);
+    await bdg(['dom', 'click', '#open-tab']);
+    await bdg(['page', 'switch', '1']);
+    const clicked = await json<{ logpoints?: Array<{ id: string; file: string; hits: number }> }>([
+      'dom',
+      'click',
+      '#checkout',
+    ]);
+    assert.equal(clicked.logpoints?.[0]?.id, created.id);
+    assert.equal(clicked.logpoints?.[0]?.file, 'src/cart.ts');
+    const entry = (await listed()).find((lp) => lp.id === created.id);
+    assert.equal(entry?.state, 'bound');
+    assert.equal(entry?.bound[0]?.source?.line, CART_LINES.returnTotal);
+    await bdg(['page', 'switch', '0']);
+    const back = await json<{ logpoints?: Array<{ id: string }> }>(['dom', 'click', '#checkout']);
+    assert.equal(back.logpoints?.[0]?.id, created.id);
+    const tabs = await json<{ tabs: Array<{ index: number }> }>(['page', 'tabs']);
+    await bdg(['page', 'close', String(tabs.tabs.length - 1)]);
+  });
+
   void it('a file no map names is pending, and the warning says which maps could not be used', async () => {
     const { out } = await bdg(['debug', 'log', 'src/ghost.ts:2', 'x', '--json']);
     const envelope = JSON.parse(out) as { warnings?: string[]; data: Logged };

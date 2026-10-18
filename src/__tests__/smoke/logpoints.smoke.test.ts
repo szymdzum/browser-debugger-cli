@@ -485,6 +485,7 @@ void describe('logpoints (#848)', () => {
   void it('refuses a duplicate location (84), bad syntax (81) and an 11th logpoint (81)', async () => {
     await bdg(['debug', 'log', `${APP}:${LINE}`]);
     await bdg(['debug', 'log', `${APP}:${LINE}`], 84);
+    await bdg(['debug', 'log', `${APP}:${LINE}:1`], 84);
     await bdg(['debug', 'log', `${APP}:${APP_JS_LINES.discount}`, 'foo('], 81);
     await bdg(['debug', 'clear']);
     const lines = APP_JS_LINES.codeLines;
