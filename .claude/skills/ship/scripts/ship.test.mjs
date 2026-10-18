@@ -1047,13 +1047,13 @@ test('briefVariant: tier 1 drops the red-commit rules, a part says Part of inste
   assert.doesNotMatch(tier1, /Red commit first|<!-- red -->/);
   assert.match(tier1, /No red commit\*\* \(tier 1/);
   const part = briefVariant(brief, { part: true });
-  assert.match(part, /`Part of #797` \(not `Closes`/);
+  assert.match(part, /`Part of #797` on a line of its own \(not `Closes`/);
   assert.doesNotMatch(part, /`Closes #797`/);
   assert.doesNotMatch(briefVariant(brief, {}), /<!-- \/?red -->/);
 });
 
 test('partOfIssues reads "Part of #N" in any case, not fenced code or other numbers', () => {
-  assert.deepEqual(partOfIssues('Part of #529. Also part of: #809'), ['529', '809']);
+  assert.deepEqual(partOfIssues('Part of #529.\nPart of: #809'), ['529', '809']);
   assert.deepEqual(partOfIssues('part of https://github.com/szymdzum/browser-debugger-cli/issues/465'), ['465']);
   assert.deepEqual(partOfIssues('```\nPart of #1\n```\nCloses #2 #3'), []);
   assert.deepEqual(partOfIssues('part of #12a'), []);
@@ -1206,4 +1206,11 @@ test('proxyNote tells agents that run bdg to bypass a configured proxy', () => {
   const note = proxyNote({ HTTPS_PROXY: 'http://127.0.0.1:9000', http_proxy: 'x' }, 'reviewer');
   assert.match(note, /env -u HTTPS_PROXY -u http_proxy bdg/);
   assert.match(note, /--no-proxy-server/);
+});
+
+test('partOfIssues counts "Part of #N" only at the start of a line, not in a sentence', () => {
+  assert.deepEqual(partOfIssues('Last part of #797: the remaining areas.\n\nCloses #797'), []);
+  assert.deepEqual(partOfIssues('- Part of #465\n> part of #742'), ['465', '742']);
+  assert.deepEqual(partOfIssues('  Part of #529'), ['529']);
+  assert.deepEqual(partOfIssues('**Part of** #12\n## Part of #13\n1. Part of #14'), ['12', '13', '14']);
 });

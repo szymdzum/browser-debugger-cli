@@ -44,7 +44,7 @@ Files:
 - [ ] Tester (tier 2–3): ship brief tester … → findings routed
 - [ ] Fix rounds ≤ 2; the reviewer re-checks each fix commit (SendMessage to the same reviewer)
 - [ ] Tier 3: fresh second review only of a fix that changes the approach or adds more than ~15 product lines
-- [ ] Timing-sensitive change: ship repeat on the first draft, again on the final head (one repeat run per branch at a time: `ship repeat` refuses while one is queued or running, `--replace` cancels it and waits; a second dispatch in the same concurrency group lost #773's Node 22 result)
+- [ ] Timing-sensitive change: ship repeat on the first draft, again on the final head (one repeat run per branch at a time: `ship repeat` refuses while one is queued or running, `--replace` cancels it and waits; it prints each step and gives up after `--timeout` minutes, default 10, S22: a dispatch hung 30 minutes silently; a second dispatch in the same concurrency group lost #773's Node 22 result)
 - [ ] ship gates <pr> --tier=N [--macos] [--timing --repeat=<id>] (timing PRs: always --timing); ship merge-check when it says the base changed the PR's files; ship merge <pr> (same flags)
 - [ ] ship ci-wait <merge sha> --push; ship log <pr> …; issue closed or commented
 ```
