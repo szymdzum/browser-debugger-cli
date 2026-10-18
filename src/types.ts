@@ -193,6 +193,8 @@ export interface NetworkRequest {
   /** Port Chrome connected to (CDP `remotePort`) */
   serverPort?: number;
   connection?: string;
+  /** Protocol of the response (`http/1.1`, `h2`, `h3`; CDP `response.protocol`) */
+  protocol?: string;
   /** Status text sent by the server (empty for HTTP/2) */
   statusText?: string;
   /** `responseBody` is base64 (binary content) */

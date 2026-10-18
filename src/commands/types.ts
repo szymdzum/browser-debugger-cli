@@ -5,6 +5,7 @@
  * for each command. This enables compile-time checking of formatter inputs.
  */
 
+import type { TimingBreakdown } from '@/telemetry/timingBreakdown.js';
 import type { NetworkRequest, ConsoleMessage } from '@/types.js';
 
 /**
@@ -56,6 +57,8 @@ export type DetailsResult =
   | {
       type: 'network';
       item: NetworkRequest;
+      /** Where the request's time went, or why that is unknown (#837) */
+      timingBreakdown?: TimingBreakdown;
       /** A credential in the request was shown as `••••` (no `--include-sensitive`) */
       masked?: true;
     }
