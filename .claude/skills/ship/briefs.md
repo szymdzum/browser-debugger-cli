@@ -4,13 +4,13 @@ Render a brief with `node .claude/skills/ship/scripts/ship.mjs brief <role> N=<n
 
 | Role | Agent | Model | Runs | Cap (tool calls) |
 |---|---|---|---|---|
-| implementer | `general-purpose` | `sonnet`; `opus` for tier 3 | background | 80, plus 30 per fix round |
+| implementer | `general-purpose` | `sonnet`; `opus` for tier 3 | background | 80 (`CAP=120` for a feature PR), plus 30 per fix round |
 | reviewer | `general-purpose` | `sonnet` | foreground | 25 (tier 1–2), 40 (tier 3) |
 | tester | `general-purpose` | `sonnet` | foreground | 40; 20 for a fix with no new output or flag |
 | verifier | `general-purpose` | `sonnet` | foreground | 60 |
 | design | `general-purpose` | `sonnet` | foreground | 40 |
 
-Placeholders the script can fill: `N` (issue; its text is quoted where a brief has `<ISSUE>`), `ISSUES` (several, comma-separated, for the verifier), `PR` (fills `BASE`, `HEAD`, `RED`, `BRANCH`), `DESIGN` (a design note file, for the design brief), `TIER=1` (implementer: no red commit), `PART=1` (implementer: `Part of #N`, not `Closes`), `NAME` (a suffixed name such as `529a` for a second PR of one issue: every path uses it, `#N` stays the issue number), `AGENT` (tester: `b`, `c`… for a second parallel tester of one PR; default `a`), `BRANCH`, `BASE` (merge base or the unmerged branch this PR builds on), `HEAD` (head SHA under review or test), `RED` (red commit SHA), `CAP`, `URLS` (fixture URLs), `DATE`.
+Placeholders the script can fill: `N` (issue; its text is quoted where a brief has `<ISSUE>`), `ISSUES` (several, comma-separated, for the verifier), `PR` (fills `BASE`, `HEAD`, `RED`, `BRANCH`), `DESIGN` (a design note file, for the design brief), `TIER=1` (implementer: no red commit), `PART=1` (implementer: `Part of #N`, not `Closes`), `NAME` (a suffixed name such as `529a` for a second PR of one issue: every path uses it, `#N` stays the issue number), `AGENT` (tester: `b`, `c`… for a second parallel tester of one PR; default `a`), `KIND=feature` (design brief: check a new command's CLI shape and the note's claims about Chrome instead of a false-positive matrix), `BRANCH`, `BASE` (merge base or the unmerged branch this PR builds on), `HEAD` (head SHA under review or test), `RED` (red commit SHA), `CAP`, `URLS` (fixture URLs), `DATE`.
 
 ## Shared blocks
 
@@ -85,7 +85,7 @@ Rebuild (`npm run build`) after every change to `src/` before a smoke run: a smo
 
 {{forbidden}}
 
-**Budget.** At most 80 tool calls up to the draft PR; each fix round you are resumed for has its own 30. At a cap, stop and report what is left.
+**Budget.** At most <CAP> tool calls up to the draft PR; each fix round you are resumed for has its own 30. At a cap, stop and report what is left.
 
 **Report.** Every process you stopped, with the PID file you read it from (none is an answer); what changed; decisions with reasons; the red commit (SHA and the failure line); before/after in two lines; test result lines; timing-sensitive smoke files; adjacent fixes; findings outside the scope with command and output. {{report-tail}} The **last line** is exactly `PR <url> HEAD <sha>`; a report without it counts as unfinished.
 
@@ -227,13 +227,17 @@ For a detection heuristic, before any code (SKILL.md, Recurring traps): the impl
 <!-- brief:design -->
 Review a design for issue #<N> in bdg (github.com/szymdzum/browser-debugger-cli) before any code is written. The design and the issue are quoted at the end of this brief. You decide whether the design works on real pages; you write no product code.
 
-Check every row of the design's false-positive matrix, and add the rows it misses: a change the page makes on its own during the action window, the user's own result arriving in several chunks (Load more, streamed results, a slow response), and the user's result in the same box or app root as a self-updating region. Build each case as a scratch page under `/tmp/design-<N>-pages` (serve with `python3 -m http.server <port> & echo $! > /tmp/bdg-design-<N>-http.pid`) and observe what the page really does in Chrome with bdg from `main`, built at `<MAIN>/../bdg-verify`. Every shell call starts with:
+Build each case as a scratch page under `/tmp/design-<N>-pages` (serve with `python3 -m http.server <port> & echo $! > /tmp/bdg-design-<N>-http.pid`) and observe what the page really does in Chrome with bdg from `main`, built at `<MAIN>/../bdg-verify`. Every shell call starts with:
 ```
 {{node}}
 export BDG_SESSION_DIR=/tmp/design-<N>
 bdg() { node <MAIN>/../bdg-verify/dist/index.js "$@"; }
 ```
-Record what the design's rule would see with `bdg dom eval` (a `MutationObserver`, timings, the elements involved), not by reading the design and guessing. Keep one bdg session at a time.
+Keep one bdg session at a time.
+
+<!-- design-heuristic -->
+Check every row of the design's false-positive matrix, and add the rows it misses: a change the page makes on its own during the action window, the user's own result arriving in several chunks (Load more, streamed results, a slow response), and the user's result in the same box or app root as a self-updating region. Record what the design's rule would see with `bdg dom eval` (a `MutationObserver`, timings, the elements involved), not by reading the design and guessing.
+<!-- /design-heuristic -->
 
 {{foreground}}
 
@@ -242,7 +246,7 @@ Record what the design's rule would see with `bdg dom eval` (a `MutationObserver
 
 **Budget.** At most 40 tool calls.
 
-**Report.** The verdict first: go, go with changes, or no-go. Then one line per matrix row: what the page did, what the design would report, what it should report. Then the changes the design needs. {{report-tail}}
+**Report.** The verdict first: go, go with changes, or no-go. Then one line per check (a matrix row, a CLI-shape point or a claim): what you found, what the design says, what it should say. Then the changes the design needs. {{report-tail}}
 
 <DESIGN>
 

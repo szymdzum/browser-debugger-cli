@@ -503,6 +503,8 @@ async function ciWaitLoop(argv) {
   let workflows = ['CI', 'Security'];
   if (!push) {
     pr = prInfo(target);
+    for (const line of orphanWorktreeProcesses(prScope(pr)))
+      console.log(`WARN ${line} (the implementer started it without a PID file, or killed its parent: gate 8 refuses the merge until it's gone)`);
     if (flags.has('head') || keys.head === '') return usage('ci-wait <pr> --head=<sha>: give the SHA after =');
     sha = keys.head ? await waitForHead(pr.number, keys.head) : pr.headRefOid;
     if (!sha) return EXIT.timeout;
@@ -1438,8 +1440,14 @@ async function gates(argv) {
     stray.length === 0,
     `7 no commit message closes an issue the PR body doesn't${stray.length ? `: ${stray.map((c) => `${c.sha} closes #${c.issue}`).join(', ')} (GitHub closes it on merge; reword the commit)` : ''}`
   );
-  if (flags.has('no-issue') || release)
-    console.log(`ok   7 PR body closes an issue: skipped (${release ? '--release' : '--no-issue'})`);
+  if (flags.has('no-issue') || release) {
+    const linked = prIssues(pr.number) ?? [];
+    gateLine(
+      results,
+      linked.length === 0,
+      `7 ${release ? '--release' : '--no-issue'}: GitHub links no issue to close${linked.length ? `, but it links #${linked.join(', #')} (a "Closes #N" quoted in the body closes it on merge; reword it)` : ''}`
+    );
+  }
   else {
     const closed = closedIssues(pr.body);
     const named = [...closed.map((n) => `#${n}`), ...parts.map((n) => `part of #${n}`)];
@@ -2185,6 +2193,7 @@ async function merge(argv) {
   const prNumber = argv[0];
   if (!prNumber) return usage('merge <pr> --tier=1|2|3 [--macos] [--timing] [--repeat=<run id>] [--no-issue] [--fixes-main] [--release]');
   const pr = prInfo(prNumber);
+  process.chdir(mainCheckout());
   for (const n of prScope(pr))
     if (stopFixtures(n) === 'stopped') console.log(`stopped your fixtures of ${n} (ship fixtures)`);
   if ((await gates(argv)) !== EXIT.ok) {
@@ -2381,7 +2390,7 @@ export function formatIssue(issue) {
 export function templatePlaceholders(briefsText) {
   const { blocks, briefs } = parseBriefs(briefsText);
   const found = [...Object.values(blocks), ...Object.values(briefs)].flatMap(
-    (t) => t.match(/<[^<>\n]{2,80}>/g) ?? []
+    (t) => t.match(/<[^<>\n]{2,1200}>/g) ?? []
   );
   return new Set(found.filter((p) => !LITERAL_PLACEHOLDERS.has(p) && !p.startsWith('<!--')));
 }
@@ -2394,7 +2403,7 @@ export function templatePlaceholders(briefsText) {
  */
 export function unfilledPlaceholders(text, placeholders) {
   const outside = text.replace(QUOTED_REGION, '');
-  return [...new Set(outside.match(/<[^<>\n]{2,80}>/g) ?? [])].filter((p) => placeholders.has(p));
+  return [...new Set(outside.match(/<[^<>\n]{2,1200}>/g) ?? [])].filter((p) => placeholders.has(p));
 }
 
 /**
@@ -2415,6 +2424,13 @@ export function briefProblems(text, placeholders) {
 const NO_RED_COMMIT =
   '- **No red commit** (tier 1: docs, CI, tooling, or a refactor under existing tests): the PR body says which applies and names the existing tests that cover the change.\n';
 
+/** What the design brief checks for a new command or option instead of a false-positive matrix (S23 #848: half the brief rewritten by hand) */
+const DESIGN_FEATURE = `This design is a new command or option, not a detection heuristic. Check:
+- **The CLI shape:** command and option names next to the existing ones (\`bdg --help --json\`) and the renames table (\`src/utils/renames.ts\`); positional arguments against flags; what \`--help --json\` will show; an exit code for each failure the note lists.
+- **Every claim the note makes about Chrome or CDP:** try each one with \`bdg cdp\` on a scratch page. Does the method exist in this Chrome, does the event fire when the note says, does the limit hold? A claim that turns out false is a finding.
+- **What an agent gets:** where the result shows up (human and \`--json\`), its size limits, and what happens on reload, navigation, tab switch and when the session ends.
+`;
+
 /** What a tier 1 reviewer brief says instead of the red-commit check (S20: removed by hand twice) */
 const NO_RED_REVIEW =
   '**Red commit.** None: tier 1 (docs, CI, tooling, or a refactor under existing tests). Check that the PR body says which applies and that existing tests cover the change.\n';
@@ -2430,6 +2446,9 @@ const NO_RED_REVIEW =
  */
 export function briefVariant(text, variant) {
   const withRed = text
+    .replace(/<!-- design-heuristic -->\n([\s\S]*?)<!-- \/design-heuristic -->\n?/g, (_, rules) =>
+      variant.feature ? DESIGN_FEATURE : rules
+    )
     .replace(/<!-- red -->\n([\s\S]*?)<!-- \/red -->\n/g, (_, rules) => (variant.tier1 ? NO_RED_COMMIT : rules))
     .replace(/<!-- red-review -->\n([\s\S]*?)<!-- \/red-review -->\n/g, (_, rules) =>
       variant.tier1 ? NO_RED_REVIEW : rules
@@ -2490,7 +2509,7 @@ export function proxyNote(env, role) {
   const set = ['HTTPS_PROXY', 'HTTP_PROXY', 'ALL_PROXY', 'https_proxy', 'http_proxy', 'all_proxy'].filter((k) => env[k]);
   if (!set.length || role === 'implementer') return null;
   const without = set.map((k) => `-u ${k}`).join(' ');
-  return `**Proxy.** This machine sets ${set.join(', ')}. Run bdg without it, on the bdg command only (gh, git and npm may need it): \`env ${without} bdg <url> --chrome-flags="--no-proxy-server"\`, or every request goes through the proxy as http/1.1.`;
+  return `**Proxy.** This machine sets ${set.join(', ')}. Bypass it for bdg only (gh, git and npm may need it): put \`env ${without}\` inside your \`bdg()\` function, in front of its \`node …/dist/index.js\`, and start sessions with \`--chrome-flags="--no-proxy-server"\`. Never run \`env ${without} bdg …\`: that skips your function and runs whatever \`bdg\` is installed globally (S23 #859). Without the bypass every request goes through the proxy as http/1.1.`;
 }
 
 /**
@@ -2550,10 +2569,11 @@ function brief(argv) {
     ...(given.PR ? prBriefValues(given.PR) : {}),
     ...given,
   };
-  const { DESIGN: designFile, ISSUES: issueList, TIER: tier, PART: part, ...rest } = values;
-  const rendered = briefVariant(renderBrief(briefsText, positional[0], rest).brief, {
+  const { DESIGN: designFile, ISSUES: issueList, TIER: tier, PART: part, KIND: kind, ...rest } = values;
+  const rendered = briefVariant(renderBrief(briefsText, positional[0], { CAP: '80', ...rest }).brief, {
     tier1: tier === '1',
     part: part === '1',
+    feature: kind === 'feature',
   });
   const numbers = issueNumbers(issueList ?? rest.N);
   if (issueList && !numbers.length)
