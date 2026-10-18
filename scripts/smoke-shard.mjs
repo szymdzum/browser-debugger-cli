@@ -12,8 +12,8 @@
  *     Replaces the timings with those recorded by
  *     `scripts/smoke-timings-reporter.mjs` (the `smoke-timings-*` artifacts of
  *     a CI run) and drops files that no longer exist. Record them at the
- *     concurrency the shards run (SMOKE_CONCURRENCY): times taken at 2 are
- *     the baseline, and smoke-timings-trend.mjs shows a step, not a regression.
+ *     concurrency the shards run (SMOKE_CONCURRENCY, default 1): times taken at
+ *     another concurrency inflate unevenly and skew the split.
  */
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

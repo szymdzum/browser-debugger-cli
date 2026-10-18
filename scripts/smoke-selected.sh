@@ -17,8 +17,9 @@
 #   SMOKE_TIMINGS file to write the seconds per test file to
 #                 (scripts/smoke-timings-reporter.mjs; empty = none)
 #   SMOKE_CONCURRENCY  how many test files run at once: a positive integer,
-#                 empty or unset = 2, anything else exits 2; 1 = one file at a
-#                 time. Each file has its own session directory and Chrome
+#                 empty or unset = 1, anything else exits 2. 2 was tried
+#                 (#807): cdp-reply-cap's 300e6-string test ran past its 28 s
+#                 limit on macOS next to another file (main run 39135430994). Each file has its own session directory and Chrome
 #                 port (named-sessions and port-identity let bdg pick one
 #                 through its machine-wide port claims, <tmpdir>/bdg-ports-<uid>)
 # Prints the spec report. In GitHub Actions, the tests that failed are also
@@ -30,7 +31,7 @@ if [ -n "${SHARD:-}" ]; then
 fi
 REPEAT="${REPEAT:-1}"
 TEST_TIMEOUT="${TEST_TIMEOUT:-300000}"
-SMOKE_CONCURRENCY="${SMOKE_CONCURRENCY:-2}"
+SMOKE_CONCURRENCY="${SMOKE_CONCURRENCY:-1}"
 case "$SMOKE_CONCURRENCY" in
   *[!0-9]* | 0)
     echo "SMOKE_CONCURRENCY must be a positive integer, got: $SMOKE_CONCURRENCY" >&2
