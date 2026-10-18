@@ -1237,3 +1237,11 @@ test('the proxy note puts the bypass inside the bdg function, never in front of 
   assert.match(note, /inside your `bdg\(\)` function/);
   assert.match(note, /Never run `env -u HTTPS_PROXY bdg …`/);
 });
+
+test('only the implementer brief gets a default CAP: reviewer and tester stay open until set', () => {
+  const placeholders = templatePlaceholders(BRIEFS);
+  const reviewer = renderBrief(BRIEFS, 'reviewer', { N: '1', MAIN: '/m', HEAD: 'h', BASE: 'b', RED: 'r', BRANCH: 'x' }).brief;
+  const tester = renderBrief(BRIEFS, 'tester', { N: '1', MAIN: '/m', HEAD: 'h', AGENT: 'a', URLS: 'u' }).brief;
+  assert.ok(unfilledPlaceholders(reviewer, placeholders).includes('<CAP>'));
+  assert.ok(unfilledPlaceholders(tester, placeholders).includes('<CAP>'));
+});

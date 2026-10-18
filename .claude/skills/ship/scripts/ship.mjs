@@ -2570,7 +2570,8 @@ function brief(argv) {
     ...given,
   };
   const { DESIGN: designFile, ISSUES: issueList, TIER: tier, PART: part, KIND: kind, ...rest } = values;
-  const rendered = briefVariant(renderBrief(briefsText, positional[0], { CAP: '80', ...rest }).brief, {
+  const defaults = positional[0] === 'implementer' ? { CAP: '80' } : {};
+  const rendered = briefVariant(renderBrief(briefsText, positional[0], { ...defaults, ...rest }).brief, {
     tier1: tier === '1',
     part: part === '1',
     feature: kind === 'feature',

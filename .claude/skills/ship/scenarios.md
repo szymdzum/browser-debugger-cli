@@ -87,7 +87,7 @@ Each scenario has an ID, the task given to the agent, how to set it up, what "wo
 - **Setup:** fixture `/shadow-forms`: a login form in an open shadow root, a newsletter form two shadow roots deep, a field component (`<x-field>`), a closed shadow root (`<x-vault>`).
 - **Works:** `dom form` lists the shadow forms; `dom fill` and `dom submit` work by label or selector; the closed root is reported as not reachable instead of failing silently.
 - **Rate:** whether `dom form` was used and trusted; workarounds for shadow roots.
-- **History:** from #456. 2026-10-19: the task names the fixture's own labels (Email, passphrase, card code; S24 cloud round: the old "user, PIN" text matched nothing).
+- **History:** from #456. 2026-10-18: the task names the fixture's own labels (Email, passphrase, card code; S24 cloud round: the old "user, PIN" text matched nothing).
 
 ### S05 JS dialogs on load and on click
 
@@ -111,7 +111,7 @@ Each scenario has an ID, the task given to the agent, how to set it up, what "wo
 - **Setup:** real site <https://the-internet.herokuapp.com/login> (`tomsmith` / `SuperSecretPassword!`; the session cookie has no Expires), or a page that stores a token in localStorage and sessionStorage. Not the fixture `/login`: it sets no session cookie and `/secure` is open to anyone, so there is nothing to restore. The smoke fixture is in `src/__tests__/smoke/auth-state.smoke.test.ts`.
 - **Works:** `bdg state save <file>` → `bdg stop` → `bdg <url> --state <file>` is still logged in; output shows counts and origins, never values; the file is 0600.
 - **Rate:** whether the agent found `state save` / `--state` from help; whether it put the file somewhere safe.
-- **History:** from #454. 2026-10-19: the fixture `/login` dropped from the setup (it sets no session cookie and `/secure` is open, so a restore can't be shown: S24 cloud round).
+- **History:** from #454. 2026-10-18: the fixture `/login` dropped from the setup (it sets no session cookie and `/secure` is open, so a restore can't be shown: S24 cloud round).
 
 ### S08 Ctrl-C during start, screenshot and `page switch`
 
