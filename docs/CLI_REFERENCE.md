@@ -1515,6 +1515,28 @@ bdg network cookies --url https://api.example.com
 bdg network cookies --json
 ```
 
+## Debug Commands
+
+### Logpoints: values at a source line
+
+A logpoint logs expressions each time a line of a loaded script runs, without pausing the page (a conditional breakpoint whose condition logs and answers `false`). bdg sets it for you: no `Debugger.*` calls, no 0-based lines, no regex.
+
+```bash
+bdg debug log app.js:8 total discount "cart.items.length"   # lp1; each expression is its own argument and label
+bdg dom click "#checkout"        # logpoint lp1 app.js:8: total=25 discount=0.5 cart.items.length=2
+bdg debug hits                   # every stored hit (structured values with --json)
+bdg debug list                   # id, place, state, expressions, hits, dropped, errors
+bdg debug clear [id]             # one logpoint, or all
+```
+
+- `bdg debug log <file:line[:col]> [expr…] [--if <expr>] [--max <n>]`: `file` is the end of a script URL (`app.js`, `dist/app.js`, or a full URL; `?query` and `#hash` of the script URL are ignored); lines and columns are 1-based. A file that two directories share binds both. No expression makes a hit counter (`debug list` shows `hits`: did this line run at all?). `--if` logs only when the expression is truthy; `--max` (default 100) caps the hits logged per page load, the rest are counted as `dropped`.
+- Ids are `lp1`, `lp2`, … for the session. At most 10 logpoints (81 above); at most 100 hits are stored per logpoint and page load, and 1000 per logpoint over all page loads.
+- `--json`: `log` gives `{ id, requested: { file, line, column? }, bound: [{ url, line, column }], state }` (`state` is `bound` or `pending`); `list` gives `{ logpoints: [{ id, file, line, expressions, state, bound, hits, dropped, errors, lastError? }] }` (`hits` and `dropped` are counted on the page now loaded, `hits` including those past `--max`); `hits` gives `{ hits: [{ id, ts, values, navigationId }], omitted? }` (the page now loaded, the newest 20; `--last n`, `--page all` for earlier loads); `clear` gives `{ cleared: [ids] }`. `values` is JSON by label (the expression text); what JSON cannot carry is `{ "$": "undefined" }` (also `NaN`, `bigint 12`, `function f`, `circular`, a class name for a DOM node or other instance, `Object` or `Array(n)` below depth 3); arrays keep 20 items, objects 20 keys, strings 10000 characters.
+- `dom click`, `fill` and `press-key` add one line per logpoint that ran during the action: `logpoint lp1 app.js:8: total=25 discount=0.5 (2 hits)` shows the values of its first hit and the number of hits; at most 3 lines, then `+N more logpoints (bdg debug hits)`. JSON: `logpoints: [{ id, file, line, values, hits }]` and `moreLogpoints`, absent when none ran. Hits count by arrival at the session, like the console errors of the report. Logpoint hits never appear in `bdg console`. `bdg status` shows `Logpoints: n` (JSON `activity.logpoints`).
+- A file no script has loaded yet is `pending` (exit 0) while the page is still loading or a request for it is in flight: the logpoint binds when the script loads. Otherwise no loaded script matching the file exits 83 with a Did you mean; a loaded script with no code at the line exits 83 with its last line; a second logpoint at the same place exits 84; a line without code that Chrome moves to the next one binds there (`lp1 bound at app.js:9 (asked 8)`, exit 0); an expression that is not valid JavaScript exits 81 with Chrome's message, and so does a location without a line, `--max` below 1, or an 11th logpoint; an unknown id in `clear` or `hits` exits 83.
+- An expression that throws on a hit (a typo, a variable not in scope at that line) is counted on the logpoint (`debug list`: `errors`, `lastError`); the page is unaffected and the hit logs nothing.
+- Values are those before the line runs (`var total = …` shows `total: undefined`). Expressions run in the page and can change it. While a logpoint exists `debugger;` statements do not pause the page (pauses are skipped and any that happens anyway is resumed). Logpoints survive reloads and same-site navigations until `bdg stop` or `debug clear`, and are set again on the tab the session moves to. The hits come through a page global binding (`__bdg_lp_7c1f`) that the app can see or overwrite. The condition still runs for each hit (about 85 microseconds): `--max` protects the output, not the speed of a hot loop. Known limits: original source positions through source maps are not supported yet (the bundle's file and line are bound, with its variable names); hits do not say which script of two same-named files they came from.
+
 ## Console Commands
 
 ### Smart Console Inspection

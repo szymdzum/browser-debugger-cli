@@ -12,6 +12,7 @@ import {
   downloadsSummary,
   sessionActiveLine,
 } from '@/ui/messages/commands.js';
+import { logpointsStatusText } from '@/ui/messages/commands.js';
 import { networkEvictedNote } from '@/ui/messages/networkMessages.js';
 import { externalChromeText, lastSessionEndText } from '@/ui/messages/session.js';
 import { noActiveSessionMessage, sessionCommand } from '@/ui/messages/sessionCommand.js';
@@ -148,6 +149,9 @@ export function formatSessionStatus(
     downloadRows.forEach((row, index) =>
       index === 0 ? fmt.keyValue('Downloads', row, 18) : fmt.text(`${' '.repeat(18)}${row}`)
     );
+    if (activity.logpoints) {
+      fmt.keyValue('Logpoints', logpointsStatusText(activity.logpoints), 18);
+    }
     if (activity.tabsWarning) fmt.keyValue('Tabs', `⚠ ${activity.tabsWarning}`, 18);
   }
 

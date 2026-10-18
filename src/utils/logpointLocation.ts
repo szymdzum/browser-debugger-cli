@@ -22,8 +22,23 @@ export interface LogpointLocation {
  * @returns Location, or undefined when it has no line or a line or column below 1
  */
 export function parseLogpointLocation(text: string): LogpointLocation | undefined {
-  void text;
-  throw new Error('not implemented');
+  const match = /^(.+?):(\d+)(?::(\d+))?$/.exec(text);
+  if (!match) return undefined;
+  const [, file = '', lineText = '', columnText] = match;
+  const line = Number(lineText);
+  const column = columnText === undefined ? undefined : Number(columnText);
+  if (line < 1 || (column !== undefined && column < 1)) return undefined;
+  return { file, line, ...(column !== undefined && { column }) };
+}
+
+/**
+ * Escape text for a regular expression.
+ *
+ * @param text - Literal text
+ * @returns Source matching the text exactly
+ */
+function escapeRegex(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**
@@ -36,6 +51,7 @@ export function parseLogpointLocation(text: string): LogpointLocation | undefine
  * @returns Regular expression source
  */
 export function scriptUrlPattern(file: string): string {
-  void file;
-  throw new Error('not implemented');
+  const path = file.replace(/\\/g, '/');
+  const spellings = [...new Set([path, encodeURI(path)])].map(escapeRegex);
+  return `(^|/)(?:${spellings.join('|')})(?:[?#].*)?$`;
 }

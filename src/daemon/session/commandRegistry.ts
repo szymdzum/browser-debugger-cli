@@ -837,6 +837,7 @@ export function createCommandRegistry(
             downloadsWarning: store.downloadsWarning,
           }),
           ...tabsWarning(tabs),
+          ...(store.logpoints.size > 0 && { logpoints: store.logpoints.size }),
         },
         navigationId: store.getCurrentNavigationId?.() ?? 0,
       };
@@ -1148,6 +1149,18 @@ export function createCommandRegistry(
       });
       return { ...restored, reload };
     },
+
+    debug_log: async (cdp, params) =>
+      store.logpoints.add(cdp, params, {
+        loading: (await readDocumentReadyState(cdp)) !== 'complete',
+        pendingUrls: [...store.pendingNetworkRequests.values()].map((p) => p.request.url),
+      }),
+
+    debug_list: async (cdp) => store.logpoints.list(cdp),
+
+    debug_hits: async (_cdp, params) => Promise.resolve(store.logpoints.hits(params)),
+
+    debug_clear: async (cdp, params) => store.logpoints.clear(cdp, params.id),
 
     page_emulate: async (cdp, params) => {
       const emulated = await emulatePage(cdp, emulation.get(), params, emulation.set);

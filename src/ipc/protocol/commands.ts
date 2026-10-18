@@ -34,6 +34,16 @@ import type {
   StateSaveData,
 } from '@/ipc/protocol/stateTypes.js';
 import type {
+  DebugClearCommand,
+  DebugClearData,
+  DebugHitsCommand,
+  DebugHitsData,
+  DebugListCommand,
+  DebugListData,
+  DebugLogCommand,
+  DebugLogData,
+} from '@/ipc/protocol/debugTypes.js';
+import type {
   PageCloseCommand,
   PageCloseData,
   PageSwitchCommand,
@@ -570,6 +580,10 @@ export type RegistryShape = {
   page_close: CommandDef<PageCloseCommand, PageCloseData>;
   state_save: CommandDef<StateSaveCommand, StateSaveData>;
   state_load: CommandDef<StateLoadCommand, StateLoadData>;
+  debug_log: CommandDef<DebugLogCommand, DebugLogData>;
+  debug_list: CommandDef<DebugListCommand, DebugListData>;
+  debug_hits: CommandDef<DebugHitsCommand, DebugHitsData>;
+  debug_clear: CommandDef<DebugClearCommand, DebugClearData>;
 };
 
 /** What `bdg page` does */
@@ -725,6 +739,10 @@ export const COMMANDS: RegistryShape = {
   dom_wait: defineCommand(),
   state_save: defineCommand(),
   state_load: defineCommand(),
+  debug_log: defineCommand(),
+  debug_list: defineCommand(),
+  debug_hits: defineCommand(),
+  debug_clear: defineCommand(),
 };
 
 /**
