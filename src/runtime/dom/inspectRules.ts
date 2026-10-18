@@ -5,7 +5,7 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import type { Protocol } from '@/connection/typed-cdp.js';
+import { sendTyped, type Protocol } from '@/connection/typed-cdp.js';
 import type { Declaration } from '@/runtime/dom/inspectCascade.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { raceTimeout } from '@/utils/async.js';
@@ -203,13 +203,10 @@ function sendMatchedRequest(
   const sentAt = Date.now();
   const request: MatchedRequest = {
     document: state.document,
-    promise: cdp
-      .send('CSS.getMatchedStylesForNode', { nodeId })
-      .then((response) => response as Protocol.CSS.GetMatchedStylesForNodeResponse)
-      .catch((error: unknown) => {
-        log.debug(`CSS.getMatchedStylesForNode failed: ${String(error)}`);
-        return 'failed' as const;
-      }),
+    promise: sendTyped(cdp, 'CSS.getMatchedStylesForNode', { nodeId }).catch((error: unknown) => {
+      log.debug(`CSS.getMatchedStylesForNode failed: ${String(error)}`);
+      return 'failed' as const;
+    }),
   };
   state.running = request.promise;
   void request.promise.then((answer) => {

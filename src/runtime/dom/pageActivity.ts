@@ -4,6 +4,7 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import { sendTyped } from '@/connection/typed-cdp.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
@@ -156,10 +157,9 @@ function listenForWindows(cdp: CDPConnection, state: ActivityState): Cleanup[] {
  * @param state - State to record into
  */
 function findMainFrame(cdp: CDPConnection, state: ActivityState): void {
-  void cdp
-    .send('Page.getFrameTree')
+  void sendTyped(cdp, 'Page.getFrameTree')
     .then((tree) => {
-      const id = (tree as { frameTree?: { frame?: { id?: string } } }).frameTree?.frame?.id;
+      const id = tree.frameTree?.frame?.id;
       if (id) state.mainFrame.add(id);
     })
     .catch((error: unknown) => log.debug(`No frame tree: ${getErrorMessage(error)}`));
