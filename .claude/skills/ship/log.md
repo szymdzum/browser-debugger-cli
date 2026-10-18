@@ -102,6 +102,10 @@ One row per merged PR, appended with `ship log <pr> …` right after the merge. 
 | 2026-10-17 | #834 | - | 1 | 0/2/2 | - | 1 | sonnet | ~120k | 797b daemon/session sendTyped (+currentTarget, plugins), signal option, typed-cdp unit test; implementer killed PIDs found by ps (2nd case after S18) |
 | 2026-10-17 | #833 | #455 | 2 | 0/2/3 | R1 2 (modal false structure, svg noise) R2 5 small | 3 | sonnet | ~700k | 455 dom audit a11y in default run (owner); 6 rules; simplify by orchestrator; round 3 owner yes; testers 4 agents bbc/gov.uk/guardian/github |
 | 2026-10-17 | #835 | - | 1 | 0/1/2 | - | 1 | sonnet | ~200k | 809b dialog-open 32.6/55.0 -> 10.0/16.7 s, action-outcomes 40.7/56.3 -> 27.4/44.5 s (Linux/macOS); interactions unchanged (spawns); ticker should-fix rejected with proof (self-updating guards history) |
+| 2026-10-18 | #839 | #838 | 1 | 0/3/5 | 0 | 2 | sonnet | 325k | #838 smoke-timings-trend; round 2 = signal kills gh child (temp dir recreated); first run feeds #529 |
+| 2026-10-18 | #841 | - | 1 | 0/2/2 | 0 | 1 | sonnet | 345k | #797c runtime/dom via sendTyped (38+9 casts → 0 +2 the regex missed); gate 1 counted the review-fix refactor: commit as simplify; /simplify nothing |
+| 2026-10-18 | #842 | - | 1 | 0/0/2 | 0 | 0 | sonnet | 181k | #809c interrupt-envelope 27.2→10.7 / 29.8→11.9 s, eval 22.2→17.1 / 24.9→21.5 s; press-check unchanged; mutations guard all; 1 extra mutation asked (test 10) |
+| 2026-10-18 | #840 | #837 | 2 | 0/4/4 | 5 | 4 | sonnet | 500k | #837 timing phases; tester bugs: data: as cache, unread 500 hidden as failed, cancelled read as server time, too-fast verdict (mine); rounds 3+4 owner yes, plus a tests-only abort-after-headers commit |
 
 ## Escaped
 
@@ -124,12 +128,14 @@ Process changes seen in one session only (SKILL.md, Keep the books: a second ses
 | Tell other threads before a series of merges to `main`, or keep dependabot merges outside ship sessions | S15 (dependabot merges cancelled two push runs); S16 (a related symptom: stale `node_modules` after dependabot merges) | both symptoms now have tool fixes (`ci-wait --push` follows the newer run; `ship snapshot` warns on stale `node_modules`), so the rule itself may not be needed |
 | A flaky test that fails three or more times in one session is fixed in that session as tier 1, not only commented on #529 | S16 (#806: "URL display is linear", 3/10 under load → 10/10) | S17: `#tall` failed a third time, but it was already in the plan: not a confirmation |
 | A third fix round that removes code (not only tests) needs no owner's yes | S15 (#800 round 3 removal) | the tests-only half became a rule in S17 |
-| A timing PR also passes the full macOS CI shard under load, not only the repeat run | S17 (#812: repeat ×10 green, the shard red on the case where nothing was kept) | S20 #835: ran (`--macos`) next to the repeat, both green, cost nothing; not a confirmation |
+| A timing PR also passes the full macOS CI shard under load, not only the repeat run | S17 (#812: repeat ×10 green, the shard red on the case where nothing was kept) | S20 #835, S21 #842: ran next to the repeat, green, cost nothing; not confirmations |
 | Ask for merge authority with AskUserQuestion (yes/no options), so a blanket "OK" can't count as a merge yes | S17 (a first "All Ok" didn't count; #813 waited ~1 h ready to merge) | until then, the session prompt can grant it: "Merge authority: yes" |
 | Remove: the fresh-agent test for a flake fix that changes no output | S17 (#812, #813: 0 findings) | sessions with no catch: 1 of 3; S20: no flake fixes, not counted |
 | A test builds its own session directory instead of using `testHome` (brief rule or a lint) | S18 (#819: found only by merge-check) | S19: not seen |
 | PRs sharing one registry (`renames.ts`, a docs table) run in sequence or each from a fresh `main`, not in parallel with rebases | S19 (3 rebases, each a CI run; one broke a docs row, caught on the reviewer's re-check) | same family as the "Shared registries" trap; pulls against the parallel same-file rule (S15) for registries; S20: no shared registry |
 | Before a release that follows renames, a docs sweep with a reviewer | S19 (#828: found the silent `--nth` alias and two stale sentences) | |
-| A tier 2 feature over ~500 product lines gets 3 fresh agents in round 1, not 2, one of them on real sites | S20 (#833: the bbc.com modal and the SVG icons came from the real-site task; round 2 found 5 more) | |
-| The reviewer brief says when a `refactor:` commit came from the orchestrator's `/simplify`: check bounds and parallelism | S20 (#833: an unbounded `Promise.all`, ~1500 CDP calls in flight, caught by luck) | |
+| A tier 2 feature over ~500 product lines gets 3 fresh agents in round 1, not 2, one of them on real sites | S20 (#833: the bbc.com modal and the SVG icons came from the real-site task; round 2 found 5 more) | S21: n/a (#840 ~360 lines); both rounds of 2 agents found bugs, which argues for the second round more than a bigger first |
+| The reviewer brief says when a `refactor:` commit came from the orchestrator's `/simplify`: check bounds and parallelism | S20 (#833: an unbounded `Promise.all`, ~1500 CDP calls in flight, caught by luck) | S21: /simplify changed nothing, no such commit |
+| For a feature that states a cause (a verdict), the orchestrator checks the edge cases on the final head before merging: zeros, an abort, cache, `data:` URLs | S21 (#840: "0 of 1 ms … 6 connections", found by hand after four rounds) | same family as the "Heuristics pass their own fixtures" trap |
+| Remove: the orchestrator's `/simplify` for 200–500 product lines | S21 (#840 265 lines, #841 300 lines: nothing found) | sessions with nothing found: 1 of 3; S19 #825 (454 lines) did find reuse |
 
