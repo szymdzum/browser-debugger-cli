@@ -16,9 +16,11 @@
 #                 shard of a run alike)
 #   SMOKE_TIMINGS file to write the seconds per test file to
 #                 (scripts/smoke-timings-reporter.mjs; empty = none)
-#   SMOKE_CONCURRENCY  how many test files run at once (default: 2). Each file
-#                 has its own session directory, Chrome and ports, so files do
-#                 not share state; 1 restores one file at a time
+#   SMOKE_CONCURRENCY  how many test files run at once: a positive integer,
+#                 empty or unset = 2, anything else exits 2; 1 = one file at a
+#                 time. Each file has its own session directory and Chrome
+#                 port (named-sessions and port-identity let bdg pick one
+#                 through its machine-wide port claims, <tmpdir>/bdg-ports-<uid>)
 # Prints the spec report. In GitHub Actions, the tests that failed are also
 # listed in the job summary, per run. Exits non-zero when any run failed.
 set -u
@@ -30,7 +32,7 @@ REPEAT="${REPEAT:-1}"
 TEST_TIMEOUT="${TEST_TIMEOUT:-300000}"
 SMOKE_CONCURRENCY="${SMOKE_CONCURRENCY:-2}"
 case "$SMOKE_CONCURRENCY" in
-  '' | *[!0-9]* | 0)
+  *[!0-9]* | 0)
     echo "SMOKE_CONCURRENCY must be a positive integer, got: $SMOKE_CONCURRENCY" >&2
     exit 2
     ;;
