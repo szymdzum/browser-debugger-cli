@@ -9,7 +9,7 @@
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import { trackInFlightRequests } from '@/connection/inFlightRequests.js';
-import type { Protocol } from '@/connection/typed-cdp.js';
+import { sendTyped } from '@/connection/typed-cdp.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { delay } from '@/utils/async.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -111,10 +111,10 @@ async function waitForLoadEvent(
   await cdp.send('Page.enable');
 
   try {
-    const result = (await cdp.send('Runtime.evaluate', {
+    const result = await sendTyped(cdp, 'Runtime.evaluate', {
       expression: 'document.readyState',
       returnByValue: true,
-    })) as Protocol.Runtime.EvaluateResponse;
+    });
 
     if (result.result.value === 'complete') {
       return;
@@ -233,10 +233,10 @@ async function waitForQuiet(
  * @returns Milliseconds since the last mutation (0 when unknown)
  */
 async function msSinceLastMutation(cdp: CDPConnection): Promise<number> {
-  const check = (await cdp.send('Runtime.evaluate', {
+  const check = await sendTyped(cdp, 'Runtime.evaluate', {
     expression: `${INSTALL_MUTATION_OBSERVER_JS}; Date.now() - window.__bdg_lastMutation`,
     returnByValue: true,
-  })) as Protocol.Runtime.EvaluateResponse;
+  });
   const value: unknown = check.result.value;
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }

@@ -8,6 +8,7 @@
 import { connectToBrowser } from '@/connection/browserConnection.js';
 import { listPageTabs, matchTab } from '@/connection/browserTabs.js';
 import type { CDPConnection } from '@/connection/cdp.js';
+import { sendToBrowserTyped } from '@/connection/typed-cdp.js';
 import { ChromeLaunchError } from '@/connection/errors.js';
 import { launchChrome } from '@/connection/launcher.js';
 import { HTTP_LOCALHOST } from '@/constants.js';
@@ -242,10 +243,10 @@ export async function attachToBrowserTab(
       tab.targetId,
       endpoint
     );
-    const { sessionId } = (await cdp.sendToBrowser('Target.attachToTarget', {
+    const { sessionId } = await sendToBrowserTyped(cdp, 'Target.attachToTarget', {
       targetId: tab.targetId,
       flatten: true,
-    })) as { sessionId: string };
+    });
     cdp.useDefaultSession(sessionId);
     telemetryStore.setTargetInfo({
       id: tab.targetId,

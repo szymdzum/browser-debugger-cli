@@ -7,7 +7,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import { sendTyped, type Protocol } from '@/connection/typed-cdp.js';
+import { sendTyped } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import {
   fileNotFoundError,
@@ -153,18 +153,13 @@ export async function fillElement(
       userGesture: true,
     });
 
-    const cdpResponse = response as {
-      exceptionDetails?: Protocol.Runtime.ExceptionDetails;
-      result?: { value?: unknown };
-    };
-
-    if (cdpResponse.exceptionDetails) {
-      throwIfInvalidSelector(cdpResponse.exceptionDetails, selector);
-      throw new ActionScriptError('fill', exceptionSummary(cdpResponse.exceptionDetails), selector);
+    if (response.exceptionDetails) {
+      throwIfInvalidSelector(response.exceptionDetails, selector);
+      throw new ActionScriptError('fill', exceptionSummary(response.exceptionDetails), selector);
     }
 
-    if (cdpResponse.result?.value && isFillResult(cdpResponse.result.value)) {
-      const result: FillOutcome = cdpResponse.result.value;
+    if (response.result?.value && isFillResult(response.result.value)) {
+      const result: FillOutcome = response.result.value;
       if (result.tooLong !== undefined)
         return tooLongFailure({ ...result, tooLong: result.tooLong }, value);
       if (result.optionNotFound !== undefined)
@@ -833,24 +828,19 @@ export async function clickElement(
       userGesture: true,
     });
 
-    const cdpResponse = response as {
-      exceptionDetails?: Protocol.Runtime.ExceptionDetails;
-      result?: { value?: unknown };
-    };
-
-    if (cdpResponse.exceptionDetails) {
-      throwIfInvalidSelector(cdpResponse.exceptionDetails, selector);
+    if (response.exceptionDetails) {
+      throwIfInvalidSelector(response.exceptionDetails, selector);
       throw new ActionScriptError(
         POINTER_ACTION_NOUN[action],
-        exceptionSummary(cdpResponse.exceptionDetails),
+        exceptionSummary(response.exceptionDetails),
         selector
       );
     }
 
-    if (cdpResponse.result?.value && isClickResult(cdpResponse.result.value)) {
+    if (response.result?.value && isClickResult(response.result.value)) {
       return await performClick(
         cdp,
-        cdpResponse.result.value,
+        response.result.value,
         action,
         options.strict === true,
         options.listIndex

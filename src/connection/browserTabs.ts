@@ -5,6 +5,7 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import { sendToBrowserTyped } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import {
   noTabMatchesError,
@@ -54,9 +55,7 @@ export function pageTabs(targetInfos: readonly BrowserTargetInfo[]): PageTab[] {
  * @returns Page tabs
  */
 export async function listPageTabs(cdp: CDPConnection): Promise<PageTab[]> {
-  const { targetInfos } = (await cdp.sendToBrowser('Target.getTargets')) as {
-    targetInfos: BrowserTargetInfo[];
-  };
+  const { targetInfos } = await sendToBrowserTyped(cdp, 'Target.getTargets');
   return pageTabs(targetInfos);
 }
 

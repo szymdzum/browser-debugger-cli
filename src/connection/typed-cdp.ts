@@ -190,6 +190,24 @@ export async function sendTyped<T extends keyof ProtocolMapping.Commands>(
 }
 
 /**
+ * Send a type-safe CDP command to the browser itself (no page session), as
+ * {@link sendTyped} does for a page.
+ *
+ * @param cdp - Anything with a `sendToBrowser`
+ * @param method - CDP method name
+ * @param params - Command parameters (type-checked), if any
+ * @returns Promise resolving to the command's response (type-safe)
+ */
+export async function sendToBrowserTyped<T extends keyof ProtocolMapping.Commands>(
+  cdp: Pick<CDPConnection, 'sendToBrowser'>,
+  method: T,
+  params?: CommandParams<T>
+): Promise<CommandReturn<T>> {
+  const result = await cdp.sendToBrowser(method, params);
+  return result as CommandReturn<T>;
+}
+
+/**
  * Re-export Protocol namespace for easy access to types.
  *
  * @example
