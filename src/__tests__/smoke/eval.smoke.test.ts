@@ -99,7 +99,7 @@ void describe('eval', () => {
   let fixture: FixtureServer;
 
   before(async () => {
-    process.env['BDG_TEST_EVAL_TIMEOUT_MS'] = '2000';
+    process.env['BDG_TEST_EVAL_TIMEOUT_MS'] = '1000';
     process.env['BDG_TEST_EVAL_GRACE_MS'] = '1000';
     await cleanupAllSessions();
     fixture = await startFixtureServer();
@@ -185,7 +185,7 @@ void describe('eval', () => {
     for (const script of ['new Promise(() => {})', 'await new Promise(() => {})']) {
       const { exitCode, error } = await evaluate(script, 60000);
       assert.equal(exitCode, 102, script);
-      assert.match(error ?? '', /The awaited promise did not settle within 2s/, script);
+      assert.match(error ?? '', /The awaited promise did not settle within 1s/, script);
     }
   });
 
