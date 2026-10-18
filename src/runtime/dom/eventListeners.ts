@@ -11,7 +11,7 @@
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPProtocolError } from '@/connection/errors.js';
-import type { Protocol } from '@/connection/typed-cdp.js';
+import { sendTyped, type Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import { eventListenersUnavailableError, operationFailedError } from '@/errors/messages.js';
 import type { DomListenersCommand } from '@/ipc/protocol/commands.js';
@@ -189,9 +189,9 @@ async function findSelectorMatch(
     throw missingElementError(params, Number(response.result.value ?? 0));
   }
   const [count, element] = await arrayItems(cdp, response.result.objectId);
-  const { node } = (await cdp.send('DOM.describeNode', {
-    objectId: element?.objectId,
-  })) as Protocol.DOM.DescribeNodeResponse;
+  const { node } = await sendTyped(cdp, 'DOM.describeNode', {
+    ...(element?.objectId !== undefined && { objectId: element.objectId }),
+  });
   return { matchCount: Number(count?.value ?? 1), backendNodeId: node.backendNodeId };
 }
 
@@ -209,19 +209,21 @@ async function nodeChain(
   backendNodeId: number,
   objectGroup: string
 ): Promise<ChainObject[] | null> {
-  const resolved = (await cdp
-    .send('DOM.resolveNode', { backendNodeId, objectGroup })
-    .catch((error: unknown) => {
-      log.debug(`Node ${backendNodeId} not resolved: ${getErrorMessage(error)}`);
-      return {};
-    })) as Partial<Protocol.DOM.ResolveNodeResponse>;
+  const resolved: Partial<Protocol.DOM.ResolveNodeResponse> = await sendTyped(
+    cdp,
+    'DOM.resolveNode',
+    { backendNodeId, objectGroup }
+  ).catch((error: unknown) => {
+    log.debug(`Node ${backendNodeId} not resolved: ${getErrorMessage(error)}`);
+    return {};
+  });
   const objectId = resolved.object?.objectId;
   if (!objectId) return null;
-  const response = (await cdp.send('Runtime.callFunctionOn', {
+  const response = await sendTyped(cdp, 'Runtime.callFunctionOn', {
     objectId,
     functionDeclaration: CHAIN_JS,
     objectGroup,
-  })) as Protocol.Runtime.CallFunctionOnResponse;
+  });
   if (!response.result.objectId) return null;
   const items = await arrayItems(cdp, response.result.objectId);
   return items.flatMap((item) =>
@@ -242,10 +244,10 @@ async function arrayItems(
   cdp: CDPConnection,
   arrayId: string
 ): Promise<Array<Protocol.Runtime.RemoteObject | undefined>> {
-  const { result } = (await cdp.send('Runtime.getProperties', {
+  const { result } = await sendTyped(cdp, 'Runtime.getProperties', {
     objectId: arrayId,
     ownProperties: true,
-  })) as Protocol.Runtime.GetPropertiesResponse;
+  });
   return result
     .filter((property) => /^\d+$/.test(property.name))
     .sort((a, b) => Number(a.name) - Number(b.name))
@@ -267,10 +269,10 @@ async function collectListeners(
   try {
     return await Promise.all(
       chain.map(async (entry, position) => {
-        const { listeners } = (await cdp.send('DOMDebugger.getEventListeners', {
+        const { listeners } = await sendTyped(cdp, 'DOMDebugger.getEventListeners', {
           objectId: entry.objectId,
           depth: 0,
-        })) as Protocol.DOMDebugger.GetEventListenersResponse;
+        });
         return { position, entry, listeners };
       })
     );
@@ -328,8 +330,8 @@ async function pageDetails(
   const handlers = listeners.map(({ listener }) => listener.handler);
   try {
     const targets = await Promise.all(handlers.map((handler) => boundTarget(cdp, handler)));
-    const response = (await cdp.send('Runtime.callFunctionOn', {
-      objectId: chain[0]?.objectId,
+    const response = await sendTyped(cdp, 'Runtime.callFunctionOn', {
+      ...(chain[0]?.objectId !== undefined && { objectId: chain[0].objectId }),
       functionDeclaration: ELEMENT_INFO_JS,
       arguments: [
         {
@@ -345,7 +347,7 @@ async function pageDetails(
         ...targets.map(objectArgument),
       ],
       objectGroup,
-    })) as Protocol.Runtime.CallFunctionOnResponse;
+    });
     const [infoObject, ...fns] = await arrayItems(cdp, response.result.objectId ?? '');
     const info = await valueOf<ElementInfo>(cdp, infoObject?.objectId ?? '');
     return toPageDetails(info, await Promise.all(fns.map((fn) => handlerSource(cdp, fn))));
@@ -382,10 +384,10 @@ async function internalProperty(
   name: string
 ): Promise<Protocol.Runtime.RemoteObject | undefined> {
   try {
-    const { internalProperties = [] } = (await cdp.send('Runtime.getProperties', {
+    const { internalProperties = [] } = await sendTyped(cdp, 'Runtime.getProperties', {
       objectId,
       ownProperties: true,
-    })) as Protocol.Runtime.GetPropertiesResponse;
+    });
     return internalProperties.find((property) => property.name === name)?.value;
   } catch (error) {
     log.debug(`${name} not read: ${getErrorMessage(error)}`);
@@ -417,11 +419,11 @@ async function boundTarget(
  * @returns Its JSON value
  */
 async function valueOf<T>(cdp: CDPConnection, objectId: string): Promise<T> {
-  const response = (await cdp.send('Runtime.callFunctionOn', {
+  const response = await sendTyped(cdp, 'Runtime.callFunctionOn', {
     objectId,
     functionDeclaration: 'function () { return this; }',
     returnByValue: true,
-  })) as Protocol.Runtime.CallFunctionOnResponse;
+  });
   return response.result.value as T;
 }
 

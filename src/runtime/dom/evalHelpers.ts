@@ -1,6 +1,6 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPProtocolError } from '@/connection/errors.js';
-import type { Protocol } from '@/connection/typed-cdp.js';
+import { sendTyped, type Protocol } from '@/connection/typed-cdp.js';
 import { EVAL_FULL_MAX_BYTES, EVAL_TRANSFER_MAX_BYTES } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
 import {
@@ -153,11 +153,11 @@ async function settlePromise(
   script: string
 ): Promise<Protocol.Runtime.RemoteObject> {
   if (result.subtype !== 'promise' || !result.objectId) return result;
-  const settled = (await cdp.send('Runtime.awaitPromise', {
+  const settled = await sendTyped(cdp, 'Runtime.awaitPromise', {
     promiseObjectId: result.objectId,
     returnByValue: false,
     generatePreview: true,
-  })) as Protocol.Runtime.AwaitPromiseResponse;
+  });
   if (settled.exceptionDetails) {
     const err = scriptExecutionError(describeEvalFailure(settled.exceptionDetails), script);
     throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SCRIPT_ERROR);
@@ -627,12 +627,12 @@ async function copyByValue(
   args?: Protocol.Runtime.CallArgument[]
 ): Promise<{ value: unknown } | undefined> {
   try {
-    const copy = (await cdp.send('Runtime.callFunctionOn', {
+    const copy = await sendTyped(cdp, 'Runtime.callFunctionOn', {
       objectId,
       functionDeclaration,
       returnByValue: true,
       ...(args && { arguments: args }),
-    })) as { result?: { value?: unknown }; exceptionDetails?: unknown };
+    });
     if (!copy.exceptionDetails) return { value: copy.result?.value };
   } catch (error) {
     log.debug(`Could not copy eval result by value: ${getErrorMessage(error)}`);

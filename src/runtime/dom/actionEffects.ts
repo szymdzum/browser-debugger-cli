@@ -15,6 +15,7 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import { sendTyped } from '@/connection/typed-cdp.js';
 import type {
   ActionEffects,
   AlsoChanging,
@@ -1081,11 +1082,8 @@ function disposeWatch(watch: Watch): void {
  */
 async function evaluate<T>(cdp: CDPConnection, expression: string): Promise<T | undefined> {
   try {
-    const reply = (await cdp.send('Runtime.evaluate', { expression, returnByValue: true })) as {
-      result?: { value?: T };
-      exceptionDetails?: { text?: string };
-    };
-    if (!reply.exceptionDetails) return reply.result?.value;
+    const reply = await sendTyped(cdp, 'Runtime.evaluate', { expression, returnByValue: true });
+    if (!reply.exceptionDetails) return reply.result?.value as T | undefined;
     log.debug(`Effects script failed: ${reply.exceptionDetails.text}`);
   } catch (error) {
     log.debug(`Effects script not run: ${getErrorMessage(error)}`);

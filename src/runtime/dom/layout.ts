@@ -9,7 +9,7 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import type { Protocol } from '@/connection/typed-cdp.js';
+import { sendTyped, type Protocol } from '@/connection/typed-cdp.js';
 import { LAYOUT_ELEMENT_LIMIT } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
 import { operationFailedError } from '@/errors/messages.js';
@@ -355,12 +355,12 @@ async function measureNode(
   )) as Partial<Protocol.DOM.ResolveNodeResponse>;
   const objectId = resolved.object?.objectId;
   if (!objectId) return { count: 0, elements: [] };
-  const response = (await cdp.send('Runtime.callFunctionOn', {
+  const response = await sendTyped(cdp, 'Runtime.callFunctionOn', {
     objectId,
     functionDeclaration: LAYOUT_JS,
     arguments: [null, null, null, 1].map((value) => ({ value })),
     returnByValue: true,
-  })) as Protocol.Runtime.CallFunctionOnResponse;
+  });
   const raw = (response.result.value as RawLayout | undefined) ?? { count: 0, elements: [] };
   if (!raw.crossOriginFrame) return raw;
   const owner = await findFrameOwner(cdp, objectId);

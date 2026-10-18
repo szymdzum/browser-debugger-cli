@@ -15,7 +15,7 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import type { Protocol } from '@/connection/typed-cdp.js';
+import { sendTyped, type Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import {
   operationFailedError,
@@ -283,12 +283,12 @@ async function findElement(
     callOn<number>(cdp, matches, 'function () { return this.length; }', []),
     callOn<number>(cdp, matches, PICK_MATCH_JS, [params.index ?? null]),
   ]);
-  const element = (await cdp.send('Runtime.callFunctionOn', {
+  const element = await sendTyped(cdp, 'Runtime.callFunctionOn', {
     objectId: matches,
     functionDeclaration: 'function (i) { return this[i] || null; }',
     arguments: [{ value: index ?? 0 }],
     objectGroup,
-  })) as Protocol.Runtime.CallFunctionOnResponse;
+  });
   const objectId = element.result.objectId;
   if (!objectId) throw missingElementError(params, count ?? 0);
   return { objectId, count: count ?? 0, index: index ?? 0, ...pickedHow(params, count, index) };
@@ -386,12 +386,12 @@ async function callOn<T>(
   functionDeclaration: string,
   args: unknown[]
 ): Promise<T | undefined> {
-  const response = (await cdp.send('Runtime.callFunctionOn', {
+  const response = await sendTyped(cdp, 'Runtime.callFunctionOn', {
     objectId,
     functionDeclaration,
     arguments: args.map((value) => ({ value })),
     returnByValue: true,
-  })) as Protocol.Runtime.CallFunctionOnResponse;
+  });
   if (response.exceptionDetails) {
     log.debug(
       `Page function failed: ${response.exceptionDetails.exception?.description ?? response.exceptionDetails.text}`
@@ -481,12 +481,12 @@ async function relatedNode(
   which: 'parent' | 'textHolder' | 'fontHolder',
   objectGroup: string
 ): Promise<number | undefined> {
-  const response = (await cdp.send('Runtime.callFunctionOn', {
+  const response = await sendTyped(cdp, 'Runtime.callFunctionOn', {
     objectId,
     functionDeclaration: RELATED_NODE_JS,
     arguments: [{ value: which }],
     objectGroup,
-  })) as Protocol.Runtime.CallFunctionOnResponse;
+  });
   const id = response.result.objectId;
   return id ? (await describe(cdp, id)).backendNodeId : undefined;
 }
@@ -538,9 +538,9 @@ async function relatedNodes(
  * @returns CDP node description
  */
 async function describe(cdp: CDPConnection, objectId: string): Promise<Protocol.DOM.Node> {
-  const { node } = (await cdp.send('DOM.describeNode', {
+  const { node } = await sendTyped(cdp, 'DOM.describeNode', {
     objectId,
-  })) as Protocol.DOM.DescribeNodeResponse;
+  });
   return node;
 }
 
@@ -739,9 +739,9 @@ async function pushNodes(
   backendNodeIds: number[]
 ): Promise<Map<number, number>> {
   const push = async (): Promise<number[]> => {
-    const response = (await cdp.send('DOM.pushNodesByBackendIdsToFrontend', {
+    const response = await sendTyped(cdp, 'DOM.pushNodesByBackendIdsToFrontend', {
       backendNodeIds,
-    })) as Protocol.DOM.PushNodesByBackendIdsToFrontendResponse;
+    });
     return response.nodeIds;
   };
   let nodeIds = await push().catch(() => [] as number[]);
@@ -765,12 +765,12 @@ async function pushNodes(
  */
 async function computedStyle(cdp: CDPConnection, nodeId: number | undefined): Promise<StyleMap> {
   if (!nodeId) return {};
-  const response = (await cdp
-    .send('CSS.getComputedStyleForNode', { nodeId })
-    .catch((error: unknown) => {
+  const response = await sendTyped(cdp, 'CSS.getComputedStyleForNode', { nodeId }).catch(
+    (error: unknown) => {
       log.debug(`Computed style not read: ${getErrorMessage(error)}`);
       return { computedStyle: [] };
-    })) as Protocol.CSS.GetComputedStyleForNodeResponse;
+    }
+  );
   return Object.fromEntries(response.computedStyle.map((entry) => [entry.name, entry.value]));
 }
 
@@ -786,12 +786,12 @@ async function platformFonts(
   nodeId: number | undefined
 ): Promise<PlatformFont[]> {
   if (!nodeId) return [];
-  const response = (await cdp
-    .send('CSS.getPlatformFontsForNode', { nodeId })
-    .catch((error: unknown) => {
+  const response = await sendTyped(cdp, 'CSS.getPlatformFontsForNode', { nodeId }).catch(
+    (error: unknown) => {
       log.debug(`Platform fonts not read: ${getErrorMessage(error)}`);
       return { fonts: [] };
-    })) as Protocol.CSS.GetPlatformFontsForNodeResponse;
+    }
+  );
   return response.fonts;
 }
 
@@ -807,9 +807,9 @@ async function borderBoxSize(
   backendNodeId: number
 ): Promise<{ w: number; h: number } | undefined> {
   try {
-    const { model } = (await cdp.send('DOM.getBoxModel', {
+    const { model } = await sendTyped(cdp, 'DOM.getBoxModel', {
       backendNodeId,
-    })) as Protocol.DOM.GetBoxModelResponse;
+    });
     const [x1 = 0, y1 = 0, x2 = 0, y2 = 0, , , x4 = 0, y4 = 0] = model.border;
     return { w: Math.hypot(x2 - x1, y2 - y1), h: Math.hypot(x4 - x1, y4 - y1) };
   } catch (error) {

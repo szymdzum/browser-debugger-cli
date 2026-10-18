@@ -7,7 +7,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import type { Protocol } from '@/connection/typed-cdp.js';
+import { sendTyped, type Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import {
   fileNotFoundError,
@@ -229,11 +229,11 @@ async function insertAsUser(
 ): Promise<FillOutcome> {
   const { insertText: _typed, ...result } = pending;
   const reason = await typeText(cdp, fill.value);
-  const response = (await cdp.send('Runtime.evaluate', {
+  const response = await sendTyped(cdp, 'Runtime.evaluate', {
     expression: `(${FILL_INSERTED_FUNCTION})(${reason === null ? 'true' : 'false'})`,
     returnByValue: true,
     userGesture: true,
-  })) as { result?: { value?: unknown }; exceptionDetails?: Protocol.Runtime.ExceptionDetails };
+  });
   if (response.exceptionDetails) {
     throw new ActionScriptError('fill', exceptionSummary(response.exceptionDetails), fill.selector);
   }
@@ -270,10 +270,10 @@ async function insertAsUser(
  * @returns Null when typed, else why not
  */
 async function typeText(cdp: CDPConnection, value: string): Promise<'unfocused' | 'failed' | null> {
-  const check = (await cdp.send('Runtime.evaluate', {
+  const check = await sendTyped(cdp, 'Runtime.evaluate', {
     expression: FILL_FOCUS_CHECK_SCRIPT,
     returnByValue: true,
-  })) as { result?: { value?: unknown } };
+  });
   if (check.result?.value !== true) return 'unfocused';
   try {
     await cdp.send('Input.insertText', { text: value });
@@ -300,13 +300,12 @@ const READ_BACK_TIMEOUT_MS = 1000;
  */
 async function withReadBack(cdp: CDPConnection, result: FillResult): Promise<FillResult> {
   if (!result.success) return result;
-  const readBack = cdp
-    .send('Runtime.evaluate', {
-      expression: FILL_READ_BACK_SCRIPT,
-      returnByValue: true,
-      awaitPromise: true,
-    })
-    .then((response) => (response as { result?: { value?: unknown } }).result?.value)
+  const readBack = sendTyped(cdp, 'Runtime.evaluate', {
+    expression: FILL_READ_BACK_SCRIPT,
+    returnByValue: true,
+    awaitPromise: true,
+  })
+    .then((response): unknown => response.result?.value)
     .catch((error: unknown) => {
       log.debug(`Filled value not read back: ${getErrorMessage(error)}`);
       return undefined;
@@ -428,11 +427,11 @@ async function setFileInput(
       const err = fillableElementNotFoundError(selector);
       return { success: false, error: err.message, suggestion: err.suggestion };
     }
-    const multiple = (await cdp.send('Runtime.callFunctionOn', {
+    const multiple = await sendTyped(cdp, 'Runtime.callFunctionOn', {
       objectId,
       functionDeclaration: 'function () { return this.multiple; }',
       returnByValue: true,
-    })) as { result?: { value?: unknown } };
+    });
     if (files.length > 1 && multiple.result?.value !== true) {
       const err = singleFileInputError(files.length);
       return {
@@ -564,16 +563,12 @@ interface PressOutcome {
  */
 async function readPressProbe(cdp: CDPConnection, stop: boolean): Promise<PressOutcome> {
   try {
-    const read = cdp.send('Runtime.evaluate', {
+    const read = sendTyped(cdp, 'Runtime.evaluate', {
       expression: stop ? PRESS_PROBE_READ_SCRIPT : PRESS_PROBE_PEEK_SCRIPT,
       returnByValue: true,
     });
-    const response = (await (stop ? withinSettleTime(read) : read)) as {
-      result?: {
-        value?: { reached?: unknown; landedOn?: unknown; replaced?: unknown; releasedOn?: unknown };
-      };
-    } | null;
-    const value = response?.result?.value;
+    const response = await (stop ? withinSettleTime(read) : read);
+    const value = response?.result?.value as PressProbeValue | undefined;
     if (value?.reached !== false) {
       return {
         reached: true,
@@ -601,6 +596,14 @@ async function readPressProbe(cdp: CDPConnection, stop: boolean): Promise<PressO
 async function withinSettleTime<T>(pending: Promise<T>): Promise<T | null> {
   pending.catch((error: unknown) => log.debug(`Late press probe read: ${getErrorMessage(error)}`));
   return raceTimeout(pending, PRESS_SETTLE_TIMEOUT_MS, { onTimeout: () => null });
+}
+
+/** What the press probe scripts return. */
+interface PressProbeValue {
+  reached?: unknown;
+  landedOn?: unknown;
+  replaced?: unknown;
+  releasedOn?: unknown;
 }
 
 /**
@@ -777,14 +780,11 @@ async function performClick(
     releaseClickTarget(cdp);
     refuseUnreachable(result, action, { reason: reason ?? null }, listIndex);
   }
-  const response = (await cdp.send('Runtime.evaluate', {
+  const response = await sendTyped(cdp, 'Runtime.evaluate', {
     expression: domFallbackScript(action),
     returnByValue: true,
     userGesture: true,
-  })) as {
-    exceptionDetails?: Protocol.Runtime.ExceptionDetails;
-    result?: { value?: unknown };
-  };
+  });
   if (response.exceptionDetails) {
     throw new ActionScriptError(
       POINTER_ACTION_NOUN[action],

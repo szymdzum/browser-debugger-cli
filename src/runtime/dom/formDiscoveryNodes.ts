@@ -12,7 +12,7 @@
  * field are named as not inspectable.
  */
 
-import type { Protocol } from '@/connection/typed-cdp.js';
+import { sendTyped, type Protocol } from '@/connection/typed-cdp.js';
 import { FORM_DISCOVERY_SCRIPT, isRawFormData } from '@/runtime/dom/formDiscovery.js';
 import type { RawFormData } from '@/runtime/dom/formTypes.js';
 import { evaluateInBdgWorld } from '@/runtime/page/bdgWorld.js';
@@ -134,11 +134,11 @@ function logged<T>(empty: T): (error: unknown) => T {
  * @returns Its `data`
  */
 async function discoveryData(cdp: CDPSender, objectId: string): Promise<unknown> {
-  const response = (await cdp.send('Runtime.callFunctionOn', {
+  const response = await sendTyped(cdp, 'Runtime.callFunctionOn', {
     objectId,
     functionDeclaration: DATA_FUNCTION,
     returnByValue: true,
-  })) as Protocol.Runtime.CallFunctionOnResponse;
+  });
   return response.result.value;
 }
 
@@ -150,10 +150,10 @@ async function discoveryData(cdp: CDPSender, objectId: string): Promise<unknown>
  * @returns Object id by property name (array entries by index)
  */
 async function ownObjectIds(cdp: CDPSender, objectId: string): Promise<Map<string, string>> {
-  const response = (await cdp.send('Runtime.getProperties', {
+  const response = await sendTyped(cdp, 'Runtime.getProperties', {
     objectId,
     ownProperties: true,
-  })) as Protocol.Runtime.GetPropertiesResponse;
+  });
   const ids = new Map<string, string>();
   for (const property of response.result) {
     if (property.value?.objectId) ids.set(property.name, property.value.objectId);
@@ -195,9 +195,9 @@ async function backendNodeIds(
   return Promise.all(
     Array.from(entries, async (objectId) => {
       if (!objectId) return undefined;
-      const { node } = (await cdp.send('DOM.describeNode', {
+      const { node } = await sendTyped(cdp, 'DOM.describeNode', {
         objectId,
-      })) as Protocol.DOM.DescribeNodeResponse;
+      });
       return node.backendNodeId;
     })
   );
@@ -219,18 +219,18 @@ async function closedShadowHosts(
   );
   const names = await Promise.all(
     entries.map(async (objectId) => {
-      const { node } = (await cdp.send('DOM.describeNode', {
+      const { node } = await sendTyped(cdp, 'DOM.describeNode', {
         objectId,
         depth: 1,
         pierce: true,
-      })) as Protocol.DOM.DescribeNodeResponse;
+      });
       const closed = node.shadowRoots?.find((root) => root.shadowRootType === 'closed');
       if (!closed) return undefined;
-      const { node: root } = (await cdp.send('DOM.describeNode', {
+      const { node: root } = await sendTyped(cdp, 'DOM.describeNode', {
         backendNodeId: closed.backendNodeId,
         depth: -1,
         pierce: true,
-      })) as Protocol.DOM.DescribeNodeResponse;
+      });
       return holdsField(root) ? shortName(node) : undefined;
     })
   );

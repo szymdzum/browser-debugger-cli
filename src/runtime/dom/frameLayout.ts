@@ -11,7 +11,7 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import type { Protocol } from '@/connection/typed-cdp.js';
+import { sendTyped, type Protocol } from '@/connection/typed-cdp.js';
 import type { LayoutBox } from '@/ipc/protocol/domTypes.js';
 import { mapBox, type FrameMapping } from '@/runtime/dom/frameScopedConnection.js';
 import type { RawLayout } from '@/runtime/dom/layout.js';
@@ -38,14 +38,14 @@ export function childFrameIds(tree: Protocol.Page.FrameTree | undefined): string
  * @returns The document's backend node id, if it could be read
  */
 async function ownerDocumentId(cdp: CDPConnection, objectId: string): Promise<number | undefined> {
-  const doc = (await cdp.send('Runtime.callFunctionOn', {
+  const doc = await sendTyped(cdp, 'Runtime.callFunctionOn', {
     objectId,
     functionDeclaration: 'function () { return this.ownerDocument; }',
-  })) as Protocol.Runtime.CallFunctionOnResponse;
+  });
   if (!doc.result.objectId) return undefined;
-  const { node } = (await cdp.send('DOM.describeNode', {
+  const { node } = await sendTyped(cdp, 'DOM.describeNode', {
     objectId: doc.result.objectId,
-  })) as Protocol.DOM.DescribeNodeResponse;
+  });
   return node.backendNodeId;
 }
 
@@ -62,16 +62,14 @@ export async function findFrameOwner(
 ): Promise<number | undefined> {
   try {
     const documentId = await ownerDocumentId(cdp, objectId);
-    const { frameTree } = (await cdp.send(
-      'Page.getFrameTree'
-    )) as Protocol.Page.GetFrameTreeResponse;
+    const { frameTree } = await sendTyped(cdp, 'Page.getFrameTree');
     for (const frameId of childFrameIds(frameTree)) {
-      const owner = (await cdp.send('DOM.getFrameOwner', {
+      const owner = await sendTyped(cdp, 'DOM.getFrameOwner', {
         frameId,
-      })) as Protocol.DOM.GetFrameOwnerResponse;
-      const { node } = (await cdp.send('DOM.describeNode', {
+      });
+      const { node } = await sendTyped(cdp, 'DOM.describeNode', {
         backendNodeId: owner.backendNodeId,
-      })) as Protocol.DOM.DescribeNodeResponse;
+      });
       if (node.contentDocument?.backendNodeId === documentId) return owner.backendNodeId;
     }
   } catch (error) {
