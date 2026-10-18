@@ -33,6 +33,7 @@ const POLL_MS = 60_000;
 const SNAPSHOT = {
   bdg: '/tmp/ship-snapshot-bdg.txt',
   downloads: '/tmp/ship-snapshot-downloads.txt',
+  main: '/tmp/ship-snapshot-main-checkout.txt',
 };
 
 /** Exit codes of this script, so the orchestrator can branch on them */
@@ -604,10 +605,10 @@ async function runWaitLoop(id) {
  * @param {string[]} argv `<pr> <smoke files...>`, optional `--repeat=10 --node=22|24|26` (files space-separated; no brace expansion)
  */
 async function repeat(argv) {
-  const { positional, keys } = parseArgs(argv);
+  const { positional, keys, flags } = parseArgs(argv);
   const [prNumber, ...files] = positional;
   if (!prNumber || files.length === 0)
-    return usage('repeat <pr> <smoke files...> [--repeat=10] [--node=22|24|26]');
+    return usage('repeat <pr> <smoke files...> [--repeat=10] [--node=22|24|26] [--replace]');
   const dispatch = repeatDispatch(files, keys);
   if (dispatch.error) return usage(dispatch.error);
   const pr = prInfo(prNumber);
@@ -626,7 +627,15 @@ async function repeat(argv) {
       '--limit',
       '20',
     ]) ?? [];
-  const running = unfinishedRepeat(dispatchRuns());
+  let running = unfinishedRepeat(dispatchRuns());
+  if (running && flags.has('replace')) {
+    console.log(`cancelling repeat run ${running.databaseId} (--replace)`);
+    run('gh', ['run', 'cancel', String(running.databaseId), '--repo', REPO], { timeoutMs: WRITE_TIMEOUT_MS });
+    for (let i = 0; i < 36 && running; i++) {
+      await sleep(5000);
+      running = unfinishedRepeat(dispatchRuns());
+    }
+  }
   if (running) {
     console.log(
       `repeat run ${running.databaseId} is still ${running.status} on ${pr.headRefName}: a second dispatch would queue behind it or cancel a queued one; wait with ship run-wait ${running.databaseId}, then dispatch`
@@ -765,6 +774,11 @@ function freshOriginRef(branch) {
   return `origin/${branch}`;
 }
 
+/** Written by a passing `ship simplify <pr> --finish`; gate 1 reads it */
+function simplifyMarker(prNumber) {
+  return `/tmp/ship-simplify-${prNumber}.done`;
+}
+
 /**
  * True for a file `npm run format:check` covers (TypeScript under src/,
  * JavaScript and JSON files at the repo root); other files keep their own formatting.
@@ -840,7 +854,11 @@ function simplify(argv) {
     console.log(`FAIL no worktree has branch ${pr.headRefName}: run /simplify where the PR's code is checked out`);
     return EXIT.failed;
   }
-  if (flags.has('finish')) return finishSimplify(path);
+  if (flags.has('finish')) {
+    const code = finishSimplify(path);
+    if (code === EXIT.ok) writeFileSync(simplifyMarker(pr.number), `${new Date().toISOString()}\n`);
+    return code;
+  }
   run('git', ['fetch', '-q', 'origin', `pull/${pr.number}/head`]);
   const base = run('git', ['merge-base', freshOriginRef(pr.baseRefName), pr.headRefOid]);
   const file = `/tmp/simplify-${pr.number}.diff`;
@@ -1260,22 +1278,29 @@ export function releaseVersion(packageJson, title) {
  * @param {string[]} subjects commit subjects of the PR
  * @param {string} [body] PR body
  */
-export function simplifyVerdict(lines, subjects, body) {
+export function simplifyVerdict(lines, subjects, body, { simplifyRan = false } = {}) {
   const label = `1 /simplify pass (${lines} product lines)`;
   if (lines <= SIMPLIFY_THRESHOLD) return { ok: true, text: `${label}: not needed` };
+  if (simplifyRan) return { ok: true, text: `${label}: ship simplify --finish ran on this PR` };
   const isRefactor = (s) => /^refactor(\([^)]*\))?!?: /.test(s);
   const isTest = (s) => /^test(\([^)]*\))?!?: /.test(s);
   const isMerge = (s) => /^Merge /.test(s);
-  const commit = subjects.find(
-    (s, i) =>
-      isRefactor(s) && subjects.slice(0, i).some((earlier) => !isTest(earlier) && !isMerge(earlier))
-  );
+  const firstChange = subjects.find((s) => !isTest(s) && !isMerge(s));
+  const refactoringPr = firstChange !== undefined && isRefactor(firstChange);
+  const commit = refactoringPr
+    ? undefined
+    : subjects.find(
+        (s, i) =>
+          isRefactor(s) && subjects.slice(0, i).some((earlier) => !isTest(earlier) && !isMerge(earlier))
+      );
   if (commit) return { ok: true, text: `${label}: "${commit}"` };
   if (/nothing to simplify/i.test(body ?? ''))
     return { ok: true, text: `${label}: the PR body says nothing to simplify` };
-  const only = subjects.some(isRefactor)
-    ? 'its refactor: commits are the change itself, not a pass over it'
-    : 'no refactor: commit';
+  const only = refactoringPr
+    ? 'a refactoring PR: its refactor: commits (fix rounds included, S21 #841) are not a pass over it; run ship simplify, or say so'
+    : subjects.some(isRefactor)
+      ? 'its refactor: commits are the change itself, not a pass over it'
+      : 'no refactor: commit';
   return { ok: false, text: `${label}: ${only}, and no "nothing to simplify" in the PR body` };
 }
 
@@ -1327,7 +1352,9 @@ async function gates(argv) {
     .filter(Boolean)
     .map((l) => ({ sha: l.slice(0, 40), subject: l.slice(41) }));
   const numstat = run('git', ['diff', '--numstat', forkPoint, head]);
-  const simplify = simplifyVerdict(productLines(numstat), commits.map((c) => c.subject), pr.body);
+  const simplify = simplifyVerdict(productLines(numstat), commits.map((c) => c.subject), pr.body, {
+    simplifyRan: existsSync(simplifyMarker(pr.number)),
+  });
   gateLine(results, simplify.ok, simplify.text);
   if (tier > 1) {
     const first = commits[0];
@@ -1575,6 +1602,7 @@ async function snapshot(argv = []) {
   }
   checkDependencies();
   rmSync(LIVE_MARKER, { force: true });
+  writeFileSync(SNAPSHOT.main, mainCheckoutStatus().join('\n'));
   writeFileSync(SNAPSHOT.bdg, snapshotLines(listEntries(dirs.bdg)).join('\n'));
   writeFileSync(SNAPSHOT.downloads, snapshotLines(listEntries(dirs.downloads)).join('\n'));
   console.log(`snapshot of ~/.bdg and ~/Downloads in ${SNAPSHOT.bdg}, ${SNAPSHOT.downloads}`);
@@ -1767,6 +1795,10 @@ function leftoverLines(scope) {
         `written to in ~/${dir} since the snapshot: ${changed.join(', ')} (a user's own file: ship snapshot --accept <name>; their live session: --accept-live)`
       );
   }
+  if (existsSync(SNAPSHOT.main)) {
+    const added = mainCheckoutChanges(readFileSync(SNAPSHOT.main, 'utf8').split('\n'), mainCheckoutStatus());
+    if (added.length) lines.push(`new in the main checkout since the snapshot: ${added.join(', ')}`);
+  }
   for (const line of orphanWorktreeProcesses(scope)) lines.push(line);
   const agentDaemon = agentDaemonInBdgHome();
   if (agentDaemon) lines.push(`an agent's bdg session is live in ~/.bdg: ${agentDaemon}`);
@@ -1950,6 +1982,31 @@ const SESSION_FILE_NAMES = [
  */
 export function isSessionFileName(name) {
   return SESSION_FILE_NAMES.some((known) => name === known || name.startsWith(`${known}.`));
+}
+
+/**
+ * `git status --porcelain` entries of the main checkout, untracked files
+ * included.
+ */
+function mainCheckoutStatus() {
+  return run('git', ['-C', mainCheckout(), 'status', '--porcelain', '--untracked-files=all'])
+    .split('\n')
+    .filter(Boolean);
+}
+
+/**
+ * Main-checkout status entries that weren't there at the snapshot, except
+ * log.md, which `ship log` writes (S21: a tester's g2.json in the main
+ * checkout went unseen by gate 8).
+ *
+ * @param {string[]} before porcelain lines at `ship snapshot`
+ * @param {string[]} now porcelain lines now
+ */
+export function mainCheckoutChanges(before, now) {
+  const had = new Set(before.map((l) => l.slice(3)));
+  return now
+    .map((l) => l.slice(3))
+    .filter((path) => path && !had.has(path) && path !== '.claude/skills/ship/log.md');
 }
 
 /**
@@ -2369,6 +2426,20 @@ export function fillOutsideQuotes(text, values) {
 }
 
 /**
+ * The note a brief gets when this machine routes HTTP through a proxy: bdg
+ * runs then see every request via the proxy as http/1.1, so h2 paths can't
+ * be checked (S21: #840's reviewer missed h2). Only for roles that run bdg.
+ *
+ * @param {Record<string, string | undefined>} env
+ * @param {string} role
+ */
+export function proxyNote(env, role) {
+  const set = ['HTTPS_PROXY', 'HTTP_PROXY', 'https_proxy', 'http_proxy'].filter((k) => env[k]);
+  if (!set.length || role === 'implementer') return null;
+  return `**Proxy.** This machine sets ${set.join(', ')}. For bdg runs, \`unset ${set.join(' ')}\` in the shell and start sessions with \`--chrome-flags="--no-proxy-server"\`, or every request goes through the proxy as http/1.1.`;
+}
+
+/**
  * Issue numbers from `N=786` or `ISSUES=786,459 801`; anything else gives none.
  *
  * @param {string} [list]
@@ -2439,7 +2510,8 @@ function brief(argv) {
   if (rendered.includes('<DESIGN>') && !(designFile && existsSync(designFile)))
     return usage(`brief ${positional[0]}: needs DESIGN=<file> with the design note`);
   const design = rendered.includes('<DESIGN>') ? formatDesign(readFileSync(designFile, 'utf8')) : '';
-  const text = rendered
+  const proxy = proxyNote(process.env, positional[0]);
+  const text = (proxy ? `${rendered}\n\n${proxy}` : rendered)
     .split('<ISSUE>')
     .join(issues.length ? issues.map(formatIssue).join('\n\n') : '(no issue)')
     .split('<DESIGN>')
@@ -2486,9 +2558,12 @@ function log(argv) {
     'view',
     positional[0],
     '--json',
-    'number,closingIssuesReferences,mergedAt',
+    'number,closingIssuesReferences,mergedAt,body',
   ]);
-  const issues = pr.closingIssuesReferences.map((i) => `#${i.number}`).join(' ') || '-';
+  const issues =
+    [...new Set([...pr.closingIssuesReferences.map((i) => String(i.number)), ...partOfIssues(pr.body)])]
+      .map((n) => `#${n}`)
+      .join(' ') || '-';
   const cell = (k) => (keys[k] ?? '-').replace(/\|/g, '/');
   const row = `| ${(pr.mergedAt ?? new Date().toISOString()).slice(0, 10)} | #${pr.number} | ${issues} | ${cell('tier')} | ${cell('review')} | ${cell('tester')} | ${cell('rounds')} | ${cell('model')} | ${cell('tokens')} | ${cell('note')} |`;
   const file = join(SKILL_DIR, 'log.md');
@@ -2540,7 +2615,7 @@ const COMMANDS = {
     '<role> N=<issue> [PR=<pr>] KEY=value… [--out=<file>]: render a brief (quotes the issue; PR fills BASE/HEAD/RED/BRANCH); --check=<file>: refuse an empty or unfilled brief',
   ],
   'ci-wait': [ciWait, '<pr> [--head=<sha>] | <sha> --push: wait for CI (+ Security); --head waits for that pushed commit; exit 3 when superseded'],
-  repeat: [repeat, '<pr> <smoke files…> [--node=22|24|26]: dispatch the repeat=10 run on the PR head'],
+  repeat: [repeat, '<pr> <smoke files…> [--node=22|24|26] [--replace]: dispatch the repeat=10 run on the PR head; --replace cancels a running one first'],
   'run-wait': [
     runWait,
     '<run id> [--timeout=<min>]: wait for a dispatched run, print its jobs; exit 4 on timeout',

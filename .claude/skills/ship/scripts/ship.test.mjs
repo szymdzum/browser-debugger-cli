@@ -36,6 +36,7 @@ import {
   EXIT,
   inScope,
   isProductFile,
+  mainCheckoutChanges,
   insertLogRow,
   isTransientGhError,
   jobsLostWithoutResult,
@@ -57,6 +58,7 @@ import {
   partOfIssues,
   parseSnapshotArgs,
   productLines,
+  proxyNote,
   releaseVersion,
   renderBrief,
   simplifyVerdict,
@@ -991,9 +993,15 @@ test("simplifyVerdict doesn't count a refactoring PR's own refactor: commits as 
   const large = SIMPLIFY_THRESHOLD + 1;
   const only = simplifyVerdict(large, ['refactor: type the CDP calls of src/runtime/page'], '');
   assert.equal(only.ok, false);
-  assert.match(only.text, /refactor: commits are the change itself/);
+  assert.match(only.text, /a refactoring PR: its refactor: commits/);
   assert.equal(simplifyVerdict(large, ['test: red', 'refactor: x'], '').ok, false);
-  assert.equal(simplifyVerdict(large, ['refactor: the change', 'refactor: simplify pass'], '').ok, true);
+  assert.equal(simplifyVerdict(large, ['refactor: the change', 'refactor: simplify pass'], '').ok, false);
+  assert.equal(
+    simplifyVerdict(large, ['refactor: send the DOM runtime through sendTyped (#797)', 'refactor: send getMatchedStylesForNode through sendTyped'], '').ok,
+    false
+  );
+  assert.equal(simplifyVerdict(large, ['refactor: the change'], '', { simplifyRan: true }).ok, true);
+  assert.equal(simplifyVerdict(large, ['refactor: the change'], 'Nothing to simplify.').ok, true);
   assert.equal(simplifyVerdict(large, ["Merge branch 'main' into refactor/x", 'refactor: the change'], '').ok, false);
 });
 
@@ -1180,4 +1188,20 @@ test('pidReused: a process that started after its PID file was written holds a r
   assert.equal(pidReused(written - 1000, written), false);
   assert.equal(pidReused(written + 5000, written), false);
   assert.equal(pidReused(NaN, written), false);
+});
+
+test('mainCheckoutChanges names files added to the main checkout since the snapshot, not log.md', () => {
+  const before = [' M .claude/skills/ship/log.md'];
+  const now = [' M .claude/skills/ship/log.md', '?? g2.json', '?? .tmp/s21/notes.md'];
+  assert.deepEqual(mainCheckoutChanges(before, now), ['g2.json', '.tmp/s21/notes.md']);
+  assert.deepEqual(mainCheckoutChanges([], [' M .claude/skills/ship/log.md']), []);
+  assert.deepEqual(mainCheckoutChanges(['?? old.txt'], ['?? old.txt']), []);
+});
+
+test('proxyNote tells agents that run bdg to bypass a configured proxy', () => {
+  assert.equal(proxyNote({}, 'tester'), null);
+  assert.equal(proxyNote({ HTTPS_PROXY: 'http://127.0.0.1:9000' }, 'implementer'), null);
+  const note = proxyNote({ HTTPS_PROXY: 'http://127.0.0.1:9000', http_proxy: 'x' }, 'reviewer');
+  assert.match(note, /unset HTTPS_PROXY http_proxy/);
+  assert.match(note, /--no-proxy-server/);
 });
