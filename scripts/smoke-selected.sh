@@ -19,9 +19,10 @@
 #   SMOKE_CONCURRENCY  how many test files run at once: a positive integer,
 #                 empty or unset = 1, anything else exits 2. 2 was tried
 #                 (#807): cdp-reply-cap's 300e6-string test ran past its 28 s
-#                 limit on macOS next to another file (main run 39135430994). Each file has its own session directory and Chrome
-#                 port (named-sessions and port-identity let bdg pick one
-#                 through its machine-wide port claims, <tmpdir>/bdg-ports-<uid>)
+#                 limit on macOS next to another file (#852). Above 1, each
+#                 file still has its own session directory and Chrome port
+#                 (named-sessions and port-identity let bdg pick one through
+#                 its machine-wide port claims, <tmpdir>/bdg-ports-<uid>)
 # Prints the spec report. In GitHub Actions, the tests that failed are also
 # listed in the job summary, per run. Exits non-zero when any run failed.
 set -u
