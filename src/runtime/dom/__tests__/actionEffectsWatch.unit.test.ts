@@ -292,7 +292,7 @@ void describe('watchActionEffects', () => {
       reportShown: true,
     });
     assert.deepEqual(effects.shown, shown);
-    assert.ok(cdp.expressions.some((e) => e.endsWith('(false, true, false)')));
+    assert.ok(cdp.expressions.some((e) => e.endsWith('(false, true, false, undefined)')));
     watch.dispose();
   });
 
