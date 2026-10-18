@@ -32,7 +32,6 @@ function fakeCdp(failing: Set<string> = new Set()): CDPConnection & {
 }
 
 const PARAMS = { file: 'app.js', line: 3, expressions: ['x'] };
-const LOADING = { loading: true, pendingUrls: [] };
 
 /** Methods called, in order */
 function methods(cdp: { calls: Array<[string, unknown]> }): string[] {
@@ -43,7 +42,7 @@ void describe('logpoints and Chrome', () => {
   void it('ending the session takes back the binding, the pause setting and Debugger', async () => {
     const logpoints = new Logpoints(() => 0);
     const cdp = fakeCdp();
-    await logpoints.add(cdp, PARAMS, LOADING);
+    await logpoints.add(cdp, PARAMS);
     cdp.calls.length = 0;
     await logpoints.shutdown(cdp);
     assert.deepEqual(methods(cdp), [
@@ -64,11 +63,11 @@ void describe('logpoints and Chrome', () => {
   void it('a failed start is rolled back and the next one starts again', async () => {
     const logpoints = new Logpoints(() => 0);
     const cdp = fakeCdp(new Set(['Runtime.addBinding']));
-    await assert.rejects(logpoints.add(cdp, PARAMS, LOADING), /addBinding refused/);
+    await assert.rejects(logpoints.add(cdp, PARAMS), /addBinding refused/);
     assert.ok(methods(cdp).includes('Debugger.disable'), methods(cdp).join());
     assert.equal(logpoints.size, 0);
     const retry = fakeCdp();
-    await logpoints.add(retry, PARAMS, LOADING);
+    await logpoints.add(retry, PARAMS);
     assert.ok(methods(retry).includes('Debugger.enable'), methods(retry).join());
     assert.equal(logpoints.size, 1);
   });
@@ -76,7 +75,7 @@ void describe('logpoints and Chrome', () => {
   void it('leaving a tab releases it and keeps the logpoints', async () => {
     const logpoints = new Logpoints(() => 0);
     const cdp = fakeCdp();
-    await logpoints.add(cdp, PARAMS, LOADING);
+    await logpoints.add(cdp, PARAMS);
     cdp.calls.length = 0;
     await logpoints.leave(cdp);
     assert.ok(methods(cdp).includes('Debugger.disable'));

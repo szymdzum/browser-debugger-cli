@@ -34,6 +34,8 @@ export interface DebugLogData {
   requested: { file: string; line: number; column?: number };
   bound: LogpointBound[];
   state: LogpointState;
+  /** No loaded script matches the file yet (the CLI prints it as a warning, outside `data`) */
+  warning?: string;
 }
 
 /** debug_list: no parameters */

@@ -76,25 +76,22 @@ export function duplicateLogpointError(id: string, where: string): ErrorWithSugg
 }
 
 /**
- * No loaded script matches the file.
+ * No loaded script matches the file: the logpoint waits for one.
  *
  * @param file - File as typed
  * @param similar - Loaded scripts with similar names
  * @param loaded - How many scripts the page has loaded
- * @returns Error
+ * @returns Warning
  */
-export function logpointFileNotLoadedError(
+export function logpointFileNotLoadedWarning(
   file: string,
   similar: string[],
   loaded: number
-): ErrorWithSuggestion {
+): string {
   const hint = similar.length
     ? `Did you mean: ${similar.join(', ')}?`
-    : `Use the end of a script URL the page loaded (see ${sessionCommand('bdg network list')})`;
-  return {
-    message: `No loaded script matches "${file}" (${loaded} loaded)`,
-    suggestion: hint,
-  };
+    : `Use the end of a script URL the page loads (see ${sessionCommand('bdg network list')})`;
+  return `No loaded script matches "${file}" (${loaded} loaded); the logpoint binds when one does. ${hint}`;
 }
 
 /**

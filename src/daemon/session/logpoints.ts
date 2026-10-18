@@ -15,7 +15,7 @@ import { sendTyped } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import {
   duplicateLogpointError,
-  logpointFileNotLoadedError,
+  logpointFileNotLoadedWarning,
   logpointNoCodeError,
   logpointNotFoundError,
   logpointSyntaxError,
@@ -122,14 +122,6 @@ export interface HitMark {
   seq: number;
   received: ReadonlyMap<string, number>;
   errors: ReadonlyMap<string, number>;
-}
-
-/** What the page tells about the session's pages when a logpoint is set */
-export interface PageLoad {
-  /** The document has not finished loading */
-  loading: boolean;
-  /** URLs of the requests still running */
-  pendingUrls: string[];
 }
 
 /** Counters the condition keeps in the page, by logpoint id */
@@ -247,12 +239,11 @@ export class Logpoints {
    *
    * @param cdp - Page connection
    * @param params - Where, what to log, guard and limit
-   * @param page - Whether the page is still loading scripts
    * @returns The logpoint, bound or pending
    * @throws CommandError (81 invalid expression or too many, 83 no such script or line, 84 duplicate)
    */
-  add(cdp: CDPConnection, params: DebugLogCommand, page: PageLoad): Promise<DebugLogData> {
-    return this.serialized(() => this.addNow(cdp, params, page));
+  add(cdp: CDPConnection, params: DebugLogCommand): Promise<DebugLogData> {
+    return this.serialized(() => this.addNow(cdp, params));
   }
 
   /**
@@ -517,11 +508,7 @@ export class Logpoints {
     }
   }
 
-  private async addNow(
-    cdp: CDPConnection,
-    params: DebugLogCommand,
-    page: PageLoad
-  ): Promise<DebugLogData> {
+  private async addNow(cdp: CDPConnection, params: DebugLogCommand): Promise<DebugLogData> {
     const { file, line, column } = params;
     if (this.points.size >= MAX_LOGPOINTS) {
       throw commandError(tooManyLogpointsError(), EXIT_CODES.INVALID_ARGUMENTS);
@@ -538,23 +525,17 @@ export class Logpoints {
     await this.checkSyntax(cdp, [...params.expressions, ...(params.guard ? [params.guard] : [])]);
     try {
       await this.turnOn(cdp);
-      return await this.bind(cdp, params, page);
+      return await this.bind(cdp, params);
     } catch (error) {
       if (this.points.size === 0) await this.turnOff(cdp);
       throw error;
     }
   }
 
-  private async bind(
-    cdp: CDPConnection,
-    params: DebugLogCommand,
-    page: PageLoad
-  ): Promise<DebugLogData> {
+  private async bind(cdp: CDPConnection, params: DebugLogCommand): Promise<DebugLogData> {
     const { file, line, column } = params;
     const matcher = new RegExp(scriptUrlPattern(file));
     const matching = [...this.scripts.values()].filter((script) => matcher.test(script.url));
-    const loadingIt = page.loading || page.pendingUrls.some((url) => matcher.test(url));
-    if (matching.length === 0 && !loadingIt) throw this.notLoaded(file);
     if (matching.length > 0 && line > Math.max(...matching.map(lastLine))) {
       throw this.noCode(file, line, matching);
     }
@@ -595,6 +576,7 @@ export class Logpoints {
       requested: { file, line, ...(column !== undefined && { column }) },
       bound: point.bound,
       state: point.bound.length > 0 ? 'bound' : 'pending',
+      ...(matching.length === 0 && { warning: this.notLoadedWarning(file) }),
     };
   }
 
@@ -620,14 +602,11 @@ export class Logpoints {
     return commandError(logpointNoCodeError(file, line, last), EXIT_CODES.RESOURCE_NOT_FOUND);
   }
 
-  private notLoaded(file: string): CommandError {
+  private notLoadedWarning(file: string): string {
     const names = [...this.scripts.values()].map((script) => script.url.split(/[?#]/)[0] ?? '');
     const basenames = [...new Set(names.map((name) => name.split('/').pop() ?? name))];
     const typed = file.split('/').pop() ?? file;
-    return commandError(
-      logpointFileNotLoadedError(file, findSimilar(typed, basenames), this.scripts.size),
-      EXIT_CODES.RESOURCE_NOT_FOUND
-    );
+    return logpointFileNotLoadedWarning(file, findSimilar(typed, basenames), this.scripts.size);
   }
 
   private setBreakpoint(

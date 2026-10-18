@@ -100,7 +100,7 @@ async function setLogpoint(
 ): Promise<CommandResult<DebugLogData>> {
   const parsed = parseLogpointLocation(location);
   if (!parsed) return invalid(logpointLocationError(location));
-  return result(
+  const logged = result(
     await debugLog({
       ...parsed,
       expressions,
@@ -108,6 +108,9 @@ async function setLogpoint(
       ...(options.max !== undefined && { max: options.max }),
     })
   );
+  if (!logged.success || !logged.data?.warning) return logged;
+  const { warning, ...data } = logged.data;
+  return { success: true, data, warning };
 }
 
 /**

@@ -25,6 +25,9 @@ export const LOGPOINT_STATE = '__bdg_lps_7c1f';
 /** Longest string kept in a logged value */
 const MAX_VALUE_STRING = 10000;
 
+/** Longest error message kept (the page cuts it, so hits and counters stay small) */
+const MAX_ERROR_TEXT = 500;
+
 /** Items of an array and keys of an object kept in a logged value */
 const MAX_VALUE_ITEMS = 20;
 
@@ -88,7 +91,12 @@ export function buildLogpointCondition(spec: LogpointConditionSpec): string {
   var __lp_st = globalThis[${state}] || (globalThis[${state}] = {});
   var __lp_c = __lp_st[${id}] || (__lp_st[${id}] = { hits: 0, errors: 0, last: '' });
   var __lp_msg = function (e) {
-    return (e && e.name ? e.name + ': ' : '') + (e && e.message ? e.message : String(e));
+    try {
+      var m = (e && e.name ? e.name + ': ' : '') + (e && e.message ? e.message : String(e));
+      return m.length > ${MAX_ERROR_TEXT} ? m.slice(0, ${MAX_ERROR_TEXT}) + '…' : m;
+    } catch (x) {
+      return '(error)';
+    }
   };
   try {
     ${guard}__lp_c.hits++;

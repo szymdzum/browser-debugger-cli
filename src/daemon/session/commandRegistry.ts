@@ -1150,11 +1150,7 @@ export function createCommandRegistry(
       return { ...restored, reload };
     },
 
-    debug_log: async (cdp, params) =>
-      store.logpoints.add(cdp, params, {
-        loading: (await readDocumentReadyState(cdp)) !== 'complete',
-        pendingUrls: [...store.pendingNetworkRequests.values()].map((p) => p.request.url),
-      }),
+    debug_log: async (cdp, params) => store.logpoints.add(cdp, params),
 
     debug_list: async (cdp) => store.logpoints.list(cdp),
 

@@ -392,8 +392,52 @@ void describe('logpoints (#848)', () => {
     }
   });
 
+  void it('a file no loaded script matches is pending (exit 0) with a warning and a suggestion', async () => {
+    const human = await bdg(['debug', 'log', 'ap.js:3']);
+    assert.match(human.out, /lp\d+ pending/);
+    assert.match(
+      human.err,
+      /^Warning: No loaded script matches "ap\.js".*Did you mean: app\.js\?/m
+    );
+    const created = await json<{ state: string; warning?: string }>([
+      'debug',
+      'log',
+      'nothing.js:3',
+    ]);
+    assert.equal(created.state, 'pending');
+    assert.equal(created.warning, undefined);
+    const { out } = await bdg(['debug', 'log', 'nothing.js:4', '--json']);
+    const envelope = JSON.parse(out) as { warnings?: string[]; data: { state: string } };
+    assert.equal(envelope.data.state, 'pending');
+    assert.match(envelope.warnings?.[0] ?? '', /No loaded script matches "nothing\.js"/);
+  });
+
+  void it('an error that cannot be read or is huge does not escape the condition or grow the output', async () => {
+    const hostile = '(()=>{throw {get name(){throw 1},get message(){throw 2}}})()';
+    const huge = '(()=>{throw new Error("x".repeat(1e6))})()';
+    const created = await json<{ id: string }>([
+      'debug',
+      'log',
+      `${APP}:${LINE}`,
+      'total',
+      hostile,
+      huge,
+    ]);
+    const clicked = await json<{
+      errors?: unknown[];
+      logpoints?: Array<{ values: Record<string, unknown>; failed?: Record<string, string> }>;
+    }>(['dom', 'click', '#checkout']);
+    assert.equal(clicked.errors, undefined, JSON.stringify(clicked.errors));
+    assert.deepEqual(clicked.logpoints?.[0]?.values, { total: 25 });
+    assert.equal(clicked.logpoints?.[0]?.failed?.[hostile], '(error)');
+    assert.ok(JSON.stringify(clicked).length < 20000);
+    const hits = await bdg(['debug', 'hits', created.id, '--json']);
+    assert.ok(hits.out.length < 5000, `${hits.out.length}`);
+    const list = await bdg(['debug', 'list']);
+    assert.ok(list.out.length < 2000, `${list.out.length}`);
+  });
+
   void it('exit codes', async () => {
-    await bdg(['debug', 'log', 'nothing.js:3'], 83);
     await bdg(['debug', 'log', `${APP}:999`], 83);
     await bdg(['debug', 'log', `${APP}:${APP_JS_LINES.last + 1}`], 83);
     await bdg(['debug', 'log', APP], 81);
