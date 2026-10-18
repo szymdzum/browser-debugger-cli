@@ -5,9 +5,9 @@
  * `file:line[:col]` is in the generated code.
  */
 
-import { getErrorMessage } from '@/utils/errors.js';
-import { displayUrl } from '@/utils/displayUrl.js';
 import { ConcurrencyLimiter } from '@/utils/concurrency.js';
+import { displayUrl } from '@/utils/displayUrl.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import {
   lookupGenerated,
   parseSourceMap,

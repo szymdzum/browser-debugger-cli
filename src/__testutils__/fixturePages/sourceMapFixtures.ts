@@ -15,13 +15,13 @@
  *   {@link PAIR_LINES} and {@link INLINE_LINES} (original lines, 1-based).
  */
 
+import type { FixtureRoutes } from '@/__testutils__/fixtureRoutes.js';
 import {
   anchorSegments,
   buildSourceMap,
   inlineMapComment,
   type Anchor,
 } from '@/__testutils__/sourceMapBuilder.js';
-import type { FixtureRoutes } from '@/__testutils__/fixtureRoutes.js';
 
 /** Lines of `src/cart.ts` (original) */
 export const CART_LINES = {

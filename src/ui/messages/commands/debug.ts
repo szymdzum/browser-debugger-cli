@@ -37,10 +37,11 @@ Examples:
   bdg debug log app.js:5 total discount "cart.items.length"
   bdg dom click "#checkout"        # the action report lists what was logged
   bdg debug log app.js:5           # no expression: a hit counter
+  bdg debug log src/cart.ts:5 total # an original file of a bundle with a source map
   bdg debug hits --json            # every logged value, structured
   bdg debug clear
 
-Lines and columns are 1-based. File is the end of a script URL (app.js, dist/app.js).
+Lines and columns are 1-based. File is the end of a script URL (app.js, dist/app.js) or, when none matches, of a source in a loaded script's source map (src/cart.ts); values are then the generated code's variables.
 Expressions run in the page at that line and see its variables; values are those before the line runs.`;
 
 /**
