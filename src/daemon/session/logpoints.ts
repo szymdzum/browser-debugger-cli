@@ -36,6 +36,7 @@ import type {
   LogpointValue,
 } from '@/ipc/protocol/debugTypes.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { displayUrl } from '@/utils/displayUrl.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { logpointPlace, scriptUrlPattern } from '@/utils/logpointLocation.js';
@@ -92,6 +93,9 @@ interface Logpoint extends LogpointSpec {
   hits: StoredHit[];
   /** Hits received, stored or not */
   received: number;
+  /** Errors of expressions received, and the last message */
+  errorsReceived: number;
+  lastError?: string;
   /** The page load `storedInLoad` counts */
   loadId: number;
   storedInLoad: number;
@@ -101,6 +105,7 @@ interface Logpoint extends LogpointSpec {
 export interface HitMark {
   seq: number;
   received: ReadonlyMap<string, number>;
+  errors: ReadonlyMap<string, number>;
 }
 
 /** What the page tells about the session's pages when a logpoint is set */
@@ -134,6 +139,18 @@ function commandError(error: ErrorWithSuggestion, exitCode: number): CommandErro
  */
 function lastLine(script: Script): number {
   return script.endColumn === 0 && script.endLine > 0 ? script.endLine : script.endLine + 1;
+}
+
+/**
+ * The script a condition ran in, from its own stack frame
+ * (`at eval (eval at fn (http://h/a.js:8:16), <anonymous>:29:1)`).
+ *
+ * @param frame - The condition's stack frame
+ * @returns Script URL as shown (credentials and tokens masked), or undefined
+ */
+function scriptOfFrame(frame: string): string | undefined {
+  const url = /eval at [^(]*\((.+?):\d+:\d+\)/.exec(frame)?.[1];
+  return url === undefined ? undefined : displayUrl(url);
 }
 
 /**
@@ -309,10 +326,11 @@ export class Logpoints {
    * @returns Mark
    */
   hitMark(): HitMark {
-    if (this.points.size === 0) return { seq: this.seq, received: new Map() };
+    const points = [...this.points.values()];
     return {
       seq: this.seq,
-      received: new Map([...this.points.values()].map((point) => [point.id, point.received])),
+      received: new Map(points.map((point) => [point.id, point.received])),
+      errors: new Map(points.map((point) => [point.id, point.errorsReceived])),
     };
   }
 
@@ -326,17 +344,28 @@ export class Logpoints {
   hitsSince(mark: HitMark): LogpointActionHit[] {
     return [...this.points.values()].flatMap((point) => {
       const count = point.received - (mark.received.get(point.id) ?? 0);
-      if (count <= 0) return [];
-      const first = point.hits.find((hit) => hit.seq > mark.seq);
-      return [
-        {
-          id: point.id,
-          file: point.file,
-          line: point.bound[0]?.line ?? point.line,
-          values: first?.values ?? {},
-          hits: count,
-        },
-      ];
+      const errors = point.errorsReceived - (mark.errors.get(point.id) ?? 0);
+      if (count <= 0 && errors <= 0) return [];
+      const base = {
+        id: point.id,
+        file: point.file,
+        line: point.bound[0]?.line ?? point.line,
+        ...(errors > 0 && { error: point.lastError ?? '', errors }),
+      };
+      const since = point.hits.filter((hit) => hit.seq > mark.seq);
+      const urls = new Set(point.bound.map((bound) => bound.url));
+      if (urls.size > 1 && since.length > 0) {
+        return [...new Set(since.map((hit) => hit.url))].map((url) => {
+          const own = since.filter((hit) => hit.url === url);
+          return {
+            ...base,
+            values: own[0]?.values ?? {},
+            hits: own.length,
+            ...(url !== undefined && { url }),
+          };
+        });
+      }
+      return [{ ...base, values: since[0]?.values ?? {}, hits: count }];
     });
   }
 
@@ -381,6 +410,11 @@ export class Logpoints {
     const parsed = this.parseHit(payload);
     const point = parsed && this.points.get(parsed.id);
     if (!parsed || !point) return;
+    if (parsed.error !== undefined) {
+      point.errorsReceived++;
+      point.lastError = parsed.error;
+      return;
+    }
     const navigationId = this.navigationId();
     point.received++;
     this.seq++;
@@ -393,14 +427,32 @@ export class Logpoints {
     const values = Object.fromEntries(
       point.expressions.map((expression, index) => [expression, parsed.values[index]])
     );
-    point.hits.push({ id: point.id, ts: Date.now(), values, navigationId, seq: this.seq });
+    point.hits.push({
+      id: point.id,
+      ts: Date.now(),
+      values,
+      navigationId,
+      seq: this.seq,
+      ...(parsed.url !== undefined && { url: parsed.url }),
+    });
     if (point.hits.length > MAX_RETAINED_HITS) point.hits.shift();
   }
 
-  private parseHit(payload: string): { id: string; values: LogpointValue[] } | undefined {
+  private parseHit(
+    payload: string
+  ): { id: string; values: LogpointValue[]; url?: string; error?: string } | undefined {
     try {
-      const { i, v } = JSON.parse(payload) as { i?: unknown; v?: unknown };
-      if (typeof i === 'string' && Array.isArray(v)) return { id: i, values: v as LogpointValue[] };
+      const { i, v, s, e } = JSON.parse(payload) as {
+        i?: unknown;
+        v?: unknown;
+        s?: unknown;
+        e?: unknown;
+      };
+      if (typeof i !== 'string') return undefined;
+      if (typeof e === 'string') return { id: i, values: [], error: e };
+      if (!Array.isArray(v)) return undefined;
+      const url = typeof s === 'string' ? scriptOfFrame(s) : undefined;
+      return { id: i, values: v as LogpointValue[], ...(url !== undefined && { url }) };
     } catch (error) {
       log.debug(`Hit not parsed: ${getErrorMessage(error)}`);
     }
@@ -485,6 +537,7 @@ export class Logpoints {
       bound: [],
       hits: [],
       received: 0,
+      errorsReceived: 0,
       loadId: this.navigationId(),
       storedInLoad: 0,
     };

@@ -114,7 +114,7 @@ export const NO_LOGPOINTS_TEXT = 'No logpoints. Set one with: bdg debug log <fil
 export function logpointHitText(hit: LogpointHit): string {
   const time = new Date(hit.ts).toISOString().slice(11, 23);
   const values = valuesText(hit.values);
-  return `${hit.id}  ${time}  ${values || '(hit)'}`;
+  return `${hit.id}  ${time}  ${values || '(hit)'}${hit.url ? `  [${hit.url}]` : ''}`;
 }
 
 /** Output of `bdg debug hits` without hits */
@@ -144,12 +144,19 @@ export function logpointsClearedText(data: DebugClearData): string {
  * The action report's line for a logpoint that ran during the action.
  *
  * @param hit - What it logged
- * @returns e.g. `logpoint lp1 app.js:5: total=25 discount=0.5 (2 hits)`
+ * @returns e.g. `logpoint lp1 app.js:5: total=25 discount=0.5 (2 hits)`, and a
+ *   `logpoint lp1 app.js:5 threw ReferenceError: …` line when an expression threw
  */
 export function logpointActionText(hit: LogpointActionHit): string {
   const values = valuesText(hit.values);
   const count = hit.hits > 1 ? ` (${hit.hits} hits)` : '';
-  return `logpoint ${hit.id} ${logpointPlace(hit.file, hit.line)}${values ? `: ${values}` : ''}${count}`;
+  const head = `logpoint ${hit.id} ${hit.file}:${hit.line}${hit.url ? ` [${hit.url}]` : ''}`;
+  const lines = hit.hits > 0 ? [`${head}${values ? `: ${values}` : ''}${count}`] : [];
+  if (hit.error !== undefined) {
+    const repeats = (hit.errors ?? 1) > 1 ? ` (${hit.errors}x)` : '';
+    lines.push(`${head} threw ${hit.error}${repeats}`);
+  }
+  return lines.join('\n');
 }
 
 /**

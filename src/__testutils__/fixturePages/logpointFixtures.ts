@@ -8,6 +8,8 @@
  *   no code of `app.js` (`#noop`) and a button (`#load-late`) that loads the
  *   script named by the `late` query parameter, which the test serves and
  *   holds back.
+ * - `/logpoint-utils`: two scripts named `util.js` in different directories,
+ *   both run by `#both`; `UTIL_JS_LINE` is the line they return `which` on.
  * - `/logpoints/app.js`: the script, served like any page (the lines the
  *   tests bind are numbered in {@link APP_JS_LINES}).
  */
@@ -27,6 +29,9 @@ export const APP_JS_LINES = {
   /** Last line of the file */
   last: 28,
 } as const;
+
+/** Line of `return which;` in both `util.js` */
+export const UTIL_JS_LINE = 3;
 
 /** The script the page loads */
 const APP_JS = `function computeTotal(cart) {
@@ -70,8 +75,32 @@ const LOGPOINTS_HTML = `<!doctype html><html><head><title>logpoints</title></hea
 <script src="/logpoints/app.js"></script>
 </body></html>`;
 
+/**
+ * A `util.js` that returns its own name.
+ *
+ * @param name - `a` or `b`
+ * @returns Script source
+ */
+function utilJs(name: string): string {
+  return `function run${name.toUpperCase()}() {
+  var which = '${name}';
+  return which;
+}
+`;
+}
+
+/** The page with the two `util.js` */
+const UTILS_HTML = `<!doctype html><html><head><title>logpoint utils</title></head><body>
+<button id="both" onclick="runA(); runB()">Both</button>
+<script src="/logpoints/a/util.js"></script>
+<script src="/logpoints/b/util.js"></script>
+</body></html>`;
+
 /** Pages by path */
 export const ROUTES: FixtureRoutes = {
   '/logpoints': LOGPOINTS_HTML,
   '/logpoints/app.js': APP_JS,
+  '/logpoint-utils': UTILS_HTML,
+  '/logpoints/a/util.js': utilJs('a'),
+  '/logpoints/b/util.js': utilJs('b'),
 };

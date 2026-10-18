@@ -16,7 +16,7 @@ import { after, afterEach, before, describe, it } from 'node:test';
 
 import { runCommand } from '@/__testutils__/commandRunner.js';
 import { cleanupAllSessions } from '@/__testutils__/daemonHelpers.js';
-import { APP_JS_LINES } from '@/__testutils__/fixturePages/logpointFixtures.js';
+import { APP_JS_LINES, UTIL_JS_LINE } from '@/__testutils__/fixturePages/logpointFixtures.js';
 import {
   getFreePort,
   startFixtureServer,
@@ -257,6 +257,67 @@ void describe('logpoints (#848)', () => {
     const entry = (await listed()).find((lp) => lp.id === created.id);
     assert.ok((entry?.errors ?? 0) >= 1, JSON.stringify(entry));
     assert.match(entry?.lastError ?? '', /ReferenceError: missingVariable is not defined/);
+  });
+
+  void it('the click report says that the expression threw, human and JSON', async () => {
+    const created = await json<{ id: string }>([
+      'debug',
+      'log',
+      `${APP}:${LINE}`,
+      'missingVariable',
+    ]);
+    const human = await bdg(['dom', 'click', '#checkout']);
+    assert.match(
+      human.out,
+      new RegExp(
+        `logpoint ${created.id} ${APP}:${LINE} threw ReferenceError: missingVariable is not defined`
+      )
+    );
+    const clicked = await json<{
+      logpoints?: Array<{ id: string; error?: string; errors?: number; hits: number }>;
+    }>(['dom', 'click', '#checkout']);
+    const entry = clicked.logpoints?.find((lp) => lp.id === created.id);
+    assert.match(entry?.error ?? '', /ReferenceError: missingVariable is not defined/);
+    assert.equal(entry?.errors, 1);
+  });
+
+  void it('hits carry the script URL: two util.js in different directories bind both', async () => {
+    await bdg(['page', 'navigate', `${fixtures.url}logpoint-utils`]);
+    try {
+      const created = await json<{ id: string; bound: Array<{ url: string }> }>([
+        'debug',
+        'log',
+        `util.js:${UTIL_JS_LINE}`,
+        'which',
+      ]);
+      assert.equal(created.bound.length, 2);
+      const human = await bdg(['dom', 'click', '#both']);
+      assert.match(human.out, /\[[^\]]*\/logpoints\/a\/util\.js\]: which="a"/);
+      assert.match(human.out, /\[[^\]]*\/logpoints\/b\/util\.js\]: which="b"/);
+      const clicked = await json<{
+        logpoints?: Array<{ url?: string; values: { which?: string } }>;
+      }>(['dom', 'click', '#both']);
+      assert.deepEqual(
+        clicked.logpoints?.map((lp) => [lp.url?.replace(/^.*\/logpoints\//, ''), lp.values.which]),
+        [
+          ['a/util.js', 'a'],
+          ['b/util.js', 'b'],
+        ]
+      );
+      const hits = await json<{ hits: Array<{ url?: string; values: { which?: string } }> }>([
+        'debug',
+        'hits',
+        created.id,
+      ]);
+      const seen = hits.hits.map(
+        (hit) => `${hit.url?.replace(/^.*\/logpoints\//, '')}=${hit.values.which}`
+      );
+      assert.deepEqual(seen.slice(-2), ['a/util.js=a', 'b/util.js=b']);
+      const text = await bdg(['debug', 'hits', created.id]);
+      assert.match(text.out, /\/logpoints\/a\/util\.js\]/);
+    } finally {
+      await bdg(['page', 'navigate', `${fixtures.url}logpoints`]);
+    }
   });
 
   void it('exit codes', async () => {

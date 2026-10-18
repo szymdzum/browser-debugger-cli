@@ -86,6 +86,8 @@ export interface LogpointHit {
   values: Record<string, LogpointValue>;
   /** Page load it belongs to */
   navigationId: number;
+  /** Script the line ran in (URL as shown; absent when the page hid it) */
+  url?: string;
 }
 
 /** debug_hits: the hits, oldest first */
@@ -116,4 +118,10 @@ export interface LogpointActionHit {
   values: Record<string, LogpointValue>;
   /** Hits during the action (also those past the stored ones) */
   hits: number;
+  /** Script of these hits, when more than one script matched the file (one entry per script) */
+  url?: string;
+  /** The last error an expression threw during the action (absent when none did) */
+  error?: string;
+  /** How many times an expression threw during the action (with `error`) */
+  errors?: number;
 }

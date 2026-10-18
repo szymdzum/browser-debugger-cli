@@ -10,6 +10,9 @@
  * compiled alone as a parenthesized expression (`Runtime.compileScript`, see
  * `logpoints.ts`), so a typo fails before anything is bound, and each sits on
  * its own lines inside `(…)`, so a trailing `//` comment cannot swallow what follows.
+ * A hit also reports the stack frame of the condition itself, whose `eval at
+ * … (script URL:line:column)` names the script it ran in; an error is reported
+ * the same way, at most `max` of them.
  */
 
 /** Name of the binding the condition reports hits through (a page global) */
@@ -82,10 +85,13 @@ export function buildLogpointCondition(spec: LogpointConditionSpec): string {
     ${guard}__lp_c.hits++;
     if (__lp_c.hits > ${JSON.stringify(spec.max)}) return false;
     var __lp_ser = __lp_st.ser || (__lp_st.ser = ${SERIALIZER});
-    globalThis[${binding}](JSON.stringify({ i: ${id}, v: [${values.join(', ')}] }));
+    globalThis[${binding}](JSON.stringify({ i: ${id}, s: String(new Error().stack).split('\\n')[1], v: [${values.join(', ')}] }));
   } catch (__lp_e) {
     __lp_c.errors++;
     __lp_c.last = (__lp_e && __lp_e.name ? __lp_e.name + ': ' : '') + (__lp_e && __lp_e.message ? __lp_e.message : String(__lp_e));
+    if (__lp_c.errors <= ${JSON.stringify(spec.max)}) {
+      try { globalThis[${binding}](JSON.stringify({ i: ${id}, e: __lp_c.last })); } catch (__lp_f) {}
+    }
   }
   return false;
 })()`;
