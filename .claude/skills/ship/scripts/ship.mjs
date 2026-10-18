@@ -630,7 +630,11 @@ async function repeat(argv) {
   let running = unfinishedRepeat(dispatchRuns());
   if (running && flags.has('replace')) {
     console.log(`cancelling repeat run ${running.databaseId} (--replace)`);
-    run('gh', ['run', 'cancel', String(running.databaseId), '--repo', REPO], { timeoutMs: WRITE_TIMEOUT_MS });
+    try {
+      run('gh', ['run', 'cancel', String(running.databaseId), '--repo', REPO], { timeoutMs: WRITE_TIMEOUT_MS });
+    } catch (error) {
+      console.log(`could not cancel run ${running.databaseId}: ${error.message.split('\n')[0]}`);
+    }
     for (let i = 0; i < 36 && running; i++) {
       await sleep(5000);
       running = unfinishedRepeat(dispatchRuns());
@@ -774,6 +778,22 @@ function freshOriginRef(branch) {
   return `origin/${branch}`;
 }
 
+/**
+ * True when a `ship simplify --finish` marker still covers the PR head: its
+ * recorded commit is an ancestor of the head, and the product lines added
+ * since are at most its own uncommitted edits plus 50 (the refactor: commit
+ * of those edits, small fix-ups). A later large fix round needs a new pass.
+ *
+ * @param {string} marker
+ * @param {string} head
+ */
+function simplifyStillCovers(marker, head) {
+  if (!existsSync(marker)) return false;
+  const [at, edits] = readFileSync(marker, 'utf8').trim().split(' ');
+  if (!at || spawnSync('git', ['merge-base', '--is-ancestor', at, head]).status !== 0) return false;
+  return productLines(run('git', ['diff', '--numstat', at, head])) <= (Number(edits) || 0) + 50;
+}
+
 /** Written by a passing `ship simplify <pr> --finish`; gate 1 reads it */
 function simplifyMarker(prNumber) {
   return `/tmp/ship-simplify-${prNumber}.done`;
@@ -856,7 +876,11 @@ function simplify(argv) {
   }
   if (flags.has('finish')) {
     const code = finishSimplify(path);
-    if (code === EXIT.ok) writeFileSync(simplifyMarker(pr.number), `${new Date().toISOString()}\n`);
+    if (code === EXIT.ok) {
+      const head = run('git', ['-C', path, 'rev-parse', 'HEAD']);
+      const edits = productLines(run('git', ['-C', path, 'diff', '--numstat', 'HEAD']));
+      writeFileSync(simplifyMarker(pr.number), `${head} ${edits}\n`);
+    }
     return code;
   }
   run('git', ['fetch', '-q', 'origin', `pull/${pr.number}/head`]);
@@ -1297,7 +1321,7 @@ export function simplifyVerdict(lines, subjects, body, { simplifyRan = false } =
   if (/nothing to simplify/i.test(body ?? ''))
     return { ok: true, text: `${label}: the PR body says nothing to simplify` };
   const only = refactoringPr
-    ? 'a refactoring PR: its refactor: commits (fix rounds included, S21 #841) are not a pass over it; run ship simplify, or say so'
+    ? 'its first change is a refactor: commit (a refactoring PR or a refactor: prep commit), so no refactor: commit counts as the pass (fix rounds included, S21 #841); run ship simplify --finish, or say so'
     : subjects.some(isRefactor)
       ? 'its refactor: commits are the change itself, not a pass over it'
       : 'no refactor: commit';
@@ -1353,7 +1377,7 @@ async function gates(argv) {
     .map((l) => ({ sha: l.slice(0, 40), subject: l.slice(41) }));
   const numstat = run('git', ['diff', '--numstat', forkPoint, head]);
   const simplify = simplifyVerdict(productLines(numstat), commits.map((c) => c.subject), pr.body, {
-    simplifyRan: existsSync(simplifyMarker(pr.number)),
+    simplifyRan: simplifyStillCovers(simplifyMarker(pr.number), head),
   });
   gateLine(results, simplify.ok, simplify.text);
   if (tier > 1) {
@@ -1517,9 +1541,10 @@ export function appendSnapshotEntries(file, names) {
 export function parseSnapshotArgs(argv, dirs) {
   if (!argv.length) return { accept: null };
   if (argv.length === 1 && argv[0] === '--accept-live') return { acceptLive: true };
+  if (argv.length === 1 && argv[0] === '--accept-main') return { acceptMain: true };
   const names = argv.slice(1);
   if (argv[0] !== '--accept' || !names.length)
-    return { error: 'snapshot takes no arguments, --accept <name>…, or --accept-live' };
+    return { error: 'snapshot takes no arguments, --accept <name>…, --accept-live or --accept-main' };
   const bad = names.find((n) => n.includes('\n') || n.includes('\r'));
   if (bad !== undefined) return { error: `name contains a newline: ${JSON.stringify(bad)}` };
   const unsafe = names.find((n) => n === '' || n === '.' || n === '..' || /[\\/]/.test(n));
@@ -1590,6 +1615,11 @@ async function snapshot(argv = []) {
   const parsed = parseSnapshotArgs(argv, dirs);
   if ('error' in parsed) return usage(`snapshot [--accept <name>… | --accept-live]: ${parsed.error}`);
   if (parsed.acceptLive) return acceptLiveSession(dirs.bdg);
+  if (parsed.acceptMain) {
+    writeFileSync(SNAPSHOT.main, mainCheckoutStatus().join('\n'));
+    console.log('accepted the main checkout as it is now (your own edits there, or another thread\'s)');
+    return EXIT.ok;
+  }
   if (parsed.accept) {
     if (parsed.accept.some(({ key }) => !existsSync(SNAPSHOT[key])))
       return usage('snapshot --accept <name>…: needs a snapshot from ship snapshot');
@@ -1989,9 +2019,8 @@ export function isSessionFileName(name) {
  * included.
  */
 function mainCheckoutStatus() {
-  return run('git', ['-C', mainCheckout(), 'status', '--porcelain', '--untracked-files=all'])
-    .split('\n')
-    .filter(Boolean);
+  const out = spawnSync('git', ['-C', mainCheckout(), 'status', '--porcelain', '--untracked-files=all'], { encoding: 'utf8' }).stdout ?? '';
+  return out.split('\n').filter(Boolean);
 }
 
 /**
@@ -2003,9 +2032,10 @@ function mainCheckoutStatus() {
  * @param {string[]} now porcelain lines now
  */
 export function mainCheckoutChanges(before, now) {
-  const had = new Set(before.map((l) => l.slice(3)));
+  const path = (line) => /^.. (.*)$/.exec(line)?.[1] ?? line.trim().replace(/^\S+\s+/, '');
+  const had = new Set(before.map(path));
   return now
-    .map((l) => l.slice(3))
+    .map(path)
     .filter((path) => path && !had.has(path) && path !== '.claude/skills/ship/log.md');
 }
 
@@ -2434,9 +2464,10 @@ export function fillOutsideQuotes(text, values) {
  * @param {string} role
  */
 export function proxyNote(env, role) {
-  const set = ['HTTPS_PROXY', 'HTTP_PROXY', 'https_proxy', 'http_proxy'].filter((k) => env[k]);
+  const set = ['HTTPS_PROXY', 'HTTP_PROXY', 'ALL_PROXY', 'https_proxy', 'http_proxy', 'all_proxy'].filter((k) => env[k]);
   if (!set.length || role === 'implementer') return null;
-  return `**Proxy.** This machine sets ${set.join(', ')}. For bdg runs, \`unset ${set.join(' ')}\` in the shell and start sessions with \`--chrome-flags="--no-proxy-server"\`, or every request goes through the proxy as http/1.1.`;
+  const without = set.map((k) => `-u ${k}`).join(' ');
+  return `**Proxy.** This machine sets ${set.join(', ')}. Run bdg without it, on the bdg command only (gh, git and npm may need it): \`env ${without} bdg <url> --chrome-flags="--no-proxy-server"\`, or every request goes through the proxy as http/1.1.`;
 }
 
 /**

@@ -858,6 +858,7 @@ test('listEntries skips .DS_Store, so Finder never fails gate 8', () => {
 test('parseSnapshotArgs takes --accept-live alone, and nothing after it', () => {
   const dir = mkdtempSync(join(tmpdir(), 'ship-bdg-'));
   assert.deepEqual(parseSnapshotArgs(['--accept-live'], { bdg: dir }), { acceptLive: true });
+  assert.deepEqual(parseSnapshotArgs(['--accept-main'], { bdg: dir }), { acceptMain: true });
   assert.ok('error' in parseSnapshotArgs(['--accept-live', 'x'], { bdg: dir }));
   assert.ok('error' in parseSnapshotArgs(['--accept', '--accept-live'], { bdg: dir }));
 });
@@ -993,7 +994,7 @@ test("simplifyVerdict doesn't count a refactoring PR's own refactor: commits as 
   const large = SIMPLIFY_THRESHOLD + 1;
   const only = simplifyVerdict(large, ['refactor: type the CDP calls of src/runtime/page'], '');
   assert.equal(only.ok, false);
-  assert.match(only.text, /a refactoring PR: its refactor: commits/);
+  assert.match(only.text, /its first change is a refactor: commit/);
   assert.equal(simplifyVerdict(large, ['test: red', 'refactor: x'], '').ok, false);
   assert.equal(simplifyVerdict(large, ['refactor: the change', 'refactor: simplify pass'], '').ok, false);
   assert.equal(
@@ -1192,16 +1193,17 @@ test('pidReused: a process that started after its PID file was written holds a r
 
 test('mainCheckoutChanges names files added to the main checkout since the snapshot, not log.md', () => {
   const before = [' M .claude/skills/ship/log.md'];
-  const now = [' M .claude/skills/ship/log.md', '?? g2.json', '?? .tmp/s21/notes.md'];
-  assert.deepEqual(mainCheckoutChanges(before, now), ['g2.json', '.tmp/s21/notes.md']);
+  const now = [' M .claude/skills/ship/log.md', '?? g2.json', '?? docs/scratch.md'];
+  assert.deepEqual(mainCheckoutChanges(before, now), ['g2.json', 'docs/scratch.md']);
   assert.deepEqual(mainCheckoutChanges([], [' M .claude/skills/ship/log.md']), []);
   assert.deepEqual(mainCheckoutChanges(['?? old.txt'], ['?? old.txt']), []);
+  assert.deepEqual(mainCheckoutChanges([], ['M .claude/skills/ship/SKILL.md']), ['.claude/skills/ship/SKILL.md']);
 });
 
 test('proxyNote tells agents that run bdg to bypass a configured proxy', () => {
   assert.equal(proxyNote({}, 'tester'), null);
   assert.equal(proxyNote({ HTTPS_PROXY: 'http://127.0.0.1:9000' }, 'implementer'), null);
   const note = proxyNote({ HTTPS_PROXY: 'http://127.0.0.1:9000', http_proxy: 'x' }, 'reviewer');
-  assert.match(note, /unset HTTPS_PROXY http_proxy/);
+  assert.match(note, /env -u HTTPS_PROXY -u http_proxy bdg/);
   assert.match(note, /--no-proxy-server/);
 });
