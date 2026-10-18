@@ -3,7 +3,7 @@
 ## Contents
 - Running a round
 - Report format
-- Scenarios S01–S15
+- Scenarios S01–S16
 - Exploratory sweep
 
 A fixed list of tasks for fresh-agent test rounds, so rounds can be compared over time. A fresh agent is a new agent with no context about bdg's internals: it gets a realistic task and an installed `bdg`, and is **not told which feature is being tested**. What it discovers, works around and rates shows how agent-friendly bdg is; unit, smoke and integration tests don't catch false successes, misleading hints or friction.
@@ -176,6 +176,14 @@ Each scenario has an ID, the task given to the agent, how to set it up, what "wo
 - **Works:** no typed secret, `user:pass@` or token in any output, file or `daemon.log` except page content shown as written (`dom query` hrefs, `--raw`, inline scripts, which the skill says is not masked); a blocked submit names the field and the constraint without the value's length; `--include-sensitive` is the one flag, warns on stderr, and never shows `user:pass@`; the HAR and `state save` files are 0600.
 - **Rate:** how many surfaces the agent thought to check; whether the masking promise in the skill matched what it saw; friction finding `--include-sensitive`, `details network --body`, `dom a11y tree`.
 - **History:** from S1 (2026-10-11): #633, #642, #625, #643, #623, #634, #624; the "public bug report" framing makes testers grep their own captures.
+
+### S16 Slow request diagnosis
+
+- **Task:** "This page feels slow. Find out which requests make it slow and whether each one is the server's fault or the browser's (queueing, connection setup, download), and what to fix."
+- **Setup:** a page that loads requests from `startTimingServer()` (`src/__testutils__/timingServer.ts`): `/wait` (a slow server), `/download` (a trickled body), and 8 parallel `/hold` on one HTTP/1.1 host (the last two queue in Chrome), served by the orchestrator outside the repo; plus one real site over h2. When the machine sets a proxy, the brief says to bypass it (`ship brief` adds the note), or every request is http/1.1.
+- **Works:** `network list` then `network details <id>` name the dominant phase of each slow request (`wait`, `download`, `queued`) with a verdict that matches the cause; `--json` `data.timingBreakdown` and `item.protocol`; the "6 connections per host" explanation only for HTTP/1.1; no confident verdict on a `data:` URL, a cached response, a 500 with an unread body or an aborted request.
+- **Rate:** whether the agent blamed the right side for each request; whether any verdict was confidently wrong.
+- **History:** from S21 (#837, PR #840): two rounds found a `data:` URL shown as cache, an unread 500 body hidden as failed, an aborted request called "server time".
 
 ## Exploratory sweep
 
