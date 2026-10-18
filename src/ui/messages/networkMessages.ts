@@ -400,6 +400,7 @@ const UNAVAILABLE_TEXT: Record<TimingUnavailableReason, string> = {
   cache: 'none (served from cache, no network)',
   pending: 'none (request still pending)',
   failed: 'none (request failed)',
+  'service-worker': 'none (answered by a service worker, no network timing)',
   'no-timing': 'none (Chrome reported no timing, as for a data: URL)',
 };
 

@@ -124,6 +124,35 @@ void describe('timingBreakdown', () => {
     assert.equal(breakdown.dominant, 'queued');
   });
 
+  void it('omits connect for a reused connection with a zero-length proxy span', () => {
+    const breakdown = timingBreakdown(request({ ...REUSED, proxyStart: 0, proxyEnd: 0 }, 0.123));
+    assert.ok('phases' in breakdown, JSON.stringify(breakdown));
+    assert.equal('connect' in breakdown.phases, false, JSON.stringify(breakdown.phases));
+  });
+
+  void it('says no-timing when the headers end is missing or -1', () => {
+    const { receiveHeadersEnd, ...noHeadersEnd } = REUSED;
+    void receiveHeadersEnd;
+    for (const timing of [noHeadersEnd, { ...REUSED, receiveHeadersEnd: -1 }]) {
+      assert.deepEqual(timingBreakdown(request(timing, 0.5)), { unavailable: 'no-timing' });
+    }
+    const { sendEnd, ...noSendEnd } = REUSED;
+    void sendEnd;
+    assert.deepEqual(timingBreakdown(request(noSendEnd, 0.5)), { unavailable: 'no-timing' });
+  });
+
+  void it('says no-timing when the offsets are out of order', () => {
+    const shuffled: Timing = { ...REUSED, sendStart: 50, sendEnd: 2, receiveHeadersEnd: 1 };
+    assert.deepEqual(timingBreakdown(request(shuffled, 0.5)), { unavailable: 'no-timing' });
+  });
+
+  void it('says service-worker when a service worker answered', () => {
+    const viaFlag = request(REUSED, 0.123, { fromServiceWorker: true });
+    assert.deepEqual(timingBreakdown(viaFlag), { unavailable: 'service-worker' });
+    const viaTiming = request({ ...REUSED, workerStart: 1, workerReady: 2 }, 0.123);
+    assert.deepEqual(timingBreakdown(viaTiming), { unavailable: 'service-worker' });
+  });
+
   void it('never gives a negative phase', () => {
     const breakdown = timingBreakdown(request(REUSED, 0.05));
     assert.ok('phases' in breakdown, JSON.stringify(breakdown));

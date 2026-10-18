@@ -24,7 +24,8 @@ export const TIMING_PHASES = [
 export type TimingPhase = (typeof TIMING_PHASES)[number];
 
 /** Why a request has no breakdown */
-export type TimingUnavailableReason = 'cache' | 'pending' | 'failed' | 'no-timing';
+export type TimingUnavailableReason =
+  'cache' | 'pending' | 'failed' | 'service-worker' | 'no-timing';
 
 /** The phases of a request that has timing; a phase that did not happen is absent */
 export interface TimingPhases {
@@ -51,6 +52,37 @@ export function offsetSpan(start: number | undefined, end: number | undefined): 
 }
 
 /**
+ * Whether a service worker answered the request: its time is the worker's,
+ * not the network's, and Chrome's offsets then include the worker phases.
+ *
+ * @param request - Captured request
+ * @returns True when a service worker handled it
+ */
+function answeredByServiceWorker(request: NetworkRequest): boolean {
+  const { workerStart, workerReady } = request.timing ?? {};
+  return (
+    request.fromServiceWorker === true ||
+    (workerStart !== undefined && workerStart >= 0) ||
+    (workerReady !== undefined && workerReady >= 0)
+  );
+}
+
+/**
+ * Whether the timing has the offsets the wait and send phases are measured
+ * from, in order (send ends before the headers end); anything else would
+ * give phases that are not what happened.
+ *
+ * @param timing - Chrome's timing of the request
+ * @returns True when the offsets are present and ordered
+ */
+function hasOrderedOffsets(timing: Timing): boolean {
+  const { sendStart, sendEnd, receiveHeadersEnd } = timing;
+  if (sendEnd === undefined || receiveHeadersEnd === undefined) return false;
+  if (sendEnd < 0 || receiveHeadersEnd < sendEnd) return false;
+  return sendStart === undefined || sendStart < 0 || sendStart <= sendEnd;
+}
+
+/**
  * Why a request has no breakdown.
  *
  * @param request - Captured request
@@ -61,10 +93,11 @@ function unavailableReason(request: NetworkRequest): TimingUnavailableReason | u
   if (request.errorText !== undefined || request.blockedReason !== undefined) return 'failed';
   if (request.resourceType === 'WebSocket') return 'no-timing';
   if (request.loadingFinishedTime === undefined) return 'pending';
+  if (answeredByServiceWorker(request)) return 'service-worker';
   if (request.timing?.requestTime === undefined || request.sentTime === undefined) {
     return 'no-timing';
   }
-  return undefined;
+  return hasOrderedOffsets(request.timing) ? undefined : 'no-timing';
 }
 
 /**
@@ -96,8 +129,8 @@ function queuedMs(timing: Timing, startedAfter: number): number {
 function connectMs(timing: Timing, tls: number | undefined): number | undefined {
   const connect = offsetSpan(timing.connectStart, timing.connectEnd);
   const proxy = offsetSpan(timing.proxyStart, timing.proxyEnd);
-  if (connect === undefined && proxy === undefined) return undefined;
-  return (connect === undefined ? 0 : connect - (tls ?? 0)) + (proxy ?? 0);
+  if (connect === undefined) return proxy === undefined || proxy === 0 ? undefined : proxy;
+  return connect - (tls ?? 0) + (proxy ?? 0);
 }
 
 /**
