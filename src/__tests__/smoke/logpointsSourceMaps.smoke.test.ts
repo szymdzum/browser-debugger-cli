@@ -205,6 +205,38 @@ void describe('logpoints on source-mapped bundles (#848, part 2)', () => {
     assert.deepEqual(await listed(), []);
   });
 
+  void it('two original places that compile to the same position: the second is 84 and leaves nothing behind', async () => {
+    const first = await json<Logged>([
+      'debug',
+      'log',
+      `src/cart.ts:${CART_LINES.returnTotal}`,
+      'total',
+    ]);
+    const failed = await json<{ error: string }>(
+      ['debug', 'log', `src/cart.ts:${CART_LINES.returnTotal}:5`, 'discount'],
+      84
+    );
+    assert.match(failed.error, /already has a breakpoint/);
+    assert.deepEqual(
+      (await listed()).map((lp) => lp.id),
+      [first.id]
+    );
+  });
+
+  void it('survives a reload: the logpoint still fires and is still bound', async () => {
+    const created = await json<Logged>([
+      'debug',
+      'log',
+      `src/cart.ts:${CART_LINES.returnTotal}`,
+      'total',
+    ]);
+    await bdg(['page', 'reload']);
+    await bdg(['dom', 'click', '#checkout']);
+    assert.deepEqual(await hitValues(created.id), [{ total: 25 }]);
+    const entry = (await listed()).find((lp) => lp.id === created.id);
+    assert.equal(entry?.bound[0]?.source?.line, CART_LINES.returnTotal);
+  });
+
   void it('a file no map names is pending, and the warning says which maps could not be used', async () => {
     const { out } = await bdg(['debug', 'log', 'src/ghost.ts:2', 'x', '--json']);
     const envelope = JSON.parse(out) as { warnings?: string[]; data: Logged };

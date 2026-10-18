@@ -127,6 +127,20 @@ export function logpointNoMappedCodeError(file: string, line: number): ErrorWith
 }
 
 /**
+ * Two original places that map to the same generated position (Chrome allows
+ * one breakpoint there).
+ *
+ * @param where - The location asked for
+ * @returns Error
+ */
+export function logpointSamePlaceError(where: string): ErrorWithSuggestion {
+  return {
+    message: `${where} maps to a generated position that already has a breakpoint`,
+    suggestion: `See ${sessionCommand('bdg debug list')}; a logpoint or breakpoint at the same compiled place must be cleared first`,
+  };
+}
+
+/**
  * A loaded script that has no code at the line.
  *
  * @param file - File as typed

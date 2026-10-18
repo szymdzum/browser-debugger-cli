@@ -21,6 +21,7 @@ import {
   logpointNotFoundError,
   logpointSourceMapWarning,
   logpointSyntaxError,
+  logpointSamePlaceError,
   MAX_LOGPOINTS,
   tooManyLogpointsError,
   type ErrorWithSuggestion,
@@ -603,9 +604,9 @@ export class Logpoints {
       storedInLoad: 0,
     };
     set.locations.forEach((location) => this.addBound(point, location, set.breakpointId));
+    if (resolution) await this.bindPlacesOrUndo(cdp, point, resolution.places);
     this.nextId++;
     this.points.set(id, point);
-    if (resolution) await this.bindPlaces(cdp, point, resolution.places);
     return {
       id,
       requested: { file, line, ...(column !== undefined && { column }) },
@@ -616,6 +617,32 @@ export class Logpoints {
           warning: this.pendingWarning(file, resolution?.failures ?? []),
         }),
     };
+  }
+
+  /**
+   * {@link bindPlaces} for a logpoint not yet in the registry: when it fails,
+   * the breakpoints set so far are taken back.
+   *
+   * @param cdp - Page connection
+   * @param point - The new logpoint
+   * @param places - Positions in generated scripts
+   * @throws CommandError (84) when another breakpoint sits at a generated position
+   */
+  private async bindPlacesOrUndo(
+    cdp: CDPConnection,
+    point: Logpoint,
+    places: MappedPlace[]
+  ): Promise<void> {
+    try {
+      await this.bindPlaces(cdp, point, places);
+    } catch (error) {
+      for (const breakpointId of point.breakpointIds) {
+        await sendTyped(cdp, 'Debugger.removeBreakpoint', { breakpointId }).catch(
+          (failure: unknown) => log.debug(`Not removed: ${getErrorMessage(failure)}`)
+        );
+      }
+      throw error;
+    }
   }
 
   /**
@@ -636,6 +663,12 @@ export class Logpoints {
         lineNumber: place.line - 1,
         columnNumber: place.column - 1,
         condition: buildLogpointCondition(point),
+      }).catch((error: unknown) => {
+        if (!/already exists/i.test(getErrorMessage(error))) throw error;
+        throw commandError(
+          logpointSamePlaceError(logpointPlace(point.file, point.line, point.column)),
+          EXIT_CODES.RESOURCE_ALREADY_EXISTS
+        );
       });
       point.breakpointIds.push(set.breakpointId);
       point.sources.set(set.breakpointId, { file: displayUrl(place.source), line: point.line });
