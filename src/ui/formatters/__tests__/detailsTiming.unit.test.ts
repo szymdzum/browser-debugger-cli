@@ -134,4 +134,16 @@ void describe('network details Timing rows', () => {
       /Failed after 1002 ms \(net::ERR_CONNECTION_RESET\); up to then .* in wait: server time \(TTFB\) up to then/
     );
   });
+
+  void it('names no cause for a request too fast to split, whatever the protocol', () => {
+    const instant = request({
+      protocol: 'http/1.1',
+      timing: { requestTime: 100, sendStart: 0, sendEnd: 0, receiveHeadersEnd: 0 },
+      loadingFinishedTime: 100,
+      duration: 0,
+    });
+    const text = formatNetworkDetails(instant);
+    assert.match(text, /Too fast to split \(every phase under 1 ms\)/);
+    assert.doesNotMatch(text, /6 connections|queued:/);
+  });
 });

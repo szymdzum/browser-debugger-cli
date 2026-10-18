@@ -30,7 +30,8 @@ export type TimingUnavailableReason =
 /** The phases of a request that has timing; a phase that did not happen is absent */
 export interface TimingPhases {
   phases: Partial<Record<TimingPhase, number>>;
-  dominant: TimingPhase;
+  /** The phase that took most of the time; absent when every phase is under 1 ms */
+  dominant?: TimingPhase;
   totalMs: number;
 }
 
@@ -198,5 +199,9 @@ export function timingBreakdown(request: NetworkRequest): TimingBreakdown {
     'queued'
   );
   const totalMs = ((endTime(request) ?? 0) - (request.sentTime ?? 0)) * MS_PER_SECOND;
-  return { phases, dominant, totalMs: Math.max(0, Math.round(totalMs)) };
+  return {
+    phases,
+    ...((phases[dominant] ?? 0) >= 1 && { dominant }),
+    totalMs: Math.max(0, Math.round(totalMs)),
+  };
 }

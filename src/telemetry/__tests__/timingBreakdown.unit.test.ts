@@ -151,6 +151,20 @@ void describe('timingBreakdown', () => {
     assert.deepEqual(timingBreakdown(viaFlag), { unavailable: 'service-worker' });
   });
 
+  void it('has no dominant phase when every phase is under 1 ms', () => {
+    const instant: Timing = {
+      ...REUSED,
+      requestTime: 100,
+      sendStart: 0,
+      sendEnd: 0,
+      receiveHeadersEnd: 0,
+    };
+    const breakdown = timingBreakdown(request(instant, 0));
+    assert.ok('phases' in breakdown, JSON.stringify(breakdown));
+    assert.equal('dominant' in breakdown, false, JSON.stringify(breakdown));
+    assert.deepEqual(breakdown.phases, { queued: 0, send: 0, wait: 0, download: 0 });
+  });
+
   void it('never gives a negative phase', () => {
     const breakdown = timingBreakdown(request(REUSED, 0.05));
     assert.ok('phases' in breakdown, JSON.stringify(breakdown));

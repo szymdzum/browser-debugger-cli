@@ -416,6 +416,9 @@ export function timingPhasesLine(phases: TimingPhases['phases']): string {
     .join(' · ');
 }
 
+/** Verdict of a request whose every phase took under 1 ms */
+const TOO_FAST_VERDICT = 'Too fast to split (every phase under 1 ms)';
+
 /** What the verdict says about a request that went through a proxy on this machine */
 const LOCAL_PROXY_VERDICT_NOTE =
   "Protocol and connection/wait times are the local proxy's (a buffering proxy turns a streamed body into wait; HTTP/1.1 may be the proxy's), not the site's";
@@ -441,6 +444,7 @@ export interface TimingVerdictContext {
  */
 export function timingVerdict(breakdown: TimingPhases, context: TimingVerdictContext = {}): string {
   const { dominant, phases, totalMs } = breakdown;
+  if (dominant === undefined) return TOO_FAST_VERDICT;
   const ms = phases[dominant] ?? 0;
   const size =
     dominant === 'download' && context.transferredBytes !== undefined
