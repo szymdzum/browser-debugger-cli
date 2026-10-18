@@ -9,8 +9,12 @@
 
 import type { FixtureRoutes } from '@/__testutils__/fixtureRoutes.js';
 
-/** How long a click keeps the page busy; the test signals within milliseconds */
-export const BUSY_MS = 8000;
+/**
+ * How long a click keeps the page busy; the test signals within milliseconds.
+ * Each later click waits out what is left of the previous one, so this is
+ * also the longest a test waits for the page.
+ */
+export const BUSY_MS = 3000;
 
 /** A button whose click handler busy-waits */
 const BUSY_HTML = `<!doctype html><title>busy</title>

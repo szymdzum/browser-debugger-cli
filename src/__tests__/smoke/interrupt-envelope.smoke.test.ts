@@ -80,16 +80,11 @@ after(removeTempDirs);
 void describe('Interrupted commands', () => {
   let fixture: FixtureServer;
 
-  /** Start the session on the busy page */
-  async function startSession(): Promise<void> {
-    const port = await getFreePort();
-    await bdg([`${fixture.url}busy`, '--port', String(port), '--headless']);
-  }
-
   before(async () => {
     await cleanupAllSessions();
     fixture = await startFixtureServer();
-    await startSession();
+    const port = await getFreePort();
+    await bdg([`${fixture.url}busy`, '--port', String(port), '--headless']);
   });
 
   after(async () => {
@@ -186,9 +181,13 @@ void describe('Interrupted commands', () => {
     assert.equal(fs.readFileSync(file, 'utf8'), 'previous', 'the previous content stays');
   });
 
+  void it('answers normally afterwards', async () => {
+    await bdg(['network', 'list', '--json']);
+  });
+
   /**
    * Whether the resumed daemon still runs the stop is not up to the CLI, so
-   * the session is cleaned up and started again for the tests after this one.
+   * this test is the last one: it ends the session, `after` cleans up.
    */
   void it('says an interrupted stop may have been sent, to check with bdg status', async () => {
     const result = await interruptRead(['stop'], 'SIGINT');
@@ -196,12 +195,6 @@ void describe('Interrupted commands', () => {
     assert.ok(!result.stdout.includes('"success":true'), 'no stop result was printed');
     assert.match(String(envelope.suggestion), /stop request may already have been sent/);
     assert.match(String(envelope.suggestion), /bdg status/);
-    await cleanupAllSessions();
-    await startSession();
-  });
-
-  void it('answers normally afterwards', async () => {
-    await bdg(['network', 'list', '--json']);
   });
 });
 
