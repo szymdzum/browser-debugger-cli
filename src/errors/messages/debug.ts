@@ -6,6 +6,9 @@ import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 
 import { shellWord, type ErrorWithSuggestion } from './shared.js';
 
+/** Reasons a source map warning lists */
+const MAX_REASONS_SHOWN = 3;
+
 /** Most logpoints a session holds */
 export const MAX_LOGPOINTS = 10;
 
@@ -92,6 +95,35 @@ export function logpointFileNotLoadedWarning(
     ? `Did you mean: ${similar.join(', ')}?`
     : `Use the end of a script URL the page loads (see ${sessionCommand('bdg network list')})`;
   return `No loaded script matches "${file}" (${loaded} loaded); the logpoint binds when one does. ${hint}`;
+}
+
+/**
+ * No loaded script matches the file, and some source maps could not be used.
+ *
+ * @param file - File as typed
+ * @param failures - One reason per map, each naming the map
+ * @returns Warning
+ */
+export function logpointSourceMapWarning(file: string, failures: string[]): string {
+  const shown = failures.slice(0, MAX_REASONS_SHOWN).join('; ');
+  const more =
+    failures.length > MAX_REASONS_SHOWN ? ` (+${failures.length - MAX_REASONS_SHOWN} more)` : '';
+  return `No loaded script or readable source map names "${file}"; the logpoint binds when one does. Source maps not used: ${shown}${more}`;
+}
+
+/**
+ * A source map names the file, but the original line compiles to no code.
+ *
+ * @param file - File as typed
+ * @param line - Line asked for
+ * @returns Error
+ */
+export function logpointNoMappedCodeError(file: string, line: number): ErrorWithSuggestion {
+  return {
+    message: `${file} has no code at line ${line}`,
+    suggestion:
+      'The source map has no mapping for this line (a type, an import or a blank line compiles to nothing): pick a line with a statement',
+  };
 }
 
 /**

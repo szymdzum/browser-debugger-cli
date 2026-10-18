@@ -11,6 +11,7 @@ import type {
   LogpointHit,
   LogpointValue,
 } from '@/ipc/protocol/debugTypes.js';
+import { displayUrl } from '@/utils/displayUrl.js';
 import { logpointPlace } from '@/utils/logpointLocation.js';
 
 /** Description of the `debug` command group */
@@ -92,6 +93,11 @@ export function logpointSetText(data: DebugLogData): string {
     return `${id} pending: ${requested.file} is not loaded yet; the logpoint binds when it is`;
   }
   const first = bound[0];
+  if (first?.source) {
+    const asked = logpointPlace(requested.file, requested.line, requested.column);
+    const generated = `${displayUrl(first.url)}:${first.line}:${first.column}`;
+    return `${id} bound at ${asked} (generated ${generated}${bound.length > 1 ? `, ${bound.length} places` : ''})`;
+  }
   if (first && first.line !== requested.line) {
     return `${id} bound at ${requested.file}:${first.line} (asked ${requested.line})`;
   }
