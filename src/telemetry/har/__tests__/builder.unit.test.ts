@@ -551,6 +551,33 @@ describe('HAR Builder', () => {
       assert.equal(time, 401);
     });
 
+    test('overlapping phases keep time the sum of the phases (#847)', () => {
+      const request: NetworkRequest = {
+        requestId: 'req-1',
+        url: 'https://example.com/overlap',
+        method: 'GET',
+        timestamp: Date.now(),
+        sentTime: 1000,
+        timing: {
+          requestTime: 1000.004,
+          dnsStart: 0,
+          dnsEnd: 2,
+          sendStart: 2,
+          sendEnd: 3,
+          receiveHeadersEnd: 4,
+        },
+        loadingFinishedTime: 1000.004,
+      };
+
+      const { timings, time } = getFirstEntry(buildHAR([request], baseMetadata).log.entries);
+
+      assert.equal(time, 7);
+      assert.equal(timings.connect, -1);
+      assert.ok(
+        (timings.send ?? -1) >= 0 && (timings.wait ?? -1) >= 0 && (timings.receive ?? -1) >= 0
+      );
+    });
+
     test('time equals the total of details when the phases are fractions (#847)', () => {
       const request: NetworkRequest = {
         requestId: 'req-1',

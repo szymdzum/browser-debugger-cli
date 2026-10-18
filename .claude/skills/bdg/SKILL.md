@@ -213,7 +213,7 @@ bdg console details <n>                       # One message whole ([n] from the 
 bdg console                                   # Summary + Issues block: quirks mode, broken labels/duplicate ids, failed @import, eval blocked by CSP
 bdg console --follow                          # Streams (blocks; agents re-run bdg console instead); a page left is printed in full, then the separator
 bdg network har /tmp/session.har              # Export HAR 1.2 (credentials redacted, also secret form-control values in HTML bodies; inline-script tokens kept; --include-sensitive keeps all)
-# HAR timings match `network details`: blocked = Chrome's queue time, time = sum of phases
+# HAR timings match `network details`: blocked = Chrome's queue time, time = sum of phases = `network details` total, unless Chrome reports overlapping phases
 ```
 
 ## Raw CDP

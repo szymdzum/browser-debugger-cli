@@ -329,7 +329,9 @@ function span(start: number | undefined, end: number | undefined): number {
  * A phase that did not happen is -1 (`dns`, `connect`, `ssl`); `send`, `wait`
  * and `receive` are never negative. The phases are rounded one by one and
  * the total once, so the rounding remainder goes into `receive` (into `wait`
- * where `receive` would turn negative): the phases then add up to `totalMs`.
+ * where `receive` would turn negative): the phases then add up to `totalMs`,
+ * except when Chrome reports overlapping phases (the sum then exceeds it and
+ * `time` stays the sum of the phases, as HAR requires).
  *
  * @param phases - Phases of the timing breakdown, in ms
  * @param totalMs - Total of the breakdown, in ms
