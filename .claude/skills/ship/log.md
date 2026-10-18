@@ -144,5 +144,5 @@ Process changes seen in one session only (SKILL.md, Keep the books: a second ses
 | One repeat dispatch covers Node 22 and 26 (the workflow's `node` input as a list) instead of two dispatches in sequence | S22 (#845: two ×10 repeats in a row, ~2 h for a tier 1 CI change) | |
 | A fix commit with no logic change (comments, a dead branch removed) is checked by the orchestrator with `git diff`, like a one-line wording fix | S22 (#845 round 1: 9 comment lines and a dead branch) | |
 | A cleanup session (bookkeeping, closing near-done issues) every few sessions | S22 (~20 min closed #529, #742, #809 without code) | |
-| For a tier 1 CI change, the repeat on one Node is enough before merging; the other Node versions are covered by the full shards | S22 (#845 merged before the Node 26 repeat finished, owner's call) | depends on the Node 26 result (run 39134559027) |
+| A CI change that alters test timing (concurrency, sharding) is watched over a few push runs on `main` before it counts as done, with the revert ready | S22 (#845: repeat ×10 on Node 22 and the PR's full shards green; the first push run on `main`, macOS Node 22 shard 2/4, failed `cdp-reply-cap` at 29.9 s against 28 s under the new concurrency; reverted to 1 in #852) | replaces "one Node's repeat is enough for a tier 1 CI change": the failure came from neither Node's repeat but from load on `main` |
 
