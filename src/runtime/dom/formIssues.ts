@@ -9,6 +9,7 @@
  * out, and so is an error with none left.
  */
 
+import { sendTyped } from '@/connection/typed-cdp.js';
 import type { FormIssue, RawField, RawFormData } from '@/ipc/protocol/domTypes.js';
 import { releaseObjectGroup } from '@/runtime/page/objectGroups.js';
 import type { CDPSender } from '@/telemetry/objectExpander.js';
@@ -48,16 +49,16 @@ async function isConnected(
   objectGroup: string
 ): Promise<boolean> {
   try {
-    const { object } = (await cdp.send('DOM.resolveNode', {
+    const { object } = await sendTyped(cdp, 'DOM.resolveNode', {
       backendNodeId,
       objectGroup,
-    })) as { object: { objectId?: string } };
+    });
     if (!object.objectId) return false;
-    const { result } = (await cdp.send('Runtime.callFunctionOn', {
+    const { result } = await sendTyped(cdp, 'Runtime.callFunctionOn', {
       objectId: object.objectId,
       functionDeclaration: 'function () { return this.isConnected; }',
       returnByValue: true,
-    })) as { result: { value?: unknown } };
+    });
     return result.value === true;
   } catch (error) {
     log.debug(`Issue element ${backendNodeId} gone: ${getErrorMessage(error)}`);

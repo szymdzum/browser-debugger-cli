@@ -13,7 +13,7 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import type { Protocol } from '@/connection/typed-cdp.js';
+import { sendTyped } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import { frameMappingError, type FrameMappingProblem } from '@/errors/messages.js';
 import type { LayoutBox, LayoutPoint } from '@/ipc/protocol/domTypes.js';
@@ -219,23 +219,21 @@ export const CLIENT_RECT_FUNCTION =
  */
 async function measureReferenceBox(cdp: CDPConnection, objectId: string): Promise<ReferenceBox> {
   try {
-    const reference = (await cdp.send('Runtime.callFunctionOn', {
+    const reference = await sendTyped(cdp, 'Runtime.callFunctionOn', {
       objectId,
       functionDeclaration: REFERENCE_NODE_FUNCTION,
-    })) as Protocol.Runtime.CallFunctionOnResponse;
+    });
     const referenceId = reference.result.objectId;
     if (!referenceId) throw mappingError('no-box');
     const [quads, rect] = await Promise.all([
-      cdp.send('DOM.getContentQuads', {
-        objectId: referenceId,
-      }) as Promise<Protocol.DOM.GetContentQuadsResponse>,
-      cdp.send('Runtime.callFunctionOn', {
+      sendTyped(cdp, 'DOM.getContentQuads', { objectId: referenceId }),
+      sendTyped(cdp, 'Runtime.callFunctionOn', {
         objectId: referenceId,
         functionDeclaration: CLIENT_RECT_FUNCTION,
         returnByValue: true,
-      }) as Promise<{ result?: { value?: LayoutBox } }>,
+      }),
     ]);
-    const box = rect.result?.value;
+    const box = rect.result?.value as LayoutBox | undefined;
     if (!box) throw mappingError('no-box');
     return { rect: box, quads: quads.quads };
   } catch (error) {

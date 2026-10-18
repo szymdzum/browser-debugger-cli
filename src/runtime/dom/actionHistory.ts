@@ -12,6 +12,7 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import { sendTyped } from '@/connection/typed-cdp.js';
 import type { CleanupFunction } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -115,9 +116,9 @@ const HISTORY_STOP_SCRIPT =
 export async function startActionHistory(cdp: CDPConnection): Promise<CleanupFunction> {
   let identifier: string | undefined;
   try {
-    const added = (await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+    const added = await sendTyped(cdp, 'Page.addScriptToEvaluateOnNewDocument', {
       source: HISTORY_START_SCRIPT,
-    })) as { identifier?: string };
+    });
     identifier = added.identifier;
     await cdp.send('Runtime.evaluate', { expression: HISTORY_START_SCRIPT });
   } catch (error) {

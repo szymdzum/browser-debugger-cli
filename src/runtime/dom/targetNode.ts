@@ -10,7 +10,7 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import type { Protocol } from '@/connection/typed-cdp.js';
+import { sendTyped } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import {
   actionBrokenByPageError,
@@ -416,21 +416,19 @@ async function bindTargetNode(cdp: CDPConnection, backendNodeId: number): Promis
   );
   let objectId: string | undefined;
   try {
-    const resolved = (await cdp.send('DOM.resolveNode', { backendNodeId })) as {
-      object?: { objectId?: string };
-    };
+    const resolved = await sendTyped(cdp, 'DOM.resolveNode', { backendNodeId });
     objectId = resolved.object?.objectId;
   } catch {
     throw stale;
   }
   if (!objectId) throw stale;
 
-  const bound = (await cdp.send('Runtime.callFunctionOn', {
+  const bound = await sendTyped(cdp, 'Runtime.callFunctionOn', {
     objectId,
     functionDeclaration: BIND_FUNCTION,
     returnByValue: true,
-  })) as { result?: { value?: unknown } };
-  const scope = bound.result?.value;
+  });
+  const scope: unknown = bound.result?.value;
   if (scope === 'frame') return frameScopedConnection(cdp, objectId);
   if (scope !== 'top') throw stale;
   return cdp;
@@ -542,12 +540,12 @@ export async function selectorOfNode(
     const resolved = await resolveNodeInBdgWorld(cdp, { backendNodeId, objectGroup });
     const { objectId } = resolved.object;
     if (!objectId) return null;
-    const answer = (await cdp.send('Runtime.callFunctionOn', {
+    const answer = await sendTyped(cdp, 'Runtime.callFunctionOn', {
       objectId,
       functionDeclaration: NODE_SELECTOR_FUNCTION,
       returnByValue: true,
-    })) as { result?: { value?: unknown } };
-    const value = answer.result?.value;
+    });
+    const value: unknown = answer.result?.value;
     return typeof value === 'string' ? value : null;
   } catch (error) {
     log.debug(`No selector for the element: ${getErrorMessage(error)}`);
@@ -606,10 +604,10 @@ async function bindMatches(cdp: CDPConnection, selector: string, index: number):
     if (found.exceptionDetails) throwIfInvalidSelector(found.exceptionDetails, selector);
     const arrayId = found.result.objectId;
     if (found.exceptionDetails || !arrayId) return false;
-    const { result } = (await cdp.send('Runtime.getProperties', {
+    const { result } = await sendTyped(cdp, 'Runtime.getProperties', {
       objectId: arrayId,
       ownProperties: true,
-    })) as Protocol.Runtime.GetPropertiesResponse;
+    });
     const matches = result
       .filter((property) => /^\d+$/.test(property.name))
       .map((property) => ({ i: Number(property.name), objectId: property.value?.objectId }));
@@ -650,19 +648,19 @@ async function bindMatch(
   objectId: string
 ): Promise<boolean> {
   try {
-    const { node } = (await cdp.send('DOM.describeNode', {
+    const { node } = await sendTyped(cdp, 'DOM.describeNode', {
       objectId,
-    })) as Protocol.DOM.DescribeNodeResponse;
-    const resolved = (await cdp.send('DOM.resolveNode', {
+    });
+    const resolved = await sendTyped(cdp, 'DOM.resolveNode', {
       backendNodeId: node.backendNodeId,
-    })) as Protocol.DOM.ResolveNodeResponse;
+    });
     if (!resolved.object.objectId) return false;
-    const stored = (await cdp.send('Runtime.callFunctionOn', {
+    const stored = await sendTyped(cdp, 'Runtime.callFunctionOn', {
       objectId: resolved.object.objectId,
       functionDeclaration: BIND_MATCH_FUNCTION,
       arguments: [{ value: selector }, { value: i }],
       returnByValue: true,
-    })) as Protocol.Runtime.CallFunctionOnResponse;
+    });
     return stored.result.value === true;
   } catch (error) {
     log.debug(`Match ${i} not bound: ${getErrorMessage(error)}`);

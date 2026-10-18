@@ -11,6 +11,7 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import { sendTyped } from '@/connection/typed-cdp.js';
 import type { InvalidField, ValidityReport } from '@/ipc/protocol/domTypes.js';
 import { SENSITIVE_FIELD_JS, VALIDITY_REPORT_JS } from '@/runtime/dom/elementInfo.js';
 import { createLogger } from '@/ui/logging/index.js';
@@ -378,11 +379,11 @@ export async function readBlockedSubmit(
 ): Promise<BoundedInvalidFields | undefined> {
   const read = async (): Promise<RawInvalidField[] | undefined> => {
     try {
-      const reply = (await cdp.send('Runtime.evaluate', {
+      const reply = await sendTyped(cdp, 'Runtime.evaluate', {
         expression: READ_SUBMIT_PROBE_SCRIPT,
         returnByValue: true,
-      })) as { result?: { value?: RawInvalidField[] | null } };
-      return reply.result?.value ?? undefined;
+      });
+      return (reply.result?.value as RawInvalidField[] | null | undefined) ?? undefined;
     } catch (error) {
       log.debug(`Submit probe not read: ${getErrorMessage(error)}`);
       return undefined;
