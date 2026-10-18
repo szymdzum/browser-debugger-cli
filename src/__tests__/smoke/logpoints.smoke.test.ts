@@ -323,9 +323,47 @@ void describe('logpoints (#848)', () => {
   void it('exit codes', async () => {
     await bdg(['debug', 'log', 'nothing.js:3'], 83);
     await bdg(['debug', 'log', `${APP}:999`], 83);
+    await bdg(['debug', 'log', `${APP}:${APP_JS_LINES.last + 1}`], 83);
     await bdg(['debug', 'log', APP], 81);
     await bdg(['debug', 'log', `${APP}:${LINE}`, 'foo('], 81);
     await bdg(['debug', 'clear', 'lp999'], 83);
+  });
+
+  void it('refuses an expression that changes the structure of the condition (81)', async () => {
+    await bdg(['debug', 'log', `${APP}:${LINE}`, 'a) ; window.__evil = 1; (b'], 81);
+    await bdg(['debug', 'log', `${APP}:${LINE}`, '1), (2'], 81);
+    await bdg(['debug', 'log', `${APP}:${LINE}`, 'total', '--if', '1), (2'], 81);
+    assert.deepEqual(await listed(), []);
+  });
+
+  void it('prints a long value cut, and keeps it whole in JSON', async () => {
+    await bdg(['debug', 'log', `${APP}:${LINE}`, "'x'.repeat(1000)"]);
+    const human = await bdg(['dom', 'click', '#checkout']);
+    const line = human.out.split('\n').find((l) => l.startsWith('logpoint ')) ?? '';
+    assert.ok(line.includes('…') && line.length < 400, line);
+    const hits = await json<{ hits: Array<{ values: Record<string, string> }> }>(['debug', 'hits']);
+    assert.equal(Object.values(hits.hits[0]?.values ?? {})[0]?.length, 1000);
+  });
+
+  void it('logpoints survive a tab switch, fire on the new tab and come back', async () => {
+    const created = await json<{ id: string }>(['debug', 'log', `${APP}:${LINE}`, 'total']);
+    await bdg(['dom', 'click', '#open-tab']);
+    await bdg(['page', 'switch', '1']);
+    assert.equal((await listed()).length, 1);
+    const status = await json<{ activity: { logpoints?: number } }>(['status']);
+    assert.equal(status.activity.logpoints, 1);
+    const clicked = await json<{ logpoints?: Array<{ id: string; hits: number }> }>([
+      'dom',
+      'click',
+      '#checkout',
+    ]);
+    assert.equal(clicked.logpoints?.[0]?.id, created.id);
+    await bdg(['page', 'switch', '0']);
+    assert.equal((await listed()).length, 1);
+    const back = await json<{ logpoints?: Array<{ id: string }> }>(['dom', 'click', '#checkout']);
+    assert.equal(back.logpoints?.[0]?.id, created.id);
+    const tabs = await json<{ tabs: Array<{ index: number }> }>(['page', 'tabs']);
+    await bdg(['page', 'close', String(tabs.tabs.length - 1)]);
   });
 
   void it('refuses a duplicate location (84), bad syntax (81) and an 11th logpoint (81)', async () => {

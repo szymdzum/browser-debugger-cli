@@ -70,6 +70,7 @@ const LOGPOINTS_HTML = `<!doctype html><html><head><title>logpoints</title></hea
 <button id="noop" onclick="document.getElementById('out').textContent = 'Nothing'">No-op</button>
 <button id="loop">Loop</button>
 <button id="pause">Pause</button>
+<a id="open-tab" href="/logpoints" target="_blank">Open</a>
 <button id="load-late" onclick="var s = document.createElement('script'); s.src = new URLSearchParams(location.search).get('late'); document.head.appendChild(s)">Load late</button>
 <p id="out"></p>
 <script src="/logpoints/app.js"></script>

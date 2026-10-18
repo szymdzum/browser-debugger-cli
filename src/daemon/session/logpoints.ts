@@ -35,6 +35,7 @@ import type {
   LogpointHit,
   LogpointValue,
 } from '@/ipc/protocol/debugTypes.js';
+import { raceTimeout } from '@/utils/async.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { displayUrl } from '@/utils/displayUrl.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -58,6 +59,9 @@ const DEFAULT_MAX_HITS = 100;
 
 /** Hits kept per logpoint over all page loads (the oldest go first) */
 const MAX_RETAINED_HITS = 1000;
+
+/** How long ending the session waits for Chrome to take the logpoints back */
+const SHUTDOWN_WAIT_MS = 500;
 
 /** Hits `debug hits` shows by default */
 const DEFAULT_SHOWN_HITS = 20;
@@ -312,12 +316,28 @@ export class Logpoints {
   }
 
   /**
-   * Forget every logpoint with the session (the connection is going away).
+   * End the session's logpoints: leave the page's Chrome as it was (binding
+   * removed, pauses allowed, `Debugger` disabled; best effort, a moment at
+   * most) and forget them.
+   *
+   * @param cdp - The session's page connection
    */
-  dispose(): void {
+  async shutdown(cdp: CDPConnection): Promise<void> {
+    const wasEnabled = this.enabled;
     this.points.clear();
     this.scripts.clear();
     this.enabled = false;
+    if (wasEnabled) await raceTimeout(this.release(cdp), SHUTDOWN_WAIT_MS);
+  }
+
+  /**
+   * Leave a tab the session moved away from as it was; the logpoints stay
+   * and are set again on the tab the session moved to.
+   *
+   * @param cdp - The tab's connection
+   */
+  async leave(cdp: CDPConnection): Promise<void> {
+    if (this.enabled) await raceTimeout(this.release(cdp), SHUTDOWN_WAIT_MS);
   }
 
   /**
@@ -493,8 +513,8 @@ export class Logpoints {
       );
     }
     await this.checkSyntax(cdp, [...params.expressions, ...(params.guard ? [params.guard] : [])]);
-    await this.turnOn(cdp);
     try {
+      await this.turnOn(cdp);
       return await this.bind(cdp, params, page);
     } catch (error) {
       if (this.points.size === 0) await this.turnOff(cdp);
@@ -512,6 +532,9 @@ export class Logpoints {
     const matching = [...this.scripts.values()].filter((script) => matcher.test(script.url));
     const loadingIt = page.loading || page.pendingUrls.some((url) => matcher.test(url));
     if (matching.length === 0 && !loadingIt) throw this.notLoaded(file);
+    if (matching.length > 0 && line > Math.max(...matching.map(lastLine))) {
+      throw this.noCode(file, line, matching);
+    }
     const id = `lp${this.nextId}`;
     const max = params.max ?? DEFAULT_MAX_HITS;
     const spec = {
@@ -523,13 +546,13 @@ export class Logpoints {
       guard: params.guard,
       max,
     };
+    await this.checkCondition(cdp, spec);
     const set = await this.setBreakpoint(cdp, spec);
     if (matching.length > 0 && set.locations.length === 0) {
       await sendTyped(cdp, 'Debugger.removeBreakpoint', { breakpointId: set.breakpointId }).catch(
         (error: unknown) => log.debug(`Not removed: ${getErrorMessage(error)}`)
       );
-      const last = Math.max(...matching.map(lastLine));
-      throw commandError(logpointNoCodeError(file, line, last), EXIT_CODES.RESOURCE_NOT_FOUND);
+      throw this.noCode(file, line, matching);
     }
     const point: Logpoint = {
       ...spec,
@@ -550,6 +573,28 @@ export class Logpoints {
       bound: point.bound,
       state: point.bound.length > 0 ? 'bound' : 'pending',
     };
+  }
+
+  private async checkCondition(cdp: CDPConnection, spec: LogpointSpec): Promise<void> {
+    const compiled = await sendTyped(cdp, 'Runtime.compileScript', {
+      expression: buildLogpointCondition(spec),
+      sourceURL: '',
+      persistScript: false,
+    });
+    if (compiled.exceptionDetails) {
+      throw commandError(
+        logpointSyntaxError(
+          [...spec.expressions, ...(spec.guard ? [spec.guard] : [])].join(', '),
+          compileMessage(compiled.exceptionDetails)
+        ),
+        EXIT_CODES.INVALID_ARGUMENTS
+      );
+    }
+  }
+
+  private noCode(file: string, line: number, matching: Script[]): CommandError {
+    const last = Math.max(...matching.map(lastLine));
+    return commandError(logpointNoCodeError(file, line, last), EXIT_CODES.RESOURCE_NOT_FOUND);
   }
 
   private notLoaded(file: string): CommandError {
@@ -575,16 +620,15 @@ export class Logpoints {
   }
 
   private async checkSyntax(cdp: CDPConnection, texts: string[]): Promise<void> {
+    const compile = (expression: string): Promise<Protocol.Runtime.CompileScriptResponse> =>
+      sendTyped(cdp, 'Runtime.compileScript', { expression, sourceURL: '', persistScript: false });
     const compiled = await Promise.all(
-      texts.map((text) =>
-        sendTyped(cdp, 'Runtime.compileScript', {
-          expression: `(\n${text}\n)`,
-          sourceURL: '',
-          persistScript: false,
-        })
-      )
+      texts.map(async (text) => {
+        const forms = await Promise.all([compile(`(\n${text}\n)`), compile(`[\n${text}\n]`)]);
+        return forms.find((form) => form.exceptionDetails) ?? forms[0];
+      })
     );
-    const index = compiled.findIndex((result) => result.exceptionDetails);
+    const index = compiled.findIndex((result) => result?.exceptionDetails);
     const details = compiled[index]?.exceptionDetails;
     if (details) {
       throw commandError(
@@ -608,6 +652,10 @@ export class Logpoints {
     if (!this.enabled) return;
     this.enabled = false;
     this.scripts.clear();
+    await this.release(cdp);
+  }
+
+  private async release(cdp: CDPConnection): Promise<void> {
     for (const [method, params] of [
       ['Runtime.removeBinding', { name: LOGPOINT_BINDING }],
       ['Debugger.setSkipAllPauses', { skip: false }],

@@ -2,6 +2,7 @@
  * Messages of logpoints: `bdg debug log|list|hits|clear` (#848).
  */
 
+import { MAX_CONSOLE_TEXT_LENGTH } from '@/constants.js';
 import type {
   DebugClearData,
   DebugLogData,
@@ -63,8 +64,20 @@ export function logpointValueText(value: LogpointValue): string {
  */
 function valuesText(values: Record<string, LogpointValue>): string {
   return Object.entries(values)
-    .map(([label, value]) => `${label}=${logpointValueText(value)}`)
+    .map(([label, value]) => `${label}=${shortText(logpointValueText(value))}`)
     .join(' ');
+}
+
+/**
+ * A printed value, cut at the console's text length (`--json` has it whole).
+ *
+ * @param text - Value as text
+ * @returns The text, or its start and `…`
+ */
+function shortText(text: string): string {
+  return text.length > MAX_CONSOLE_TEXT_LENGTH
+    ? `${text.slice(0, MAX_CONSOLE_TEXT_LENGTH)}…`
+    : text;
 }
 
 /**

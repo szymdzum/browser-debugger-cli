@@ -193,11 +193,19 @@ export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
     {
       name: 'logpoints',
       runAlways: true,
-      start: ({ cdp, store }) => {
-        const stop = store.logpoints.follow(cdp);
-        return Promise.resolve(() => {
-          stop();
-          store.logpoints.dispose();
+      scope: 'session',
+      start: ({ cdp, store, onPageSwitch }) => {
+        let page = cdp;
+        let stopFollowing = store.logpoints.follow(page);
+        onPageSwitch?.((next) => {
+          stopFollowing();
+          void store.logpoints.leave(page);
+          page = next;
+          stopFollowing = store.logpoints.follow(next);
+        });
+        return Promise.resolve(async () => {
+          stopFollowing();
+          await store.logpoints.shutdown(page);
         });
       },
     },
