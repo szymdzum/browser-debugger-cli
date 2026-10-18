@@ -16,6 +16,9 @@
 #                 shard of a run alike)
 #   SMOKE_TIMINGS file to write the seconds per test file to
 #                 (scripts/smoke-timings-reporter.mjs; empty = none)
+#   SMOKE_CONCURRENCY  how many test files run at once (default: 2). Each file
+#                 has its own session directory, Chrome and ports, so files do
+#                 not share state; 1 restores one file at a time
 # Prints the spec report. In GitHub Actions, the tests that failed are also
 # listed in the job summary, per run. Exits non-zero when any run failed.
 set -u
@@ -25,8 +28,15 @@ if [ -n "${SHARD:-}" ]; then
 fi
 REPEAT="${REPEAT:-1}"
 TEST_TIMEOUT="${TEST_TIMEOUT:-300000}"
+SMOKE_CONCURRENCY="${SMOKE_CONCURRENCY:-2}"
+case "$SMOKE_CONCURRENCY" in
+  '' | *[!0-9]* | 0)
+    echo "SMOKE_CONCURRENCY must be a positive integer, got: $SMOKE_CONCURRENCY" >&2
+    exit 2
+    ;;
+esac
 failed_list="$(mktemp)"
-args=(--test --test-concurrency=1 --test-timeout="$TEST_TIMEOUT" --test-force-exit
+args=(--test --test-concurrency="$SMOKE_CONCURRENCY" --test-timeout="$TEST_TIMEOUT" --test-force-exit
   --test-reporter=spec --test-reporter-destination=stdout
   --test-reporter=./scripts/failed-tests-reporter.mjs --test-reporter-destination="$failed_list")
 if [ -n "${NAME_PATTERN:-}" ]; then args+=(--test-name-pattern "$NAME_PATTERN"); fi
