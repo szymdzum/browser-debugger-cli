@@ -11,6 +11,7 @@ import { describe, test } from 'node:test';
 import type { HARMetadata } from '@/telemetry/har/builder.js';
 import { buildHAR } from '@/telemetry/har/builder.js';
 import type { Entry, Timings } from '@/telemetry/har/types.js';
+import { timingBreakdown } from '@/telemetry/timingBreakdown.js';
 import { RequestRetention } from '@/telemetry/networkRetention.js';
 import type { NetworkRequest } from '@/types.js';
 
@@ -458,6 +459,166 @@ describe('HAR Builder', () => {
       assert.equal(timings.wait, 0);
       assert.equal(timings.receive, 0);
       assert.equal(time, 0); // No timing data = 0 total
+    });
+
+    test('keeps the no-timing shape for a failed request (#847)', () => {
+      const requests: NetworkRequest[] = [
+        {
+          requestId: 'req-1',
+          url: 'https://example.com',
+          method: 'GET',
+          timestamp: Date.now(),
+          errorText: 'net::ERR_CONNECTION_REFUSED',
+        },
+      ];
+
+      const { timings, time } = getFirstEntry(buildHAR(requests, baseMetadata).log.entries);
+
+      assert.deepEqual(timings, {
+        blocked: -1,
+        dns: -1,
+        connect: -1,
+        send: 0,
+        wait: 0,
+        receive: 0,
+        ssl: -1,
+      });
+      assert.equal(time, 0);
+    });
+
+    test('blocked is the time Chrome queued a request on a reused connection (#847)', () => {
+      const request: NetworkRequest = {
+        requestId: 'req-1',
+        url: 'https://example.com/held',
+        method: 'GET',
+        timestamp: Date.now(),
+        sentTime: 1000,
+        timing: {
+          requestTime: 1000.3,
+          dnsStart: -1,
+          dnsEnd: -1,
+          connectStart: -1,
+          connectEnd: -1,
+          sslStart: -1,
+          sslEnd: -1,
+          sendStart: 0,
+          sendEnd: 1,
+          receiveHeadersEnd: 101,
+        },
+        loadingFinishedTime: 1000.451,
+      };
+      const { timings, time } = getFirstEntry(buildHAR([request], baseMetadata).log.entries);
+
+      assert.equal(timings.blocked, 300);
+      assert.equal(timings.dns, -1);
+      assert.equal(timings.connect, -1);
+      assert.equal(time, 451);
+    });
+
+    test('a fresh connection splits into the breakdown phases (#847)', () => {
+      const request: NetworkRequest = {
+        requestId: 'req-1',
+        url: 'https://example.com/fresh',
+        method: 'GET',
+        timestamp: Date.now(),
+        sentTime: 1000,
+        timing: {
+          requestTime: 1000.2,
+          dnsStart: 0,
+          dnsEnd: 20,
+          connectStart: 20,
+          connectEnd: 70,
+          sslStart: 40,
+          sslEnd: 70,
+          sendStart: 70,
+          sendEnd: 71,
+          receiveHeadersEnd: 171,
+        },
+        loadingFinishedTime: 1000.401,
+      };
+
+      const { timings, time } = getFirstEntry(buildHAR([request], baseMetadata).log.entries);
+
+      assert.deepEqual(timings, {
+        blocked: 200,
+        dns: 20,
+        connect: 50,
+        ssl: 30,
+        send: 1,
+        wait: 100,
+        receive: 30,
+      });
+      assert.equal(time, 401);
+    });
+
+    test('overlapping phases keep time the sum of the phases (#847)', () => {
+      const request: NetworkRequest = {
+        requestId: 'req-1',
+        url: 'https://example.com/overlap',
+        method: 'GET',
+        timestamp: Date.now(),
+        sentTime: 1000,
+        timing: {
+          requestTime: 1000.004,
+          dnsStart: 0,
+          dnsEnd: 2,
+          sendStart: 2,
+          sendEnd: 3,
+          receiveHeadersEnd: 4,
+        },
+        loadingFinishedTime: 1000.004,
+      };
+
+      const { timings, time } = getFirstEntry(buildHAR([request], baseMetadata).log.entries);
+
+      assert.equal(time, 7);
+      assert.equal(timings.connect, -1);
+      assert.ok(
+        (timings.send ?? -1) >= 0 && (timings.wait ?? -1) >= 0 && (timings.receive ?? -1) >= 0
+      );
+    });
+
+    test('time equals the total of details when the phases are fractions (#847)', () => {
+      const request: NetworkRequest = {
+        requestId: 'req-1',
+        url: 'https://example.com/fractions',
+        method: 'GET',
+        timestamp: Date.now(),
+        sentTime: 1000,
+        timing: {
+          requestTime: 1000.00049,
+          dnsStart: 0,
+          dnsEnd: 0.49,
+          connectStart: 0.49,
+          connectEnd: 1.47,
+          sslStart: 0.98,
+          sslEnd: 1.47,
+          sendStart: 1.47,
+          sendEnd: 1.96,
+          receiveHeadersEnd: 2.45,
+        },
+        loadingFinishedTime: 1000.00343,
+      };
+      const breakdown = timingBreakdown(request);
+      assert.ok('phases' in breakdown);
+
+      const { timings, time } = getFirstEntry(buildHAR([request], baseMetadata).log.entries);
+
+      assert.equal(breakdown.totalMs, 3);
+      assert.equal(time, 3);
+      assert.equal(
+        (timings.blocked ?? 0) +
+          (timings.dns ?? 0) +
+          (timings.connect ?? 0) +
+          (timings.send ?? 0) +
+          (timings.wait ?? 0) +
+          (timings.receive ?? 0),
+        time
+      );
+      assert.ok(Object.values(timings).every((ms) => ms >= -1));
+      assert.ok(
+        (timings.send ?? -1) >= 0 && (timings.wait ?? -1) >= 0 && (timings.receive ?? -1) >= 0
+      );
     });
   });
 

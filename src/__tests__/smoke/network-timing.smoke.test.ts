@@ -10,6 +10,9 @@
  */
 
 import * as assert from 'node:assert/strict';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 
 import { runCommand } from '@/__testutils__/commandRunner.js';
@@ -88,6 +91,12 @@ after(async () => {
   await server.close();
 });
 
+interface HarEntry {
+  time: number;
+  request: { url: string };
+  timings: { blocked: number };
+}
+
 void describe('network details timing', () => {
   void it('names wait for a slow server, in --json and in text', async () => {
     const [id] = await idsOf('/wait');
@@ -132,5 +141,38 @@ void describe('network details timing', () => {
     assert.ok(id, 'no /trickle request');
     const text = await runCommand('network', ['details', id, '--no-body'], { timeout: 30000 });
     assert.match(text.stdout, /Cancelled after \d+ ms \(net::ERR_ABORTED\); up to then/);
+  });
+
+  void it('exports the queue as HAR blocked, with time matching details (#847)', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-har-'));
+    try {
+      const file = path.join(dir, 'out.har');
+      const exported = await runCommand('network', ['har', file], { timeout: 30000 });
+      assert.equal(exported.exitCode, 0, exported.stderr);
+      const entries = (
+        JSON.parse(fs.readFileSync(file, 'utf8')) as { log: { entries: HarEntry[] } }
+      ).log.entries;
+      const seen: string[] = [];
+      let checked = 0;
+      for (const id of await idsOf('/hold')) {
+        const { data } = await detailsJson(id);
+        const queued = data.timingBreakdown?.phases?.['queued'] ?? 0;
+        if (queued <= 0 || data.timingBreakdown?.dominant !== 'queued') continue;
+        const entry = entries.find((e) => e.request.url === data.item.url);
+        assert.ok(entry, `no HAR entry for ${data.item.url}`);
+        seen.push(
+          `${JSON.stringify(entry.timings)} time ${entry.time} vs ${JSON.stringify(data.timingBreakdown)}`
+        );
+        assert.ok(entry.timings.blocked > 0, seen.join('\n'));
+        assert.ok(
+          Math.abs(entry.time - (data.timingBreakdown?.totalMs ?? NaN)) <= 2,
+          seen.join('\n')
+        );
+        checked++;
+      }
+      assert.ok(checked >= 1, 'no queued /hold request');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
