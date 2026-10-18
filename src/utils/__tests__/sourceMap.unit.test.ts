@@ -243,7 +243,7 @@ void describe('lookupGenerated', () => {
     });
   }
 
-  void it('a file two sources end with gives a position for each', () => {
+  void it('sources with the same end: only those with code on the line', () => {
     const both = lookupMap(['../a/cart.ts', '../b/cart.ts']);
     const result = lookupGenerated(both, base, 'cart.ts', 2);
     assert.equal(result.kind === 'found' ? result.positions.length : 0, 1);
