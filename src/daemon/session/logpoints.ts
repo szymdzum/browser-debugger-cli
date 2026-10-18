@@ -38,7 +38,7 @@ import type {
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import { scriptUrlPattern } from '@/utils/logpointLocation.js';
+import { logpointPlace, scriptUrlPattern } from '@/utils/logpointLocation.js';
 import { findSimilar } from '@/utils/suggestions.js';
 
 import {
@@ -73,8 +73,8 @@ interface StoredHit extends LogpointHit {
   seq: number;
 }
 
-/** A logpoint in the registry */
-interface Logpoint {
+/** What a logpoint's breakpoint is built from */
+interface LogpointSpec {
   id: string;
   file: string;
   line: number;
@@ -82,7 +82,10 @@ interface Logpoint {
   expressions: string[];
   guard?: string | undefined;
   max: number;
-  pattern: string;
+}
+
+/** A logpoint in the registry */
+interface Logpoint extends LogpointSpec {
   breakpointId: string;
   bound: LogpointBound[];
   /** Stored hits, oldest first */
@@ -306,6 +309,7 @@ export class Logpoints {
    * @returns Mark
    */
   hitMark(): HitMark {
+    if (this.points.size === 0) return { seq: this.seq, received: new Map() };
     return {
       seq: this.seq,
       received: new Map([...this.points.values()].map((point) => [point.id, point.received])),
@@ -431,9 +435,8 @@ export class Logpoints {
       (point) => point.file === file && point.line === line && point.column === column
     );
     if (duplicate) {
-      const where = `${file}:${line}${column === undefined ? '' : `:${column}`}`;
       throw commandError(
-        duplicateLogpointError(duplicate.id, where),
+        duplicateLogpointError(duplicate.id, logpointPlace(file, line, column)),
         EXIT_CODES.RESOURCE_ALREADY_EXISTS
       );
     }
@@ -453,24 +456,22 @@ export class Logpoints {
     page: PageLoad
   ): Promise<DebugLogData> {
     const { file, line, column } = params;
-    const pattern = scriptUrlPattern(file);
-    const matcher = new RegExp(pattern);
+    const matcher = new RegExp(scriptUrlPattern(file));
     const matching = [...this.scripts.values()].filter((script) => matcher.test(script.url));
     const loadingIt = page.loading || page.pendingUrls.some((url) => matcher.test(url));
     if (matching.length === 0 && !loadingIt) throw this.notLoaded(file);
     const id = `lp${this.nextId}`;
     const max = params.max ?? DEFAULT_MAX_HITS;
-    const set = await sendTyped(cdp, 'Debugger.setBreakpointByUrl', {
-      lineNumber: line - 1,
-      urlRegex: pattern,
-      condition: buildLogpointCondition({
-        id,
-        max,
-        expressions: params.expressions,
-        guard: params.guard,
-      }),
-      ...(column !== undefined && { columnNumber: column - 1 }),
-    });
+    const spec = {
+      id,
+      file,
+      line,
+      column,
+      expressions: params.expressions,
+      guard: params.guard,
+      max,
+    };
+    const set = await this.setBreakpoint(cdp, spec);
     if (matching.length > 0 && set.locations.length === 0) {
       await sendTyped(cdp, 'Debugger.removeBreakpoint', { breakpointId: set.breakpointId }).catch(
         (error: unknown) => log.debug(`Not removed: ${getErrorMessage(error)}`)
@@ -479,14 +480,7 @@ export class Logpoints {
       throw commandError(logpointNoCodeError(file, line, last), EXIT_CODES.RESOURCE_NOT_FOUND);
     }
     const point: Logpoint = {
-      id,
-      file,
-      line,
-      column,
-      expressions: params.expressions,
-      guard: params.guard,
-      max,
-      pattern,
+      ...spec,
       breakpointId: set.breakpointId,
       bound: [],
       hits: [],
@@ -515,19 +509,35 @@ export class Logpoints {
     );
   }
 
+  private setBreakpoint(
+    cdp: CDPConnection,
+    spec: LogpointSpec
+  ): Promise<Protocol.Debugger.SetBreakpointByUrlResponse> {
+    return sendTyped(cdp, 'Debugger.setBreakpointByUrl', {
+      lineNumber: spec.line - 1,
+      urlRegex: scriptUrlPattern(spec.file),
+      condition: buildLogpointCondition(spec),
+      ...(spec.column !== undefined && { columnNumber: spec.column - 1 }),
+    });
+  }
+
   private async checkSyntax(cdp: CDPConnection, texts: string[]): Promise<void> {
-    for (const text of texts) {
-      const compiled = await sendTyped(cdp, 'Runtime.compileScript', {
-        expression: `(\n${text}\n)`,
-        sourceURL: '',
-        persistScript: false,
-      });
-      if (compiled.exceptionDetails) {
-        throw commandError(
-          logpointSyntaxError(text, compileMessage(compiled.exceptionDetails)),
-          EXIT_CODES.INVALID_ARGUMENTS
-        );
-      }
+    const compiled = await Promise.all(
+      texts.map((text) =>
+        sendTyped(cdp, 'Runtime.compileScript', {
+          expression: `(\n${text}\n)`,
+          sourceURL: '',
+          persistScript: false,
+        })
+      )
+    );
+    const index = compiled.findIndex((result) => result.exceptionDetails);
+    const details = compiled[index]?.exceptionDetails;
+    if (details) {
+      throw commandError(
+        logpointSyntaxError(texts[index] ?? '', compileMessage(details)),
+        EXIT_CODES.INVALID_ARGUMENTS
+      );
     }
   }
 
@@ -535,8 +545,10 @@ export class Logpoints {
     if (this.enabled) return;
     await sendTyped(cdp, 'Debugger.enable');
     this.enabled = true;
-    await sendTyped(cdp, 'Debugger.setSkipAllPauses', { skip: true });
-    await sendTyped(cdp, 'Runtime.addBinding', { name: LOGPOINT_BINDING });
+    await Promise.all([
+      sendTyped(cdp, 'Debugger.setSkipAllPauses', { skip: true }),
+      sendTyped(cdp, 'Runtime.addBinding', { name: LOGPOINT_BINDING }),
+    ]);
   }
 
   private async turnOff(cdp: CDPConnection): Promise<void> {
@@ -560,12 +572,7 @@ export class Logpoints {
       await this.turnOn(cdp);
       for (const point of this.points.values()) {
         point.bound = [];
-        const set = await sendTyped(cdp, 'Debugger.setBreakpointByUrl', {
-          lineNumber: point.line - 1,
-          urlRegex: point.pattern,
-          condition: buildLogpointCondition(point),
-          ...(point.column !== undefined && { columnNumber: point.column - 1 }),
-        });
+        const set = await this.setBreakpoint(cdp, point);
         point.breakpointId = set.breakpointId;
         set.locations.forEach((location) => this.addBound(point, location));
       }

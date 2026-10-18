@@ -10,6 +10,7 @@ import type {
   LogpointHit,
   LogpointValue,
 } from '@/ipc/protocol/debugTypes.js';
+import { logpointPlace } from '@/utils/logpointLocation.js';
 
 /** Description of the `debug` command group */
 export const DEBUG_DESCRIPTION =
@@ -67,18 +68,6 @@ function valuesText(values: Record<string, LogpointValue>): string {
 }
 
 /**
- * Where a logpoint is, as typed.
- *
- * @param file - File as typed
- * @param line - Line
- * @param column - Column
- * @returns e.g. `app.js:5` or `app.js:5:12`
- */
-export function logpointPlace(file: string, line: number, column?: number): string {
-  return `${file}:${line}${column === undefined ? '' : `:${column}`}`;
-}
-
-/**
  * Result of `bdg debug log`.
  *
  * @param data - The logpoint set
@@ -90,10 +79,10 @@ export function logpointSetText(data: DebugLogData): string {
     return `${id} pending: ${requested.file} is not loaded yet; the logpoint binds when it is`;
   }
   const first = bound[0];
-  const asked = logpointPlace(requested.file, requested.line, requested.column);
   if (first && first.line !== requested.line) {
     return `${id} bound at ${requested.file}:${first.line} (asked ${requested.line})`;
   }
+  const asked = logpointPlace(requested.file, requested.line, requested.column);
   return `${id} bound at ${asked}${bound.length > 1 ? ` (${bound.length} scripts)` : ''}`;
 }
 
@@ -160,7 +149,7 @@ export function logpointsClearedText(data: DebugClearData): string {
 export function logpointActionText(hit: LogpointActionHit): string {
   const values = valuesText(hit.values);
   const count = hit.hits > 1 ? ` (${hit.hits} hits)` : '';
-  return `logpoint ${hit.id} ${hit.file}:${hit.line}${values ? `: ${values}` : ''}${count}`;
+  return `logpoint ${hit.id} ${logpointPlace(hit.file, hit.line)}${values ? `: ${values}` : ''}${count}`;
 }
 
 /**

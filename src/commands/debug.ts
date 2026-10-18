@@ -7,14 +7,16 @@ import type { Command } from 'commander';
 
 import { runCommand, type CommandResult } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
+import { createErrorResult } from '@/commands/shared/dataFetcher.js';
 import type { BaseOptions } from '@/commands/shared/optionTypes.js';
+import { integerOption, MAX_LAST_ITEMS } from '@/commands/shared/validation.js';
 import {
   logpointLocationError,
-  logpointMaxError,
+  logpointPageError,
   type ErrorWithSuggestion,
 } from '@/errors/messages.js';
 import { debugClear, debugHits, debugList, debugLog } from '@/ipc/client.js';
-import type { LogpointHit } from '@/ipc/protocol/debugTypes.js';
+import type { DebugHitsData, DebugLogData } from '@/ipc/protocol/debugTypes.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import {
   DEBUG_CLEAR_DESCRIPTION,
@@ -37,12 +39,12 @@ import { parseLogpointLocation } from '@/utils/logpointLocation.js';
 /** Options of `bdg debug log` */
 interface DebugLogOptions extends BaseOptions {
   if?: string;
-  max?: string;
+  max?: number;
 }
 
 /** Options of `bdg debug hits` */
 interface DebugHitsOptions extends BaseOptions {
-  last?: string;
+  last?: number;
   page?: string;
 }
 
@@ -80,22 +82,7 @@ function result<T>(response: Answer<T>): CommandResult<T> {
  * @returns Failed result (exit 81)
  */
 function invalid<T>(error: ErrorWithSuggestion): CommandResult<T> {
-  return {
-    success: false,
-    error: error.message,
-    exitCode: EXIT_CODES.INVALID_ARGUMENTS,
-    errorContext: { suggestion: error.suggestion },
-  };
-}
-
-/**
- * A whole number of at least 1.
- *
- * @param value - Option as typed
- * @returns The number, or undefined when it is not one
- */
-function positiveInteger(value: string): number | undefined {
-  return /^[1-9]\d*$/.test(value) ? Number(value) : undefined;
+  return createErrorResult(error.message, EXIT_CODES.INVALID_ARGUMENTS, error.suggestion);
 }
 
 /**
@@ -110,17 +97,15 @@ async function setLogpoint(
   location: string,
   expressions: string[],
   options: DebugLogOptions
-): Promise<CommandResult<Awaited<ReturnType<typeof debugLog>>['data']>> {
+): Promise<CommandResult<DebugLogData>> {
   const parsed = parseLogpointLocation(location);
   if (!parsed) return invalid(logpointLocationError(location));
-  const max = options.max === undefined ? undefined : positiveInteger(options.max);
-  if (options.max !== undefined && max === undefined) return invalid(logpointMaxError(options.max));
   return result(
     await debugLog({
       ...parsed,
       expressions,
       ...(options.if !== undefined && { guard: options.if }),
-      ...(max !== undefined && { max }),
+      ...(options.max !== undefined && { max: options.max }),
     })
   );
 }
@@ -135,24 +120,14 @@ async function setLogpoint(
 async function readHits(
   id: string | undefined,
   options: DebugHitsOptions
-): Promise<CommandResult<{ hits: LogpointHit[]; omitted?: number }>> {
-  const last = options.last === undefined ? undefined : positiveInteger(options.last);
-  if (options.last !== undefined && last === undefined) {
-    return invalid({
-      message: `--last must be a whole number of at least 1 (got "${options.last}")`,
-      suggestion: 'Example: bdg debug hits --last 5',
-    });
-  }
+): Promise<CommandResult<DebugHitsData>> {
   if (options.page !== undefined && options.page !== 'all') {
-    return invalid({
-      message: `--page takes "all" (got "${options.page}")`,
-      suggestion: 'Without it, hits are those of the page now loaded: bdg debug hits --page all',
-    });
+    return invalid(logpointPageError(options.page));
   }
   return result(
     await debugHits({
       ...(id !== undefined && { id }),
-      ...(last !== undefined && { last }),
+      ...(options.last !== undefined && { last: options.last }),
       ...(options.page === 'all' && { allPages: true }),
     })
   );
@@ -172,15 +147,15 @@ export function registerDebugCommands(program: Command): void {
     .argument('<location>', 'file:line or file:line:col (1-based; file is the end of a script URL)')
     .argument('[expressions...]', 'Expressions to log, each its own argument (none: count hits)')
     .option('--if <expression>', 'Log only when this expression is truthy at the line')
-    .option('--max <n>', 'Log at most n hits per page load (default 100); the rest are counted')
+    .option(
+      '--max <n>',
+      'Log at most n hits per page load (default 100); the rest are counted',
+      integerOption(1)
+    )
     .addOption(jsonOption())
     .addHelpText('after', DEBUG_LOG_EXAMPLES)
     .action(async (location: string, expressions: string[], options: DebugLogOptions) => {
-      await runCommand(
-        () => setLogpoint(location, expressions, options),
-        options,
-        (data) => (data ? logpointSetText(data) : '')
-      );
+      await runCommand(() => setLogpoint(location, expressions, options), options, logpointSetText);
     });
 
   debug
@@ -202,7 +177,7 @@ export function registerDebugCommands(program: Command): void {
     .command('hits')
     .description(DEBUG_HITS_DESCRIPTION)
     .argument('[id]', 'Only this logpoint')
-    .option('--last <n>', 'Show the newest N hits (default 20)')
+    .option('--last <n>', 'Show the newest N hits (default 20)', integerOption(1, MAX_LAST_ITEMS))
     .option('--page <scope>', 'all: hits of every page load, not only the page now loaded')
     .addOption(jsonOption())
     .action(async (id: string | undefined, options: DebugHitsOptions) => {

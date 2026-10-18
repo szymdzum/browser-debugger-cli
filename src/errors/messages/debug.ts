@@ -23,15 +23,15 @@ export function logpointLocationError(text: string): ErrorWithSuggestion {
 }
 
 /**
- * `--max` that is not a positive integer.
+ * A `--page` value other than `all`.
  *
  * @param value - Value as typed
  * @returns Error
  */
-export function logpointMaxError(value: string): ErrorWithSuggestion {
+export function logpointPageError(value: string): ErrorWithSuggestion {
   return {
-    message: `--max must be a whole number of at least 1 (got "${value}")`,
-    suggestion: 'Hits past --max are counted as dropped, not logged',
+    message: `--page takes "all" (got "${value}")`,
+    suggestion: 'Without it, hits are those of the page now loaded: bdg debug hits --page all',
   };
 }
 

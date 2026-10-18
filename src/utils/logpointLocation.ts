@@ -55,3 +55,15 @@ export function scriptUrlPattern(file: string): string {
   const spellings = [...new Set([path, encodeURI(path)])].map(escapeRegex);
   return `(^|/)(?:${spellings.join('|')})(?:[?#].*)?$`;
 }
+
+/**
+ * Where a logpoint is, as typed.
+ *
+ * @param file - File as typed
+ * @param line - Line
+ * @param column - Column
+ * @returns e.g. `app.js:5` or `app.js:5:12`
+ */
+export function logpointPlace(file: string, line: number, column?: number): string {
+  return `${file}:${line}${column === undefined ? '' : `:${column}`}`;
+}

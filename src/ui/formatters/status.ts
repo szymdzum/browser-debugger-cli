@@ -10,9 +10,9 @@ import {
   colorSchemeLabel,
   dialogDefaultText,
   downloadsSummary,
+  logpointsStatusText,
   sessionActiveLine,
 } from '@/ui/messages/commands.js';
-import { logpointsStatusText } from '@/ui/messages/commands.js';
 import { networkEvictedNote } from '@/ui/messages/networkMessages.js';
 import { externalChromeText, lastSessionEndText } from '@/ui/messages/session.js';
 import { noActiveSessionMessage, sessionCommand } from '@/ui/messages/sessionCommand.js';
