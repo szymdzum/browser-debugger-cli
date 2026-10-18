@@ -623,10 +623,12 @@ async function repeatLoop(argv) {
     return usage('repeat <pr> <smoke files...> [--repeat=10] [--node=22|24|26] [--replace] [--timeout=<minutes>]');
   const dispatch = repeatDispatch(files, keys);
   if (dispatch.error) return usage(dispatch.error);
-  const status = (text) => console.log(`· ${text}`);
+  const status = (text) => {
+    console.log(`· ${text}`);
+    if (waiterState) waiterState.subject = `repeat (${text})`;
+  };
   status(`reading PR #${prNumber}`);
   const pr = prInfo(prNumber);
-  waiterState.subject = `repeat on PR #${pr.number}`;
   const dispatchRuns = () =>
     ghJson([
       'run',
@@ -664,20 +666,19 @@ async function repeatLoop(argv) {
   }
   const before = new Set(dispatchRuns().map((r) => r.databaseId));
   status(`dispatching ci.yml on ${pr.headRefName} (${dispatch.args.filter((a) => a.startsWith('node=') || a.startsWith('repeat=')).join(', ')})`);
-  run(
-    'gh',
-    [
-      'workflow',
-      'run',
-      'ci.yml',
-      '--repo',
-      REPO,
-      '--ref',
-      pr.headRefName,
-      ...dispatch.args,
-    ],
-    { timeoutMs: WRITE_TIMEOUT_MS }
-  );
+  try {
+    run(
+      'gh',
+      ['workflow', 'run', 'ci.yml', '--repo', REPO, '--ref', pr.headRefName, ...dispatch.args],
+      { timeoutMs: WRITE_TIMEOUT_MS }
+    );
+  } catch (error) {
+    if (!error.timedOut && !error.budgetExhausted) throw error;
+    console.log(
+      `dispatch state unknown: gh workflow run did not answer in time; check gh run list --workflow ci.yml --branch ${pr.headRefName} --event workflow_dispatch before dispatching again`
+    );
+    return EXIT.timeout;
+  }
   status('waiting for the run to show up (up to 50 s)');
   for (let i = 0; i < 10; i++) {
     await sleep(5000);
@@ -1445,7 +1446,7 @@ async function gates(argv) {
     gateLine(
       results,
       named.length > 0,
-      `7 PR body names its issue: ${named.length ? named.join(', ') : 'no "Closes #<N>" or "Part of #<N>" (add one, or --no-issue for a PR with no issue)'}`
+      `7 PR body names its issue: ${named.length ? named.join(', ') : 'no "Closes #<N>", and no "Part of #<N>" at the start of a line (add one, or --no-issue for a PR with no issue)'}`
     );
   }
   const scope = prScope(pr);
@@ -1521,7 +1522,9 @@ export function strayClosingCommits(log, closes) {
 export function partOfIssues(body) {
   const text = withoutFencedCode(body);
   const ref = `(?:#|https://github\\.com/${REPO}/issues/)(\\d+)(?![\\w/-])`;
-  const found = [...text.matchAll(new RegExp(`^[ \\t]*(?:[-*>][ \\t]+)?part of:?\\s+${ref}`, 'gim'))];
+  const found = [
+    ...text.matchAll(new RegExp(`^[ \\t]*(?:[-*>#]+[ \\t]*|\\d+\\.[ \\t]+)?(?:\\*\\*)?part of:?(?:\\*\\*)?\\s+${ref}`, 'gim')),
+  ];
   return [...new Set(found.map((m) => m[1]))];
 }
 
@@ -2432,7 +2435,7 @@ export function briefVariant(text, variant) {
       variant.tier1 ? NO_RED_REVIEW : rules
     );
   return variant.part
-    ? withRed.replace(/`Closes #(\d+)`/g, '`Part of #$1` (not `Closes`: this PR does one part, the issue stays open)')
+    ? withRed.replace(/`Closes #(\d+)`/g, '`Part of #$1` on a line of its own (not `Closes`: this PR does one part, the issue stays open)')
     : withRed;
 }
 

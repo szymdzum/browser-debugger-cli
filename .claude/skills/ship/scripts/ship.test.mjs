@@ -1047,7 +1047,7 @@ test('briefVariant: tier 1 drops the red-commit rules, a part says Part of inste
   assert.doesNotMatch(tier1, /Red commit first|<!-- red -->/);
   assert.match(tier1, /No red commit\*\* \(tier 1/);
   const part = briefVariant(brief, { part: true });
-  assert.match(part, /`Part of #797` \(not `Closes`/);
+  assert.match(part, /`Part of #797` on a line of its own \(not `Closes`/);
   assert.doesNotMatch(part, /`Closes #797`/);
   assert.doesNotMatch(briefVariant(brief, {}), /<!-- \/?red -->/);
 });
@@ -1212,4 +1212,5 @@ test('partOfIssues counts "Part of #N" only at the start of a line, not in a sen
   assert.deepEqual(partOfIssues('Last part of #797: the remaining areas.\n\nCloses #797'), []);
   assert.deepEqual(partOfIssues('- Part of #465\n> part of #742'), ['465', '742']);
   assert.deepEqual(partOfIssues('  Part of #529'), ['529']);
+  assert.deepEqual(partOfIssues('**Part of** #12\n## Part of #13\n1. Part of #14'), ['12', '13', '14']);
 });
