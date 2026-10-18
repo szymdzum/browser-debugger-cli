@@ -1214,3 +1214,34 @@ test('partOfIssues counts "Part of #N" only at the start of a line, not in a sen
   assert.deepEqual(partOfIssues('  Part of #529'), ['529']);
   assert.deepEqual(partOfIssues('**Part of** #12\n## Part of #13\n1. Part of #14'), ['12', '13', '14']);
 });
+
+test('the design brief with KIND=feature checks the CLI shape and claims, not a false-positive matrix', () => {
+  const { brief } = renderBrief(BRIEFS, 'design', { N: '848', MAIN: '/m' });
+  assert.match(brief, /false-positive matrix/);
+  const feature = briefVariant(brief, { feature: true });
+  assert.doesNotMatch(feature, /false-positive matrix|<!-- \/?design-heuristic -->/);
+  assert.match(feature, /\*\*The CLI shape:\*\*/);
+  assert.match(feature, /Every claim the note makes about Chrome or CDP/);
+  assert.doesNotMatch(briefVariant(brief, {}), /<!-- \/?design-heuristic -->/);
+});
+
+test('templatePlaceholders includes the long optional lines, so --check refuses them left in', () => {
+  const placeholders = templatePlaceholders(BRIEFS);
+  const optional = [...placeholders].filter((p) => p.startsWith('<detection heuristics only') || p.startsWith('<redaction or parsing'));
+  assert.equal(optional.length, 2);
+  assert.match(briefProblems(`${'x'.repeat(300)}\n- ${optional[0]}`, placeholders)[0], /placeholders still open/);
+});
+
+test('the proxy note puts the bypass inside the bdg function, never in front of bdg', () => {
+  const note = proxyNote({ HTTPS_PROXY: 'http://127.0.0.1:9000' }, 'tester');
+  assert.match(note, /inside your `bdg\(\)` function/);
+  assert.match(note, /Never run `env -u HTTPS_PROXY bdg …`/);
+});
+
+test('only the implementer brief gets a default CAP: reviewer and tester stay open until set', () => {
+  const placeholders = templatePlaceholders(BRIEFS);
+  const reviewer = renderBrief(BRIEFS, 'reviewer', { N: '1', MAIN: '/m', HEAD: 'h', BASE: 'b', RED: 'r', BRANCH: 'x' }).brief;
+  const tester = renderBrief(BRIEFS, 'tester', { N: '1', MAIN: '/m', HEAD: 'h', AGENT: 'a', URLS: 'u' }).brief;
+  assert.ok(unfilledPlaceholders(reviewer, placeholders).includes('<CAP>'));
+  assert.ok(unfilledPlaceholders(tester, placeholders).includes('<CAP>'));
+});

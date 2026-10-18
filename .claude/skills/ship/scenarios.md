@@ -3,7 +3,7 @@
 ## Contents
 - Running a round
 - Report format
-- Scenarios S01–S16
+- Scenarios S01–S17
 - Exploratory sweep
 
 A fixed list of tasks for fresh-agent test rounds, so rounds can be compared over time. A fresh agent is a new agent with no context about bdg's internals: it gets a realistic task and an installed `bdg`, and is **not told which feature is being tested**. What it discovers, works around and rates shows how agent-friendly bdg is; unit, smoke and integration tests don't catch false successes, misleading hints or friction.
@@ -83,11 +83,11 @@ Each scenario has an ID, the task given to the agent, how to set it up, what "wo
 
 ### S04 Forms in shadow DOM
 
-- **Task:** "Log in on this page with user `ada` and PIN `1234`, then subscribe `ada@example.com` to the newsletter."
+- **Task:** "Log in on this page as `ada@example.com` with the passphrase `hunter22` and card code `1234`, then subscribe `Ada` (`ada@example.com`) to the newsletter."
 - **Setup:** fixture `/shadow-forms`: a login form in an open shadow root, a newsletter form two shadow roots deep, a field component (`<x-field>`), a closed shadow root (`<x-vault>`).
 - **Works:** `dom form` lists the shadow forms; `dom fill` and `dom submit` work by label or selector; the closed root is reported as not reachable instead of failing silently.
 - **Rate:** whether `dom form` was used and trusted; workarounds for shadow roots.
-- **History:** from #456.
+- **History:** from #456. 2026-10-18: the task names the fixture's own labels (Email, passphrase, card code; S24 cloud round: the old "user, PIN" text matched nothing).
 
 ### S05 JS dialogs on load and on click
 
@@ -108,10 +108,10 @@ Each scenario has an ID, the task given to the agent, how to set it up, what "wo
 ### S07 Auth state save, stop, `--state`
 
 - **Task:** "Log in, then restart the browser session and continue where you left off without logging in again."
-- **Setup:** real site <https://the-internet.herokuapp.com/login> (`tomsmith` / `SuperSecretPassword!`; the session cookie has no Expires), or the fixture `/login` (any username, password `secret`; the herokuapp credentials fail there), or a page that stores a token in localStorage and sessionStorage. The smoke fixture is in `src/__tests__/smoke/auth-state.smoke.test.ts`.
+- **Setup:** real site <https://the-internet.herokuapp.com/login> (`tomsmith` / `SuperSecretPassword!`; the session cookie has no Expires), or a page that stores a token in localStorage and sessionStorage. Not the fixture `/login`: it sets no session cookie and `/secure` is open to anyone, so there is nothing to restore. The smoke fixture is in `src/__tests__/smoke/auth-state.smoke.test.ts`.
 - **Works:** `bdg state save <file>` → `bdg stop` → `bdg <url> --state <file>` is still logged in; output shows counts and origins, never values; the file is 0600.
 - **Rate:** whether the agent found `state save` / `--state` from help; whether it put the file somewhere safe.
-- **History:** from #454.
+- **History:** from #454. 2026-10-18: the fixture `/login` dropped from the setup (it sets no session cookie and `/secure` is open, so a restore can't be shown: S24 cloud round).
 
 ### S08 Ctrl-C during start, screenshot and `page switch`
 
@@ -124,7 +124,7 @@ Each scenario has an ID, the task given to the agent, how to set it up, what "wo
 ### S09 CDP event collection
 
 - **Task:** "Record a performance trace of clicking the button on this page into a file. Then make the page's API call return a mocked response."
-- **Setup:** fixture `/` (calls `/api/test`) or `/effects`; any page with a fetch.
+- **Setup:** fixture `/` (a "Click Me" button; the page fetches `/api/test`); any page with a button and a fetch. Not `/effects`: it has no API call (S24).
 - **Works:** trace: `bdg cdp Tracing.start` … `bdg cdp Tracing.end --collect Tracing.dataCollected --until Tracing.tracingComplete --out trace.ndjson` writes the events. Mock: the Fetch recipe (`Fetch.enable --listen Fetch.requestPaused`, `--events`, `Fetch.fulfillRequest`) answers the paused request; paused requests are named as such, not as a hang.
 - **Rate:** whether the agent found `--collect` and the recipe (help, `--describe`, hints); how many raw CDP attempts it took.
 - **History:** from #452.
@@ -184,6 +184,14 @@ Each scenario has an ID, the task given to the agent, how to set it up, what "wo
 - **Works:** `network list` then `network details <id>` name the dominant phase of each slow request (`wait`, `download`, `queued`) with a verdict that matches the cause; `--json` `data.timingBreakdown` and `item.protocol`; the "6 connections per host" explanation only for HTTP/1.1; no confident verdict on a `data:` URL, a cached response, a 500 with an unread body or an aborted request.
 - **Rate:** whether the agent blamed the right side for each request; whether any verdict was confidently wrong.
 - **History:** from S21 (#837, PR #840): two rounds found a `data:` URL shown as cache, an unread 500 body hidden as failed, an aborted request called "server time".
+
+### S17 Start on a page that never loads
+
+- **Task:** "Open these pages and tell me what each one shows." (give the three URLs below; don't say they fail)
+- **Setup:** a server outside the repo, started by the orchestrator with a PID file: `node -e "require('http').createServer((q,s)=>{s.writeHead(302,{Location:'/loop'});s.end()}).listen(<port>)"`; the URLs are `http://127.0.0.1:<port>/` (a redirect loop, `ERR_TOO_MANY_REDIRECTS`), `https://127.0.0.1:<port>/` (TLS to a plain-HTTP server) and one that the machine blocks or refuses behind a redirect. Ask for each URL once as a session start (`bdg <url>`) and once as `bdg page navigate <url>` from a working page (fixture `/`).
+- **Works:** no "Session Started" or `✓ Navigated` on a page that never loaded: start fails or warns, naming the `net::` error, in human output and `--json`; `page info`, `console` and `peek` don't present Chrome's error page as the site. A refused connection keeps exit 80 `Could not load …`.
+- **Rate:** whether the agent's answer said the page failed to load, and from which bdg output it learned that (or whether it found out only from `network list`).
+- **History:** from S24 (cloud round, 2026-10-18): `bdg http://www.uitestingplayground.com/` (307, then `ERR_BLOCKED_BY_CLIENT`) said "Session Started", exit 0, and `console` "No errors or warnings found"; filed #860.
 
 ## Exploratory sweep
 
