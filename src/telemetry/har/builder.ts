@@ -22,7 +22,8 @@ import type * as Http from 'node:http';
 
 import { sanitizeEntry } from '@/telemetry/har/sanitize.js';
 import { skippedBodyReason } from '@/telemetry/networkRetention.js';
-import { offsetSpan } from '@/telemetry/timingBreakdown.js';
+import type { TimingPhases } from '@/telemetry/timingBreakdown.js';
+import { offsetSpan, timingBreakdown } from '@/telemetry/timingBreakdown.js';
 import type { NetworkRequest, WebSocketFrame } from '@/types.js';
 import { harSanitizedComment } from '@/ui/messages/networkMessages.js';
 
@@ -320,17 +321,46 @@ function span(start: number | undefined, end: number | undefined): number {
 }
 
 /**
+ * Build HAR timings from the phases `network details` shows (#847), so the
+ * two cannot disagree.
+ *
+ * `blocked` is Chrome's queue (0 when there was none), `connect` includes
+ * TLS and `ssl` repeats it (HAR 1.2), proxy resolution is part of `connect`.
+ * A phase that did not happen is -1 (`dns`, `connect`, `ssl`); `send`, `wait`
+ * and `receive` are never negative.
+ *
+ * @param phases - Phases of the timing breakdown, in ms
+ * @returns HAR timings
+ */
+function timingsFromPhases(phases: TimingPhases['phases']): Timings {
+  const { connect, tls } = phases;
+  return {
+    blocked: phases.queued ?? 0,
+    dns: phases.dns ?? UNKNOWN_TIMING,
+    connect:
+      connect === undefined && tls === undefined ? UNKNOWN_TIMING : (connect ?? 0) + (tls ?? 0),
+    ssl: tls ?? UNKNOWN_TIMING,
+    send: phases.send ?? 0,
+    wait: phases.wait ?? 0,
+    receive: phases.download ?? 0,
+  };
+}
+
+/**
  * Build HAR timings from CDP resource timing.
  *
- * HAR 1.2: blocked/dns/connect/ssl may be -1 (not applicable); send, wait
- * and receive are required to be non-negative. A response served from the
- * browser cache carries the timing of the request that originally fetched
- * it, so only its measured duration is used.
+ * A request with a timing breakdown takes its phases from it (see
+ * {@link timingsFromPhases}). Otherwise (cache, pending, failed, no timing)
+ * blocked/dns/connect/ssl are -1 and send, wait and receive 0; a response
+ * served from the browser cache carries the timing of the request that
+ * originally fetched it, so only its measured duration is used.
  *
  * @param req - Network request
  * @returns HAR timings
  */
 function buildTimings(req: NetworkRequest): Timings {
+  const breakdown = timingBreakdown(req);
+  if ('phases' in breakdown) return timingsFromPhases(breakdown.phases);
   const t = req.timing;
   if (!t || req.fromCache) {
     return {
