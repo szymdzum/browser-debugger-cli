@@ -6,6 +6,9 @@ import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 
 import { shellWord, type ErrorWithSuggestion } from './shared.js';
 
+/** Reasons a source map warning lists */
+const MAX_REASONS_SHOWN = 3;
+
 /** Most logpoints a session holds */
 export const MAX_LOGPOINTS = 10;
 
@@ -92,6 +95,75 @@ export function logpointFileNotLoadedWarning(
     ? `Did you mean: ${similar.join(', ')}?`
     : `Use the end of a script URL the page loads (see ${sessionCommand('bdg network list')})`;
   return `No loaded script matches "${file}" (${loaded} loaded); the logpoint binds when one does. ${hint}`;
+}
+
+/**
+ * No loaded script matches the file, and some source maps could not be used.
+ *
+ * @param file - File as typed
+ * @param failures - One reason per map, each naming the map
+ * @returns Warning
+ */
+export function logpointSourceMapWarning(file: string, failures: string[]): string {
+  const shown = failures.slice(0, MAX_REASONS_SHOWN).join('; ');
+  const more =
+    failures.length > MAX_REASONS_SHOWN ? ` (+${failures.length - MAX_REASONS_SHOWN} more)` : '';
+  return `No loaded script or readable source map names "${file}"; the logpoint binds when one does. Source maps not used: ${shown}${more}`;
+}
+
+/**
+ * A source map names the file, but the original line compiles to no code.
+ *
+ * @param file - File as typed
+ * @param line - Line asked for
+ * @returns Error
+ */
+export function logpointNoMappedCodeError(file: string, line: number): ErrorWithSuggestion {
+  return {
+    message: `${file} has no code at line ${line}`,
+    suggestion:
+      'The source map has no mapping for this line (a type, an import or a blank line compiles to nothing): pick a line with a statement',
+  };
+}
+
+/**
+ * Two original places that map to the same generated position (Chrome allows
+ * one breakpoint there).
+ *
+ * @param where - The location asked for
+ * @returns Error
+ */
+export function logpointSamePlaceError(where: string): ErrorWithSuggestion {
+  return {
+    message: `${where} maps to a generated position that already has a breakpoint`,
+    suggestion: `See ${sessionCommand('bdg debug list')}; a logpoint or breakpoint at the same compiled place must be cleared first`,
+  };
+}
+
+/**
+ * Source maps a lookup stopped waiting for.
+ *
+ * @param names - Masked names of the maps (the first few)
+ * @param total - How many maps had not answered
+ * @returns Reason for a source map warning
+ */
+export function logpointUnreadMapsReason(names: string[], total: number): string {
+  return `${total} source ${total === 1 ? 'map has' : 'maps have'} not answered yet (${names.join(', ')}); the logpoint binds when one names the file`;
+}
+
+/**
+ * Every generated place of an original line is shared with another statement.
+ *
+ * @param file - File as typed
+ * @param line - Line asked for
+ * @returns Error
+ */
+export function logpointMergedLineError(file: string, line: number): ErrorWithSuggestion {
+  return {
+    message: `${file}:${line} has no generated place of its own (the compiler merged it into another statement, e.g. after a return)`,
+    suggestion:
+      'A logpoint there would log the values of another path; set it on the next line, or on the statement that runs first',
+  };
 }
 
 /**

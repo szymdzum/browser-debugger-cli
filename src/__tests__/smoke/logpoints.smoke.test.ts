@@ -221,6 +221,47 @@ void describe('logpoints (#848)', () => {
     }
   });
 
+  void it('after a reload that moves the line, bound holds the new place only', async () => {
+    let version = 0;
+    const served = [
+      ['function run(x) {', '  var y = x + 1;', '  return y;', '}'],
+      ['// banner', '// banner', 'function run(x) {', '  var y = x + 1;', '  return y;', '}'],
+    ];
+    const server = http.createServer((req, res) => {
+      const code = (served[version] ?? []).join('\n');
+      res.writeHead(200, { 'Cache-Control': 'no-store' });
+      res.end(
+        req.url === '/moved.js'
+          ? code
+          : '<!doctype html><title>moved</title><script src="/moved.js"></script>'
+      );
+    });
+    const port = await getFreePort();
+    await new Promise<void>((resolve) => server.listen(port, '127.0.0.1', resolve));
+    try {
+      await bdg(['page', 'navigate', `http://127.0.0.1:${port}/`]);
+      const created = await json<{ id: string; bound: Array<{ line: number }> }>([
+        'debug',
+        'log',
+        'moved.js:2',
+        'x',
+      ]);
+      assert.equal(created.bound[0]?.line, 2);
+      version = 1;
+      await bdg(['page', 'reload']);
+      const deadline = Date.now() + 30000;
+      for (;;) {
+        const entry = (await listed()).find((lp) => lp.id === created.id);
+        if (entry?.bound.length === 1 && (entry.bound[0]?.line ?? 0) > 2) break;
+        assert.ok(Date.now() < deadline, `stale bound: ${JSON.stringify(entry?.bound)}`);
+      }
+    } finally {
+      server.closeAllConnections();
+      await new Promise((resolve) => server.close(resolve));
+      await bdg(['page', 'navigate', `${fixtures.url}logpoints`]);
+    }
+  });
+
   void it('a debugger; statement does not hold the page while a logpoint exists, also after a reload', async () => {
     await bdg(['debug', 'log', `${APP}:${LINE}`]);
     await bdg(['dom', 'click', '#pause']);
@@ -485,6 +526,7 @@ void describe('logpoints (#848)', () => {
   void it('refuses a duplicate location (84), bad syntax (81) and an 11th logpoint (81)', async () => {
     await bdg(['debug', 'log', `${APP}:${LINE}`]);
     await bdg(['debug', 'log', `${APP}:${LINE}`], 84);
+    await bdg(['debug', 'log', `${APP}:${LINE}:1`], 84);
     await bdg(['debug', 'log', `${APP}:${APP_JS_LINES.discount}`, 'foo('], 81);
     await bdg(['debug', 'clear']);
     const lines = APP_JS_LINES.codeLines;

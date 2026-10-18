@@ -186,7 +186,7 @@ bdg debug log app.js:12                   # no expression: a hit counter - did t
 bdg debug clear                           # when done
 ```
 
-Values are those before the line runs. Expressions run in the page. `debugger;` statements do not pause while logpoints exist. A hot line logs at most 100 hits per page load (`--max`); the rest are `dropped`. Exit 83 = no such script or line (Did you mean), 84 = already set there, 81 = bad expression/location or more than 10 logpoints.
+Source maps: give the original file and line you know (`bdg debug log src/cart.ts:42 total`); bdg reads the bundle's map (external or inline), binds the generated line and column, and reports `src/cart.ts:42` (`--json` `bound[].source`). Values are the generated code's variables (minified `total` may be `e`). Exit 83 on a line with no code (a type, an import); a map that cannot be read leaves the logpoint `pending` with a warning naming it. Values are those before the line runs. Expressions run in the page. `debugger;` statements do not pause while logpoints exist. A hot line logs at most 100 hits per page load (`--max`); the rest are `dropped`. Exit 83 = no such script or line (Did you mean), 84 = already set there, 81 = bad expression/location or more than 10 logpoints.
 
 ## Run JavaScript
 

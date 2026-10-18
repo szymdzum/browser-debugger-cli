@@ -9,6 +9,8 @@ export interface LogpointBound {
   url: string;
   line: number;
   column: number;
+  /** For a logpoint set from a source map: the original place it stands for (`url`, `line` and `column` are the generated ones) */
+  source?: { file: string; line: number };
 }
 
 /** `bound` once a loaded script holds the line, `pending` until one does */

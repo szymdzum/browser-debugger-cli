@@ -11,6 +11,7 @@ import type {
   LogpointHit,
   LogpointValue,
 } from '@/ipc/protocol/debugTypes.js';
+import { displayUrl } from '@/utils/displayUrl.js';
 import { logpointPlace } from '@/utils/logpointLocation.js';
 
 /** Description of the `debug` command group */
@@ -36,10 +37,11 @@ Examples:
   bdg debug log app.js:5 total discount "cart.items.length"
   bdg dom click "#checkout"        # the action report lists what was logged
   bdg debug log app.js:5           # no expression: a hit counter
+  bdg debug log src/cart.ts:5 total # an original file of a bundle with a source map
   bdg debug hits --json            # every logged value, structured
   bdg debug clear
 
-Lines and columns are 1-based. File is the end of a script URL (app.js, dist/app.js).
+Lines and columns are 1-based. File is the end of a script URL (app.js, dist/app.js) or, when none matches, of a source in a loaded script's source map (src/cart.ts); values are then the generated code's variables.
 Expressions run in the page at that line and see its variables; values are those before the line runs.`;
 
 /**
@@ -92,6 +94,11 @@ export function logpointSetText(data: DebugLogData): string {
     return `${id} pending: ${requested.file} is not loaded yet; the logpoint binds when it is`;
   }
   const first = bound[0];
+  if (first?.source) {
+    const asked = logpointPlace(requested.file, requested.line, requested.column);
+    const generated = `${displayUrl(first.url)}:${first.line}:${first.column}`;
+    return `${id} bound at ${asked} (generated ${generated}${bound.length > 1 ? `, ${bound.length} places` : ''})`;
+  }
   if (first && first.line !== requested.line) {
     return `${id} bound at ${requested.file}:${first.line} (asked ${requested.line})`;
   }
