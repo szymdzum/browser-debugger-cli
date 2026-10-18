@@ -58,6 +58,8 @@ throw new CommandError(
 ### Message Centralization (`src/ui/messages/`)
 All user-facing strings must use centralized functions - no inline strings.
 
+A new message goes into its command area's module: `src/errors/messages/<area>.ts` for errors and suggestions, `src/ui/messages/commands/<area>.ts` for command output (areas such as `session`, `domActions`, `domRead`, `network`, `cdp`, `tabs`, `wait`, `eval`; see each directory). A message or helper used by two areas goes into that tree's `shared.ts`; area modules never import each other. `src/errors/messages.ts` and `src/ui/messages/commands.ts` are barrels that only re-export: keep importing from them, and add no code there. Keep a module under ~600 lines: split an area that grows past it.
+
 ### Error Messages with Suggestions (`src/errors/messages.ts`)
 Common error patterns with recovery suggestions. Use existing functions or add new ones:
 ```typescript
