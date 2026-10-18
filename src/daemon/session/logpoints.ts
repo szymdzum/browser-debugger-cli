@@ -50,10 +50,10 @@ import {
 const log = createLogger('session');
 
 /** Hits stored per logpoint per page load */
-export const MAX_STORED_HITS = 100;
+const MAX_STORED_HITS = 100;
 
 /** Hits logged per page load by default (the rest are counted as dropped) */
-export const DEFAULT_MAX_HITS = 100;
+const DEFAULT_MAX_HITS = 100;
 
 /** Hits kept per logpoint over all page loads (the oldest go first) */
 const MAX_RETAINED_HITS = 1000;
