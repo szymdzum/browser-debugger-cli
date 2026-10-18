@@ -173,7 +173,16 @@ function timingRows(request: NetworkRequest): Array<[string, string]> {
   if ('unavailable' in breakdown) return [['Timing', timingUnavailableText(breakdown.unavailable)]];
   return [
     ['Timing', timingPhasesLine(breakdown.phases)],
-    ['', timingVerdict(breakdown, request.protocol)],
+    [
+      '',
+      timingVerdict(breakdown, {
+        ...(request.protocol !== undefined && { protocol: request.protocol }),
+        ...(request.encodedDataLength !== undefined && {
+          transferredBytes: request.encodedDataLength,
+        }),
+        localProxy: looksLikeLocalProxy(request),
+      }),
+    ],
   ];
 }
 

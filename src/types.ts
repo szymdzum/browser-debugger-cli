@@ -166,10 +166,6 @@ export interface NetworkRequest {
     connectEnd?: number;
     sslStart?: number;
     sslEnd?: number;
-    workerStart?: number;
-    workerReady?: number;
-    workerFetchStart?: number;
-    workerRespondWithSettled?: number;
     sendStart?: number;
     sendEnd?: number;
     pushStart?: number;

@@ -12,7 +12,7 @@ import type {
   TimingUnavailableReason,
 } from '@/telemetry/timingBreakdown.js';
 import type { BlockedCookie } from '@/types.js';
-import { pluralize } from '@/ui/formatting.js';
+import { formatBytes, pluralize } from '@/ui/formatting.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 
 /**
@@ -392,7 +392,7 @@ const PHASE_MEANING: Record<TimingPhase, string> = {
   tls: 'a new TLS handshake (no keep-alive or preconnect)',
   send: 'sending the request',
   wait: 'server time (TTFB), nothing to fix in the page',
-  download: 'a large or slow response body',
+  download: 'a large body, or a server sending it slowly',
 };
 
 /** Why `network details` shows no phases, by reason (`unavailable` in --json) */
@@ -416,19 +416,39 @@ export function timingPhasesLine(phases: TimingPhases['phases']): string {
     .join(' · ');
 }
 
+/** What the verdict says about a request that went through a proxy on this machine */
+const LOCAL_PROXY_VERDICT_NOTE =
+  "Protocol and connection/wait times are the local proxy's (a buffering proxy turns a streamed body into wait; HTTP/1.1 may be the proxy's), not the site's";
+
+/** What the verdict knows about the request besides its phases */
+export interface TimingVerdictContext {
+  /** Protocol of the response (`http/1.1`, `h2`, `h3`) */
+  protocol?: string;
+  /** Bytes received (`encodedDataLength`) */
+  transferredBytes?: number;
+  /** The remote address looks like a proxy on this machine */
+  localProxy?: boolean;
+}
+
 /**
  * The line that names the phase that took most of a request's time.
  *
  * @param breakdown - Phases of the request
- * @param protocol - Protocol of the response (`http/1.1`, `h2`, `h3`)
+ * @param context - Protocol, size and proxy of the request
  * @returns e.g. `Most of the time (820 of 1240 ms) was spent in queued: …`
  */
-export function timingVerdict(breakdown: TimingPhases, protocol?: string): string {
+export function timingVerdict(breakdown: TimingPhases, context: TimingVerdictContext = {}): string {
   const { dominant, phases, totalMs } = breakdown;
-  const verdict = `Most of the time (${phases[dominant] ?? 0} of ${totalMs} ms) was spent in ${dominant}: ${PHASE_MEANING[dominant]}`;
-  return dominant === 'queued' && protocol === 'http/1.1'
-    ? `${verdict} (HTTP/1.1: Chrome opens at most 6 connections per host)`
-    : verdict;
+  const ms = phases[dominant] ?? 0;
+  const size =
+    dominant === 'download' && context.transferredBytes !== undefined
+      ? ` (${formatBytes(context.transferredBytes)} in ${ms} ms)`
+      : '';
+  let verdict = `Most of the time (${ms} of ${totalMs} ms) was spent in ${dominant}${size}: ${PHASE_MEANING[dominant]}`;
+  if (dominant === 'queued' && context.protocol === 'http/1.1') {
+    verdict += ' (HTTP/1.1: Chrome opens at most 6 connections per host)';
+  }
+  return context.localProxy ? `${verdict}. ${LOCAL_PROXY_VERDICT_NOTE}` : verdict;
 }
 
 /**

@@ -52,18 +52,30 @@ export function offsetSpan(start: number | undefined, end: number | undefined): 
 }
 
 /**
- * Whether a service worker answered the request: its time is the worker's,
- * not the network's, and Chrome's offsets then include the worker phases.
+ * Chrome's monotonic time (seconds) the request ended: its last byte, or for
+ * a failed request the failure (`sentTime` plus `duration`).
  *
  * @param request - Captured request
- * @returns True when a service worker handled it
+ * @returns The end time, or undefined while the request is pending
  */
-function answeredByServiceWorker(request: NetworkRequest): boolean {
-  const { workerStart, workerReady } = request.timing ?? {};
+function endTime(request: NetworkRequest): number | undefined {
+  if (request.loadingFinishedTime !== undefined) return request.loadingFinishedTime;
+  if (request.sentTime === undefined || request.duration === undefined) return undefined;
+  return request.sentTime + request.duration / MS_PER_SECOND;
+}
+
+/**
+ * Whether the request has the timing offsets to measure it by: its start,
+ * and send and headers offsets in order.
+ *
+ * @param request - Captured request
+ * @returns True when the phases can be measured
+ */
+function hasUsableTiming(request: NetworkRequest): boolean {
   return (
-    request.fromServiceWorker === true ||
-    (workerStart !== undefined && workerStart >= 0) ||
-    (workerReady !== undefined && workerReady >= 0)
+    request.timing?.requestTime !== undefined &&
+    request.sentTime !== undefined &&
+    hasOrderedOffsets(request.timing)
   );
 }
 
@@ -89,15 +101,15 @@ function hasOrderedOffsets(timing: Timing): boolean {
  * @returns The reason, or undefined when the request has timing to break down
  */
 function unavailableReason(request: NetworkRequest): TimingUnavailableReason | undefined {
-  if (request.fromCache) return 'cache';
-  if (request.errorText !== undefined || request.blockedReason !== undefined) return 'failed';
-  if (request.resourceType === 'WebSocket') return 'no-timing';
-  if (request.loadingFinishedTime === undefined) return 'pending';
-  if (answeredByServiceWorker(request)) return 'service-worker';
-  if (request.timing?.requestTime === undefined || request.sentTime === undefined) {
+  if (/^(data|blob):/i.test(request.url) || request.resourceType === 'WebSocket') {
     return 'no-timing';
   }
-  return hasOrderedOffsets(request.timing) ? undefined : 'no-timing';
+  if (request.fromCache) return 'cache';
+  if (request.blockedReason !== undefined) return 'failed';
+  if (request.errorText !== undefined) return hasUsableTiming(request) ? undefined : 'failed';
+  if (endTime(request) === undefined) return 'pending';
+  if (request.fromServiceWorker) return 'service-worker';
+  return hasUsableTiming(request) ? undefined : 'no-timing';
 }
 
 /**
@@ -136,7 +148,7 @@ function connectMs(timing: Timing, tls: number | undefined): number | undefined 
 /**
  * Measure each phase of a request that has timing.
  *
- * @param request - Captured request (`sentTime`, `loadingFinishedTime` and `timing.requestTime` set)
+ * @param request - Captured request (`sentTime`, an end time and `timing.requestTime` set)
  * @param timing - Chrome's timing of the request
  * @returns Phases in ms (rounded, never negative); those that did not happen are absent
  */
@@ -154,7 +166,7 @@ function measurePhases(request: NetworkRequest, timing: Timing): TimingPhases['p
     wait: offsetSpan(timing.sendEnd, timing.receiveHeadersEnd),
     download:
       downloadStart !== undefined && downloadStart >= 0
-        ? ((request.loadingFinishedTime ?? 0) - requestTime) * MS_PER_SECOND - downloadStart
+        ? ((endTime(request) ?? 0) - requestTime) * MS_PER_SECOND - downloadStart
         : undefined,
   };
   const phases: TimingPhases['phases'] = {};
@@ -185,6 +197,6 @@ export function timingBreakdown(request: NetworkRequest): TimingBreakdown {
     (best, phase) => ((phases[phase] ?? -1) > (phases[best] ?? -1) ? phase : best),
     'queued'
   );
-  const totalMs = ((request.loadingFinishedTime ?? 0) - (request.sentTime ?? 0)) * MS_PER_SECOND;
+  const totalMs = ((endTime(request) ?? 0) - (request.sentTime ?? 0)) * MS_PER_SECOND;
   return { phases, dominant, totalMs: Math.max(0, Math.round(totalMs)) };
 }

@@ -149,8 +149,6 @@ void describe('timingBreakdown', () => {
   void it('says service-worker when a service worker answered', () => {
     const viaFlag = request(REUSED, 0.123, { fromServiceWorker: true });
     assert.deepEqual(timingBreakdown(viaFlag), { unavailable: 'service-worker' });
-    const viaTiming = request({ ...REUSED, workerStart: 1, workerReady: 2 }, 0.123);
-    assert.deepEqual(timingBreakdown(viaTiming), { unavailable: 'service-worker' });
   });
 
   void it('never gives a negative phase', () => {
@@ -173,9 +171,32 @@ void describe('timingBreakdown', () => {
     assert.deepEqual(timingBreakdown(pending), { unavailable: 'pending' });
   });
 
-  void it('says failed for a failed request', () => {
-    const failed = request(REUSED, 0.123, { errorText: 'net::ERR_CONNECTION_RESET' });
+  void it('says failed for a request that failed before its headers arrived', () => {
+    const { receiveHeadersEnd, ...noHeaders } = REUSED;
+    void receiveHeadersEnd;
+    const failed = request(noHeaders, 0.5, { errorText: 'net::ERR_CONNECTION_RESET' });
     assert.deepEqual(timingBreakdown(failed), { unavailable: 'failed' });
+    const blocked = request(REUSED, 0.123, { blockedReason: 'csp' });
+    assert.deepEqual(timingBreakdown(blocked), { unavailable: 'failed' });
+  });
+
+  void it('measures a request aborted after its headers up to the failure', () => {
+    const { loadingFinishedTime, ...aborted } = request(REUSED, 0.175, {
+      errorText: 'net::ERR_ABORTED',
+    });
+    void loadingFinishedTime;
+    assert.deepEqual(timingBreakdown(aborted), {
+      phases: { queued: 252, send: 1, wait: 100, download: 72 },
+      dominant: 'queued',
+      totalMs: 425,
+    });
+  });
+
+  void it('says no-timing for a data: or blob: URL even when Chrome says cached', () => {
+    for (const url of ['data:image/png;base64,AAAA', 'blob:https://app.test/1-2']) {
+      const cached = request(undefined, 0, { url, fromCache: true });
+      assert.deepEqual(timingBreakdown(cached), { unavailable: 'no-timing' }, url);
+    }
   });
 
   void it('says no-timing for a finished request Chrome reported no timing for (data: URL)', () => {

@@ -84,4 +84,27 @@ void describe('network details Timing rows', () => {
     assert.match(text, /Timing:\s+none \(/);
     assert.doesNotMatch(text, /wait 0|download 0/);
   });
+
+  void it('puts the size in a dominant download and names both causes', () => {
+    const slowBody = request({
+      timing: { requestTime: 100.0, sendStart: 1, sendEnd: 2, receiveHeadersEnd: 10 },
+      loadingFinishedTime: 101.8,
+      duration: 1800,
+      encodedDataLength: 540672,
+    });
+    assert.match(
+      formatNetworkDetails(slowBody),
+      /spent in download \(528\.0 KB in 1790 ms\): a large body, or a server sending it slowly/
+    );
+  });
+
+  void it('notes that a local proxy owns the protocol and the connection times', () => {
+    const proxied = request({
+      url: 'https://app.test/api',
+      serverIPAddress: '127.0.0.1',
+      serverPort: 9000,
+    });
+    assert.match(formatNetworkDetails(proxied), /local proxy's/);
+    assert.doesNotMatch(formatNetworkDetails(request()), /local proxy's/);
+  });
 });
