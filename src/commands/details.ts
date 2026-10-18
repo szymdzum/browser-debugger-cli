@@ -280,7 +280,8 @@ function usageFailure(error: string): CommandResult<never> {
 /** What `network details` and `console details` say about themselves */
 const DETAILS_SUBCOMMANDS = {
   network: {
-    description: 'Get detailed information for a specific request',
+    description:
+      'Get detailed information for a specific request, including where its time went (Timing: queued, dns, connect, tls, send, wait, download)',
     idHelp: 'Request ID (from network list)',
   },
   console: {

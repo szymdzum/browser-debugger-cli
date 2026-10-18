@@ -234,6 +234,26 @@ Binary response bodies (images, fonts) are only captured in sessions started wit
 
 A response body bdg did not capture is reported with the reason instead (`bodyNotCaptured` in `--json`, `(not captured: …)` in text, the `content.comment` in a HAR): a binary or too large body, a resource skipped by default, a body evicted at the total body budget, or one Chrome no longer had when bdg asked for it (`Chrome no longer had the body (its network buffer evicted it, or the request was cancelled)`, e.g. after several large requests in a row; another error fetching it gives `Chrome did not return the body: <error>`). Responses that have no body (HEAD, 204, 205, 304) get no reason. A request body Chrome left out of `Network.requestWillBeSent` (a multipart body with a file part: `hasPostData` is true but there is no `postData`) is reported the same way, as `requestBodyNotCaptured` and `Request Body: (not captured: …)`, so it does not read as a request without a body; bdg does not fetch it (`bdg cdp Network.getRequestPostData --params '{"requestId":"<id>"}'` does, unmasked), and the HAR export has no `postData` for it. `--body --no-body` is accepted (#567): `--no-body` wins and the metadata is printed.
 
+**Timing (#837).** `network details` splits a completed request's time into phases and names the one that took most of it, so "why is this request slow" needs no HAR export:
+
+```
+Duration:      1240 ms
+Timing:        queued 820 ms · send 1 ms · wait 380 ms · download 40 ms
+               Most of the time (820 of 1240 ms) was spent in queued: the request waited for a connection or a free slot (connection limit or low priority) (HTTP/1.1: Chrome opens at most 6 connections per host)
+```
+
+| Phase | Time between |
+|---|---|
+| `queued` | the request being issued and its first connection or send step: connection limit, priority, cache lookup |
+| `dns` | DNS lookup start and end |
+| `connect` | TCP connect (TLS excluded), plus proxy resolution |
+| `tls` | TLS handshake |
+| `send` | sending the request |
+| `wait` | end of the send and the first byte of the response (TTFB, the server's time) |
+| `download` | first byte and the last byte of the body |
+
+A phase that did not happen (`dns`, `connect`, `tls` on a reused connection) is left out, never shown as 0. The phases add up to `Duration` (within a few ms of rounding). The line below names the dominant phase for every completed request: `wait` is server time with nothing to fix in the page, `queued` a connection limit or low priority (the 6-connections-per-host explanation only when the response was `http/1.1`), `connect`/`tls` a new connection (no keep-alive or preconnect), `download` a large or slow body, `dns` the lookup. A redirect hop (`<id>:redirect:<n>`) has its own breakdown. `--json` has it next to the item: `data.timingBreakdown = { phases: { queued, dns, connect, tls, send, wait, download }, dominant, totalMs }` in ms (absent phases are absent keys), and `data.item.protocol` (`http/1.1`, `h2`, `h3`). Without phases the text shows `Timing: none (…)` and `--json` has `data.timingBreakdown = { unavailable }` with `cache` (served from the browser cache, no network), `pending` (not finished), `failed` (the request failed or was blocked) or `no-timing` (Chrome reported none: data: URLs, WebSockets). The raw `item.timing` is unchanged.
+
 `network details` shows the address Chrome connected to with its port (`Remote Address: 93.184.215.14:443`; `serverIPAddress` and `serverPort` in JSON). Behind a proxy that is the proxy's address. CDP has no proxy flag, so bdg guesses: a loopback address on another port than the URL's (its explicit port, else 80/443) for a host that is not this machine is labelled `127.0.0.1:9000 (loopback; likely a local proxy)`. A host mapped to loopback in `/etc/hosts` (`myapp.test`) is connected to on the URL's port and gets no label; a proxy on another machine cannot be told apart from the server. A header the server sent several times (CDP joins the values with newlines) is listed one value per line, and a value repeated verbatim once, with how often it was sent: `Strict-Transport-Security: max-age=63072000 (sent 2 times)`. `Set-Cookie` lines are all listed, repeated ones too. `--json` keeps the header as CDP reported it.
 
 **Blocked cookies.** A `Set-Cookie` in the response headers is not proof the cookie was stored, and a missing `Cookie` header has no explanation of its own. When Chrome blocked a cookie on the request, `network details` has a `Blocked Cookies` block after the response headers, one line per cookie with what happened and Chrome's reasons: Known limit (#567): an action result (`dom click`, ...) does not mention a cookie blocked on a request it triggered; run `bdg network details <id>` for the request in `triggeredRequests`.
