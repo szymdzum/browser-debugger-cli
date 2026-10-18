@@ -3,7 +3,7 @@
 ## Contents
 - Running a round
 - Report format
-- Scenarios S01–S15
+- Scenarios S01–S16
 - Exploratory sweep
 
 A fixed list of tasks for fresh-agent test rounds, so rounds can be compared over time. A fresh agent is a new agent with no context about bdg's internals: it gets a realistic task and an installed `bdg`, and is **not told which feature is being tested**. What it discovers, works around and rates shows how agent-friendly bdg is; unit, smoke and integration tests don't catch false successes, misleading hints or friction.

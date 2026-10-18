@@ -17,7 +17,7 @@ Each PR gets three independent looks before it lands, none of which sees the aut
 
 Files:
 - [briefs.md](briefs.md): the four briefs and their shared blocks; render them with `ship brief`. Read before spawning any subagent.
-- [scenarios.md](scenarios.md): fresh-agent test rounds, the report format, scenarios S01–S15, the exploratory sweep. Read before any fresh-agent test.
+- [scenarios.md](scenarios.md): fresh-agent test rounds, the report format, scenarios S01–S16, the exploratory sweep. Read before any fresh-agent test.
 - [log.md](log.md): one row per merged PR (`ship log`); the retro's data.
 - [scripts/ship.mjs](scripts/ship.mjs): the commands below; its tests run in `npm test`.
 
