@@ -21,6 +21,7 @@ import {
   logpointNoMappedCodeError,
   logpointNotFoundError,
   logpointSourceMapWarning,
+  logpointUnreadMapsReason,
   logpointSyntaxError,
   logpointSamePlaceError,
   MAX_LOGPOINTS,
@@ -57,6 +58,7 @@ import {
   mapKey,
   SourceMapReader,
   type BreakpointTarget,
+  type ReaderOptions,
   type MappedScript,
   type ScriptWithMap,
 } from './logpointSourceMaps.js';
@@ -176,6 +178,25 @@ function commandError(error: ErrorWithSuggestion, exitCode: number): CommandErro
 }
 
 /**
+ * Why source maps still loading are listed in a warning: how many, and the
+ * first two by masked URL.
+ *
+ * @param unread - Scripts whose maps had not answered
+ * @returns Reason
+ */
+function unreadMapsReason(unread: ScriptWithMap[]): string {
+  const names = unread.slice(0, 2).map((script) => {
+    if (script.sourceMapURL.startsWith('data:')) return `inline map of ${displayUrl(script.url)}`;
+    try {
+      return displayUrl(new URL(script.sourceMapURL, script.url).href);
+    } catch {
+      return displayUrl(script.sourceMapURL);
+    }
+  });
+  return logpointUnreadMapsReason(names, unread.length);
+}
+
+/**
  * Last line of a script as an editor numbers it (a final newline does not
  * start another line).
  *
@@ -221,12 +242,18 @@ export class Logpoints {
   /** `Debugger` is enabled, pauses are skipped and the binding exists */
   private enabled = false;
   private working: Promise<unknown> = Promise.resolve();
-  private readonly maps = new SourceMapReader();
+  private readonly maps: SourceMapReader;
 
   /**
    * @param navigationId - Id of the page load now current
+   * @param readerOptions - Limits of the source map reader (tests shrink them)
    */
-  constructor(private readonly navigationId: () => number) {}
+  constructor(
+    private readonly navigationId: () => number,
+    readerOptions?: ReaderOptions
+  ) {
+    this.maps = new SourceMapReader(readerOptions);
+  }
 
   /** How many logpoints exist */
   get size(): number {
@@ -263,6 +290,9 @@ export class Logpoints {
           });
       }),
       cdp.on('Debugger.globalObjectCleared', () => this.pageCleared(cdp)),
+      cdp.on<{ frame: { parentId?: string } }>('Page.frameNavigated', ({ frame }) => {
+        if (frame.parentId === undefined) this.pageCleared(cdp);
+      }),
       cdp.on<Protocol.Debugger.BreakpointResolvedEvent>('Debugger.breakpointResolved', (event) => {
         const point = this.byBreakpoint(event.breakpointId);
         const breakpoint = point?.breakpoints.find((own) => own.id === event.breakpointId);
@@ -483,6 +513,11 @@ export class Logpoints {
     if (!known) point.bound.push(bound);
   }
 
+  /**
+   * A page load began (Chrome 155 does not send `Debugger.globalObjectCleared`
+   * on reload, so the main frame's `Page.frameNavigated` also calls this;
+   * running twice is harmless).
+   */
   private pageCleared(cdp: CDPConnection): void {
     this.scripts.clear();
     this.maps.clear();
@@ -652,7 +687,7 @@ export class Logpoints {
       state: point.bound.length > 0 ? 'bound' : 'pending',
       ...(point.bound.length === 0 &&
         resolution.lastLine === undefined && {
-          warning: this.pendingWarning(file, resolution.failures),
+          warning: this.pendingWarning(file, resolution.failures, resolution.unread),
         }),
     };
   }
@@ -727,7 +762,11 @@ export class Logpoints {
     )?.[0];
     if (scriptId === undefined || target.column === undefined) return target;
     const candidates = [
-      { line: target.line, column: target.column },
+      {
+        line: target.line,
+        column: target.column,
+        ownsReturnSlot: target.ownsReturnSlot ?? false,
+      },
       ...(target.alternatives ?? []),
     ];
     const ordered = [...candidates].sort((a, b) => a.line - b.line || a.column - b.column);
@@ -749,7 +788,9 @@ export class Logpoints {
     }));
     const returns = new Set(places.filter((place) => place.isReturn).map((place) => place.key));
     const breakable = new Set(places.map((place) => place.key));
-    const safe = candidates.filter((place) => !returns.has(at(place.line, place.column)));
+    const safe = candidates.filter(
+      (place) => place.ownsReturnSlot || !returns.has(at(place.line, place.column))
+    );
     const chosen = safe.find((place) => breakable.has(at(place.line, place.column))) ?? safe[0];
     return chosen && { ...target, line: chosen.line, column: chosen.column };
   }
@@ -837,9 +878,7 @@ export class Logpoints {
     const key = mapKey(script);
     const waiting = (): Logpoint[] =>
       [...this.points.values()].filter(
-        (point) =>
-          !point.breakpoints.some((breakpoint) => breakpoint.mapKey === key) &&
-          !this.hasScriptMatching(point.matcher)
+        (point) => !this.hasScriptMatching(point.matcher) && this.needsMapOf(point, script, key)
       );
     if (waiting().length === 0) return;
     void this.maps
@@ -893,9 +932,25 @@ export class Logpoints {
     return [...this.scripts.values()].some((script) => matcher.test(script.url));
   }
 
-  private pendingWarning(file: string, failures: string[]): string {
-    return failures.length > 0
-      ? logpointSourceMapWarning(file, failures)
+  /**
+   * Whether a script's map is still of use to a logpoint: it was set from no
+   * map yet, or from an earlier build of this very script.
+   */
+  private needsMapOf(point: Logpoint, script: ScriptWithMap, key: string): boolean {
+    const mapped = point.breakpoints.filter((breakpoint) => breakpoint.mapKey !== undefined);
+    return (
+      mapped.length === 0 ||
+      mapped.some(
+        (breakpoint) =>
+          breakpoint.mapKey !== key && breakpoint.mapKey?.startsWith(`${script.url}\n`) === true
+      )
+    );
+  }
+
+  private pendingWarning(file: string, failures: string[], unread: ScriptWithMap[]): string {
+    const reasons = [...failures, ...(unread.length > 0 ? [unreadMapsReason(unread)] : [])];
+    return reasons.length > 0
+      ? logpointSourceMapWarning(file, reasons)
       : this.notLoadedWarning(file);
   }
 

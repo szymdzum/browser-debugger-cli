@@ -26,6 +26,8 @@ export interface SourceMap {
   sources: string[];
   sourceRoot: string;
   mappings: string;
+  /** Original text of each source, when the map carries it (`''` where it does not) */
+  sourcesContent?: string[];
 }
 
 /** A place in the generated code, 1-based */
@@ -36,8 +38,10 @@ export interface GeneratedPosition {
   source: string;
   /** The original line it stands for, 1-based */
   originalLine: number;
+  /** A `return` break location at this place would be this original line's own */
+  ownsReturnSlot: boolean;
   /** The line's other segments in this source, by generated position (at most {@link MAX_ALTERNATIVES}) */
-  alternatives: Array<{ line: number; column: number }>;
+  alternatives: Array<{ line: number; column: number; ownsReturnSlot: boolean }>;
 }
 
 /** Other generated positions of an original line a lookup keeps */
@@ -164,6 +168,11 @@ export function parseSourceMap(text: string): SourceMap {
     sources: map['sources'].map((source: unknown) => (typeof source === 'string' ? source : '')),
     sourceRoot: typeof map['sourceRoot'] === 'string' ? map['sourceRoot'] : '',
     mappings: map['mappings'],
+    ...(Array.isArray(map['sourcesContent']) && {
+      sourcesContent: (map['sourcesContent'] as unknown[]).map((text) =>
+        typeof text === 'string' ? text : ''
+      ),
+    }),
   };
 }
 
@@ -205,6 +214,33 @@ export interface SourceMapIndex {
   lines: Map<number, number[]>;
   /** Length of the `mappings` text, for budgeting caches */
   size: number;
+  /** Original lines (`source * LINE_STRIDE + line`) whose text starts with `return` */
+  returnLines: Set<number>;
+  /** Original lines whose text mentions `return` */
+  mentionReturn: Set<number>;
+}
+
+/** Fields of a stored segment: generated line and column, original column, and the previous segment's original line (`-1`: none) */
+const SEGMENT_FIELDS = 4;
+
+/**
+ * Original lines that start with, or mention, `return` (known only for
+ * sources the map carries the text of).
+ *
+ * @param map - Parsed map
+ * @returns Both sets of line keys
+ */
+function returnLinesOf(map: SourceMap): { starts: Set<number>; mentions: Set<number> } {
+  const starts = new Set<number>();
+  const mentions = new Set<number>();
+  (map.sourcesContent ?? []).forEach((text, source) => {
+    text.split('\n').forEach((lineText, line) => {
+      if (!/\breturn\b/.test(lineText)) return;
+      mentions.add(source * LINE_STRIDE + line);
+      if (/^\s*return\b/.test(lineText)) starts.add(source * LINE_STRIDE + line);
+    });
+  });
+  return { starts, mentions };
 }
 
 /**
@@ -216,20 +252,25 @@ export interface SourceMapIndex {
  */
 export function indexSourceMap(map: SourceMap, baseUrl: string): SourceMapIndex {
   const lines = new Map<number, number[]>();
+  let previous = -1;
   for (const segment of decodeMappings(map.mappings)) {
     if (segment.source === undefined || segment.origLine === undefined) continue;
     const key = segment.source * LINE_STRIDE + segment.origLine;
     const stored = lines.get(key);
-    const entry = [segment.genLine, segment.genColumn, segment.origColumn ?? 0];
+    const entry = [segment.genLine, segment.genColumn, segment.origColumn ?? 0, previous];
+    previous = key;
     if (stored) stored.push(...entry);
     else lines.set(key, entry);
   }
+  const { starts, mentions } = returnLinesOf(map);
   return {
     sources: map.sources.map((source) =>
       source === '' ? '' : resolveSource(source, map.sourceRoot, baseUrl)
     ),
     lines,
     size: map.mappings.length,
+    returnLines: starts,
+    mentionReturn: mentions,
   };
 }
 
@@ -260,23 +301,28 @@ function isBetter(
   return candidateFits ? candidateColumn > bestColumn : candidateColumn < bestColumn;
 }
 
+/** A return slot at a segment is its original line's own */
+type OwnsSlot = (previous: number) => boolean;
+
 /**
  * The other generated positions of an original line, by generated position.
  *
- * @param entry - The line's `[genLine, genColumn, origColumn, …]` triples
+ * @param entry - The line's `[genLine, genColumn, origColumn, previous]` segments
  * @param chosen - The segment lookup picked
+ * @param owns - Whether a return slot after the previous segment is the line's own
  * @returns 1-based positions without the chosen one
  */
 function alternativesOf(
   entry: number[],
-  chosen: MappingSegment
-): Array<{ line: number; column: number }> {
-  const others: Array<{ line: number; column: number }> = [];
-  for (let at = 0; at < entry.length; at += 3) {
+  chosen: MappingSegment,
+  owns: OwnsSlot
+): GeneratedPosition['alternatives'] {
+  const others: GeneratedPosition['alternatives'] = [];
+  for (let at = 0; at < entry.length; at += SEGMENT_FIELDS) {
     const line = (entry[at] ?? 0) + 1;
     const column = (entry[at + 1] ?? 0) + 1;
     if (line === chosen.genLine + 1 && column === chosen.genColumn + 1) continue;
-    others.push({ line, column });
+    others.push({ line, column, ownsReturnSlot: owns(entry[at + 3] ?? -1) });
   }
   others.sort((a, b) => a.line - b.line || a.column - b.column);
   return others
@@ -309,13 +355,19 @@ export function lookupIndexed(
   const zeroBasedColumn = column === undefined ? undefined : column - 1;
   const positions: GeneratedPosition[] = [];
   for (const source of wanted) {
-    const entry = index.lines.get(source * LINE_STRIDE + line - 1);
-    let best: MappingSegment | undefined;
-    for (let at = 0; entry && at < entry.length; at += 3) {
+    const ownKey = source * LINE_STRIDE + line - 1;
+    const entry = index.lines.get(ownKey);
+    const owns: OwnsSlot = (previous) =>
+      previous === ownKey ||
+      previous === -1 ||
+      (index.returnLines.has(ownKey) && !index.mentionReturn.has(previous));
+    let best: (MappingSegment & { previous: number }) | undefined;
+    for (let at = 0; entry && at < entry.length; at += SEGMENT_FIELDS) {
       const candidate = {
         genLine: entry[at] ?? 0,
         genColumn: entry[at + 1] ?? 0,
         origColumn: entry[at + 2] ?? 0,
+        previous: entry[at + 3] ?? -1,
       };
       if (isBetter(candidate, best, zeroBasedColumn)) best = candidate;
     }
@@ -325,7 +377,8 @@ export function lookupIndexed(
         column: best.genColumn + 1,
         source: index.sources[source] ?? '',
         originalLine: line,
-        alternatives: alternativesOf(entry ?? [], best),
+        ownsReturnSlot: owns(best.previous),
+        alternatives: alternativesOf(entry ?? [], best, owns),
       });
     }
   }

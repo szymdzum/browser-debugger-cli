@@ -12,7 +12,9 @@ import { encodeVlq, encodeMappings, type SegmentSpec } from '@/__testutils__/sou
 import {
   decodeMappings,
   decodeVlq,
+  indexSourceMap,
   lookupGenerated,
+  lookupIndexed,
   parseSourceMap,
   resolveSource,
   SourceMapError,
@@ -312,4 +314,64 @@ void describe('a map esbuild wrote', () => {
     assert.ok(segments.every((segment) => segment.genLine <= 1));
     assert.ok(segments.some((segment) => segment.source === 1));
   });
+});
+
+void describe('lookupIndexed: who owns a return slot', () => {
+  /**
+   * Whether the first position of an original line owns a return slot.
+   *
+   * @param content - Original text of the one source
+   * @param segments - Segments in generated order (0-based)
+   * @param line - 1-based original line asked for
+   * @returns The lookup's `ownsReturnSlot`
+   */
+  function owns(content: string | undefined, segments: SegmentSpec[], line: number): boolean {
+    const map = parseSourceMap(
+      JSON.stringify({
+        version: 3,
+        sources: ['a.ts'],
+        ...(content !== undefined && { sourcesContent: [content] }),
+        mappings: encodeMappings(segments),
+      })
+    );
+    const found = lookupIndexed(indexSourceMap(map, 'http://h/a.js.map'), /(^|\/)a\.ts$/, line);
+    return found.kind === 'found' && found.positions[0]?.ownsReturnSlot === true;
+  }
+  const seg = (genColumn: number, origLine: number): SegmentSpec => ({
+    genLine: 0,
+    genColumn,
+    source: 0,
+    origLine,
+    origColumn: 0,
+  });
+
+  const rows: Array<[string, string | undefined, SegmentSpec[], number, boolean]> = [
+    ['the first segment of the map', undefined, [seg(0, 0)], 1, true],
+    ['the same line just before it', undefined, [seg(0, 0), seg(5, 0)], 1, true],
+    ['another line before it, no source text', undefined, [seg(0, 0), seg(9, 1)], 2, false],
+    [
+      'a return line after a line that mentions return',
+      'if (a) return 1;\nreturn 2;\n',
+      [seg(0, 0), seg(16, 1)],
+      2,
+      false,
+    ],
+    [
+      'a return line after a line without one',
+      'function f() {\n  return x;\n}\n',
+      [seg(0, 0), seg(13, 1)],
+      2,
+      true,
+    ],
+    [
+      'a statement after a return line',
+      'if (a) return 1;\nlet b = 2;\n',
+      [seg(0, 0), seg(16, 1)],
+      2,
+      false,
+    ],
+  ];
+  for (const [name, content, segments, line, expected] of rows) {
+    void it(name, () => assert.equal(owns(content, segments, line), expected));
+  }
 });

@@ -141,6 +141,17 @@ export function logpointSamePlaceError(where: string): ErrorWithSuggestion {
 }
 
 /**
+ * Source maps a lookup stopped waiting for.
+ *
+ * @param names - Masked names of the maps (the first few)
+ * @param total - How many maps had not answered
+ * @returns Reason for a source map warning
+ */
+export function logpointUnreadMapsReason(names: string[], total: number): string {
+  return `${total} source ${total === 1 ? 'map has' : 'maps have'} not answered yet (${names.join(', ')}); the logpoint binds when one names the file`;
+}
+
+/**
  * Every generated place of an original line is shared with another statement.
  *
  * @param file - File as typed

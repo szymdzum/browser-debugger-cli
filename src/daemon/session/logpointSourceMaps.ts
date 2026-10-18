@@ -57,7 +57,9 @@ export interface BreakpointTarget {
   /** {@link mapKey} of the script whose map gave it */
   mapKey?: string;
   /** Other generated places of the same original line, to try when this one is shared with another statement */
-  alternatives?: Array<{ line: number; column: number }>;
+  alternatives?: Array<{ line: number; column: number; ownsReturnSlot: boolean }>;
+  /** A `return` break location at `line:column` is this original line's own, not the end of another statement */
+  ownsReturnSlot?: boolean;
 }
 
 /** What asking the maps found */
@@ -307,6 +309,7 @@ export class SourceMapReader {
         source: displayUrl(position.source),
         mapKey: key,
         alternatives: position.alternatives,
+        ownsReturnSlot: position.ownsReturnSlot,
       })),
     };
   }

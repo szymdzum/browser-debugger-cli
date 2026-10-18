@@ -17,7 +17,10 @@ import { after, afterEach, before, describe, it } from 'node:test';
 
 import { runCommand } from '@/__testutils__/commandRunner.js';
 import { cleanupAllSessions } from '@/__testutils__/daemonHelpers.js';
-import { DISCOUNT_LINES } from '@/__testutils__/fixturePages/esbuildSourceMapFixtures.js';
+import {
+  DISCOUNT_LINES,
+  LONE_LINES,
+} from '@/__testutils__/fixturePages/esbuildSourceMapFixtures.js';
 import {
   CART_LINES,
   INLINE_LINES,
@@ -281,6 +284,26 @@ void describe('logpoints on source-mapped bundles (#848, part 2)', () => {
       const values = await hitValues(created.id);
       assert.equal(values.length, 1);
       assert.equal((values[0]?.['cart.coupon'] as { percent?: number } | null)?.percent, 10);
+    } finally {
+      await bdg(['page', 'navigate', `${fixtures.url}source-maps`]);
+    }
+  });
+
+  void it('esbuild output: a return that is the only statement of a function binds and fires; a line the compiler folded is 83', async () => {
+    await bdg(['page', 'navigate', `${fixtures.url}sm-esbuild/lone`]);
+    try {
+      const single = await json<Logged>(['debug', 'log', `src/lone.ts:${LONE_LINES.single}`, 'd']);
+      assert.equal(single.state, 'bound');
+      const triple = await json<Logged>(['debug', 'log', `src/lone.ts:${LONE_LINES.triple}`, 'd']);
+      assert.equal(triple.state, 'bound');
+      await bdg(['dom', 'click', '#single']);
+      assert.deepEqual(await hitValues(single.id), [{ d: 7 }]);
+      assert.deepEqual(await hitValues(triple.id), []);
+      const closing = await json<{ error: string }>(
+        ['debug', 'log', `src/lone.ts:${LONE_LINES.closeTwice}`, 'd'],
+        83
+      );
+      assert.match(closing.error, /no generated place of its own/);
     } finally {
       await bdg(['page', 'navigate', `${fixtures.url}source-maps`]);
     }

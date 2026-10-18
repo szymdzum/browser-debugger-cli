@@ -9,6 +9,10 @@
  *   `discountFor` returns 0 without a coupon (`if(!cart2.coupon)return 0;`)
  *   and the next statement, `let rate=...`, starts where that `return` ends.
  * - {@link DISCOUNT_LINES} numbers the original lines of `src/discount.ts`.
+ * - `/sm-esbuild/lone`: another esbuild bundle (same flags) of `src/lone.ts`,
+ *   functions whose only statement is a `return` (`single`, `triple`), one
+ *   that esbuild folds into a conditional (`twice`); {@link LONE_LINES}
+ *   numbers its original lines.
  */
 
 import type { FixtureRoutes } from '@/__testutils__/fixtureRoutes.js';
@@ -21,6 +25,18 @@ export const DISCOUNT_LINES = {
   rate: 5,
   /** `return subtotal * rate;` */
   result: 6,
+} as const;
+
+/** Lines of `src/lone.ts` (original, 1-based) */
+export const LONE_LINES = {
+  /** `return d * 3;`, the only statement of `triple` */
+  triple: 2,
+  /** `return d * 2;` in `twice`, folded into `d>1?1:d*2` */
+  twice: 14,
+  /** `}` closing `twice`: compiled to nothing of its own */
+  closeTwice: 15,
+  /** `return d * 3;`, the only statement of `single` */
+  single: 19,
 } as const;
 
 const BUNDLE =
@@ -38,10 +54,25 @@ const SHOP_HTML = `<!doctype html><title>Shop</title>
 <button id="checkout">Checkout</button> <button id="coupon">Apply coupon SAVE10</button>
 <script src="dist/app.js?v=7"></script>`;
 
+const LONE_BUNDLE =
+  '(()=>{function triple(d){return d*3}var arrow=d=>d*3,K=class{m(d){return d*3}};function twice(d){return d>1?1:d*2}function single(d){return d*3}window.fns=[triple,arrow,K,twice,single];})();\n//# sourceMappingURL=lone.js.map\n';
+
+const LONE_MAP =
+  '{\n  "version": 3,\n  "sources": ["../src/lone.ts"],\n  "sourcesContent": ["export function triple(d: number): number {\\n  return d * 3;\\n}\\nexport const arrow = (d: number): number => {\\n  return d * 3;\\n};\\nexport class K {\\n  m(d: number): number {\\n    return d * 3;\\n  }\\n}\\nexport function twice(d: number): number {\\n  if (d > 1) return 1;\\n  return d * 2;\\n}\\nexport function single(d: number): number {\\n\\n  // comment\\n  return d * 3;\\n}\\n(window as any).fns = [triple, arrow, K, twice, single];\\n"],\n  "mappings": "MAAO,SAAS,OAAO,EAAmB,CACxC,OAAO,EAAI,CACb,CACO,IAAM,MAAS,GACb,EAAI,EAEA,EAAN,KAAQ,CACb,EAAE,EAAmB,CACnB,OAAO,EAAI,CACb,CACF,EACO,SAAS,MAAM,EAAmB,CACvC,OAAI,EAAI,EAAU,EACX,EAAI,CACb,CACO,SAAS,OAAO,EAAmB,CAGxC,OAAO,EAAI,CACb,CACC,OAAe,IAAM,CAAC,OAAQ,MAAO,EAAG,MAAO,MAAM",\n  "names": []\n}\n';
+
+const LONE_HTML = `<!doctype html><title>Lone returns</title>
+<button id="triple" onclick="window.fns[0](5)">triple</button>
+<button id="twice" onclick="window.fns[3](1)">twice</button>
+<button id="single" onclick="window.fns[4](7)">single</button>
+<script src="dist/lone.js"></script>`;
+
 /** Pages by path */
 export const ROUTES: FixtureRoutes = {
   '/sm-esbuild/shop': SHOP_HTML,
   '/sm-esbuild/dist/app.js': BUNDLE,
   '/sm-esbuild/dist/app.js.map': MAP,
   '/sm-esbuild/cart.json': CART,
+  '/sm-esbuild/lone': LONE_HTML,
+  '/sm-esbuild/dist/lone.js': LONE_BUNDLE,
+  '/sm-esbuild/dist/lone.js.map': LONE_MAP,
 };
