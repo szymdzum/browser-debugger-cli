@@ -96,7 +96,7 @@ void describe('network details timing', () => {
     assert.equal(data.timingBreakdown?.dominant, 'wait', JSON.stringify(data.timingBreakdown));
     assert.equal(data.item.protocol, 'http/1.1');
     const text = await runCommand('network', ['details', id, '--no-body'], { timeout: 30000 });
-    assert.match(text.stdout, /Timing\s+.*wait \d+ ms/);
+    assert.match(text.stdout, /Timing:\s+.*wait \d+ ms/);
     assert.match(text.stdout, /server time \(TTFB\)/);
   });
 
@@ -111,11 +111,16 @@ void describe('network details timing', () => {
     const ids = await idsOf('/hold');
     assert.equal(ids.length, 8);
     const queued: string[] = [];
+    const seen: string[] = [];
     for (const id of ids) {
       const { data } = await detailsJson(id);
+      seen.push(JSON.stringify(data.timingBreakdown));
       if (data.timingBreakdown?.dominant === 'queued') queued.push(id);
     }
-    assert.ok(queued.length >= 1 && queued.length <= 2, `queued: ${queued.length} of 8`);
+    assert.ok(
+      queued.length >= 1 && queued.length <= 2,
+      `queued ${queued.length} of 8:\n${seen.join('\n')}`
+    );
     const text = await runCommand('network', ['details', queued[0] ?? '', '--no-body'], {
       timeout: 30000,
     });

@@ -45,7 +45,7 @@ function request(extra: Partial<NetworkRequest> = {}): NetworkRequest {
 void describe('network details Timing rows', () => {
   void it('shows the phases on one line, without those that did not happen', () => {
     const text = formatNetworkDetails(request());
-    assert.match(text, /Timing\s+queued 11 ms · send 1 ms · wait 1000 ms · download 38 ms\n/);
+    assert.match(text, /Timing:\s+queued 11 ms · send 1 ms · wait 1000 ms · download 38 ms\n/);
     assert.doesNotMatch(text, /dns|connect|tls/);
   });
 
@@ -73,7 +73,7 @@ void describe('network details Timing rows', () => {
   void it('says a response from the cache used no network', () => {
     assert.match(
       formatNetworkDetails(request({ fromCache: true })),
-      /Timing\s+.*cache.*no network/
+      /Timing:\s+.*cache.*no network/
     );
   });
 
@@ -81,7 +81,7 @@ void describe('network details Timing rows', () => {
     const { timing, ...noTiming } = request();
     void timing;
     const text = formatNetworkDetails(noTiming);
-    assert.match(text, /Timing\s+none \(/);
+    assert.match(text, /Timing:\s+none \(/);
     assert.doesNotMatch(text, /wait 0|download 0/);
   });
 });

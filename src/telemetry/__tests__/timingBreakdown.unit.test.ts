@@ -97,11 +97,31 @@ void describe('timingBreakdown', () => {
       proxyEnd: 10,
       connectStart: 10,
       connectEnd: 12,
+      sendStart: 12,
+      sendEnd: 13,
+      receiveHeadersEnd: 113,
     };
     const breakdown = timingBreakdown(request(proxied, 0.123));
     assert.ok('phases' in breakdown, JSON.stringify(breakdown));
     assert.equal(breakdown.phases.connect, 12);
     assert.equal(breakdown.phases.queued, 250);
+  });
+
+  void it('keeps the wait for a socket queued although Chrome starts proxyStart at 0', () => {
+    const behindOthers: Timing = {
+      ...REUSED,
+      proxyStart: 0,
+      proxyEnd: 0,
+      connectStart: 700,
+      connectEnd: 700,
+      sendStart: 700,
+      sendEnd: 701,
+      receiveHeadersEnd: 703,
+    };
+    const breakdown = timingBreakdown(request(behindOthers, 0.704));
+    assert.ok('phases' in breakdown, JSON.stringify(breakdown));
+    assert.equal(breakdown.phases.queued, 950);
+    assert.equal(breakdown.dominant, 'queued');
   });
 
   void it('never gives a negative phase', () => {
