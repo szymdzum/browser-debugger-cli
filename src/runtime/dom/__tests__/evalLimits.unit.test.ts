@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { evalTimeoutMs, terminationGraceMs, unsentGraceMs } from '@/runtime/dom/evalLimits.js';
+import {
+  evalTimeoutMs,
+  messagesBudgetCandidates,
+  terminationGraceMs,
+  unsentGraceMs,
+} from '@/runtime/dom/evalLimits.js';
 
 void describe('eval limits', () => {
   void it('keeps the production defaults without an override', () => {
@@ -25,6 +30,20 @@ void describe('eval limits', () => {
         12_000,
         JSON.stringify(bad)
       );
+    }
+  });
+
+  void it('counts the message snapshot budget in candidates only for a whole number from 0 to 100', () => {
+    const read = (value?: string): number | undefined =>
+      messagesBudgetCandidates(
+        value === undefined ? {} : { BDG_TEST_MESSAGES_BUDGET_CANDIDATES: value }
+      );
+    assert.equal(read(), undefined);
+    assert.equal(read('0'), 0);
+    assert.equal(read('1'), 1);
+    assert.equal(read('100'), 100);
+    for (const bad of ['', 'abc', '-1', '1.5', '101', '1e1', ' 1']) {
+      assert.equal(read(bad), undefined, JSON.stringify(bad));
     }
   });
 });
