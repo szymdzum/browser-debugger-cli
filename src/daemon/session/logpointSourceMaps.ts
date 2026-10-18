@@ -1,28 +1,34 @@
 /**
  * Source maps for logpoints (#848, part 2): fetching a script's map (external,
- * from the daemon with a plain `fetch`, or inline `data:`), keeping what was
- * read per page load, and asking every loaded script's map where an original
- * `file:line[:col]` is in the generated code.
+ * from the daemon with a plain `fetch`, or inline `data:`), indexing it once,
+ * keeping the indexes of the page now loaded within a budget, and asking
+ * them where an original `file:line[:col]` is in the generated code.
  */
+
+import { createHash } from 'node:crypto';
 
 import { ConcurrencyLimiter } from '@/utils/concurrency.js';
 import { displayUrl } from '@/utils/displayUrl.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import {
-  lookupGenerated,
+  indexSourceMap,
+  lookupIndexed,
   parseSourceMap,
   SourceMapError,
-  type SourceMap,
+  type SourceMapIndex,
 } from '@/utils/sourceMap.js';
 
 /** How long one map may take to arrive */
 const FETCH_TIMEOUT_MS = 5000;
 
-/** Largest map read (bytes of text) */
+/** Largest map read (bytes) */
 const MAX_MAP_BYTES = 50 * 1024 * 1024;
 
 /** Maps fetched at the same time */
 const FETCH_CONCURRENCY = 6;
+
+/** Length of `mappings` text the cached indexes may add up to before the oldest go */
+const CACHE_BUDGET = 16 * 1024 * 1024;
 
 /** A script Chrome parsed, as far as maps are concerned */
 export interface MappedScript {
@@ -30,28 +36,44 @@ export interface MappedScript {
   sourceMapURL?: string;
 }
 
-/** A map read, with the URL its sources are relative to */
-interface LoadedMap {
-  map: SourceMap;
-  baseUrl: string;
-}
+/** A script that points at a map */
+export type ScriptWithMap = Required<MappedScript>;
 
-/** A place in a generated script, 1-based */
-export interface MappedPlace {
-  scriptUrl: string;
+/** Where Chrome is asked to set a logpoint's breakpoint (1-based) */
+export interface BreakpointTarget {
+  /** Exact script URL (a generated script) */
+  url?: string;
+  /** Pattern for script URLs (a file as typed) */
+  urlRegex?: string;
   line: number;
-  column: number;
-  /** The map source that matched, as a URL */
-  source: string;
+  column?: number;
+  /** The map source it stands for (set from a source map) */
+  source?: string;
+  /** {@link mapKey} of the script whose map gave it */
+  mapKey?: string;
 }
 
 /** What asking the maps found */
 export interface MapResolution {
-  places: MappedPlace[];
-  /** A source the file names has no code at the line (the first such source) */
-  noCode?: string;
+  targets: BreakpointTarget[];
+  /** A source the file names has no code at the line */
+  noCode: boolean;
   /** Why maps could not be used, one per map */
   failures: string[];
+}
+
+/**
+ * Identity of a script's map: the script and its map URL (an inline map
+ * stands for its hash, not its megabytes).
+ *
+ * @param script - Script with a map
+ * @returns Key
+ */
+export function mapKey(script: ScriptWithMap): string {
+  const map = script.sourceMapURL.startsWith('data:')
+    ? `data:${createHash('sha1').update(script.sourceMapURL).digest('hex')}`
+    : script.sourceMapURL;
+  return `${script.url}\n${map}`;
 }
 
 /**
@@ -87,7 +109,7 @@ function fetchFailure(error: unknown): string {
 /**
  * Fetch an external map.
  *
- * @param url - Absolute http(s) URL
+ * @param url - Absolute URL
  * @returns Text
  * @throws SourceMapError for a failed, refused or oversized answer
  */
@@ -95,124 +117,179 @@ async function fetchMapText(url: URL): Promise<string> {
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw new SourceMapError(`${url.protocol} maps are not fetched`);
   }
-  let response: Response;
+  let bytes: ArrayBuffer;
   try {
-    response = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    const response = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    if (!response.ok) throw new SourceMapError(`HTTP ${response.status}`);
+    if (Number(response.headers.get('content-length')) > MAX_MAP_BYTES) {
+      throw new SourceMapError('the map is over 50 MB');
+    }
+    bytes = await response.arrayBuffer();
   } catch (error) {
-    throw new SourceMapError(fetchFailure(error));
+    throw error instanceof SourceMapError ? error : new SourceMapError(fetchFailure(error));
   }
-  if (!response.ok) throw new SourceMapError(`HTTP ${response.status}`);
-  const text = await response.text();
-  if (text.length > MAX_MAP_BYTES) throw new SourceMapError('the map is over 50 MB');
-  return text;
+  if (bytes.byteLength > MAX_MAP_BYTES) throw new SourceMapError('the map is over 50 MB');
+  return new TextDecoder().decode(bytes);
 }
 
 /**
- * Read the map a script points at.
+ * Read and index the map a script points at.
  *
- * @param script - Script with a `sourceMapURL`
- * @returns The parsed map and the URL its sources are relative to
+ * @param script - Script with a map
+ * @returns The indexed map
  * @throws SourceMapError with the reason, naming the map
  */
-async function loadMap(script: Required<MappedScript>): Promise<LoadedMap> {
+async function loadIndex(script: ScriptWithMap): Promise<SourceMapIndex> {
   const inline = script.sourceMapURL.startsWith('data:');
   let name = inline ? `inline map of ${displayUrl(script.url)}` : script.sourceMapURL;
   try {
     if (inline) {
-      return { map: parseSourceMap(dataUrlText(script.sourceMapURL)), baseUrl: script.url };
+      return indexSourceMap(parseSourceMap(dataUrlText(script.sourceMapURL)), script.url);
     }
     const url = new URL(script.sourceMapURL, script.url);
     name = displayUrl(url.href);
-    return { map: parseSourceMap(await fetchMapText(url)), baseUrl: url.href };
+    return indexSourceMap(parseSourceMap(await fetchMapText(url)), url.href);
   } catch (error) {
     throw new SourceMapError(`${name}: ${getErrorMessage(error)}`);
   }
 }
 
 /**
- * The maps of the page now loaded, read once each.
+ * The maps of the page now loaded, read once each (a failed read is tried
+ * again next time) and kept within a budget.
  */
 export class SourceMapReader {
-  private readonly loaded = new Map<string, Promise<LoadedMap>>();
+  private readonly loaded = new Map<string, Promise<SourceMapIndex>>();
+  private readonly sizes = new Map<string, number>();
+  private total = 0;
   private readonly limiter = new ConcurrencyLimiter(FETCH_CONCURRENCY);
 
   /** Forget what was read (a page load starts over; a rebuilt map is read again) */
   clear(): void {
     this.loaded.clear();
+    this.sizes.clear();
+    this.total = 0;
   }
 
   /**
-   * Where scripts' maps put an original place.
+   * A script's indexed map.
    *
-   * @param scripts - Loaded scripts
-   * @param file - File as typed
-   * @param line - 1-based original line
-   * @param column - 1-based original column, when given
-   * @returns Places in generated scripts, a source without code, and the maps that failed
+   * @param script - Script with a map
+   * @returns The index
+   * @throws SourceMapError when the map cannot be read
    */
-  async resolve(
-    scripts: MappedScript[],
-    file: string,
-    line: number,
-    column?: number
-  ): Promise<MapResolution> {
-    const mapped = scripts.filter(
-      (script): script is Required<MappedScript> => script.sourceMapURL !== undefined
-    );
-    const unique = [...new Map(mapped.map((s) => [`${s.url}\n${s.sourceMapURL}`, s])).values()];
-    const results = await Promise.all(
-      unique.map((script) => this.resolveScript(script, file, line, column))
-    );
-    return {
-      places: results.flatMap((result) => result.places),
-      ...(results.some((result) => result.noCode !== undefined) && {
-        noCode: results.find((result) => result.noCode !== undefined)?.noCode ?? '',
-      }),
-      failures: [...new Set(results.flatMap((result) => (result.failure ? [result.failure] : [])))],
-    };
-  }
-
-  /**
-   * Where one script's map puts an original place.
-   *
-   * @param script - Script with a `sourceMapURL`
-   * @param file - File as typed
-   * @param line - 1-based original line
-   * @param column - 1-based original column, when given
-   * @returns Its places, a source without code, or why the map failed
-   */
-  async resolveScript(
-    script: Required<MappedScript>,
-    file: string,
-    line: number,
-    column?: number
-  ): Promise<{ places: MappedPlace[]; noCode?: string; failure?: string }> {
-    let loaded: LoadedMap;
-    try {
-      loaded = await this.read(script);
-    } catch (error) {
-      return { places: [], failure: getErrorMessage(error) };
+  index(script: ScriptWithMap): Promise<SourceMapIndex> {
+    const key = mapKey(script);
+    let loaded = this.loaded.get(key);
+    if (!loaded) {
+      loaded = this.limiter.run(() => loadIndex(script));
+      this.loaded.set(key, loaded);
+      loaded.then(
+        (index) => this.remember(key, index.size),
+        () => this.loaded.delete(key)
+      );
     }
-    const found = lookupGenerated(loaded.map, loaded.baseUrl, file, line, column);
-    if (found.kind === 'no-source') return { places: [] };
-    if (found.kind === 'no-code') return { places: [], noCode: found.source };
+    return loaded;
+  }
+
+  /**
+   * Targets in a generated script for an original place.
+   *
+   * @param index - The script's indexed map
+   * @param script - The script
+   * @param matcher - Matches the sources the file names
+   * @param line - 1-based original line
+   * @param column - 1-based original column, when given
+   * @returns Its targets, and whether a source named has no code at the line
+   */
+  targetsIn(
+    index: SourceMapIndex,
+    script: ScriptWithMap,
+    matcher: RegExp,
+    line: number,
+    column?: number
+  ): { targets: BreakpointTarget[]; noCode: boolean } {
+    const found = lookupIndexed(index, matcher, line, column);
+    if (found.kind === 'no-source') return { targets: [], noCode: false };
+    if (found.kind === 'no-code') return { targets: [], noCode: true };
+    const key = mapKey(script);
     return {
-      places: found.positions.map((position) => ({
-        scriptUrl: script.url,
+      noCode: false,
+      targets: found.positions.map((position) => ({
+        url: script.url,
         line: position.line,
         column: position.column,
-        source: position.source,
+        source: displayUrl(position.source),
+        mapKey: key,
       })),
     };
   }
 
-  private read(script: Required<MappedScript>): Promise<LoadedMap> {
-    const key = `${script.url}\n${script.sourceMapURL}`;
-    let loaded = this.loaded.get(key);
-    if (!loaded) {
-      loaded = this.limiter.run(() => loadMap(script));
-      this.loaded.set(key, loaded);
+  /**
+   * Where scripts' maps put an original place: maps already read first, and
+   * when one names the file the others are not fetched.
+   *
+   * @param scripts - Loaded scripts
+   * @param matcher - Matches the sources the file names
+   * @param line - 1-based original line
+   * @param column - 1-based original column, when given
+   * @returns Targets, whether a source has no code at the line, and the maps that failed
+   */
+  async resolve(
+    scripts: MappedScript[],
+    matcher: RegExp,
+    line: number,
+    column?: number
+  ): Promise<MapResolution> {
+    const withMap = scripts.filter(
+      (script): script is ScriptWithMap => script.sourceMapURL !== undefined
+    );
+    const unique = [...new Map(withMap.map((script) => [mapKey(script), script])).values()];
+    const read = unique.filter((script) => this.loaded.has(mapKey(script)));
+    const first = await this.lookupAll(read, matcher, line, column);
+    if (first.targets.length > 0 || first.noCode) return first;
+    const rest = unique.filter((script) => !read.includes(script));
+    const second = await this.lookupAll(rest, matcher, line, column);
+    return {
+      targets: second.targets,
+      noCode: second.noCode,
+      failures: [...first.failures, ...second.failures],
+    };
+  }
+
+  private async lookupAll(
+    scripts: ScriptWithMap[],
+    matcher: RegExp,
+    line: number,
+    column?: number
+  ): Promise<MapResolution> {
+    const results = await Promise.all(
+      scripts.map(async (script) => {
+        try {
+          return this.targetsIn(await this.index(script), script, matcher, line, column);
+        } catch (error) {
+          return { targets: [], noCode: false, failure: getErrorMessage(error) };
+        }
+      })
+    );
+    return {
+      targets: results.flatMap((result) => result.targets),
+      noCode: results.some((result) => result.noCode),
+      failures: [
+        ...new Set(results.flatMap((result) => ('failure' in result ? [result.failure] : []))),
+      ],
+    };
+  }
+
+  private remember(key: string, size: number): void {
+    this.sizes.set(key, size);
+    this.total += size;
+    for (const oldest of this.loaded.keys()) {
+      if (this.total <= CACHE_BUDGET) return;
+      if (oldest === key) continue;
+      this.total -= this.sizes.get(oldest) ?? 0;
+      this.sizes.delete(oldest);
+      this.loaded.delete(oldest);
     }
-    return loaded;
   }
 }

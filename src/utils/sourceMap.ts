@@ -189,6 +189,43 @@ function withSlash(path: string): string {
   return path.endsWith('/') ? path : `${path}/`;
 }
 
+/** Original lines are numbered below this inside an index key */
+const LINE_STRIDE = 2 ** 26;
+
+/** A map read once: resolved sources and, per original line, its segments */
+export interface SourceMapIndex {
+  /** `sources` resolved to URLs */
+  sources: string[];
+  /** Segments by original line (`source * LINE_STRIDE + line`): `[genLine, genColumn, origColumn, …]` */
+  lines: Map<number, number[]>;
+  /** Length of the `mappings` text, for budgeting caches */
+  size: number;
+}
+
+/**
+ * Read a map's segments once, so any number of lookups need not decode it again.
+ *
+ * @param map - Parsed map
+ * @param baseUrl - URL sources are resolved against
+ * @returns Index
+ */
+export function indexSourceMap(map: SourceMap, baseUrl: string): SourceMapIndex {
+  const lines = new Map<number, number[]>();
+  for (const segment of decodeMappings(map.mappings)) {
+    if (segment.source === undefined || segment.origLine === undefined) continue;
+    const key = segment.source * LINE_STRIDE + segment.origLine;
+    const stored = lines.get(key);
+    const entry = [segment.genLine, segment.genColumn, segment.origColumn ?? 0];
+    if (stored) stored.push(...entry);
+    else lines.set(key, entry);
+  }
+  return {
+    sources: map.sources.map((source) => resolveSource(source, map.sourceRoot, baseUrl)),
+    lines,
+    size: map.mappings.length,
+  };
+}
+
 /**
  * Whether segment `candidate` is a better start for the requested place than `best`.
  *
@@ -221,12 +258,55 @@ function isBetter(
  * file names, its first generated position on that line (with a column, the
  * segment at or before it, else the line's first).
  *
+ * @param index - Indexed map
+ * @param matcher - Matches the resolved sources the file names ({@link scriptUrlPattern})
+ * @param line - 1-based original line
+ * @param column - 1-based original column, when given
+ * @returns Positions (one per matching source with code on the line), or why there is none
+ */
+export function lookupIndexed(
+  index: SourceMapIndex,
+  matcher: RegExp,
+  line: number,
+  column?: number
+): GeneratedLookup {
+  const wanted = index.sources.flatMap((url, source) => (matcher.test(url) ? [source] : []));
+  if (wanted.length === 0) return { kind: 'no-source' };
+  const zeroBasedColumn = column === undefined ? undefined : column - 1;
+  const positions: GeneratedPosition[] = [];
+  for (const source of wanted) {
+    const entry = index.lines.get(source * LINE_STRIDE + line - 1);
+    let best: MappingSegment | undefined;
+    for (let at = 0; entry && at < entry.length; at += 3) {
+      const candidate = {
+        genLine: entry[at] ?? 0,
+        genColumn: entry[at + 1] ?? 0,
+        origColumn: entry[at + 2] ?? 0,
+      };
+      if (isBetter(candidate, best, zeroBasedColumn)) best = candidate;
+    }
+    if (best) {
+      positions.push({
+        line: best.genLine + 1,
+        column: best.genColumn + 1,
+        source: index.sources[source] ?? '',
+        originalLine: line,
+      });
+    }
+  }
+  if (positions.length > 0) return { kind: 'found', positions };
+  return { kind: 'no-code', source: index.sources[wanted[0] ?? 0] ?? '' };
+}
+
+/**
+ * {@link lookupIndexed} on a parsed map (indexes it first).
+ *
  * @param map - Parsed map
  * @param baseUrl - URL sources are resolved against
  * @param file - File as typed (a path suffix of a source)
  * @param line - 1-based original line
  * @param column - 1-based original column, when given
- * @returns Positions (one per matching source with code on the line), or why there is none
+ * @returns Positions, or why there is none
  */
 export function lookupGenerated(
   map: SourceMap,
@@ -235,25 +315,10 @@ export function lookupGenerated(
   line: number,
   column?: number
 ): GeneratedLookup {
-  const matcher = new RegExp(scriptUrlPattern(file));
-  const resolved = map.sources.map((source) => resolveSource(source, map.sourceRoot, baseUrl));
-  const wanted = new Set(resolved.flatMap((url, index) => (matcher.test(url) ? [index] : [])));
-  if (wanted.size === 0) return { kind: 'no-source' };
-  const best = new Map<number, MappingSegment>();
-  for (const segment of decodeMappings(map.mappings)) {
-    if (segment.source === undefined || !wanted.has(segment.source)) continue;
-    if (segment.origLine !== line - 1) continue;
-    const zeroBasedColumn = column === undefined ? undefined : column - 1;
-    if (isBetter(segment, best.get(segment.source), zeroBasedColumn)) {
-      best.set(segment.source, segment);
-    }
-  }
-  const positions = [...best.entries()].map(([source, segment]) => ({
-    line: segment.genLine + 1,
-    column: segment.genColumn + 1,
-    source: resolved[source] ?? '',
-    originalLine: line,
-  }));
-  if (positions.length > 0) return { kind: 'found', positions };
-  return { kind: 'no-code', source: resolved[[...wanted][0] ?? 0] ?? '' };
+  return lookupIndexed(
+    indexSourceMap(map, baseUrl),
+    new RegExp(scriptUrlPattern(file)),
+    line,
+    column
+  );
 }

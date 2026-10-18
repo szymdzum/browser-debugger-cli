@@ -52,7 +52,13 @@ import {
   LOGPOINT_BINDING,
   readLogpointCountersExpression,
 } from './logpointCondition.js';
-import { SourceMapReader, type MappedPlace, type MappedScript } from './logpointSourceMaps.js';
+import {
+  mapKey,
+  SourceMapReader,
+  type BreakpointTarget,
+  type MappedScript,
+  type ScriptWithMap,
+} from './logpointSourceMaps.js';
 
 const log = createLogger('session');
 
@@ -105,14 +111,31 @@ interface LogpointSpec {
   max: number;
 }
 
+/** A breakpoint a logpoint holds in Chrome */
+interface PointBreakpoint {
+  id: string;
+  /** The map source it stands for (set from a source map) */
+  source?: string;
+  /** {@link mapKey} of the script whose map gave it */
+  mapKey?: string;
+}
+
+/** What binding a logpoint starts from */
+interface TargetResolution {
+  targets: BreakpointTarget[];
+  /** The file's scripts or sources have no code at the line */
+  noCode: boolean;
+  /** Last line of the scripts the file names, when a script URL does */
+  lastLine?: number;
+  /** Source maps that could not be used */
+  failures: string[];
+}
+
 /** A logpoint in the registry */
 interface Logpoint extends LogpointSpec {
-  /** The breakpoint by the file as typed first, then one per generated position of a source map */
-  breakpointIds: string[];
-  /** Original place of each breakpoint set from a source map, by breakpoint */
-  sources: Map<string, { file: string; line: number }>;
-  /** Scripts whose source map this logpoint was set from (`url` and map URL) */
-  mappedScripts: Set<string>;
+  /** Matches the script URLs and map sources the file as typed names */
+  matcher: RegExp;
+  breakpoints: PointBreakpoint[];
   bound: LogpointBound[];
   /** Stored hits, oldest first */
   hits: StoredHit[];
@@ -226,12 +249,14 @@ export class Logpoints {
           ...(event.sourceMapURL && { sourceMapURL: event.sourceMapURL }),
         };
         this.scripts.set(event.scriptId, script);
-        if (script.sourceMapURL) this.mapLoadedScript(cdp, script);
+        if (event.sourceMapURL)
+          this.mapLoadedScript(cdp, { url: event.url, sourceMapURL: event.sourceMapURL });
       }),
       cdp.on('Debugger.globalObjectCleared', () => this.pageCleared(cdp)),
       cdp.on<Protocol.Debugger.BreakpointResolvedEvent>('Debugger.breakpointResolved', (event) => {
         const point = this.byBreakpoint(event.breakpointId);
-        if (point) this.addBound(point, event.location, event.breakpointId);
+        const breakpoint = point?.breakpoints.find((own) => own.id === event.breakpointId);
+        if (point && breakpoint) this.addBound(point, event.location, breakpoint);
       }),
       cdp.on<Protocol.Runtime.BindingCalledEvent>('Runtime.bindingCalled', (event) => {
         if (event.name === LOGPOINT_BINDING) this.receive(event.payload);
@@ -322,11 +347,10 @@ export class Logpoints {
       const removed = id === undefined ? [...this.points.values()] : [this.find(id)];
       for (const point of removed) {
         this.points.delete(point.id);
-        for (const breakpointId of point.breakpointIds) {
-          await sendTyped(cdp, 'Debugger.removeBreakpoint', { breakpointId }).catch(
-            (error: unknown) => log.debug(`Not removed: ${getErrorMessage(error)}`)
-          );
-        }
+        await this.removeBreakpoints(
+          cdp,
+          point.breakpoints.map((breakpoint) => breakpoint.id)
+        );
       }
       if (this.points.size === 0) await this.turnOff(cdp);
       return { cleared: removed.map((point) => point.id) };
@@ -425,16 +449,18 @@ export class Logpoints {
   }
 
   private byBreakpoint(breakpointId: string): Logpoint | undefined {
-    return [...this.points.values()].find((point) => point.breakpointIds.includes(breakpointId));
+    return [...this.points.values()].find((point) =>
+      point.breakpoints.some((breakpoint) => breakpoint.id === breakpointId)
+    );
   }
 
   private addBound(
     point: Logpoint,
     location: Protocol.Debugger.Location,
-    breakpointId: string
+    breakpoint: PointBreakpoint
   ): void {
     const url = this.scripts.get(location.scriptId)?.url ?? '';
-    const source = point.sources.get(breakpointId);
+    const source = breakpoint.source && { file: breakpoint.source, line: point.line };
     const bound = {
       url,
       line: location.lineNumber + 1,
@@ -540,7 +566,7 @@ export class Logpoints {
       throw commandError(tooManyLogpointsError(), EXIT_CODES.INVALID_ARGUMENTS);
     }
     const duplicate = [...this.points.values()].find(
-      (point) => point.file === file && point.line === line && point.column === column
+      (point) => point.file === file && point.line === line && (point.column ?? 1) === (column ?? 1)
     );
     if (duplicate) {
       throw commandError(
@@ -560,13 +586,7 @@ export class Logpoints {
 
   private async bind(cdp: CDPConnection, params: DebugLogCommand): Promise<DebugLogData> {
     const { file, line, column } = params;
-    const matcher = new RegExp(scriptUrlPattern(file));
-    const matching = [...this.scripts.values()].filter((script) => matcher.test(script.url));
-    if (matching.length > 0 && line > Math.max(...matching.map(lastLine))) {
-      throw this.noCode(file, line, matching);
-    }
     const id = `lp${this.nextId}`;
-    const max = params.max ?? DEFAULT_MAX_HITS;
     const spec = {
       id,
       file,
@@ -574,28 +594,16 @@ export class Logpoints {
       column,
       expressions: params.expressions,
       guard: params.guard,
-      max,
+      max: params.max ?? DEFAULT_MAX_HITS,
     };
-    const resolution =
-      matching.length === 0
-        ? await this.maps.resolve([...this.scripts.values()], file, line, column)
-        : undefined;
-    if (resolution?.places.length === 0 && resolution.noCode !== undefined) {
-      throw commandError(logpointNoMappedCodeError(file, line), EXIT_CODES.RESOURCE_NOT_FOUND);
-    }
     await this.checkCondition(cdp, spec);
-    const set = await this.setBreakpoint(cdp, spec);
-    if (matching.length > 0 && set.locations.length === 0) {
-      await sendTyped(cdp, 'Debugger.removeBreakpoint', { breakpointId: set.breakpointId }).catch(
-        (error: unknown) => log.debug(`Not removed: ${getErrorMessage(error)}`)
-      );
-      throw this.noCode(file, line, matching);
-    }
+    const matcher = new RegExp(scriptUrlPattern(file));
+    const resolution = await this.resolveTargets(spec, matcher);
+    if (resolution.noCode) throw this.noCodeError(file, line, resolution.lastLine);
     const point: Logpoint = {
       ...spec,
-      breakpointIds: [set.breakpointId],
-      sources: new Map(),
-      mappedScripts: new Set(),
+      matcher,
+      breakpoints: [],
       bound: [],
       hits: [],
       received: 0,
@@ -603,8 +611,14 @@ export class Logpoints {
       loadId: this.navigationId(),
       storedInLoad: 0,
     };
-    set.locations.forEach((location) => this.addBound(point, location, set.breakpointId));
-    if (resolution) await this.bindPlacesOrUndo(cdp, point, resolution.places);
+    await this.applyTargets(cdp, point, resolution.targets);
+    if (resolution.lastLine !== undefined && point.bound.length === 0) {
+      await this.removeBreakpoints(
+        cdp,
+        point.breakpoints.map((breakpoint) => breakpoint.id)
+      );
+      throw this.noCodeError(file, line, resolution.lastLine);
+    }
     this.nextId++;
     this.points.set(id, point);
     return {
@@ -613,112 +627,141 @@ export class Logpoints {
       bound: point.bound,
       state: point.bound.length > 0 ? 'bound' : 'pending',
       ...(point.bound.length === 0 &&
-        matching.length === 0 && {
-          warning: this.pendingWarning(file, resolution?.failures ?? []),
+        resolution.lastLine === undefined && {
+          warning: this.pendingWarning(file, resolution.failures),
         }),
     };
   }
 
   /**
-   * {@link bindPlaces} for a logpoint not yet in the registry: when it fails,
-   * the breakpoints set so far are taken back.
-   *
-   * @param cdp - Page connection
-   * @param point - The new logpoint
-   * @param places - Positions in generated scripts
-   * @throws CommandError (84) when another breakpoint sits at a generated position
+   * Where a new logpoint's breakpoints go: the file as typed (Chrome matches
+   * scripts by URL, also ones loaded later) and, when no loaded script URL
+   * ends with it, the generated places of the source maps that name it.
    */
-  private async bindPlacesOrUndo(
-    cdp: CDPConnection,
-    point: Logpoint,
-    places: MappedPlace[]
-  ): Promise<void> {
-    try {
-      await this.bindPlaces(cdp, point, places);
-    } catch (error) {
-      for (const breakpointId of point.breakpointIds) {
-        await sendTyped(cdp, 'Debugger.removeBreakpoint', { breakpointId }).catch(
-          (failure: unknown) => log.debug(`Not removed: ${getErrorMessage(failure)}`)
-        );
-      }
-      throw error;
+  private async resolveTargets(spec: LogpointSpec, matcher: RegExp): Promise<TargetResolution> {
+    const scripts = [...this.scripts.values()];
+    const matching = scripts.filter((script) => matcher.test(script.url));
+    const byUrl = this.urlTarget(spec);
+    if (matching.length > 0) {
+      const last = Math.max(...matching.map(lastLine));
+      const noCode = spec.line > last;
+      return { targets: noCode ? [] : [byUrl], noCode, lastLine: last, failures: [] };
     }
+    const mapped = await this.maps.resolve(scripts, matcher, spec.line, spec.column);
+    return {
+      targets: [byUrl, ...mapped.targets],
+      noCode: mapped.targets.length === 0 && mapped.noCode,
+      failures: mapped.failures,
+    };
+  }
+
+  private urlTarget(spec: LogpointSpec): BreakpointTarget {
+    return {
+      urlRegex: scriptUrlPattern(spec.file),
+      line: spec.line,
+      ...(spec.column !== undefined && { column: spec.column }),
+    };
   }
 
   /**
-   * Set a breakpoint at each generated position a source map gave.
+   * Set the breakpoints for targets; all or none: when Chrome refuses one,
+   * those set by this call are removed again.
    *
    * @param cdp - Page connection
-   * @param point - The logpoint (its original file and line)
-   * @param places - Positions in generated scripts
+   * @param point - The logpoint
+   * @param targets - Places to set
+   * @throws CommandError (84) when another breakpoint sits at one of the places
    */
-  private async bindPlaces(
+  private async applyTargets(
     cdp: CDPConnection,
     point: Logpoint,
-    places: MappedPlace[]
+    targets: BreakpointTarget[]
   ): Promise<void> {
-    for (const place of places) {
-      const set = await sendTyped(cdp, 'Debugger.setBreakpointByUrl', {
-        url: place.scriptUrl,
-        lineNumber: place.line - 1,
-        columnNumber: place.column - 1,
-        condition: buildLogpointCondition(point),
-      }).catch((error: unknown) => {
-        if (!/already exists/i.test(getErrorMessage(error))) throw error;
-        throw commandError(
-          logpointSamePlaceError(logpointPlace(point.file, point.line, point.column)),
-          EXIT_CODES.RESOURCE_ALREADY_EXISTS
-        );
-      });
-      point.breakpointIds.push(set.breakpointId);
-      point.sources.set(set.breakpointId, { file: displayUrl(place.source), line: point.line });
-      set.locations.forEach((location) => this.addBound(point, location, set.breakpointId));
-    }
-  }
-
-  /**
-   * A script with a source map was parsed: logpoints whose file no script
-   * URL matches are set from its map when it names the file (lazily loaded
-   * chunks).
-   *
-   * @param cdp - Page connection
-   * @param script - The script
-   */
-  private mapLoadedScript(cdp: CDPConnection, script: Script): void {
-    const { url, sourceMapURL } = script;
-    if (sourceMapURL === undefined) return;
-    const key = `${url}\n${sourceMapURL}`;
-    const waiting = [...this.points.values()].filter(
-      (point) => !point.mappedScripts.has(key) && !this.hasScriptNamed(point.file)
+    const condition = buildLogpointCondition(point);
+    const settled = await Promise.allSettled(
+      targets.map((target) =>
+        sendTyped(cdp, 'Debugger.setBreakpointByUrl', {
+          ...(target.url !== undefined ? { url: target.url } : { urlRegex: target.urlRegex ?? '' }),
+          lineNumber: target.line - 1,
+          ...(target.column !== undefined && { columnNumber: target.column - 1 }),
+          condition,
+        })
+      )
     );
-    if (waiting.length === 0) return;
-    void (async () => {
-      const found = await Promise.all(
-        waiting.map(async (point) => ({
-          point,
-          ...(await this.maps.resolveScript(
-            { url, sourceMapURL },
-            point.file,
-            point.line,
-            point.column
-          )),
-        }))
+    const set = settled.flatMap((result, index) => {
+      const target = targets[index];
+      return result.status === 'fulfilled' && target ? [{ target, response: result.value }] : [];
+    });
+    const refused = settled.find((result) => result.status === 'rejected');
+    if (refused?.status === 'rejected') {
+      await this.removeBreakpoints(
+        cdp,
+        set.map(({ response }) => response.breakpointId)
       );
-      await this.serialized(async () => {
-        for (const { point, places } of found) {
-          if (places.length === 0 || this.points.get(point.id) !== point) continue;
-          if (point.mappedScripts.has(key)) continue;
-          point.mappedScripts.add(key);
-          await this.bindPlaces(cdp, point, places);
-        }
-      });
-    })().catch((error: unknown) =>
-      log.debug(`Not set from a source map: ${getErrorMessage(error)}`)
+      throw this.setFailure(refused.reason, point);
+    }
+    for (const { target, response } of set) {
+      const breakpoint: PointBreakpoint = {
+        id: response.breakpointId,
+        ...(target.source !== undefined && { source: target.source }),
+        ...(target.mapKey !== undefined && { mapKey: target.mapKey }),
+      };
+      point.breakpoints.push(breakpoint);
+      response.locations.forEach((location) => this.addBound(point, location, breakpoint));
+    }
+  }
+
+  private setFailure(reason: unknown, point: Logpoint): unknown {
+    if (!/already exists/i.test(getErrorMessage(reason))) return reason;
+    return commandError(
+      logpointSamePlaceError(logpointPlace(point.file, point.line, point.column)),
+      EXIT_CODES.RESOURCE_ALREADY_EXISTS
     );
   }
 
-  private hasScriptNamed(file: string): boolean {
-    const matcher = new RegExp(scriptUrlPattern(file));
+  private async removeBreakpoints(cdp: CDPConnection, ids: string[]): Promise<void> {
+    await Promise.all(
+      ids.map((breakpointId) =>
+        sendTyped(cdp, 'Debugger.removeBreakpoint', { breakpointId }).catch((error: unknown) =>
+          log.debug(`Not removed: ${getErrorMessage(error)}`)
+        )
+      )
+    );
+  }
+
+  /**
+   * A script with a source map was parsed (a lazily loaded chunk, or one
+   * replayed when the session moves to a tab): logpoints no script URL
+   * matches are set from its map when it names the file.
+   */
+  private mapLoadedScript(cdp: CDPConnection, script: ScriptWithMap): void {
+    if (this.points.size === 0) return;
+    const key = mapKey(script);
+    void this.maps
+      .index(script)
+      .then((index) =>
+        this.serialized(async () => {
+          for (const point of this.points.values()) {
+            if (point.breakpoints.some((breakpoint) => breakpoint.mapKey === key)) continue;
+            if (this.hasScriptMatching(point.matcher)) continue;
+            const { targets } = this.maps.targetsIn(
+              index,
+              script,
+              point.matcher,
+              point.line,
+              point.column
+            );
+            if (targets.length === 0) continue;
+            await this.applyTargets(cdp, point, targets).catch((error: unknown) =>
+              log.debug(`Not set from a source map: ${getErrorMessage(error)}`)
+            );
+          }
+        })
+      )
+      .catch((error: unknown) => log.debug(`Source map not used: ${getErrorMessage(error)}`));
+  }
+
+  private hasScriptMatching(matcher: RegExp): boolean {
     return [...this.scripts.values()].some((script) => matcher.test(script.url));
   }
 
@@ -745,9 +788,13 @@ export class Logpoints {
     }
   }
 
-  private noCode(file: string, line: number, matching: Script[]): CommandError {
-    const last = Math.max(...matching.map(lastLine));
-    return commandError(logpointNoCodeError(file, line, last), EXIT_CODES.RESOURCE_NOT_FOUND);
+  private noCodeError(file: string, line: number, lastLineOfScripts?: number): CommandError {
+    return lastLineOfScripts === undefined
+      ? commandError(logpointNoMappedCodeError(file, line), EXIT_CODES.RESOURCE_NOT_FOUND)
+      : commandError(
+          logpointNoCodeError(file, line, lastLineOfScripts),
+          EXIT_CODES.RESOURCE_NOT_FOUND
+        );
   }
 
   private notLoadedWarning(file: string): string {
@@ -755,18 +802,6 @@ export class Logpoints {
     const basenames = [...new Set(names.map((name) => name.split('/').pop() ?? name))];
     const typed = file.split('/').pop() ?? file;
     return logpointFileNotLoadedWarning(file, findSimilar(typed, basenames), this.scripts.size);
-  }
-
-  private setBreakpoint(
-    cdp: CDPConnection,
-    spec: LogpointSpec
-  ): Promise<Protocol.Debugger.SetBreakpointByUrlResponse> {
-    return sendTyped(cdp, 'Debugger.setBreakpointByUrl', {
-      lineNumber: spec.line - 1,
-      urlRegex: scriptUrlPattern(spec.file),
-      condition: buildLogpointCondition(spec),
-      ...(spec.column !== undefined && { columnNumber: spec.column - 1 }),
-    });
   }
 
   private async checkSyntax(cdp: CDPConnection, texts: string[]): Promise<void> {
@@ -822,15 +857,11 @@ export class Logpoints {
       this.enabled = false;
       for (const point of this.points.values()) {
         point.bound = [];
-        point.breakpointIds = [];
-        point.sources.clear();
-        point.mappedScripts.clear();
+        point.breakpoints = [];
       }
       await this.turnOn(cdp);
       for (const point of this.points.values()) {
-        const set = await this.setBreakpoint(cdp, point);
-        point.breakpointIds = [set.breakpointId];
-        set.locations.forEach((location) => this.addBound(point, location, set.breakpointId));
+        await this.applyTargets(cdp, point, [this.urlTarget(point)]);
       }
     } catch (error) {
       log.debug(`Logpoints not set on the new tab: ${getErrorMessage(error)}`);
