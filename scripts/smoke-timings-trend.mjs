@@ -23,13 +23,15 @@
  *   middle run of an odd count is left out), e.g. `-42%` after a change such
  *   as sharing one session per file (#809). `-` when fewer than 2 runs.
  */
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 
-const REPO = 'szymdzum/browser-debugger-cli';
+const REPO_DIR = dirname(dirname(fileURLToPath(import.meta.url)));
+const execFileAsync = promisify(execFile);
 const GH_TIMEOUT_MS = 60_000;
 const DEFAULT_RUNS = 20;
 
@@ -43,6 +45,29 @@ function median(values) {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = sorted.length >> 1;
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+/**
+ * Relative change of the newer median against the older one.
+ *
+ * @param {number[]} recent - Seconds in the newer half
+ * @param {number[]} past - Seconds in the older half
+ * @returns {number | undefined} Undefined when either half has no timing or the older median is 0
+ */
+function trend(recent, past) {
+  if (!recent.length || !past.length) return undefined;
+  const base = median(past);
+  return base ? (median(recent) - base) / base : undefined;
+}
+
+/**
+ * Tells "the run has no timings artifact" (expired, never uploaded) from a failure.
+ *
+ * @param {string} message - Error text of `gh run download`
+ * @returns {boolean}
+ */
+export function isMissingArtifact(message) {
+  return /no (valid )?artifacts? (found|match)|no artifact/i.test(message);
 }
 
 /**
@@ -70,7 +95,6 @@ export function fileStats(runs) {
   const rows = [...files].map((file) => {
     const all = secondsIn(runs, file);
     const [recent, past] = [secondsIn(newer, file), secondsIn(older, file)];
-    const base = past.length && median(past);
     const min = Math.min(...all);
     const max = Math.max(...all);
     return {
@@ -80,7 +104,7 @@ export function fileStats(runs) {
       min,
       max,
       spread: max - min,
-      trend: recent.length && base ? (median(recent) - base) / base : undefined,
+      trend: trend(recent, past),
     };
   });
   return rows.sort((a, b) => b.spread - a.spread || a.file.localeCompare(b.file));
@@ -109,17 +133,29 @@ export function formatTable(rows) {
 }
 
 /**
- * Runs `gh` with a timeout.
+ * Runs `gh` in the repository checkout (so gh resolves the repo) with a timeout.
  *
  * @param {string[]} args
- * @returns {string}
+ * @returns {Promise<string>}
  */
-function gh(args) {
-  return execFileSync('gh', args, {
+async function gh(args) {
+  const { stdout } = await execFileAsync('gh', args, {
+    cwd: REPO_DIR,
     encoding: 'utf8',
     timeout: GH_TIMEOUT_MS,
-    stdio: ['ignore', 'pipe', 'pipe'],
   });
+  return stdout;
+}
+
+/**
+ * First line of an error's message, for one-line reporting.
+ *
+ * @param {unknown} error
+ * @returns {string}
+ */
+function reason(error) {
+  const text = error instanceof Error ? error.stderr || error.message : String(error);
+  return String(text).trim().split('\n')[0];
 }
 
 /**
@@ -136,18 +172,33 @@ function readShards(dir) {
 }
 
 /**
+ * Removes the temp directory on SIGINT/SIGTERM and exits 130/143.
+ *
+ * @param {string} dir
+ */
+function cleanOnSignal(dir) {
+  for (const [signal, code] of [
+    ['SIGINT', 130],
+    ['SIGTERM', 143],
+  ]) {
+    process.once(signal, () => {
+      rmSync(dir, { recursive: true, force: true });
+      process.exit(code);
+    });
+  }
+}
+
+/**
  * Downloads and merges the timings of the last N successful CI runs on main.
  *
  * @param {number} count
- * @returns {{ runs: Record<string, number>[], skipped: number }} Runs newest first
+ * @returns {Promise<{ runs: Record<string, number>[], missing: number, failed: number, firstFailure: string | undefined }>} Runs newest first
  */
-function collectRuns(count) {
+async function collectRuns(count) {
   const ids = JSON.parse(
-    gh([
+    await gh([
       'run',
       'list',
-      '--repo',
-      REPO,
       '--workflow',
       'CI',
       '--branch',
@@ -163,54 +214,58 @@ function collectRuns(count) {
     ])
   ).map((r) => r.databaseId);
   const tmp = mkdtempSync(join(tmpdir(), 'smoke-trend-'));
-  const runs = [];
+  cleanOnSignal(tmp);
+  const result = { runs: [], missing: 0, failed: 0, firstFailure: undefined };
   try {
     for (const id of ids) {
-      const dir = join(tmp, String(id));
       try {
-        gh([
-          'run',
-          'download',
-          String(id),
-          '--repo',
-          REPO,
-          '--pattern',
-          'smoke-timings-*',
-          '--dir',
-          dir,
-        ]);
+        const dir = join(tmp, String(id));
+        await gh(['run', 'download', String(id), '--pattern', 'smoke-timings-*', '--dir', dir]);
         const shards = readShards(dir);
-        if (shards.length) runs.push(mergeShards(shards));
-      } catch {
-        continue;
+        if (shards.length) result.runs.push(mergeShards(shards));
+        else result.missing++;
+      } catch (error) {
+        if (isMissingArtifact(reason(error))) {
+          result.missing++;
+          continue;
+        }
+        result.failed++;
+        result.firstFailure ??= `run ${id}: ${reason(error)}`;
       }
     }
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
-  return { runs, skipped: ids.length - runs.length };
+  return result;
 }
 
 /**
  * CLI entry.
  *
  * @param {string[]} argv
- * @returns {number} Exit code
+ * @returns {Promise<number>} Exit code
  */
-function main(argv) {
+async function main(argv) {
   const at = argv.indexOf('--runs');
   const count = at === -1 ? DEFAULT_RUNS : Number(argv[at + 1]);
   if (argv.length !== (at === -1 ? 0 : 2) || !Number.isInteger(count) || count < 1) {
     console.error('Usage: node scripts/smoke-timings-trend.mjs [--runs N]');
     return 1;
   }
-  const { runs, skipped } = collectRuns(count);
-  console.log(
-    `${runs.length} of ${runs.length + skipped} CI runs on main had timings (${skipped} skipped: artifact expired or missing).\n`
-  );
-  if (runs.length) console.log(formatTable(fileStats(runs)));
-  return 0;
+  try {
+    const { runs, missing, failed, firstFailure } = await collectRuns(count);
+    const total = runs.length + missing + failed;
+    console.log(
+      `${runs.length} of ${total} CI runs on main had timings (${missing} without a smoke-timings artifact, ${failed} failed to download).\n`
+    );
+    if (firstFailure) console.error(`smoke-timings-trend: ${firstFailure}`);
+    if (runs.length) console.log(formatTable(fileStats(runs)));
+    return 0;
+  } catch (error) {
+    console.error(`smoke-timings-trend: ${reason(error)}`);
+    return 1;
+  }
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url))
-  process.exitCode = main(process.argv.slice(2));
+  process.exitCode = await main(process.argv.slice(2));

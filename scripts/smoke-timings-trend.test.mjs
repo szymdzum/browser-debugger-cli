@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { fileStats, formatTable, mergeShards } from './smoke-timings-trend.mjs';
+import { fileStats, formatTable, isMissingArtifact, mergeShards } from './smoke-timings-trend.mjs';
 
 test('mergeShards combines the shards of one run', () => {
   assert.deepEqual(mergeShards([{ a: 1 }, { b: 2 }]), { a: 1, b: 2 });
@@ -44,4 +44,22 @@ test('fileStats counts only the runs that timed a file, and has no trend for a s
 test('formatTable prints a Markdown row with one decimal and a signed trend', () => {
   const table = formatTable(fileStats([{ a: 6 }, { a: 10 }]));
   assert.match(table, /^\| a \| 2 \| 8\.0 \| 6\.0 \| 10\.0 \| 4\.0 \| -40% \|$/m);
+});
+
+test('fileStats gives no trend to a file timed in only one half', () => {
+  const rows = fileStats([{ onlyNew: 5 }, { onlyNew: 6 }, { onlyOld: 7 }, { onlyOld: 8 }]);
+  const byFile = Object.fromEntries(rows.map((r) => [r.file, r]));
+  assert.equal(byFile.onlyNew.trend, undefined);
+  assert.equal(byFile.onlyNew.runs, 2);
+  assert.equal(byFile.onlyOld.trend, undefined);
+  assert.equal(byFile.onlyOld.runs, 2);
+});
+
+test('isMissingArtifact separates a missing artifact from other gh failures', () => {
+  assert.equal(isMissingArtifact('no valid artifacts found to download'), true);
+  assert.equal(
+    isMissingArtifact('no artifact matches any of the names or patterns provided'),
+    true
+  );
+  assert.equal(isMissingArtifact('To use GitHub CLI, run: gh auth login'), false);
 });
