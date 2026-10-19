@@ -45,7 +45,7 @@ export const SESSION_BEHAVIORS: BehaviorTable = {
     default:
       'dismiss, unlike bdg <url> (accept): the attached browser is your own, where an accepted confirm() can submit or delete real data. confirm() returns false, prompt() null, and the action result says "confirm() dismissed"',
     whenEnabled:
-      'accept or dismiss (any case) for every alert, confirm and prompt of the session unless the running DOM action chose otherwise with its own --dialog/--prompt-text. Other values exit 81 with a suggestion (ok/yes: accept, cancel/no: dismiss)',
+      'accept or dismiss (any case) for every alert, confirm and prompt of the session unless the running DOM action chose otherwise with its own --dialog/--prompt-text. Ignored without a tab (bdg attach only lists the tabs), like --stop-after. Other values exit 81 with a suggestion (ok/yes: accept, cancel/no: dismiss)',
     automaticBehavior:
       'beforeunload dialogs are still accepted (navigation is never blocked) unless a DOM action is given --dialog dismiss. bdg status always shows the default of an attach session (Dialogs: dismiss (session default), JSON dialog)',
   },

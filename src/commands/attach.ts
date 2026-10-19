@@ -122,7 +122,7 @@ export function registerAttachCommand(program: Command): void {
     .option('--timeout <seconds>', 'Old spelling of --stop-after')
     .option(
       '--dialog <answer>',
-      'Answer JavaScript dialogs (alert, confirm, prompt) with accept (OK) or dismiss (Cancel), in any case, for the session (default: dismiss, unlike bdg <url>: this is your own browser, where an accepted confirm() can submit or delete real data; a dismissed one is reported as "confirm() dismissed"); a DOM action can choose otherwise with its own --dialog'
+      'Answer JavaScript dialogs (alert, confirm, prompt) with accept (OK) or dismiss (Cancel), in any case, for the session (default: dismiss, unlike bdg <url>: this is your own browser, where an accepted confirm() can submit or delete real data; a dismissed one is reported as "confirm() dismissed"); a DOM action can choose otherwise with its own --dialog; ignored without a tab, which only lists the tabs'
     )
     .option('-q, --quiet', 'Quiet mode - minimal output for AI agents', false)
     .addOption(jsonOption())
