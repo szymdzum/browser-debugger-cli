@@ -72,6 +72,7 @@ after(async () => {
 void describe('dom fill replaces a value the field restores after the focus (#866)', () => {
   for (const [id, how] of [
     ['t0', 'a focus handler restoring in setTimeout(0)'],
+    ['ta', 'a textarea with a focus handler restoring in setTimeout(0)'],
     ['fin', 'a focusin handler restoring in setTimeout(0)'],
   ] as const) {
     void it(`leaves 8.00 in a field with ${how}`, async () => {
