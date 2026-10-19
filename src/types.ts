@@ -4,6 +4,14 @@ import type { DownloadInfo, FormIssue } from '@/ipc/protocol/domTypes.js';
 import type { TabRef, TabSwitchInfo } from '@/ipc/protocol/tabTypes.js';
 import type { NavigationEvent } from '@/telemetry/navigation.js';
 
+/** A main-frame load that failed (#860): Chrome's error page, or a document cut off */
+export interface FailedLoad {
+  /** URL that could not be loaded, as `displayUrl` shows it */
+  url: string;
+  /** Chrome network error, e.g. `net::ERR_CONNECTION_REFUSED` */
+  errorText: string;
+}
+
 /**
  * Standard response envelope for all bdg command JSON output.
  *
@@ -32,14 +40,6 @@ import type { NavigationEvent } from '@/telemetry/navigation.js';
  * }
  * ```
  */
-/** A main-frame load that failed (#860): Chrome's error page, or a document cut off */
-export interface FailedLoad {
-  /** URL that could not be loaded, as `displayUrl` shows it */
-  url: string;
-  /** Chrome network error, e.g. `net::ERR_CONNECTION_REFUSED` */
-  errorText: string;
-}
-
 export interface BdgResponse<T = unknown> {
   /** Tool version for schema compatibility checking */
   version: string;

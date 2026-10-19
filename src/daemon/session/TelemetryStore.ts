@@ -1,3 +1,5 @@
+import { Logpoints } from './logpoints.js';
+
 import { MAX_CONSOLE_MESSAGES } from '@/constants.js';
 import type { DialogInfo } from '@/ipc/protocol/domTypes.js';
 import type { TabSwitchInfo } from '@/ipc/protocol/tabTypes.js';
@@ -16,8 +18,6 @@ import type {
   WebSocketConnection,
 } from '@/types.js';
 import { dialogConsoleText } from '@/ui/messages/commands.js';
-
-import { Logpoints } from './logpoints.js';
 
 export class TelemetryStore {
   /**

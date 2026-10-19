@@ -14,16 +14,6 @@ import type {
   CdpEventsData,
 } from '@/ipc/protocol/cdpEventTypes.js';
 import type {
-  DebugClearCommand,
-  DebugClearData,
-  DebugHitsCommand,
-  DebugHitsData,
-  DebugListCommand,
-  DebugListData,
-  DebugLogCommand,
-  DebugLogData,
-} from '@/ipc/protocol/debugTypes.js';
-import type {
   ClickResult,
   DialogChoice,
   DialogInfo,
@@ -43,6 +33,16 @@ import type {
   StateSaveCommand,
   StateSaveData,
 } from '@/ipc/protocol/stateTypes.js';
+import type {
+  DebugClearCommand,
+  DebugClearData,
+  DebugHitsCommand,
+  DebugHitsData,
+  DebugListCommand,
+  DebugListData,
+  DebugLogCommand,
+  DebugLogData,
+} from '@/ipc/protocol/debugTypes.js';
 import type {
   PageCloseCommand,
   PageCloseData,
