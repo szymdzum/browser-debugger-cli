@@ -113,11 +113,19 @@ export function frameUrlLabel(url: string): string {
  * @returns e.g. "Page failed to load: http://localhost:3000/: net::ERR_CONNECTION_REFUSED"
  */
 export function failedLoadNote(failed: FailedLoad): string {
-  if (failed.certificate) {
-    return `Chrome shows a certificate warning for ${failed.url}: ${failed.errorText}`;
-  }
+  if (failed.certificate) return certificateWarningNote(failed);
   const redirect = failed.redirectedTo ? ` (redirected to ${failed.redirectedTo})` : '';
   return `Page failed to load: ${failed.url}${redirect}: ${failed.errorText}`;
+}
+
+/**
+ * Chrome's certificate warning (#860): the one wording of every command that reports it.
+ *
+ * @param warning - The URL it is shown for and the `net::ERR_CERT_*` error
+ * @returns e.g. "Chrome shows a certificate warning for https://self.test/: net::ERR_CERT_AUTHORITY_INVALID"
+ */
+export function certificateWarningNote(warning: Pick<FailedLoad, 'url' | 'errorText'>): string {
+  return `Chrome shows a certificate warning for ${warning.url}: ${warning.errorText}`;
 }
 
 /**

@@ -132,7 +132,7 @@ export async function waitForCondition(
       const shown = condition.load ? await readFailedLoad(cdp) : undefined;
       if (shown && !shown.certificate) throw failedLoadError(shown);
       return {
-        ...(shown && { certificate: shown }),
+        ...(shown && { certificateWarning: { url: shown.url, errorText: shown.errorText } }),
         ...condition,
         elapsedMs: Date.now() - started,
         ...snapshotData(snapshot, condition),

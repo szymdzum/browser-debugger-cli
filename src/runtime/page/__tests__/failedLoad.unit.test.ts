@@ -20,6 +20,7 @@ import {
 } from '@/runtime/page/failedLoad.js';
 import type { FailedLoad } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { certificateWarningNote, failedLoadNote } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /** A page connection that answers some methods and lets the test emit events */
@@ -202,6 +203,41 @@ void describe('trackFailedLoad', () => {
   });
 });
 
+void describe('the certificate warning after a navigation', () => {
+  void it('is recorded on the load event (no request fails for it)', async () => {
+    const answers = frameAnswers({ url: 'http://app.test/' });
+    const { cdp, emit } = fakePage(answers);
+    const seen: Array<FailedLoad | undefined> = [];
+    const stop = await trackFailedLoad(cdp, (failed) => seen.push(failed));
+    Object.assign(
+      answers,
+      frameAnswers(
+        { url: 'chrome-error://chromewebdata/', unreachableUrl: 'https://self.test/' },
+        'NET::ERR_CERT_AUTHORITY_INVALID'
+      )
+    );
+    emit('Page.loadEventFired', {});
+    await new Promise((resolve) => setImmediate(resolve));
+    stop();
+    assert.deepEqual(seen, [
+      undefined,
+      {
+        url: 'https://self.test/',
+        errorText: 'net::ERR_CERT_AUTHORITY_INVALID',
+        certificate: true,
+      },
+    ]);
+  });
+
+  void it('has one wording, whether named as a load problem or as the warning', () => {
+    const warning = { url: 'https://self.test/', errorText: 'net::ERR_CERT_DATE_INVALID' };
+    const expected =
+      'Chrome shows a certificate warning for https://self.test/: net::ERR_CERT_DATE_INVALID';
+    assert.equal(certificateWarningNote(warning), expected);
+    assert.equal(failedLoadNote({ ...warning, certificate: true }), expected);
+  });
+});
+
 void describe('navigateToTarget after the navigation', () => {
   const config = { url: 'http://app.test/', port: 9222 };
   const log = createLogger('session');
@@ -228,6 +264,24 @@ void describe('navigateToTarget after the navigation', () => {
     });
     await navigateToTarget(cdp, config, store as unknown as TelemetryStore, null, log);
     assert.equal(store.failedLoad?.certificate, true);
+  });
+
+  void it('a certificate warning the page tracker recorded during the start is no failure', async () => {
+    const store: { failedLoad?: FailedLoad } = {};
+    const { cdp } = fakePage({
+      'Page.navigate': () => {
+        store.failedLoad = {
+          url: 'https://self.test/',
+          errorText: 'net::ERR_CERT_DATE_INVALID',
+          certificate: true,
+        };
+        return { frameId: 'main', loaderId: 'L1', errorText: 'net::ERR_CERT_DATE_INVALID' };
+      },
+    });
+    assert.equal(
+      await navigateToTarget(cdp, config, store as unknown as TelemetryStore, null, log),
+      'L1'
+    );
   });
 
   void it('a document of the navigation that fails after it committed exits 80', async () => {

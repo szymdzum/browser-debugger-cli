@@ -10,8 +10,12 @@ import { CommandError } from '@/errors/index.js';
 import { navigationFailedError } from '@/errors/messages.js';
 import type { CDPSender } from '@/telemetry/objectExpander.js';
 import type { FailedLoad } from '@/types.js';
+import { createLogger } from '@/ui/logging/index.js';
 import { displayUrl } from '@/utils/displayUrl.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+
+const log = createLogger('session');
 
 /** Where Chrome's error page shows the network error's name (e.g. `ERR_CONNECTION_REFUSED`) */
 const ERROR_CODE_EXPRESSION = "document.querySelector('.error-code')?.textContent?.trim() ?? ''";
@@ -166,6 +170,8 @@ export function watchMainDocuments(
  * Follow the main frame's loads: the failed load it shows now, then each main
  * document request that fails (a document that answers clears it; Chrome's
  * error page retries the request on its own, so a request alone does not).
+ * Chrome's certificate warning has no failed request: it is read from the
+ * main frame on each load event.
  *
  * @param cdp - CDP connection
  * @param onChange - Called with the failed load, or undefined when a new document answers
@@ -190,6 +196,13 @@ export async function trackFailedLoad(
     }),
     cdp.on<Protocol.Network.LoadingFinishedEvent>('Network.loadingFinished', (params) => {
       documents.forget(params.requestId);
+    }),
+    cdp.on('Page.loadEventFired', () => {
+      readMainFrame(cdp)
+        .then(({ failed }) => {
+          if (failed?.certificate) onChange(failed);
+        })
+        .catch((error: unknown) => log.debug(`Main frame not read: ${getErrorMessage(error)}`));
     }),
   ];
   return () => {

@@ -13,7 +13,11 @@ import { integerOption } from '@/commands/shared/validation.js';
 import { waitTargetRequiredError } from '@/errors/messages.js';
 import { domWait } from '@/ipc/client.js';
 import type { DomWaitData } from '@/ipc/protocol/commands.js';
-import { WAIT_HELP_EXAMPLES, failedLoadNote, waitMetMessage } from '@/ui/messages/commands.js';
+import {
+  WAIT_HELP_EXAMPLES,
+  certificateWarningNote,
+  waitMetMessage,
+} from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
 
@@ -108,11 +112,12 @@ async function waitFor(
       }),
     };
   }
-  const { certificate } = response.data;
+  const { certificateWarning } = response.data;
   return {
     success: true,
     data: response.data,
-    ...(options.json && certificate && { warning: failedLoadNote(certificate) }),
+    ...(options.json &&
+      certificateWarning && { warning: certificateWarningNote(certificateWarning) }),
   };
 }
 
@@ -124,7 +129,7 @@ async function waitFor(
  */
 function formatWait(data: DomWaitData): string {
   const met = waitMetMessage(data, data.elapsedMs);
-  return data.certificate
-    ? `⚠ ${failedLoadNote(data.certificate)}\n${met.replace(/^✓ /, '')}`
+  return data.certificateWarning
+    ? `⚠ ${certificateWarningNote(data.certificateWarning)}\n${met.replace(/^✓ /, '')}`
     : met;
 }

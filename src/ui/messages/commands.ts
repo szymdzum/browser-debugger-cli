@@ -25,6 +25,7 @@ export {
   maskedText,
   pageCrashedNote,
   failedLoadNote,
+  certificateWarningNote,
   loadProblemFields,
   pendingRequestsText,
   pageLoadingWarning,

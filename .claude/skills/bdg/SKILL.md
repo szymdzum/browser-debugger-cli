@@ -288,7 +288,7 @@ If a command is interrupted, Ctrl-C (exit 130, once Node has started: tens of mi
 | Code | Meaning | Action |
 |------|---------|--------|
 | 0 | Success | - |
-| 80 | Invalid URL, or a load that failed (`Could not load <url>: net::…`: start, `page navigate`/`reload`, `dom wait --load`; `attach` to such a tab only warns) | Check the URL / dev server |
+| 80 | Invalid URL, or a load that failed (`Could not load <url>: net::…`: start, `page navigate`/`reload`, `dom wait --load`; `attach` to such a tab only warns; Chrome's certificate warning, `ERR_CERT_*`, is exit 0 with `⚠ Chrome shows a certificate warning for …`, JSON `certificateWarning`) | Check the URL / dev server |
 | 81 | Invalid arguments (incl. blocked CDP methods; an index after a query that matched nothing, or before any query) | Read the suggestion |
 | 83 | Not found (element, session, file) | Fix the selector, or start a session |
 | 84 | Session already running | `bdg page navigate <url>` to reuse it, `bdg stop`, or `--session <name>` |

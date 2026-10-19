@@ -125,7 +125,9 @@ export async function navigateToTarget(
   });
   log.info(`Page ready`);
   const failedNow = ownFailure();
-  if (failedNow && !signal?.aborted) throw failedLoadError(failedNow, addedScheme);
+  if (failedNow && !failedNow.certificate && !signal?.aborted) {
+    throw failedLoadError(failedNow, addedScheme);
+  }
   if (!signal?.aborted) {
     const shown = await readFailedLoad(cdp).catch((error: unknown) => {
       log.debug(`Main frame not read: ${getErrorMessage(error)}`);
