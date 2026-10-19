@@ -18,7 +18,8 @@ export interface DialogReply {
 
 /**
  * How the session answers JavaScript dialogs: the session default
- * (`bdg <url> --dialog`, built-in `accept`), overridden by the choice of the
+ * (`bdg <url> --dialog`, built-in `accept`; `bdg attach` sets `dismiss`
+ * unless given `--dialog`), overridden by the choice of the
  * action that is running (`--dialog`, `--prompt-text` on a DOM action).
  *
  * A beforeunload dialog is accepted, so navigation is never blocked, unless
