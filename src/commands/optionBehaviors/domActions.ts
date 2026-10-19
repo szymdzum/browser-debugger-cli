@@ -165,6 +165,8 @@ export const DOM_ACTION_BEHAVIORS: BehaviorTable = {
     default: 'Does not look at document.readyState',
     whenEnabled:
       'Also waits for document.readyState "complete"; without a selector waits only for that (a script whose server never answers keeps it "loading")',
+    automaticBehavior:
+      'A page that is Chrome\'s error page (a failed load: refused, DNS, TLS, redirect loop) exits 80 with "Could not load <url>: net::…"; the certificate interstitial counts as loaded',
   },
   'scroll:--down': {
     whenEnabled: 'Scrolls page down by specified pixel amount',

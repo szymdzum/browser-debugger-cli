@@ -41,7 +41,10 @@ export function registerWaitCommand(dom: Command): void {
     .option('--text <text>', 'A match must contain this text (case-insensitive)')
     .option('--visible', 'Only count visible matches')
     .option('--gone', 'Wait until no element matches (none visible, with --visible)')
-    .option('--load', 'Also wait for the page to finish loading (document.readyState complete)')
+    .option(
+      '--load',
+      "Also wait for the page to finish loading (document.readyState complete); exits 80 when the page is Chrome's error page (a failed load)"
+    )
     .option(
       '--timeout <ms>',
       'Give up after this many milliseconds (exit 102)',
