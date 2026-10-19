@@ -39,6 +39,7 @@ import {
   mainCheckoutChanges,
   insertLogRow,
   isTransientGhError,
+  testChromeOrphans,
   jobsLostWithoutResult,
   listEntries,
   mainGateVerdict,
@@ -463,15 +464,14 @@ test('a budget error before the deadline ends the waiter with the gh failure cou
   console.log = (l) => lines.push(l);
   try {
     const code = await withWaiterDeadline(10, async () => {
-      assert.throws(() =>
-        retryTransient(
-          () => {
-            throw Object.assign(new Error('Command failed'), { stderr: 'unexpected EOF' });
-          },
-          { backoff: [1], wait: () => {} }
-        )
+      let n = 0;
+      retryTransient(
+        () => {
+          if (n++ < 2) throw Object.assign(new Error('Command failed'), { stderr: 'unexpected EOF' });
+          throw Object.assign(new Error('no budget'), { timedOut: true, budgetExhausted: true });
+        },
+        { backoff: [1], wait: () => {} }
       );
-      throw Object.assign(new Error('no budget'), { timedOut: true, budgetExhausted: true });
     });
     assert.equal(code, EXIT.timeout);
     assert.match(lines[0], /gh failed 2 times: unexpected EOF/);
@@ -1244,4 +1244,45 @@ test('only the implementer brief gets a default CAP: reviewer and tester stay op
   const tester = renderBrief(BRIEFS, 'tester', { N: '1', MAIN: '/m', HEAD: 'h', AGENT: 'a', URLS: 'u' }).brief;
   assert.ok(unfilledPlaceholders(reviewer, placeholders).includes('<CAP>'));
   assert.ok(unfilledPlaceholders(tester, placeholders).includes('<CAP>'));
+});
+
+test('inside a waiter, transient gh errors are retried past the backoff list until the deadline', () => {
+  let t = 0;
+  let calls = 0;
+  assert.throws(
+    () =>
+      retryTransient(
+        () => {
+          calls++;
+          throw Object.assign(new Error('Command failed'), { stderr: 'HTTP 502: Bad Gateway' });
+        },
+        { backoff: [10, 20], wait: (ms) => (t += ms), deadline: 100, now: () => t }
+      ),
+    /Command failed/
+  );
+  assert.equal(calls, 7);
+  assert.throws(
+    () =>
+      retryTransient(
+        () => {
+          throw Object.assign(new Error('Command failed'), { stderr: 'HTTP 502' });
+        },
+        { backoff: [1, 1], wait: () => {} }
+      ),
+    /Command failed/
+  );
+});
+
+test('testChromeOrphans names a throwaway-profile Chrome with no PID file, not the user\'s Chrome or helpers', () => {
+  const ps = [
+    '52977     1 Wed Oct 14 12:50:14 2026     /Applications/Google Chrome.app/Contents/MacOS/Google Chrome --remote-debugging-port=61354 --user-data-dir=/Users/me/.tmp/bdg-attach-profile-OobYxn --headless=new',
+    '52981 52977 Wed Oct 14 12:50:15 2026     /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Helper.app/Contents/MacOS/Google Chrome Helper --type=gpu-process',
+    '  400     1 Mon Oct 19 09:00:00 2026     /Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '94308     1 Mon Oct 19 10:00:00 2026     /opt/chrome/chrome --user-data-dir=/tmp/bdg-matrix-chrome-abc --headless=new',
+    '94400   300 Mon Oct 19 10:05:00 2026     /opt/chrome/chrome --user-data-dir=/tmp/bdg-t-5-a/chrome-profile',
+  ].join('\n');
+  const where = { home: '/Users/me', parent: '/Users/me/Developer' };
+  assert.deepEqual(testChromeOrphans(ps, where, new Set([300]), 0).map((p) => p.pid), [52977, 94308]);
+  const since = Date.parse('Sun Oct 18 00:00:00 2026');
+  assert.deepEqual(testChromeOrphans(ps, where, new Set([300]), since).map((p) => p.pid), [94308]);
 });
