@@ -19,6 +19,7 @@ export type Axis =
 export type Expectation =
   | { kind: 'failure'; cause: RegExp }
   | { kind: 'loads'; shows?: RegExp }
+  | { kind: 'warns'; cause: RegExp }
   | { kind: 'pending'; shows: RegExp };
 
 /** One URL of the matrix */
@@ -65,9 +66,6 @@ const EXIT_VALUES: ReadonlySet<number> = new Set(Object.values(EXIT_CODES));
 const NO_LINK_TO = (what: string): string =>
   `a page cannot link to ${what} (Chrome blocks the navigation)`;
 
-/** Tracks a failed load that a command reports as success (start, navigate, reload, wait, console, attach) */
-const ISSUE_860 = '#860: a failed load is reported as success';
-
 /** Tracks a click or submit that ends on a failed or never-ending navigation and reports success */
 const ISSUE_873 = '#873: a click or submit on a failed or never-ending navigation reports success';
 
@@ -85,13 +83,9 @@ export const ROWS: readonly Row[] = [
     full: true,
     na: { submit: NONDETERMINISTIC },
     console: true,
-    attach: (s) => String(new URL(s.refusedUrl).port),
+    attach: (s) => new URL(s.refusedUrl).host,
     todo: {
-      reload: ISSUE_860,
       click: ISSUE_873,
-      wait: ISSUE_860,
-      console: ISSUE_860,
-      attach: ISSUE_860,
     },
   },
   {
@@ -102,14 +96,12 @@ export const ROWS: readonly Row[] = [
       cause: /ERR_NAME_NOT_RESOLVED/,
     },
     console: true,
-    todo: { console: ISSUE_860 },
   },
   {
     id: 'connection reset mid-response',
     url: (s) => `${s.url}reset`,
     expect: { kind: 'failure', cause: /ERR_CONNECTION_RESET/ },
     console: true,
-    todo: { console: ISSUE_860 },
   },
   {
     id: 'connection closed before a byte',
@@ -125,13 +117,7 @@ export const ROWS: readonly Row[] = [
     console: true,
     attach: () => 'https://127.0.0.1',
     todo: {
-      start: ISSUE_860,
-      navigate: ISSUE_860,
-      reload: ISSUE_860,
       click: ISSUE_873,
-      wait: ISSUE_860,
-      console: ISSUE_860,
-      attach: ISSUE_860,
     },
   },
   {
@@ -139,7 +125,6 @@ export const ROWS: readonly Row[] = [
     url: (s) => `${s.url}truncated`,
     expect: { kind: 'failure', cause: /ERR_CONTENT_LENGTH_MISMATCH/ },
     console: true,
-    todo: { start: ISSUE_860, navigate: ISSUE_860 },
   },
   {
     id: 'redirect loop',
@@ -149,32 +134,24 @@ export const ROWS: readonly Row[] = [
     na: { submit: NONDETERMINISTIC },
     console: true,
     todo: {
-      start: ISSUE_860,
-      navigate: ISSUE_860,
-      reload: ISSUE_860,
       click: ISSUE_873,
-      wait: ISSUE_860,
-      console: ISSUE_860,
     },
   },
   {
     id: 'redirect to chrome://',
     url: (s) => `${s.url}redirect-chrome`,
     expect: { kind: 'failure', cause: /ERR_UNSAFE_REDIRECT/ },
-    todo: { start: ISSUE_860, navigate: ISSUE_860 },
   },
   {
     id: 'redirect to about:blank',
     url: (s) => `${s.url}redirect-about`,
     expect: { kind: 'failure', cause: /ERR_UNSAFE_REDIRECT/ },
-    todo: { start: ISSUE_860, navigate: ISSUE_860 },
   },
   {
     id: 'file:// missing',
     url: (s) => s.missingFileUrl,
     expect: { kind: 'failure', cause: /ERR_FILE_NOT_FOUND/ },
     full: true,
-    todo: { reload: ISSUE_860, wait: ISSUE_860 },
     na: { click: NO_LINK_TO('file://'), submit: NO_LINK_TO('file://') },
   },
   {
@@ -295,6 +272,12 @@ function judgeHuman(expect: Expectation, run: Observed): string[] {
     if (!expect.cause.test(run.output)) problems.push(`does not name the cause ${expect.cause}`);
     return problems;
   }
+  if (expect.kind === 'warns') {
+    if (!ok) problems.push(`exit ${run.exitCode}, the command must succeed with a warning`);
+    if (!run.output.includes('⚠')) problems.push('no ⚠ warning about the failed load');
+    if (!expect.cause.test(run.output)) problems.push(`does not name the cause ${expect.cause}`);
+    return problems;
+  }
   if (expect.kind === 'loads') {
     if (!ok) problems.push(`exit ${run.exitCode}, the page loads`);
     if (expect.shows && !expect.shows.test(run.output))
@@ -328,6 +311,12 @@ function judgeJson(expect: Expectation, run: ObservedJson): string[] {
     if (!expect.cause.test(String(envelope.error)))
       problems.push(`--json: error does not name the cause ${expect.cause}`);
     return problems;
+  }
+  if (expect.kind === 'warns') {
+    const warnings = JSON.stringify(envelope['warnings'] ?? []);
+    return run.exitCode === 0 && envelope.success === true && expect.cause.test(warnings)
+      ? []
+      : [`--json: exit ${run.exitCode}, success must be true with the cause in warnings`];
   }
   if (expect.kind === 'loads') {
     const shows =

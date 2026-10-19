@@ -12,6 +12,7 @@ import type { NetworkEvictions } from '@/telemetry/networkRetention.js';
 import type {
   CDPTarget,
   ConsoleMessage,
+  FailedLoad,
   NetworkRequest,
   TelemetryType,
   WebSocketConnection,
@@ -59,6 +60,8 @@ export class TelemetryStore {
   activeTelemetry: TelemetryType[] = [];
   /** When the page's renderer crashed (epoch ms); undefined while the page is alive */
   pageCrashedAt: number | undefined;
+  /** The page's latest main-frame load, when it failed; undefined once another starts */
+  failedLoad: FailedLoad | undefined;
   /** The session's latest move to another tab; undefined while it stayed on its first tab */
   tabSwitch: TabSwitchInfo | undefined;
   /** Logpoints set with `bdg debug log` (gone with the session) */

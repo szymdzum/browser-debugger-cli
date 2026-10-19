@@ -22,7 +22,7 @@ import { consoleLevelOption, positiveIntRule } from '@/commands/shared/validatio
 import { MAX_CONSOLE_JSON_TEXT_LENGTH, MAX_CONSOLE_TEXT_LENGTH } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
 import type { TabSwitchInfo } from '@/ipc/protocol/tabTypes.js';
-import type { ConsoleMessage, PageIssue, PageNavigation } from '@/types.js';
+import type { ConsoleMessage, FailedLoad, PageIssue, PageNavigation } from '@/types.js';
 import { buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import {
   buildConsoleJsonOutput,
@@ -217,6 +217,7 @@ function buildFormatOptions(
     ...(pageCrashedAt !== undefined && { pageCrashedAt }),
     ...(page && { issues: page.issues, issuesDropped: page.issuesDropped }),
     ...(page?.tabSwitch && { tabSwitch: page.tabSwitch }),
+    ...(page?.failedLoad && { failedLoad: page.failedLoad }),
     list: listsMessages(options),
     follow: options.follow,
     last: lastN,
@@ -433,6 +434,8 @@ interface PageNotes extends PageIssues {
   tabSwitch?: TabSwitchInfo | undefined;
   /** Messages `--level` hid, per level */
   hidden?: HiddenByLevel | undefined;
+  /** The page's latest load failed (#860) */
+  failedLoad?: FailedLoad | undefined;
 }
 
 interface ConsoleResult extends PageNotes {
@@ -509,53 +512,36 @@ export function registerConsoleCommand(program: Command): void {
             currentNavigationId,
             dropped,
             pageCrashedAt,
+            failedLoad,
             tabSwitch,
             issues,
             issuesDropped,
           } = result.data;
           const filtered = applyFilters(messages, options, currentNavigationId);
           const hidden = hiddenByLevel(messages, options, currentNavigationId);
+          const page: PageNotes = { issues, issuesDropped, tabSwitch, hidden, failedLoad };
           if (options.json) {
             return {
               success: true,
               data: buildConsoleJsonOutput(
                 filtered,
-                buildFormatOptions(options, lastN, undefined, dropped, pageCrashedAt, {
-                  issues,
-                  issuesDropped,
-                  tabSwitch,
-                  hidden,
-                })
+                buildFormatOptions(options, lastN, undefined, dropped, pageCrashedAt, page)
               ),
             };
           }
           const droppedShown = droppedInView(messages, dropped, options, currentNavigationId);
-          return {
-            success: true,
-            data: {
-              messages,
-              filtered,
-              hidden,
-              dropped: droppedShown,
-              pageCrashedAt,
-              tabSwitch,
-              issues,
-              issuesDropped,
-            },
+          const shown: ConsoleResult = {
+            messages,
+            filtered,
+            dropped: droppedShown,
+            pageCrashedAt,
+            ...page,
           };
+          return { success: true, data: shown };
         },
         options,
         (data) => {
-          const {
-            messages,
-            filtered,
-            hidden,
-            dropped,
-            pageCrashedAt,
-            tabSwitch,
-            issues,
-            issuesDropped,
-          } = data as ConsoleResult;
+          const { messages, filtered, dropped, pageCrashedAt, ...page } = data as ConsoleResult;
           const skipped = skippedMessages(
             messages,
             lastMessages(filtered, lastN),
@@ -563,12 +549,7 @@ export function registerConsoleCommand(program: Command): void {
           );
           return formatConsole(
             filtered,
-            buildFormatOptions(options, lastN, skipped, dropped, pageCrashedAt, {
-              issues,
-              issuesDropped,
-              tabSwitch,
-              hidden,
-            })
+            buildFormatOptions(options, lastN, skipped, dropped, pageCrashedAt, page)
           );
         }
       );

@@ -13,7 +13,11 @@ import { integerOption } from '@/commands/shared/validation.js';
 import { waitTargetRequiredError } from '@/errors/messages.js';
 import { domWait } from '@/ipc/client.js';
 import type { DomWaitData } from '@/ipc/protocol/commands.js';
-import { WAIT_HELP_EXAMPLES, waitMetMessage } from '@/ui/messages/commands.js';
+import {
+  WAIT_HELP_EXAMPLES,
+  certificateWarningNote,
+  waitMetMessage,
+} from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
 
@@ -41,7 +45,10 @@ export function registerWaitCommand(dom: Command): void {
     .option('--text <text>', 'A match must contain this text (case-insensitive)')
     .option('--visible', 'Only count visible matches')
     .option('--gone', 'Wait until no element matches (none visible, with --visible)')
-    .option('--load', 'Also wait for the page to finish loading (document.readyState complete)')
+    .option(
+      '--load',
+      "Also wait for the page to finish loading (document.readyState complete); exits 80 when the page is Chrome's error page (a failed load)"
+    )
     .option(
       '--timeout <ms>',
       'Give up after this many milliseconds (exit 102)',
@@ -105,7 +112,13 @@ async function waitFor(
       }),
     };
   }
-  return { success: true, data: response.data };
+  const { certificateWarning } = response.data;
+  return {
+    success: true,
+    data: response.data,
+    ...(options.json &&
+      certificateWarning && { warning: certificateWarningNote(certificateWarning) }),
+  };
 }
 
 /**
@@ -115,5 +128,8 @@ async function waitFor(
  * @returns e.g. `✓ #finish visible after 5.1s`
  */
 function formatWait(data: DomWaitData): string {
-  return waitMetMessage(data, data.elapsedMs);
+  const met = waitMetMessage(data, data.elapsedMs);
+  return data.certificateWarning
+    ? `⚠ ${certificateWarningNote(data.certificateWarning)}\n${met.replace(/^✓ /, '')}`
+    : met;
 }

@@ -4,7 +4,7 @@
 
 import { MAX_CONSOLE_JSON_TEXT_LENGTH } from '@/constants.js';
 import type { TabSwitchInfo } from '@/ipc/protocol/tabTypes.js';
-import type { ConsoleLevel, ConsoleMessage, PageIssue, StackFrame } from '@/types.js';
+import type { ConsoleLevel, ConsoleMessage, FailedLoad, PageIssue, StackFrame } from '@/types.js';
 import { capLength } from '@/utils/strings.js';
 
 export type { ConsoleLevel } from '@/types.js';
@@ -66,6 +66,8 @@ export interface ConsoleFormatOptions {
   dropped?: number | undefined;
   /** When the page crashed (epoch ms), while it is not loaded again */
   pageCrashedAt?: number | undefined;
+  /** The page's latest load failed (#860): named instead of "No errors or warnings found" */
+  failedLoad?: FailedLoad | undefined;
   /** The session's latest move to another tab */
   tabSwitch?: TabSwitchInfo | undefined;
   /** Print message texts whole (`--full`) */
@@ -145,6 +147,10 @@ export interface ConsoleJsonOutput {
   dropped?: number;
   /** When the page crashed (epoch ms), while it is not loaded again */
   pageCrashedAt?: number;
+  /** The page's latest load failed (#860): Chrome's error page or a document cut off */
+  failedLoad?: FailedLoad;
+  /** The page is Chrome's certificate warning (#860; the load counts as a success) */
+  certificateWarning?: FailedLoad;
   /** The session's latest move to another tab (`consoleReplayed` false: what that tab logged while the session was away is not recorded) */
   tabSwitch?: TabSwitchInfo;
   /** Chrome Issues of the page currently loaded (quirks mode, form errors, ...), in the order they arrived */

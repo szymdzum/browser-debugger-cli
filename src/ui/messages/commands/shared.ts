@@ -3,6 +3,7 @@
  */
 
 import type { PageLoadingState, PendingRequestInfo } from '@/ipc/protocol/commands.js';
+import type { FailedLoad } from '@/types.js';
 import { formatDuration, truncateUrl } from '@/ui/formatting.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { truncateByLength } from '@/utils/strings.js';
@@ -102,6 +103,45 @@ export const FRAME_URL_MAX_LENGTH = 100;
  */
 export function frameUrlLabel(url: string): string {
   return url ? truncateByLength(url, FRAME_URL_MAX_LENGTH) : '(no URL)';
+}
+
+/**
+ * A main-frame load that failed, or Chrome's certificate warning (#860), for
+ * `bdg console`, the start, `attach`, `page navigate`/`reload` and `dom wait --load`.
+ *
+ * @param failed - The URL (as `displayUrl` shows it) and Chrome's network error
+ * @returns e.g. "Page failed to load: http://localhost:3000/: net::ERR_CONNECTION_REFUSED"
+ */
+export function failedLoadNote(failed: FailedLoad): string {
+  if (failed.certificate) return certificateWarningNote(failed);
+  const redirect = failed.redirectedTo ? ` (redirected to ${failed.redirectedTo})` : '';
+  return `Page failed to load: ${failed.url}${redirect}: ${failed.errorText}`;
+}
+
+/**
+ * Chrome's certificate warning (#860): the one wording of every command that reports it.
+ *
+ * @param warning - The URL it is shown for and the `net::ERR_CERT_*` error
+ * @returns e.g. "Chrome shows a certificate warning for https://self.test/: net::ERR_CERT_AUTHORITY_INVALID"
+ */
+export function certificateWarningNote(warning: Pick<FailedLoad, 'url' | 'errorText'>): string {
+  return `Chrome shows a certificate warning for ${warning.url}: ${warning.errorText}`;
+}
+
+/**
+ * The `--json` field of a page's load problem: `certificateWarning` for
+ * Chrome's certificate warning (a success), else `failedLoad`.
+ *
+ * @param problem - The failed load or certificate warning, if any
+ * @returns The field, or an empty object
+ */
+export function loadProblemFields(problem: FailedLoad | undefined): {
+  failedLoad?: FailedLoad;
+  certificateWarning?: FailedLoad;
+} {
+  if (!problem) return {};
+  const { certificate, ...fields } = problem;
+  return certificate ? { certificateWarning: fields } : { failedLoad: fields };
 }
 
 /**

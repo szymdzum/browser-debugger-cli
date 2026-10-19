@@ -6,6 +6,7 @@ import type { CDPConnection } from '@/connection/cdp.js';
 import { sendTyped } from '@/connection/typed-cdp.js';
 import { startSessionDownloads } from '@/daemon/session/downloads.js';
 import { startActionHistory } from '@/runtime/dom/actionHistory.js';
+import { trackFailedLoad } from '@/runtime/page/failedLoad.js';
 import { hideHeadlessUserAgent } from '@/runtime/page/userAgent.js';
 import { startConsoleCollection } from '@/telemetry/console.js';
 import { startDialogHandling } from '@/telemetry/dialogs.js';
@@ -223,6 +224,14 @@ export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
           if (crashedAt !== undefined) cdp.rejectPending(pageCrashedCommandError(crashedAt));
         });
       },
+    },
+    {
+      name: 'failed-load',
+      runAlways: true,
+      start: ({ cdp, store }) =>
+        trackFailedLoad(cdp, (failed) => {
+          store.failedLoad = failed;
+        }),
     },
     {
       name: 'navigation',

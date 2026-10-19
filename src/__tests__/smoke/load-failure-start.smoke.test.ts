@@ -10,6 +10,9 @@
  * that fails the oracle today runs as `todo` with the issue that tracks it. The
  * actions (`dom click`, `dom submit`) are in `load-failure-actions.smoke.test.ts`.
  *
+ * Attach to a tab that shows a failed load succeeds with a warning naming it
+ * (owner decision on #860): the tab is there to inspect, bdg did not load it.
+ *
  * Known gaps: a self-signed or expired certificate (`ERR_CERT_*`, an
  * interstitial) needs a certificate the test would have to commit or generate;
  * `attach` to a tab whose navigation is still pending waits 30 s for Chrome to
@@ -148,7 +151,10 @@ void describe('Load-failure matrix: loads', () => {
           return json ? bdgJson('attach', args) : bdg('attach', args);
         };
         try {
-          await checkCell({ ...row, expect: expectationFor(row, true) }, attachTo, closeTab, false);
+          const expect = expectationFor(row, true);
+          const attached =
+            expect.kind === 'failure' ? { kind: 'warns' as const, cause: expect.cause } : expect;
+          await checkCell({ ...row, expect: attached }, attachTo, closeTab, true);
         } finally {
           await closeTab();
         }

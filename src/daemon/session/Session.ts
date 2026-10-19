@@ -54,7 +54,7 @@ import { reapOrphanedChrome, removeSessionFiles } from '@/session/cleanup/staleS
 import { writeSessionMetadata } from '@/session/metadata.js';
 import { getSessionPort } from '@/session/port.js';
 import { pageCrashedCommandError } from '@/telemetry/pageCrash.js';
-import type { CleanupFunction, LaunchedChrome } from '@/types.js';
+import type { CleanupFunction, FailedLoad, LaunchedChrome } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { formatChromeNotice } from '@/ui/messages/chrome.js';
 import { delay } from '@/utils/async.js';
@@ -183,6 +183,8 @@ export interface SessionInfo {
   state?: StateSummary;
   /** Attached to a tab as it was (`bdg attach`) */
   attached?: boolean;
+  /** The attached tab shows a failed load (`bdg attach`), or the page is Chrome's certificate warning */
+  failedLoad?: FailedLoad;
 }
 
 /** Session metadata as reported in status responses. */
@@ -378,19 +380,21 @@ export class Session {
    */
   info(): SessionInfo {
     const target = this.store.targetInfo;
+    const problem = this.store.failedLoad;
     const documentStatus = this.store.networkRequests.find(
       (request) => request.requestId === this.documentRequestId && request.status
     )?.status;
     return {
       chromePid: this.chrome?.pid ?? 0,
       port: this.config.port,
-      targetUrl: displayUrl(target?.url ?? this.config.url),
+      targetUrl: problem?.certificate ? problem.url : displayUrl(target?.url ?? this.config.url),
       ...(target?.title && { targetTitle: target.title }),
       ...(documentStatus !== undefined && { documentStatus }),
       ...(this.loading && { loading: this.loading }),
       ...(this.startDialogs.length > 0 && { dialogs: this.startDialogs }),
       ...(this.stateRestored && { state: this.stateRestored }),
       ...(this.attachedTab && { attached: true }),
+      ...(problem && (this.attachedTab || problem.certificate) && { failedLoad: problem }),
     };
   }
 

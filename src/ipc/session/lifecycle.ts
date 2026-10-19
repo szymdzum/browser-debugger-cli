@@ -9,7 +9,7 @@ import type { IPCErrorCode } from './errors.js';
 import type { PageLoadingState } from '@/ipc/protocol/commands.js';
 import type { DialogAnswer, DialogInfo } from '@/ipc/protocol/domTypes.js';
 import type { AuthStateContent, StateSummary } from '@/ipc/protocol/stateTypes.js';
-import type { ColorScheme, TelemetryType, ViewportSize } from '@/types.js';
+import type { ColorScheme, FailedLoad, TelemetryType, ViewportSize } from '@/types.js';
 
 /**
  * Base message interface with type and session ID.
@@ -127,6 +127,8 @@ export interface StartSessionResponseData {
   state?: StateSummary;
   /** Attached to a tab as it was (`bdg attach`): not navigated, earlier network requests unknown. */
   attached?: boolean;
+  /** The attached tab shows a failed load (`bdg attach`, #860): a warning, the start succeeds. */
+  failedLoad?: FailedLoad;
   /** True if a stale session was auto-recovered before this one started. */
   recovered?: boolean;
   /** Target URL or ws URL of the stale session that was recovered, if recorded. */

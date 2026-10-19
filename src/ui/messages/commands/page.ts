@@ -119,7 +119,7 @@ export const PAGE_CLOSE_DESCRIPTION =
 
 /** Help text of the `bdg page` history commands */
 export const PAGE_ACTION_DESCRIPTIONS = {
-  reload: 'Reload the page',
+  reload: "Reload the page (exits 80 when the reload ends on Chrome's error page)",
   back: 'Go back one page (like the browser button)',
   forward: 'Go forward one page (like the browser button)',
 } as const;
