@@ -111,6 +111,7 @@ export async function navigateToTarget(
   signal?: AbortSignal
 ): Promise<string | undefined> {
   const normalizedUrl = normalizeUrl(config.url);
+  const failedBefore = telemetryStore.failedLoad;
   log.info(`Navigating to ${displayUrl(normalizedUrl)}...`);
   const navigation = await sendNavigate(cdp, normalizedUrl, log, signal);
   const addedScheme = normalizedUrl === `http://${config.url}`;
@@ -125,8 +126,9 @@ export async function navigateToTarget(
     ...(signal && { signal }),
   });
   log.info(`Page ready`);
-  if (telemetryStore.failedLoad && !signal?.aborted) {
-    throw failedLoadError(telemetryStore.failedLoad, addedScheme);
+  const failedNow = telemetryStore.failedLoad;
+  if (failedNow && failedNow !== failedBefore && !signal?.aborted) {
+    throw failedLoadError(failedNow, addedScheme);
   }
 
   if (chrome && telemetryStore.targetInfo && !signal?.aborted) {
