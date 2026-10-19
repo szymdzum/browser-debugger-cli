@@ -68,7 +68,11 @@ const NO_LINK_TO = (what: string): string =>
 /** Tracks a start or `page navigate` that reports a `net::` error outside `UNREACHABLE_ERRORS` as success */
 const ISSUE_860 = '#860: a net:: error outside UNREACHABLE_ERRORS is reported as success';
 
-/** Tracks a finding the orchestrator has not filed yet */
+/**
+ * Tracks a finding the orchestrator has not filed yet. Includes `submit` on a
+ * failed load, which passes or fails by whether the network goes idle within
+ * its `--timeout` (a timed-out wait names the cause, ✓ Form Submitted does not).
+ */
 const PENDING = 'S25-pending: reports success for a failed load';
 
 const UNREACHABLE = 'Chrome never shows a document for a request the server does not answer';
@@ -86,7 +90,14 @@ export const ROWS: readonly Row[] = [
     full: true,
     console: true,
     attach: (s) => String(new URL(s.refusedUrl).port),
-    todo: { reload: PENDING, click: PENDING, wait: PENDING, console: PENDING, attach: PENDING },
+    todo: {
+      reload: PENDING,
+      click: PENDING,
+      submit: PENDING,
+      wait: PENDING,
+      console: PENDING,
+      attach: PENDING,
+    },
   },
   {
     id: 'DNS failure',
