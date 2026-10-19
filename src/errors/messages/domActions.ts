@@ -480,27 +480,33 @@ export function textTypedElsewhereError(
 
 /**
  * A fill whose value the page did not keep (#867, exit 90): the read-back
- * differs from the value given. The message is the read-back
+ * differs from the value given. The message names the field (the index and
+ * its list, or the selector, and the element) and gives the read-back
  * ({@link valueMismatchWarning}); the suggestion fits how it differs: cut to
  * maxlength, moved to another field, or changed (a secret field's values
  * never shown).
  *
- * @param target - Selector and element description of the filled field, and the index the user gave for a listed element
+ * @param target - Selector and element description of the filled field, the index the user gave for a listed element, and that index in words with its list (e.g. `index 0 of the last dom query "input"`)
  * @param mismatch - Value given and value found (masked for secret fields)
  * @returns Error with a suggestion
  */
 export function valueMismatchError(
-  target: ActedElement,
+  target: ActedElement & { indexText?: string | undefined },
   mismatch: FillValueMismatch
 ): ErrorWithSuggestion {
   const element = elementArgument(target);
+  const field = `${target.indexText ?? element}${target.element ? ` (${target.element})` : ''}`;
+  const readBack = valueMismatchWarning(mismatch);
   const suggestion =
     mismatch.truncatedTo !== undefined
       ? `Fill at most ${mismatch.truncatedTo} characters, the field's maxlength`
       : mismatch.movedTo !== undefined
         ? `Fill ${mismatch.movedTo} if the value belongs there; see what moves it with ${sessionCommand(`bdg dom listeners ${element}`)}`
         : `Check the format the field accepts (${sessionCommand(`bdg dom get ${element}`)} shows the field${mismatch.masked ? ', its value masked' : ''}), then fill a value it keeps`;
-  return { message: valueMismatchWarning(mismatch), suggestion };
+  return {
+    message: `Fill ${field}: ${readBack.charAt(0).toLowerCase()}${readBack.slice(1)}`,
+    suggestion,
+  };
 }
 
 /**

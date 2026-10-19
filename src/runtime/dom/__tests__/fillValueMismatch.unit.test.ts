@@ -155,18 +155,30 @@ void describe('FILL_VALUE_MISMATCH_JS normalised values', () => {
 });
 
 void describe('valueMismatchError', () => {
-  const target = { selector: '#hours', element: 'input#hours' };
+  const target = { selector: '#hours', element: 'input#hours "Hours"' };
 
-  void it('is the read-back, with a suggestion to check the format', () => {
+  void it('names the field and gives the read-back, with a suggestion to check the format', () => {
     const err = valueMismatchError(target, { expected: '8', actual: '24.00' });
     assert.equal(
       err.message,
-      'The field\'s value is "24.00" after filling (expected "8"); the page may have rejected or moved the input'
+      'Fill \'#hours\' (input#hours "Hours"): the field\'s value is "24.00" after filling (expected "8"); the page may have rejected or moved the input'
     );
     assert.match(
       err.suggestion,
       /Check the format the field accepts \(.*bdg dom get '#hours'.* shows the field\)/
     );
+  });
+
+  void it('names an index with its list', () => {
+    const err = valueMismatchError(
+      { ...target, listIndex: 2, indexText: 'index 2 of the last dom query "input"' },
+      { expected: '8', actual: '24.00' }
+    );
+    assert.match(
+      err.message,
+      /^Fill index 2 of the last dom query "input" \(input#hours "Hours"\): the field's value/
+    );
+    assert.match(err.suggestion, /bdg dom get 2\b/);
   });
 
   void it('names the field a moved value went to, and the maxlength', () => {

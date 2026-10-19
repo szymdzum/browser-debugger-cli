@@ -39,6 +39,26 @@ const TABLE: Array<[string, number | null]> = [
   ['12 zł', 12],
   ['¥1,000', 1000],
   ['£ 3', 3],
+  ['($5.00)', -5],
+  ['(5.00)', -5],
+  ['(5,000.25 €)', -5000.25],
+  ['(-5)', null],
+  ['($-5)', null],
+  ['(5', null],
+  ['8 PLN', 8],
+  ['PLN 8', 8],
+  ['USD 8', 8],
+  ['EUR -1,234.50', -1234.5],
+  ['8 pln', null],
+  ['USD 8 PLN', null],
+  ['8 PLNX', null],
+  ['1 234.50', 1234.5],
+  ['1\u00a0234.50', 1234.5],
+  ['1\u202f234\u202f567', 1234567],
+  ['$1 234.50', 1234.5],
+  ['1 234,50', null],
+  ['12 34', null],
+  ['1 234,567.0', null],
   ['1.234,5', null],
   ['8,00', null],
   ['1,23', null],
@@ -81,6 +101,8 @@ void describe('FILL_VALUE_MISMATCH_JS with a plain number given', () => {
     assert.ok(matches('text', '5.2', '5.20%'));
     assert.ok(matches('tel', '1234.5', '1,234.50'));
     assert.ok(matches('textarea', '.5', '0.50'));
+    assert.ok(matches('text', '-5', '($5.00)'));
+    assert.ok(matches('text', '1234.5', 'PLN 1 234.50'));
   });
 
   void it('reports another number, a locale form or no number', () => {

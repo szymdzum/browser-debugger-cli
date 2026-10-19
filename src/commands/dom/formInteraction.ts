@@ -805,7 +805,12 @@ function failOnValueMismatch<T extends Omit<FillResult, 'success'> & { indexSour
   if (!result.success || !result.data || !mismatch) return result;
   const { warning, ...data } = result.data;
   const err = valueMismatchError(
-    { selector: data.selector ?? '', element: data.element, listIndex: data.indexSource?.index },
+    {
+      selector: data.selector ?? '',
+      element: data.element,
+      listIndex: data.indexSource?.index,
+      indexText: data.indexSource && indexSourceText(data.indexSource),
+    },
     mismatch
   );
   return {

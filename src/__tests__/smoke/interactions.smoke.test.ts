@@ -792,7 +792,7 @@ void describe('DOM interactions', () => {
     const moved = await bdg(['dom', 'fill', '#last', 'Lovelace'], 90);
     assert.match(
       moved,
-      /The field's value is "" after filling \(expected "Lovelace"\); the value appeared in input#first instead\n/
+      /Fill '#last' \(input#last "[^"]*"\): the field's value is "" after filling \(expected "Lovelace"\); the value appeared in input#first instead\n/
     );
     await bdg(['dom', 'fill', '#first', 'Ada']);
     const movedRun = await runCommand('dom', ['fill', '#last', 'Lovelace', '--json']);

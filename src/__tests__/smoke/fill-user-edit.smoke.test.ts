@@ -242,7 +242,7 @@ void describe('dom fill echoes secret fields masked, as dom query does (#592)', 
     const output = await bdg(['dom', 'fill', '#digits', 'ab12cd34ef56'], 90);
     assert.match(
       output,
-      /The page kept another value than the one filled \(secret field, value not shown\)/
+      /: the page kept another value than the one filled \(secret field, value not shown\)/
     );
     assert.doesNotMatch(
       output,

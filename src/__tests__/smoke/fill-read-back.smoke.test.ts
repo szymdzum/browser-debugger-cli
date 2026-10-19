@@ -57,7 +57,8 @@ const CELLS: Cell[] = [
     value: '1234',
     kept: '••••',
     mismatch: true,
-    error: /secret field, value not shown/,
+    error:
+      /^(Error: )?Fill '#pin' \(input#pin "PIN"\): the page kept another value than the one filled \(secret field, value not shown\)/m,
   },
 ];
 
@@ -112,7 +113,8 @@ function errorLine(cell: Cell): RegExp {
   if (cell.error) return cell.error;
   const quote = (text: string): string => text.replace(/[$.*+?()[\]{}|^\\]/g, '\\$&');
   return new RegExp(
-    `The field's value is "${quote(cell.kept)}" after filling \\(expected "${quote(cell.value)}"\\)`
+    `^(Error: )?Fill '${quote(cell.field)}' \\(input${quote(cell.field)} "[A-Za-z ]+"\\): the field's value is "${quote(cell.kept)}" after filling \\(expected "${quote(cell.value)}"\\)`,
+    'm'
   );
 }
 
