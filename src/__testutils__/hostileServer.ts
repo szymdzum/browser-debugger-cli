@@ -12,14 +12,14 @@
  *   `/reset-early`: closes the connection before sending a byte.
  * - `/hang`: reads the request and never answers. `/endless`: answers with a
  *   page and keeps the body open for ever.
- * - `/truncated`: the headers promise {@link PROMISED_BYTES} bytes, the body
+ * - `/truncated`: the headers promise 4096 bytes, the body
  *   ends after a few.
  * - `/redirect-loop`: redirects to itself. `/redirect-chrome`, `/redirect-about`:
  *   redirect to `chrome://version` and `about:blank`.
  * - `/csp`: a page whose Content-Security-Policy blocks its own script.
  * - `/ok`: a plain page that loads.
  * - `/launch-blob`: like `/launch`, leading to a `blob:` URL the page makes of
- *   an HTML page titled {@link BLOB_TITLE} (a blob URL exists only in the
+ *   an HTML page titled `Hostile blob` (a blob URL exists only in the
  *   document that made it, so no command can be given one).
  * - `/launch?to=<url>`: a page with a link (`#go`) and a GET form with a submit
  *   button (`#send` in `#form`) that both lead to `<url>`; the form has a
@@ -34,26 +34,24 @@ import * as path from 'path';
 import { makeTempDir } from '@/__testutils__/tempDirs.js';
 
 /** Bytes the headers of `/truncated` and `/reset` promise */
-export const PROMISED_BYTES = 4096;
+const PROMISED_BYTES = 4096;
 
 /** Title of the pages that load */
-export const OK_TITLE = 'Hostile OK';
+const OK_TITLE = 'Hostile OK';
 
 /** Title of the `/status/*-body` pages */
-export const BODY_TITLE = 'Hostile body';
+const BODY_TITLE = 'Hostile body';
 
 /** Title of the page the `blob:` URL of `/launch-blob` holds */
-export const BLOB_TITLE = 'Hostile blob';
+const BLOB_TITLE = 'Hostile blob';
 
 /** What a throwaway file the server wrote holds */
-export const FILE_TITLE = 'Hostile file';
+const FILE_TITLE = 'Hostile file';
 
 /** Running server and the URLs that need none */
 export interface HostileServer {
   /** Base URL with a trailing slash */
   url: string;
-  /** Port of the HTTP server */
-  port: number;
   /** A URL on a port where nothing listens (connection refused) */
   refusedUrl: string;
   /** `https://` to the plain-HTTP port (`ERR_SSL_PROTOCOL_ERROR`) */
@@ -121,7 +119,7 @@ function sendStatus(res: http.ServerResponse, status: number, withBody: boolean)
 }
 
 /**
- * Send headers that promise {@link PROMISED_BYTES} and a few bytes of body.
+ * Send headers that promise 4096 and a few bytes of body.
  *
  * @param res - Response
  * @returns The socket, to end or reset it
@@ -225,7 +223,6 @@ export async function startHostileServer(): Promise<HostileServer> {
   const refused = await closedPort();
   return {
     url,
-    port,
     refusedUrl: `http://127.0.0.1:${refused}/`,
     tlsToPlainUrl: `https://127.0.0.1:${port}/`,
     unresolvableUrl: 'http://hostile.invalid/',
