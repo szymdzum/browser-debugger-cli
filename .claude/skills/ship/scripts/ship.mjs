@@ -252,12 +252,14 @@ export function retryTransient(fn, opts = {}) {
         .split('\n')[0];
       if (waiterState)
         Object.assign(waiterState, { failures: waiterState.failures + 1, last: firstLine });
-      if (attempt >= backoff.length || !isTransientGhError(err)) throw err;
+      if (!isTransientGhError(err)) throw err;
       if (deadline && now() >= deadline) throw err;
+      if (attempt >= backoff.length && !deadline) throw err;
+      const delay = backoff[Math.min(attempt, backoff.length - 1)];
       console.error(
-        `gh failed (${firstLine}); retry ${attempt + 1}/${backoff.length} in ${backoff[attempt] / 1000}s`
+        `gh failed (${firstLine}); retry ${attempt + 1}${deadline ? ' (until the waiter deadline)' : `/${backoff.length}`} in ${delay / 1000}s`
       );
-      wait(backoff[attempt]);
+      wait(delay);
     }
   }
 }
@@ -649,15 +651,21 @@ async function repeatLoop(argv) {
   status(`listing repeat runs on ${pr.headRefName}`);
   let running = unfinishedRepeat(dispatchRuns());
   if (running && flags.has('replace')) {
+    const cancel = () => {
+      try {
+        run('gh', ['run', 'cancel', String(running.databaseId), '--repo', REPO], { timeoutMs: WRITE_TIMEOUT_MS });
+        return true;
+      } catch (error) {
+        console.log(`could not cancel run ${running.databaseId} yet (${running.status}): ${error.message.split('\n')[0]}`);
+        return false;
+      }
+    };
     console.log(`cancelling repeat run ${running.databaseId} (--replace)`);
-    try {
-      run('gh', ['run', 'cancel', String(running.databaseId), '--repo', REPO], { timeoutMs: WRITE_TIMEOUT_MS });
-    } catch (error) {
-      console.log(`could not cancel run ${running.databaseId}: ${error.message.split('\n')[0]}`);
-    }
+    let cancelled = cancel();
     for (let i = 0; i < 36 && running; i++) {
       await sleep(5000);
       running = unfinishedRepeat(dispatchRuns());
+      if (running && !cancelled && i % 6 === 5) cancelled = cancel();
     }
   }
   if (running) {
@@ -1860,6 +1868,7 @@ function leftoverLines(scope) {
     if (added.length) lines.push(`new in the main checkout since the snapshot: ${added.join(', ')}`);
   }
   for (const line of orphanWorktreeProcesses(scope)) lines.push(line);
+  for (const line of strayTestChromes(scope)) lines.push(line);
   const agentDaemon = agentDaemonInBdgHome();
   if (agentDaemon) lines.push(`an agent's bdg session is live in ~/.bdg: ${agentDaemon}`);
   for (const file of readdirSync('/tmp').filter((f) => /^bdg-.*\.pid$/.test(f))) {
@@ -2094,6 +2103,59 @@ function orphanWorktreeProcesses(scope) {
 }
 
 /**
+ * Chrome processes with a throwaway profile (`--user-data-dir` under /tmp,
+ * /private/tmp, /var/folders, ~/.tmp or an agent worktree) that no PID file
+ * covers: a test's Chrome left running (S25: one from #862's matrix; one from
+ * a 2026-10-14 attach test, alive four days). With a PR scope only those
+ * started since `ship snapshot` count, so an older one doesn't block a merge.
+ *
+ * @param {string[]} [scope]
+ */
+function strayTestChromes(scope) {
+  const pidFiles = new Set(
+    readdirSync('/tmp')
+      .filter((f) => /^bdg-.*\.pid$/.test(f))
+      .map((f) => livePidOf(join('/tmp', f)))
+      .filter(Boolean)
+  );
+  const ps = spawnSync('ps', ['-axo', 'pid=,ppid=,lstart=,command='], { encoding: 'utf8' }).stdout ?? '';
+  const since = scope && existsSync(SNAPSHOT.bdg) ? lstatSync(SNAPSHOT.bdg).mtimeMs : 0;
+  return testChromeOrphans(ps, { home: homedir(), parent: dirname(mainCheckout()) }, pidFiles, since).map(
+    (p) => `test Chrome ${p.pid} (profile ${p.profile}) has no PID file`
+  );
+}
+
+/**
+ * Main Chrome processes (not helpers) in `ps -axo pid=,ppid=,lstart=,command=`
+ * output whose `--user-data-dir` is a throwaway location, started after
+ * `sinceMs`, with no PID file on themselves or an ancestor.
+ *
+ * @param {string} ps
+ * @param {{ home: string, parent: string }} where
+ * @param {Set<number>} pidFiles
+ * @param {number} sinceMs
+ */
+export function testChromeOrphans(ps, where, pidFiles, sinceMs) {
+  const throwaway = [/^\/tmp\//, /^\/private\/tmp\//, /^\/var\/folders\//, new RegExp(`^${where.home.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\.tmp/`), new RegExp(`^${where.parent.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/bdg-`)];
+  const procs = ps
+    .split('\n')
+    .map((line) => /^\s*(\d+)\s+(\d+)\s+(\w{3} \w{3}\s+\d+ [\d:]+ \d{4})\s+(.*)$/.exec(line))
+    .filter(Boolean)
+    .map(([, pid, ppid, started, command]) => ({ pid: Number(pid), ppid: Number(ppid), started: Date.parse(started), command }));
+  const parentOf = new Map(procs.map((p) => [p.pid, p.ppid]));
+  const covered = (pid) => {
+    for (let at = pid, hops = 0; at > 1 && hops < 64; at = parentOf.get(at) ?? 0, hops++) if (pidFiles.has(at)) return true;
+    return false;
+  };
+  return procs
+    .filter((p) => /(Google Chrome|chrome|Chromium)(\s|$)/.test(p.command) && !/Helper|--type=/.test(p.command))
+    .map((p) => ({ ...p, profile: /--user-data-dir=(\S+)/.exec(p.command)?.[1] }))
+    .filter((p) => p.profile && throwaway.some((re) => re.test(p.profile)))
+    .filter((p) => !(p.started < sinceMs))
+    .filter((p) => !covered(p.pid));
+}
+
+/**
  * Processes in `ps -axo pid=,ppid=,command=` output running from a scoped
  * worktree with no PID file on themselves or any ancestor (`cmd & echo $!`
  * records npx, and the server it starts runs a few levels below). A path
@@ -2166,6 +2228,24 @@ function leftovers(argv) {
 }
 
 /**
+ * After a merge, closes an issue the PR body closes (`Closes #N`) when
+ * GitHub left it open, with a comment naming the PR (S25: #860 stayed open
+ * after #875). "Part of" issues are left alone.
+ *
+ * @param {object} pr
+ */
+function closeIssuesLeftOpen(pr) {
+  for (const n of closedIssues(pr.body)) {
+    const issue = ghJson(['issue', 'view', n, '--json', 'state']);
+    if (issue?.state !== 'OPEN') continue;
+    run('gh', ['issue', 'close', n, '--repo', REPO, '--comment', `Closed by #${pr.number}, which says "Closes #${n}"; GitHub didn't close it on merge.`], {
+      timeoutMs: WRITE_TIMEOUT_MS,
+    });
+    console.log(`closed #${n}: the PR body closes it, GitHub left it open`);
+  }
+}
+
+/**
  * Fast-forwards the main checkout to origin/main after a merge, when it is
  * on main. `git merge --ff-only` works with the uncommitted log.md rows that
  * `ship log` leaves, where `git pull --rebase` refuses (S18).
@@ -2231,6 +2311,7 @@ async function merge(argv) {
   console.log(`merged PR #${pr.number} as ${mergeSha}`);
   removeBranchWorktree(pr.headRefName);
   rmSync(`/tmp/ship-mc-${pr.number}.ok`, { force: true });
+  closeIssuesLeftOpen(pr);
   fastForwardMainCheckout();
   console.log(`next: ship ci-wait ${mergeSha} --push`);
   return EXIT.ok;
