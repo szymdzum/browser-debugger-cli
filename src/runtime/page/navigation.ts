@@ -3,7 +3,6 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import { navigationOutcome } from '@/connection/navigationOutcome.js';
 import { waitForPageReady } from '@/connection/pageReadiness.js';
 import { sendTyped } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
@@ -109,7 +108,7 @@ async function runNavigation(
   const deadline = Date.now() + readyTimeoutMs;
   let loaderId: string | undefined;
   try {
-    const sent = startAction(cdp, action, url, document.failed);
+    const sent = startAction(cdp, action, url);
     sent.catch(() => undefined);
     const started = await raceTimeout(sent, readyTimeoutMs);
     if (started === undefined) return await stillLoading(cdp, action, readyTimeoutMs);
@@ -153,9 +152,6 @@ function withCertificate(
   return { ...result, url, certificate: { url, errorText } };
 }
 
-/** How long a navigation Chrome reported failed waits for the failed request's event (it names a redirect target) */
-const FAILURE_EVENT_GRACE_MS = 500;
-
 /** How long `--no-wait` waits for an action to be refused (no history entry, unreachable URL) */
 const NO_WAIT_GRACE_MS = 1_000;
 
@@ -195,17 +191,15 @@ interface StartedAction {
  * @param cdp - CDP connection
  * @param action - What to do
  * @param url - Normalized URL for navigate
- * @param failedOf - The failed request of a loader, once Chrome reports it
  * @returns Whether a document is loading, and its loader when known
  * @throws CommandError (80) when the URL cannot be reached, (81) without a history entry
  */
 async function startAction(
   cdp: CDPConnection,
   action: PageAction,
-  url: string | undefined,
-  failedOf?: (loaderId?: string) => Promise<FailedLoad | undefined>
+  url: string | undefined
 ): Promise<StartedAction> {
-  if (action === 'navigate') return navigateTo(cdp, url ?? '', failedOf);
+  if (action === 'navigate') return navigateTo(cdp, url ?? '');
   if (action === 'reload') await cdp.send('Page.reload', {});
   else await goThroughHistory(cdp, action === 'back' ? -1 : 1);
   return { notAPage: false };
@@ -338,30 +332,13 @@ export function documentResponse(
 ): {
   response: (loaderId?: string) => DocumentResponses | undefined;
   failure: (loaderId?: string) => FailedLoad | undefined;
-  failed: (loaderId?: string) => Promise<FailedLoad | undefined>;
   stop: () => void;
 } {
   const failures: Array<FailedLoad & { requestId: string }> = [];
   const responses: Array<DocumentResponse & { loaderId?: string }> = [];
-  const waiters = new Set<() => void>();
-  const documents = watchMainDocuments(cdp, mainFrameId, (requestId, failed) => {
-    failures.push({ requestId, ...failed });
-    waiters.forEach((wake) => wake());
-  });
-  /** The loader's failed request, else the first one since the watch began (a redirect may fail under another id) */
-  const failed = async (loaderId?: string): Promise<FailedLoad | undefined> => {
-    let wake = (): void => undefined;
-    const reported = new Promise<true>((resolve) => {
-      wake = () => resolve(true);
-      waiters.add(wake);
-    });
-    try {
-      if (failures.length === 0) await raceTimeout(reported, FAILURE_EVENT_GRACE_MS);
-      return failure(loaderId) ?? failure();
-    } finally {
-      waiters.delete(wake);
-    }
-  };
+  const documents = watchMainDocuments(cdp, mainFrameId, (requestId, failed) =>
+    failures.push({ requestId, ...failed })
+  );
   const failure = (loaderId?: string): FailedLoad | undefined => {
     const own = loaderId ? failures.find((f) => f.requestId === loaderId) : failures[0];
     return own && { url: own.url, errorText: own.errorText };
@@ -385,7 +362,6 @@ export function documentResponse(
   return {
     response,
     failure,
-    failed,
     stop: () => {
       documents.stop();
       stopResponses();
@@ -435,22 +411,14 @@ function nextNavigation(
  *
  * @param cdp - CDP connection
  * @param url - Normalized URL
- * @param failedOf - The failed request of a loader, once Chrome reports it (it
- *   names where a redirect led; Chrome may answer `Page.navigate` first)
  * @returns Whether a document is loading (not for a download), and its loader
  * @throws CommandError (80) when the load ends on Chrome's error page
  */
-async function navigateTo(
-  cdp: CDPConnection,
-  url: string,
-  failedOf?: (loaderId?: string) => Promise<FailedLoad | undefined>
-): Promise<StartedAction> {
+async function navigateTo(cdp: CDPConnection, url: string): Promise<StartedAction> {
   const navigation = await sendTyped(cdp, 'Page.navigate', { url });
-  const { errorText, loaderId } = navigation;
-  const failed = navigationOutcome(errorText, loaderId) === 'failed';
-  const redirectedTo = failed ? (await failedOf?.(loaderId))?.redirectedTo : undefined;
+  const { loaderId } = navigation;
   return {
-    notAPage: assertNavigated(navigation, url, false, redirectedTo) === 'not-a-page',
+    notAPage: assertNavigated(navigation, url) === 'not-a-page',
     ...(loaderId && { loaderId }),
   };
 }
