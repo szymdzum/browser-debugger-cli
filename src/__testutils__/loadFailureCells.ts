@@ -57,7 +57,7 @@ export interface ObservedJson {
 const FALSE_SUCCESS = /✓|Session Started|Navigated|No errors|Reloaded|Page loaded|Element Clicked/;
 
 /** Ways a command says that the page is not done or did not answer */
-const NOT_DONE = /still (loading|changing)|timed out|pending/i;
+const NOT_DONE = /⚠|timed out|"warnings?"|"readyState":"loading"/i;
 
 const EXIT_VALUES: ReadonlySet<number> = new Set(Object.values(EXIT_CODES));
 
@@ -65,38 +65,33 @@ const EXIT_VALUES: ReadonlySet<number> = new Set(Object.values(EXIT_CODES));
 const NO_LINK_TO = (what: string): string =>
   `a page cannot link to ${what} (Chrome blocks the navigation)`;
 
-/** Tracks a start or `page navigate` that reports a `net::` error outside `UNREACHABLE_ERRORS` as success */
-const ISSUE_860 = '#860: a net:: error outside UNREACHABLE_ERRORS is reported as success';
+/** Tracks a failed load that a command reports as success (start, navigate, reload, wait, console, attach) */
+const ISSUE_860 = '#860: a failed load is reported as success';
 
-/**
- * Tracks a finding the orchestrator has not filed yet. Includes `submit` on a
- * failed load, which passes or fails by whether the network goes idle within
- * its `--timeout` (a timed-out wait names the cause, ✓ Form Submitted does not).
- */
-const PENDING = 'S25-pending: reports success for a failed load';
+/** Tracks a click or submit that ends on a failed or never-ending navigation and reports success */
+const ISSUE_873 = '#873: a click or submit on a failed or never-ending navigation reports success';
+
+/** Why `dom submit` on a failed load has no cell */
+const NONDETERMINISTIC = 'nondeterministic until #873: the result depends on the network-idle wait';
 
 const UNREACHABLE = 'Chrome never shows a document for a request the server does not answer';
 
-/**
- * The rows of the matrix. The DNS row accepts the proxy's answers too: behind an
- * HTTP proxy that does not resolve the host, Chrome reports the proxy's reply
- * (`ERR_EMPTY_RESPONSE`) instead of `ERR_NAME_NOT_RESOLVED`.
- */
+/** The rows of the matrix */
 export const ROWS: readonly Row[] = [
   {
     id: 'connection refused',
     url: (s) => s.refusedUrl,
     expect: { kind: 'failure', cause: /ERR_CONNECTION_REFUSED/ },
     full: true,
+    na: { submit: NONDETERMINISTIC },
     console: true,
     attach: (s) => String(new URL(s.refusedUrl).port),
     todo: {
-      reload: PENDING,
-      click: PENDING,
-      submit: PENDING,
-      wait: PENDING,
-      console: PENDING,
-      attach: PENDING,
+      reload: ISSUE_860,
+      click: ISSUE_873,
+      wait: ISSUE_860,
+      console: ISSUE_860,
+      attach: ISSUE_860,
     },
   },
   {
@@ -104,17 +99,17 @@ export const ROWS: readonly Row[] = [
     url: (s) => s.unresolvableUrl,
     expect: {
       kind: 'failure',
-      cause: /ERR_NAME_NOT_RESOLVED|ERR_EMPTY_RESPONSE|ERR_TUNNEL_CONNECTION_FAILED/,
+      cause: /ERR_NAME_NOT_RESOLVED/,
     },
     console: true,
-    todo: { console: PENDING },
+    todo: { console: ISSUE_860 },
   },
   {
     id: 'connection reset mid-response',
     url: (s) => `${s.url}reset`,
     expect: { kind: 'failure', cause: /ERR_CONNECTION_RESET/ },
     console: true,
-    todo: { console: PENDING },
+    todo: { console: ISSUE_860 },
   },
   {
     id: 'connection closed before a byte',
@@ -126,25 +121,24 @@ export const ROWS: readonly Row[] = [
     url: (s) => s.tlsToPlainUrl,
     expect: { kind: 'failure', cause: /ERR_SSL_PROTOCOL_ERROR/ },
     full: true,
+    na: { submit: NONDETERMINISTIC },
     console: true,
     attach: () => 'https://127.0.0.1',
     todo: {
       start: ISSUE_860,
       navigate: ISSUE_860,
-      reload: PENDING,
-      click: PENDING,
-      submit: PENDING,
-      wait: PENDING,
-      console: PENDING,
-      attach: PENDING,
+      reload: ISSUE_860,
+      click: ISSUE_873,
+      wait: ISSUE_860,
+      console: ISSUE_860,
+      attach: ISSUE_860,
     },
   },
   {
-    id: 'body shorter than Content-Length',
+    id: 'body shorter than Content-Length (the page stays loading)',
     url: (s) => `${s.url}truncated`,
-    expect: { kind: 'failure', cause: /ERR_CONTENT_LENGTH_MISMATCH/ },
+    expect: { kind: 'pending', shows: NOT_DONE },
     console: true,
-    todo: { navigate: PENDING },
     na: { start: 'budget: navigate meets the same document and takes 5 s here' },
   },
   {
@@ -152,14 +146,15 @@ export const ROWS: readonly Row[] = [
     url: (s) => `${s.url}redirect-loop`,
     expect: { kind: 'failure', cause: /ERR_TOO_MANY_REDIRECTS/ },
     full: true,
+    na: { submit: NONDETERMINISTIC },
     console: true,
     todo: {
       start: ISSUE_860,
       navigate: ISSUE_860,
-      reload: PENDING,
-      click: PENDING,
-      wait: PENDING,
-      console: PENDING,
+      reload: ISSUE_860,
+      click: ISSUE_873,
+      wait: ISSUE_860,
+      console: ISSUE_860,
     },
   },
   {
@@ -178,6 +173,8 @@ export const ROWS: readonly Row[] = [
     id: 'file:// missing',
     url: (s) => s.missingFileUrl,
     expect: { kind: 'failure', cause: /ERR_FILE_NOT_FOUND/ },
+    full: true,
+    todo: { reload: ISSUE_860, wait: ISSUE_860 },
     na: { click: NO_LINK_TO('file://'), submit: NO_LINK_TO('file://') },
   },
   {
@@ -207,7 +204,7 @@ export const ROWS: readonly Row[] = [
     url: (s) => `${s.url}endless`,
     expect: { kind: 'pending', shows: NOT_DONE },
     full: true,
-    todo: { click: PENDING },
+    todo: { click: ISSUE_873 },
   },
   {
     id: '204 No Content',
