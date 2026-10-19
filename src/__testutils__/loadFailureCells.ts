@@ -135,11 +135,11 @@ export const ROWS: readonly Row[] = [
     },
   },
   {
-    id: 'body shorter than Content-Length (the page stays loading)',
+    id: 'body shorter than Content-Length',
     url: (s) => `${s.url}truncated`,
-    expect: { kind: 'pending', shows: NOT_DONE },
+    expect: { kind: 'failure', cause: /ERR_CONTENT_LENGTH_MISMATCH/ },
     console: true,
-    na: { start: 'budget: navigate meets the same document and takes 5 s here' },
+    todo: { start: ISSUE_860, navigate: ISSUE_860 },
   },
   {
     id: 'redirect loop',

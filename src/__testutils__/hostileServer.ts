@@ -122,15 +122,16 @@ function sendStatus(res: http.ServerResponse, status: number, withBody: boolean)
  * Send headers that promise 4096 and a few bytes of body.
  *
  * @param res - Response
+ * @param flushed - Called once the short body is written
  * @returns The socket, to end or reset it
  */
-function sendPartial(res: http.ServerResponse): net.Socket {
+function sendPartial(res: http.ServerResponse, flushed?: () => void): net.Socket {
   res.writeHead(200, {
     'Content-Type': 'text/html',
     'Content-Length': PROMISED_BYTES,
     'Cache-Control': 'no-store',
   });
-  res.write('<!doctype html><title>Partial</title><p>cut');
+  res.write('<!doctype html><title>Partial</title><p>cut', flushed);
   return res.socket as net.Socket;
 }
 
@@ -159,7 +160,7 @@ function handle(req: http.IncomingMessage, res: http.ServerResponse): void {
       res.write('<!doctype html><title>Endless</title><p>and on');
       return;
     case '/truncated':
-      sendPartial(res).end();
+      sendPartial(res, () => res.socket?.destroy());
       return;
     case '/redirect-loop':
       res.writeHead(302, { Location: '/redirect-loop' });
