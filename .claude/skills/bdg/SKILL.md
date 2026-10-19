@@ -123,6 +123,7 @@ bdg dom form --brief                           # Fields: index, type, label, req
 bdg dom fill "input[name='user']" "myuser"     # By selector (React-compatible)
 bdg dom fill 0 "value"                         # By index from the last query/form
 bdg dom fill "#password" "short"               # Typed like a user: minlength applies (warning, submitBlocked); secret fields echo ••••; exit 90 if the page moved the text to another field
+bdg dom fill "#hours" "8"                      # Read back: exit 90 when the page kept another value (8 -> 24.00; JSON error has valueMismatch {expected, actual}); $8.00 or 5.20% for a number is a match
 bdg dom click "button.submit" --index 1        # Second match
 bdg dom submit "form" --wait-navigation        # Traditional form post
 bdg dom press-key "input" Enter                # Also Tab, Escape, ArrowDown --times 3, Shift, NumpadEnter, characters (a, ., _, /); unknown names list the keys
@@ -291,6 +292,7 @@ If a command is interrupted, Ctrl-C (exit 130, once Node has started: tens of mi
 | 84 | Session already running | `bdg page navigate <url>` to reuse it, `bdg stop`, or `--session <name>` |
 | 85 | Session busy (starting/stopping) | Retry shortly |
 | 87 | Index out of range, or stale (page changed since the query) | Re-run the query |
+| 90 | The page's state blocks the request: a `dom fill` value the page did not keep (`valueMismatch` in the JSON error), text typed into another field, a `--strict` click the mouse cannot reach | Read the suggestion; for a fill, check the format the field accepts (`bdg dom get`) |
 | 91 | Page JavaScript threw: `eval` script, or bdg's action script failing on the page's own code (an element whose `dispatchEvent` throws, a replaced method) during `dom click`/`fill`/`press`. A handler that throws while the action works is not 91: the action exits 0 and lists it under `Errors:` | Fix the script; for an action, check the element's listeners (`bdg dom listeners`) and replaced methods (`bdg eval`) |
 | 100 | Chrome failed to launch | `bdg cleanup --force`, retry |
 | 101 | CDP connection failure | `bdg cleanup --force`, then restart |

@@ -26,7 +26,9 @@ export const FILL_RESULT_HELP = joinLines(
   'field had no focus) says so in a warning. If the page moves the focus and the text',
   'lands in another field, the fill fails (exit 90) naming that field. Secret fields',
   '(passwords, one-time codes, card data, names like api_key, token or pass: the',
-  'fields dom query masks) show Value: ••••.'
+  'fields dom query masks) show Value: ••••. The value is read back: when the page kept',
+  'another value (8 raised to 24.00, text emptied) the fill fails (exit 90); a number',
+  'shown formatted ($8.00, 5.20%) is the number filled.'
 );
 
 /** Examples in the help of `bdg dom wait` */

@@ -319,7 +319,8 @@ export function alsoChangingText(region: AlsoChanging): string {
 }
 
 /**
- * Warning shown when a filled field's value read back is not the one given:
+ * Read-back of a fill whose value the page did not keep, the message of
+ * the exit 90 error (`valueMismatchError`): the value read back is not the one given:
  * cut to its maxlength, a secret field (one `dom query` masks) whose value
  * has another length (values never shown), or another value (naming the
  * field the value went to, when one has it).

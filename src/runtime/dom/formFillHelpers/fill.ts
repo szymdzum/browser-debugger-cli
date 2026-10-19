@@ -283,7 +283,8 @@ const READ_BACK_TIMEOUT_MS = 1000;
 
 /**
  * Add the read-back of a successful fill ({@link FILL_READ_BACK_SCRIPT}):
- * `valueMismatch` when the field's value is not the one given. The fill
+ * `valueMismatch` when the field's value is not the one given (the CLI
+ * fails the fill with exit 90 for it). The fill
  * stands without it when the read-back fails, takes longer than
  * {@link READ_BACK_TIMEOUT_MS} or finds nothing (a change handler navigated
  * or replaced the page).
