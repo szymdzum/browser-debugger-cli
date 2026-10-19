@@ -129,10 +129,24 @@ async function runNavigation(
   if (failed) throw failedLoadError(failed);
   const result = withCertificate(
     withStatus({ action, ...(await currentLocation(cdp)) }, document.response(loaderId)),
-    action === 'navigate' || action === 'reload' ? await readFailedLoad(cdp) : undefined
+    action === 'navigate' || action === 'reload' ? await shownLoadProblem(cdp) : undefined
   );
   const loading = await readPageLoadingState(cdp, options.pendingRequests?.() ?? []);
   return loading ? { ...result, loading } : result;
+}
+
+/**
+ * What the main frame shows instead of a document; a frame that cannot be
+ * read (the page went away meanwhile) does not fail the navigation.
+ *
+ * @param cdp - CDP connection
+ * @returns The failed load or certificate warning, if any
+ */
+async function shownLoadProblem(cdp: CDPConnection): Promise<FailedLoad | undefined> {
+  return readFailedLoad(cdp).catch((error: unknown) => {
+    log.debug(`Main frame not read: ${getErrorMessage(error)}`);
+    return undefined;
+  });
 }
 
 /**
@@ -141,7 +155,7 @@ async function runNavigation(
  *
  * @param result - Navigation result
  * @param shown - What the main frame shows instead of a document, if anything
- * @returns The result, with `certificate` and the real URL for a certificate warning
+ * @returns The result, with `certificateWarning` and the real URL for a certificate warning
  */
 function withCertificate(
   result: PageNavigationResult,
@@ -149,7 +163,7 @@ function withCertificate(
 ): PageNavigationResult {
   if (!shown?.certificate) return result;
   const { url, errorText } = shown;
-  return { ...result, url, certificate: { url, errorText } };
+  return { ...result, url, certificateWarning: { url, errorText } };
 }
 
 /** How long `--no-wait` waits for an action to be refused (no history entry, unreachable URL) */
