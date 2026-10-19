@@ -40,10 +40,20 @@ const LIST_JS = `(list) => {
 }`;
 
 /**
- * Page-side number a text field shows, or null when it shows none (#867).
- * Skeleton: not implemented yet.
+ * Page-side number a formatted text field shows, or null when it shows none
+ * (#867): a decimal number (`8`, `-5.2`, `.5`, `8.00`), with thousands
+ * separators only in the unambiguous `1,234.5` form, a sign, and one
+ * currency symbol (any Unicode `Sc`, or `zł`) before or after it, or `%`
+ * after it; whitespace (NBSP included) around the number and between it and
+ * the symbol is ignored. Locale forms (`8,00`, `1.234,5`), two signs or two
+ * symbols are no number.
  */
-export const NUMERIC_TEXT_JS = `(text) => { throw new Error('not implemented'); }`;
+export const NUMERIC_TEXT_JS = `(text) => {
+  const match = /^([+-]?)\\s*(\\p{Sc}|zł)?\\s*([+-]?)\\s*(\\d{1,3}(?:,\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d*)?|\\.\\d+)\\s*(\\p{Sc}|zł|%)?$/u.exec(String(text).trim());
+  if (!match || (match[1] && match[3]) || (match[2] && match[5])) return null;
+  const number = Number(match[4].replace(/,/g, ''));
+  return (match[1] || match[3]) === '-' ? -number : number;
+}`;
 
 /**
  * Page-side read-back of a filled field: a mismatch when its value is not
@@ -51,7 +61,10 @@ export const NUMERIC_TEXT_JS = `(text) => { throw new Error('not implemented'); 
  * undefined when it is. Values are compared as the browser normalises them:
  * colors case-insensitively, numbers and ranges as numbers, email trimmed,
  * textarea line endings as `\n`, times and local date-times without zero
- * seconds and with `T` (`2024-01-05 10:00:00` is `2024-01-05T10:00`).
+ * seconds and with `T` (`2024-01-05 10:00:00` is `2024-01-05T10:00`). A
+ * plain number given to a text-like field (text, search, tel, url, password,
+ * textarea) also matches the number the field shows formatted
+ * ({@link NUMERIC_TEXT_JS}: `8` is `$8.00`, `5.2` is `5.20%`).
  * Checkboxes and radios compare as `checked`/`unchecked`, a multiple select
  * as its selected values joined by ", ", contenteditable text with
  * whitespace collapsed. A value cut to the field's maxlength sets
@@ -79,7 +92,11 @@ export const FILL_VALUE_MISMATCH_JS = `(field, expected, secret) => {
     return text;
   };
   const numeric = (type === 'number' || type === 'range') && actual.trim() !== '' && String(expected).trim() !== '';
-  const same = numeric ? Number(actual) === Number(expected) : normalize(actual) === normalize(expected);
+  const textLike = field.localName === 'textarea' ||
+    (field.localName === 'input' && /^(text|search|tel|url|password)$/.test(type));
+  const formattedNumber = !numeric && textLike && /^[+-]?(\\d+(\\.\\d*)?|\\.\\d+)$/.test(String(expected)) &&
+    (${NUMERIC_TEXT_JS})(actual) === Number(expected);
+  const same = numeric ? Number(actual) === Number(expected) : formattedNumber || normalize(actual) === normalize(expected);
   if (same) return undefined;
   if (secret || type === 'password') {
     const mask = (text) => (text === '' ? '' : '${MASKED_VALUE}');
