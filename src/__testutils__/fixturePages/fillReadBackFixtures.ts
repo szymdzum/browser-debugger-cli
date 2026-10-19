@@ -6,7 +6,8 @@
  * `$8.00` (`$1,234.50`; text it cannot read is emptied), `#pct` as `5.20%`,
  * `#clamp` raises a number below 24 to `24.00`, `#eu` writes a decimal
  * comma (`8,00`). `#plain` keeps what it gets, and the password `#pin`
- * empties itself on blur.
+ * empties itself on blur. `#long` becomes 100000 `x` on blur, the textarea
+ * `#quote` a line break and quotes (`line 1`, `said "hi"`).
  */
 
 import type { FixtureRoutes } from '@/__testutils__/fixtureRoutes.js';
@@ -22,6 +23,8 @@ const FILL_READ_BACK_HTML = `<!doctype html><title>fill read-back</title>
   <label>Betrag <input id="eu" type="text"></label>
   <label>Note <input id="plain" type="text"></label>
   <label>PIN <input id="pin" type="password"></label>
+  <label>Long <input id="long" type="text"></label>
+  <label>Quote <textarea id="quote"></textarea></label>
 </form>
 <script>
   const onBlur = (id, format) => {
@@ -38,6 +41,8 @@ const FILL_READ_BACK_HTML = `<!doctype html><title>fill read-back</title>
   onBlur('clamp', (text) => Math.max(24, parseFloat(text)).toFixed(2));
   onBlur('eu', (text) => parseFloat(text).toFixed(2).replace('.', ','));
   onBlur('pin', () => '');
+  onBlur('long', () => 'x'.repeat(100000));
+  onBlur('quote', () => 'line 1\\nsaid "hi"');
   const clamp = document.getElementById('num-clamp');
   clamp.addEventListener('input', () => { clamp.value = '24'; });
 </script>`;

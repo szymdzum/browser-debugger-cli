@@ -43,23 +43,23 @@ const LIST_JS = `(list) => {
  * Page-side number a formatted text field shows, or null when it shows none
  * (#867): a decimal number (`8`, `-5.2`, `.5`, `8.00`), with thousands
  * separators only in the unambiguous `1,234.5` and `1 234.5` forms (a space,
- * NBSP or narrow NBSP; dot decimal), a sign or accounting parentheses
- * (`($5.00)` is -5), and one currency (any Unicode `Sc` symbol, `zł`, or a
+ * NBSP or narrow NBSP; dot decimal), a sign (`-`, `+` or the Unicode minus
+ * `−`) or accounting parentheses (`($5.00)` and `$(5.00)` are -5), and one currency (any Unicode `Sc` symbol, `zł`, or a
  * three-letter ISO code such as `PLN`) before or after it, or `%` after it;
  * whitespace around the number and between it and the currency is ignored.
  * Locale forms (`8,00`, `1.234,5`, `1 234,50`), two signs or two currencies
- * are no number.
+ * are no number. Any three uppercase letters count as a code (`8 ABC`).
  */
 export const NUMERIC_TEXT_JS = `(text) => {
   let body = String(text).trim();
-  const paren = /^\\((.*)\\)$/.exec(body);
-  if (paren) body = paren[1].trim();
-  const match = /^([+-]?)\\s*(\\p{Sc}|zł|[A-Z]{3})?\\s*([+-]?)\\s*(\\d{1,3}(?:,\\d{3})+(?:\\.\\d+)?|\\d{1,3}(?:[ \\u00a0\\u202f]\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d*)?|\\.\\d+)\\s*(\\p{Sc}|zł|[A-Z]{3}|%)?$/u.exec(body);
+  const paren = /^(\\p{Sc}|zł|[A-Z]{3})?\\s*\\((.*)\\)$/u.exec(body);
+  if (paren) body = (paren[1] || '') + paren[2].trim();
+  const match = /^([+\\-\\u2212]?)\\s*(\\p{Sc}|zł|[A-Z]{3})?\\s*([+\\-\\u2212]?)\\s*(\\d{1,3}(?:,\\d{3})+(?:\\.\\d+)?|\\d{1,3}(?:[ \\u00a0\\u202f]\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d*)?|\\.\\d+)\\s*(\\p{Sc}|zł|[A-Z]{3}|%)?$/u.exec(body);
   if (!match || (match[1] && match[3]) || (match[2] && match[5])) return null;
   const sign = match[1] || match[3];
   if (paren && sign) return null;
   const number = Number(match[4].replace(/[, \\u00a0\\u202f]/g, ''));
-  return paren || sign === '-' ? -number : number;
+  return paren || (sign && sign !== '+') ? -number : number;
 }`;
 
 /**

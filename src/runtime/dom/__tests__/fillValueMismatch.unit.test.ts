@@ -197,4 +197,19 @@ void describe('valueMismatchError', () => {
     assert.doesNotMatch(`${err.message} ${err.suggestion}`, /\d/);
     assert.match(err.suggestion, /its value masked/);
   });
+
+  void it('escapes line breaks and quotes, and cuts a long value naming its length', () => {
+    const quoted = valueMismatchError(target, { expected: 'a', actual: 'line 1\nsaid "hi"' });
+    assert.ok(!quoted.message.includes('\n'), quoted.message);
+    assert.match(quoted.message, /value is "line 1\\nsaid \\"hi\\"" after/);
+    const long = valueMismatchError(target, {
+      expected: 'y'.repeat(300),
+      actual: 'x'.repeat(100000),
+    });
+    assert.match(
+      long.message,
+      /value is "x{200}…" \(100000 characters\) after filling \(expected "y{200}…" \(300 characters\)\)/
+    );
+    assert.ok(long.message.length < 600);
+  });
 });

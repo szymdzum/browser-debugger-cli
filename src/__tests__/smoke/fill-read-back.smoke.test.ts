@@ -168,4 +168,27 @@ void describe('dom fill read-back: numbers in formatted text fields, exit 90 on 
       );
     });
   }
+
+  void it('quotes a read-back with a line break and quotes on one line, escaped', async () => {
+    const result = await runCommand('dom', ['fill', '#quote', 'hello'], { timeout: 60000 });
+    assert.equal(result.exitCode, MISMATCH_EXIT, result.stderr);
+    assert.match(
+      result.stderr,
+      /^Error: Fill '#quote' \(textarea#quote "Quote"\): the field's value is "line 1\\nsaid \\"hi\\"" after filling \(expected "hello"\);/m
+    );
+  });
+
+  void it('cuts a long read-back in the message, naming its length', async () => {
+    const human = await runCommand('dom', ['fill', '#long', 'short'], { timeout: 60000 });
+    assert.equal(human.exitCode, MISMATCH_EXIT, human.stderr.slice(0, 500));
+    assert.match(
+      human.stderr,
+      /the field's value is "x{200}…" \(100000 characters\) after filling/
+    );
+    assert.ok(human.stderr.length < 1000, `stderr is ${human.stderr.length} characters`);
+    const json = await runCommand('dom', ['fill', '#long', 'short', '--json'], { timeout: 60000 });
+    const envelope = JSON.parse(json.stdout) as FillEnvelope;
+    assert.equal(envelope.exitCode, MISMATCH_EXIT);
+    assert.ok((envelope.error ?? '').length < 600, `error is ${envelope.error?.length} characters`);
+  });
 });
