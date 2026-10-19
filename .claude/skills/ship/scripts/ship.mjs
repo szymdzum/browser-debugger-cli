@@ -34,6 +34,7 @@ const SNAPSHOT = {
   bdg: '/tmp/ship-snapshot-bdg.txt',
   downloads: '/tmp/ship-snapshot-downloads.txt',
   main: '/tmp/ship-snapshot-main-checkout.txt',
+  time: '/tmp/ship-snapshot-time.txt',
 };
 
 /** Exit codes of this script, so the orchestrator can branch on them */
@@ -1671,6 +1672,7 @@ async function snapshot(argv = []) {
   checkDependencies();
   rmSync(LIVE_MARKER, { force: true });
   writeFileSync(SNAPSHOT.main, mainCheckoutStatus().join('\n'));
+  writeFileSync(SNAPSHOT.time, `${Date.now()}\n`);
   writeFileSync(SNAPSHOT.bdg, snapshotLines(listEntries(dirs.bdg)).join('\n'));
   writeFileSync(SNAPSHOT.downloads, snapshotLines(listEntries(dirs.downloads)).join('\n'));
   console.log(`snapshot of ~/.bdg and ~/Downloads in ${SNAPSHOT.bdg}, ${SNAPSHOT.downloads}`);
@@ -2119,7 +2121,7 @@ function strayTestChromes(scope) {
       .filter(Boolean)
   );
   const ps = spawnSync('ps', ['-axo', 'pid=,ppid=,lstart=,command='], { encoding: 'utf8' }).stdout ?? '';
-  const since = scope && existsSync(SNAPSHOT.bdg) ? lstatSync(SNAPSHOT.bdg).mtimeMs : 0;
+  const since = scope && existsSync(SNAPSHOT.time) ? Number(readFileSync(SNAPSHOT.time, 'utf8').trim()) || 0 : 0;
   return testChromeOrphans(ps, { home: homedir(), parent: dirname(mainCheckout()) }, pidFiles, since).map(
     (p) => `test Chrome ${p.pid} (profile ${p.profile}) has no PID file`
   );
@@ -2228,20 +2230,26 @@ function leftovers(argv) {
 }
 
 /**
- * After a merge, closes an issue the PR body closes (`Closes #N`) when
- * GitHub left it open, with a comment naming the PR (S25: #860 stayed open
- * after #875). "Part of" issues are left alone.
+ * After a merge into `main`, closes an issue the PR body closes (`Closes #N`)
+ * when GitHub left it open, with a comment naming the PR (S25: #860 stayed
+ * open after #875). "Part of" issues and stacked PRs (another base) are left
+ * alone; a failure here is reported, never turned into a failed merge.
  *
  * @param {object} pr
  */
 function closeIssuesLeftOpen(pr) {
+  if (pr.baseRefName !== 'main') return;
   for (const n of closedIssues(pr.body)) {
-    const issue = ghJson(['issue', 'view', n, '--json', 'state']);
-    if (issue?.state !== 'OPEN') continue;
-    run('gh', ['issue', 'close', n, '--repo', REPO, '--comment', `Closed by #${pr.number}, which says "Closes #${n}"; GitHub didn't close it on merge.`], {
-      timeoutMs: WRITE_TIMEOUT_MS,
-    });
-    console.log(`closed #${n}: the PR body closes it, GitHub left it open`);
+    try {
+      const issue = ghJson(['issue', 'view', n, '--json', 'state']);
+      if (issue?.state !== 'OPEN') continue;
+      run('gh', ['issue', 'close', n, '--repo', REPO, '--comment', `Closed by #${pr.number}, which says "Closes #${n}"; GitHub didn't close it on merge.`], {
+        timeoutMs: WRITE_TIMEOUT_MS,
+      });
+      console.log(`closed #${n}: the PR body closes it, GitHub left it open`);
+    } catch (error) {
+      console.log(`merged, but could not check or close #${n}: ${String(error.stderr || error.message).split('\n')[0]}`);
+    }
   }
 }
 
