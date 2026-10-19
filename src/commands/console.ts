@@ -519,50 +519,29 @@ export function registerConsoleCommand(program: Command): void {
           } = result.data;
           const filtered = applyFilters(messages, options, currentNavigationId);
           const hidden = hiddenByLevel(messages, options, currentNavigationId);
+          const page: PageNotes = { issues, issuesDropped, tabSwitch, hidden, failedLoad };
           if (options.json) {
             return {
               success: true,
               data: buildConsoleJsonOutput(
                 filtered,
-                buildFormatOptions(options, lastN, undefined, dropped, pageCrashedAt, {
-                  issues,
-                  issuesDropped,
-                  tabSwitch,
-                  hidden,
-                  failedLoad,
-                })
+                buildFormatOptions(options, lastN, undefined, dropped, pageCrashedAt, page)
               ),
             };
           }
           const droppedShown = droppedInView(messages, dropped, options, currentNavigationId);
-          return {
-            success: true,
-            data: {
-              messages,
-              filtered,
-              hidden,
-              dropped: droppedShown,
-              pageCrashedAt,
-              failedLoad,
-              tabSwitch,
-              issues,
-              issuesDropped,
-            },
+          const shown: ConsoleResult = {
+            messages,
+            filtered,
+            dropped: droppedShown,
+            pageCrashedAt,
+            ...page,
           };
+          return { success: true, data: shown };
         },
         options,
         (data) => {
-          const {
-            messages,
-            filtered,
-            hidden,
-            dropped,
-            pageCrashedAt,
-            failedLoad,
-            tabSwitch,
-            issues,
-            issuesDropped,
-          } = data as ConsoleResult;
+          const { messages, filtered, dropped, pageCrashedAt, ...page } = data as ConsoleResult;
           const skipped = skippedMessages(
             messages,
             lastMessages(filtered, lastN),
@@ -570,13 +549,7 @@ export function registerConsoleCommand(program: Command): void {
           );
           return formatConsole(
             filtered,
-            buildFormatOptions(options, lastN, skipped, dropped, pageCrashedAt, {
-              issues,
-              issuesDropped,
-              tabSwitch,
-              hidden,
-              failedLoad,
-            })
+            buildFormatOptions(options, lastN, skipped, dropped, pageCrashedAt, page)
           );
         }
       );

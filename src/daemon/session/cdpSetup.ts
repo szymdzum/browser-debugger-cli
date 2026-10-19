@@ -6,13 +6,12 @@
 
 import { CDPConnection } from '@/connection/cdp.js';
 import { CDPConnectionError } from '@/connection/errors.js';
-import { navigationOutcome } from '@/connection/navigationOutcome.js';
 import { waitForPageReady } from '@/connection/pageReadiness.js';
 import { sendTyped, type Protocol } from '@/connection/typed-cdp.js';
 import { DEFAULT_PAGE_READINESS_TIMEOUT_MS } from '@/constants.js';
 import type { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
 import type { SessionConfig } from '@/daemon/session/types.js';
-import { failedLoadError } from '@/runtime/page/failedLoad.js';
+import { assertNavigated, failedLoadError } from '@/runtime/page/failedLoad.js';
 import type { LaunchedChrome } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
 import { displayUrl } from '@/utils/displayUrl.js';
@@ -99,7 +98,7 @@ export async function connectPage(
  *   the readiness wait early
  * @returns Loader id of the navigation (the main document's request id)
  * @throws CommandError (80) when the load fails: Chrome's error page (any
- *   network error but those {@link navigationOutcome} keeps) or a main
+ *   network error but those `navigationOutcome` keeps) or a main
  *   document cut off after it committed
  */
 export async function navigateToTarget(
@@ -115,11 +114,8 @@ export async function navigateToTarget(
   log.info(`Navigating to ${displayUrl(normalizedUrl)}...`);
   const navigation = await sendNavigate(cdp, normalizedUrl, log, signal);
   const addedScheme = normalizedUrl === `http://${config.url}`;
-  const { errorText, loaderId } = navigation;
-  if (errorText && navigationOutcome(errorText, loaderId) === 'failed') {
-    throw failedLoadError({ url: normalizedUrl, errorText }, addedScheme);
-  }
-  if (errorText) log.info(`Navigation reported ${errorText}`);
+  assertNavigated(navigation, normalizedUrl, addedScheme);
+  if (navigation.errorText) log.info(`Navigation reported ${navigation.errorText}`);
 
   await waitForPageReady(cdp, {
     maxWaitMs: DEFAULT_PAGE_READINESS_TIMEOUT_MS,

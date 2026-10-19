@@ -241,8 +241,6 @@ export class Session {
   private loading: PageLoadingState | undefined;
   /** Dialogs answered while the session started */
   private startDialogs: DialogInfo[] = [];
-  /** The attached tab showed a failed load (`bdg attach`, #860) */
-  private startFailedLoad: FailedLoad | undefined;
   /** What `--state` restored before the first navigation */
   private stateRestored: StateSummary | undefined;
 
@@ -395,7 +393,7 @@ export class Session {
       ...(this.startDialogs.length > 0 && { dialogs: this.startDialogs }),
       ...(this.stateRestored && { state: this.stateRestored }),
       ...(this.attachedTab && { attached: true }),
-      ...(this.startFailedLoad && { failedLoad: this.startFailedLoad }),
+      ...(this.attachedTab && this.store.failedLoad && { failedLoad: this.store.failedLoad }),
     };
   }
 
@@ -568,7 +566,6 @@ export class Session {
       readReadiness: async (cdp) => {
         this.loading = await readPageLoadingState(cdp, this.store.pendingNetworkRequests.values());
         this.startDialogs = [...this.store.dialogs];
-        this.startFailedLoad = this.attachedTab ? this.store.failedLoad : undefined;
       },
       ...this.startReleases(external),
     };

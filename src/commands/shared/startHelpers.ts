@@ -610,17 +610,20 @@ function reportStartOutcome(outcome: StartOutcome, options: SessionStartOptions)
   const autoStopAt =
     options.timeout !== undefined ? new Date(Date.now() + options.timeout * 1000) : undefined;
   const session = getSessionName() ?? undefined;
+  const notices = {
+    ...(data.documentStatus !== undefined && { documentStatus: data.documentStatus }),
+    ...(data.loading && { loading: data.loading }),
+    ...(data.dialogs && { dialogs: data.dialogs }),
+    ...(data.state && { state: data.state }),
+    ...(data.attached && { attached: true }),
+    ...(data.failedLoad && { failedLoad: data.failedLoad }),
+  };
   if (options.json) {
     const result = {
       ...(session && { session }),
       targetUrl: data.targetUrl,
       ...(data.targetTitle !== undefined && { targetTitle: data.targetTitle }),
-      ...(data.documentStatus !== undefined && { documentStatus: data.documentStatus }),
-      ...(data.loading && { loading: data.loading }),
-      ...(data.dialogs && { dialogs: data.dialogs }),
-      ...(data.state && { state: data.state }),
-      ...(data.attached && { attached: true }),
-      ...(data.failedLoad && { failedLoad: data.failedLoad }),
+      ...notices,
       port: data.port,
       ...(data.chromePid > 0 ? { chromePid: data.chromePid } : { externalChrome: true }),
       daemonPid: data.daemonPid,
@@ -631,12 +634,7 @@ function reportStartOutcome(outcome: StartOutcome, options: SessionStartOptions)
   } else {
     const page = {
       url: data.targetUrl,
-      ...(data.documentStatus !== undefined && { documentStatus: data.documentStatus }),
-      ...(data.loading && { loading: data.loading }),
-      ...(data.dialogs && { dialogs: data.dialogs }),
-      ...(data.state && { state: data.state }),
-      ...(data.attached && { attached: true }),
-      ...(data.failedLoad && { failedLoad: data.failedLoad }),
+      ...notices,
       ...(autoStopAt && { autoStopAt }),
       ...(session && { session }),
     };

@@ -4,7 +4,7 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import { navigationOutcome } from '@/connection/navigationOutcome.js';
+import { navigationOutcome, type NavigationOutcome } from '@/connection/navigationOutcome.js';
 import { sendTyped, type Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import { navigationFailedError } from '@/errors/messages.js';
@@ -23,6 +23,16 @@ const ERROR_NAME = /^ERR_[A-Z0-9_]+$/;
 const UNNAMED_ERROR = 'net::ERR_FAILED';
 
 /**
+ * The network error an error page names.
+ *
+ * @param value - What the page shows as its error code
+ * @returns e.g. `net::ERR_CONNECTION_REFUSED`, or {@link UNNAMED_ERROR}
+ */
+function parseErrorCode(value: unknown): string {
+  return typeof value === 'string' && ERROR_NAME.test(value) ? `net::${value}` : UNNAMED_ERROR;
+}
+
+/**
  * The command error of a load that failed: exit 80, as for an unreachable URL.
  *
  * @param failed - The URL and Chrome's network error
@@ -35,44 +45,107 @@ export function failedLoadError(failed: FailedLoad, addedScheme = false): Comman
 }
 
 /**
+ * Classify Chrome's answer to `Page.navigate` and throw when the load failed.
+ *
+ * @param navigation - Chrome's answer
+ * @param url - URL navigated to
+ * @param addedScheme - Whether bdg prepended `http://` to the URL as typed
+ * @returns How the navigation ended (`loaded` or `not-a-page`)
+ * @throws CommandError (80) when the load ends on Chrome's error page
+ */
+export function assertNavigated(
+  navigation: { errorText?: string; loaderId?: string },
+  url: string,
+  addedScheme = false
+): NavigationOutcome {
+  const { errorText, loaderId } = navigation;
+  const outcome = navigationOutcome(errorText, loaderId);
+  if (outcome === 'failed' && errorText) throw failedLoadError({ url, errorText }, addedScheme);
+  return outcome;
+}
+
+/**
+ * The main frame and the failed load it shows, if it shows Chrome's error
+ * page (its `unreachableUrl`, named by the error page). URLs are as
+ * {@link displayUrl} shows them (no user info, tokens masked).
+ *
+ * @param cdp - CDP connection
+ * @returns The main frame's id, and the URL that could not be loaded with its network error
+ */
+async function readMainFrame(cdp: CDPSender): Promise<{ id: string; failed?: FailedLoad }> {
+  const { frame } = (await sendTyped(cdp, 'Page.getFrameTree', {})).frameTree;
+  if (!frame.unreachableUrl) return { id: frame.id };
+  const shown = await sendTyped(cdp, 'Runtime.evaluate', {
+    expression: ERROR_CODE_EXPRESSION,
+    returnByValue: true,
+  });
+  const errorText = parseErrorCode(shown.result?.value);
+  return { id: frame.id, failed: { url: displayUrl(frame.unreachableUrl), errorText } };
+}
+
+/**
  * The failed load the main frame shows, if it shows Chrome's error page.
- * URLs are as {@link displayUrl} shows them (no user info, tokens masked).
  *
  * @param cdp - CDP connection
  * @returns The URL that could not be loaded and its network error, or undefined
  */
 export async function readFailedLoad(cdp: CDPSender): Promise<FailedLoad | undefined> {
-  const { frameTree } = await sendTyped(cdp, 'Page.getFrameTree', {});
-  return failedLoadOf(cdp, frameTree.frame);
+  return (await readMainFrame(cdp)).failed;
+}
+
+/** The fields of `Network.requestWillBeSent` a document watch reads */
+interface DocumentRequest {
+  requestId: string;
+  type?: string;
+  frameId?: string;
+  request?: { url: string };
 }
 
 /**
- * The failed load a frame shows: its `unreachableUrl`, named by its error page.
+ * Follow the main frame's document requests and report those that fail
+ * (a document's request id is its loader id, so `ERR_ABORTED` of a 204 or a
+ * download is no failure).
  *
  * @param cdp - CDP connection
- * @param frame - The main frame
- * @returns The failed load, or undefined when the frame shows a document
+ * @param mainFrameId - Main frame id
+ * @param onFailed - Called with a failed document's request id and the failed load (its URL as requested)
+ * @returns Whether a request is a followed document, a function to forget one, and one to stop
  */
-async function failedLoadOf(
-  cdp: CDPSender,
-  frame: Protocol.Page.Frame
-): Promise<FailedLoad | undefined> {
-  if (!frame.unreachableUrl) return undefined;
-  const shown = await sendTyped(cdp, 'Runtime.evaluate', {
-    expression: ERROR_CODE_EXPRESSION,
-    returnByValue: true,
-  });
-  const name: unknown = shown.result?.value;
-  const errorText =
-    typeof name === 'string' && ERROR_NAME.test(name) ? `net::${name}` : UNNAMED_ERROR;
-  return { url: displayUrl(frame.unreachableUrl), errorText };
+export function watchMainDocuments(
+  cdp: Pick<CDPConnection, 'on'>,
+  mainFrameId: string,
+  onFailed: (requestId: string, failed: FailedLoad) => void
+): {
+  isDocument: (requestId: string) => boolean;
+  forget: (requestId: string) => void;
+  stop: () => void;
+} {
+  const documents = new Map<string, string>();
+  const stops = [
+    cdp.on<DocumentRequest>('Network.requestWillBeSent', (params) => {
+      if (params.type !== 'Document' || params.frameId !== mainFrameId) return;
+      documents.set(params.requestId, params.request?.url ?? '');
+    }),
+    cdp.on<Protocol.Network.LoadingFailedEvent>('Network.loadingFailed', (params) => {
+      const url = documents.get(params.requestId);
+      if (url === undefined) return;
+      documents.delete(params.requestId);
+      if (navigationOutcome(params.errorText, params.requestId) === 'failed') {
+        onFailed(params.requestId, { url, errorText: params.errorText });
+      }
+    }),
+  ];
+  return {
+    isDocument: (requestId) => documents.has(requestId),
+    forget: (requestId) => void documents.delete(requestId),
+    stop: () => stops.forEach((stop) => stop()),
+  };
 }
 
 /**
  * Follow the main frame's loads: the failed load it shows now, then each main
  * document request that fails (a document that answers clears it; Chrome's
- * error page retries the request on its own, so a request alone does not). A document's request id
- * is its loader id, so `ERR_ABORTED` of a 204 or a download counts as no failure.
+ * error page retries the request on its own, so a request alone does not).
  *
  * @param cdp - CDP connection
  * @param onChange - Called with the failed load, or undefined when a new document answers
@@ -82,29 +155,21 @@ export async function trackFailedLoad(
   cdp: CDPConnection,
   onChange: (failed: FailedLoad | undefined) => void
 ): Promise<() => void> {
-  const { frameTree } = await sendTyped(cdp, 'Page.getFrameTree', {});
-  const mainFrameId = frameTree.frame.id;
-  onChange(await failedLoadOf(cdp, frameTree.frame));
-  const documents = new Map<string, string>();
+  const mainFrame = await readMainFrame(cdp);
+  onChange(mainFrame.failed);
+  const documents = watchMainDocuments(cdp, mainFrame.id, (_requestId, failed) =>
+    onChange({ ...failed, url: displayUrl(failed.url) })
+  );
   const stops = [
-    cdp.on<Protocol.Network.RequestWillBeSentEvent>('Network.requestWillBeSent', (params) => {
-      if (params.type !== 'Document' || params.frameId !== mainFrameId) return;
-      documents.set(params.requestId, params.request.url);
-    }),
     cdp.on<Protocol.Network.ResponseReceivedEvent>('Network.responseReceived', (params) => {
-      if (documents.has(params.requestId)) onChange(undefined);
+      if (documents.isDocument(params.requestId)) onChange(undefined);
     }),
     cdp.on<Protocol.Network.LoadingFinishedEvent>('Network.loadingFinished', (params) => {
-      documents.delete(params.requestId);
-    }),
-    cdp.on<Protocol.Network.LoadingFailedEvent>('Network.loadingFailed', (params) => {
-      const url = documents.get(params.requestId);
-      if (url === undefined) return;
-      documents.delete(params.requestId);
-      if (navigationOutcome(params.errorText, params.requestId) === 'failed') {
-        onChange({ url: displayUrl(url), errorText: params.errorText });
-      }
+      documents.forget(params.requestId);
     }),
   ];
-  return () => stops.forEach((stop) => stop());
+  return () => {
+    documents.stop();
+    stops.forEach((stop) => stop());
+  };
 }

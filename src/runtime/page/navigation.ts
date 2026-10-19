@@ -3,13 +3,12 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import { navigationOutcome } from '@/connection/navigationOutcome.js';
 import { waitForPageReady } from '@/connection/pageReadiness.js';
 import { sendTyped } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import { noHistoryEntryError } from '@/errors/messages.js';
 import type { PageAction, PageNavigationResult } from '@/ipc/protocol/commands.js';
-import { failedLoadError } from '@/runtime/page/failedLoad.js';
+import { assertNavigated, failedLoadError, watchMainDocuments } from '@/runtime/page/failedLoad.js';
 import { readPageLoadingState } from '@/runtime/page/loadingState.js';
 import type { PendingRequest } from '@/telemetry/network.js';
 import type { CDPSender } from '@/telemetry/objectExpander.js';
@@ -287,7 +286,6 @@ export function withStatus(
 /** A main-frame document event: request start or response */
 interface DocumentEvent {
   requestId: string;
-  request?: { url: string };
   loaderId?: string;
   type?: string;
   frameId?: string;
@@ -314,22 +312,10 @@ export function documentResponse(
   failure: (loaderId?: string) => FailedLoad | undefined;
   stop: () => void;
 } {
-  const requested = new Map<string, string>();
   const failures: Array<FailedLoad & { requestId: string }> = [];
   const responses: Array<DocumentResponse & { loaderId?: string }> = [];
-  const isMainDocument = (params: DocumentEvent): boolean =>
-    params.type === 'Document' && params.frameId === mainFrameId;
-  const stopRequests = cdp.on<DocumentEvent>('Network.requestWillBeSent', (params) => {
-    if (isMainDocument(params)) requested.set(params.requestId, params.request?.url ?? '');
-  });
-  const stopFailures = cdp.on<{ requestId: string; errorText: string }>(
-    'Network.loadingFailed',
-    ({ requestId, errorText }) => {
-      const url = requested.get(requestId);
-      if (url !== undefined && navigationOutcome(errorText, requestId) === 'failed') {
-        failures.push({ requestId, url, errorText });
-      }
-    }
+  const documents = watchMainDocuments(cdp, mainFrameId, (requestId, failed) =>
+    failures.push({ requestId, ...failed })
   );
   const failure = (loaderId?: string): FailedLoad | undefined => {
     const own = loaderId ? failures.find((f) => f.requestId === loaderId) : failures[0];
@@ -338,7 +324,7 @@ export function documentResponse(
   const stopResponses = cdp.on<DocumentEvent & { response: DocumentResponse }>(
     'Network.responseReceived',
     (params) => {
-      if (!isMainDocument(params) || !requested.has(params.requestId)) return;
+      if (params.type !== 'Document' || !documents.isDocument(params.requestId)) return;
       const { status, url } = params.response;
       responses.push({ status, url, ...(params.loaderId && { loaderId: params.loaderId }) });
     }
@@ -355,9 +341,8 @@ export function documentResponse(
     response,
     failure,
     stop: () => {
-      stopRequests();
+      documents.stop();
       stopResponses();
-      stopFailures();
     },
   };
 }
@@ -408,10 +393,12 @@ function nextNavigation(
  * @throws CommandError (80) when the load ends on Chrome's error page
  */
 async function navigateTo(cdp: CDPConnection, url: string): Promise<StartedAction> {
-  const { errorText, loaderId } = await sendTyped(cdp, 'Page.navigate', { url });
-  const outcome = navigationOutcome(errorText, loaderId);
-  if (outcome === 'failed' && errorText) throw failedLoadError({ url, errorText });
-  return { notAPage: outcome === 'not-a-page', ...(loaderId && { loaderId }) };
+  const navigation = await sendTyped(cdp, 'Page.navigate', { url });
+  const { loaderId } = navigation;
+  return {
+    notAPage: assertNavigated(navigation, url) === 'not-a-page',
+    ...(loaderId && { loaderId }),
+  };
 }
 
 /**
