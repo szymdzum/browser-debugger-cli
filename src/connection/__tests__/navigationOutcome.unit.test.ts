@@ -42,8 +42,10 @@ const FAILURES = [
 ];
 
 /** Errors that still leave a page worth inspecting: an HTTP error page, a certificate interstitial */
-const PAGES = [
-  'ERR_HTTP_RESPONSE_CODE_FAILURE',
+const PAGES = ['ERR_HTTP_RESPONSE_CODE_FAILURE'];
+
+/** Certificate errors: a success with a warning (owner decision on #860) */
+const CERTIFICATES = [
   'ERR_CERT_AUTHORITY_INVALID',
   'ERR_CERT_DATE_INVALID',
   'ERR_CERT_COMMON_NAME_INVALID',
@@ -60,6 +62,12 @@ void describe('navigationOutcome', () => {
   for (const name of PAGES) {
     void it(`net::${name} loads a page`, () => {
       assert.equal(navigationOutcome(`net::${name}`, 'loader'), 'loaded');
+    });
+  }
+
+  for (const name of CERTIFICATES) {
+    void it(`net::${name} is the certificate warning: a success with a warning`, () => {
+      assert.equal(navigationOutcome(`net::${name}`, 'loader'), 'certificate');
     });
   }
 

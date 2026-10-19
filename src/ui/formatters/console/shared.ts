@@ -149,6 +149,8 @@ export interface ConsoleJsonOutput {
   pageCrashedAt?: number;
   /** The page's latest load failed (#860): Chrome's error page or a document cut off */
   failedLoad?: FailedLoad;
+  /** The page is Chrome's certificate warning (#860; the load counts as a success) */
+  certificateWarning?: FailedLoad;
   /** The session's latest move to another tab (`consoleReplayed` false: what that tab logged while the session was away is not recorded) */
   tabSwitch?: TabSwitchInfo;
   /** Chrome Issues of the page currently loaded (quirks mode, form errors, ...), in the order they arrived */

@@ -25,6 +25,7 @@ export {
   maskedText,
   pageCrashedNote,
   failedLoadNote,
+  loadProblemFields,
   pendingRequestsText,
   pageLoadingWarning,
   frameUrlLabel,

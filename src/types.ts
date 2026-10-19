@@ -10,6 +10,10 @@ export interface FailedLoad {
   url: string;
   /** Chrome network error, e.g. `net::ERR_CONNECTION_REFUSED` */
   errorText: string;
+  /** Where a redirect led when that request failed (as `displayUrl` shows it) */
+  redirectedTo?: string;
+  /** Chrome's certificate warning (`ERR_CERT_*`): the load counts as a success, with a warning */
+  certificate?: true;
 }
 
 /**

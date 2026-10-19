@@ -12,6 +12,7 @@ import type { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
 import { navigateToTarget } from '@/daemon/session/cdpSetup.js';
 import { CommandError } from '@/errors/index.js';
 import {
+  failedLoadError,
   parseErrorCode,
   readFailedLoad,
   trackFailedLoad,
@@ -103,10 +104,14 @@ void describe('readFailedLoad', () => {
     });
   });
 
-  void it('the certificate interstitial is no failure', async () => {
+  void it('the certificate interstitial is a certificate warning, not a failure', async () => {
     const frame = { url: 'chrome-error://chromewebdata/', unreachableUrl: 'https://self.test/' };
     const { cdp } = fakePage(frameAnswers(frame, 'NET::ERR_CERT_AUTHORITY_INVALID'));
-    assert.equal(await readFailedLoad(cdp), undefined);
+    assert.deepEqual(await readFailedLoad(cdp), {
+      url: 'https://self.test/',
+      errorText: 'net::ERR_CERT_AUTHORITY_INVALID',
+      certificate: true,
+    });
   });
 
   void it('an error page that names no code is a failure (net::ERR_FAILED)', async () => {
@@ -140,6 +145,36 @@ void describe('watchMainDocuments', () => {
     emit('Network.loadingFailed', { requestId: 'download', errorText: 'net::ERR_ABORTED' });
     watch.stop();
     assert.deepEqual(failed, ['doc net::ERR_CONNECTION_REFUSED']);
+  });
+});
+
+void describe('a failure after a redirect', () => {
+  void it('names where the redirect led', () => {
+    const { cdp, emit } = fakePage({});
+    const failed: FailedLoad[] = [];
+    const watch = watchMainDocuments(cdp, 'main', (_id, load) => failed.push(load));
+    const hop = (url: string): void =>
+      emit('Network.requestWillBeSent', {
+        requestId: 'r',
+        frameId: 'main',
+        type: 'Document',
+        request: { url },
+      });
+    hop('http://a.test/');
+    hop('http://127.0.0.1:1/');
+    emit('Network.loadingFailed', { requestId: 'r', errorText: 'net::ERR_UNSAFE_PORT' });
+    watch.stop();
+    assert.deepEqual(failed, [
+      {
+        url: 'http://a.test/',
+        errorText: 'net::ERR_UNSAFE_PORT',
+        redirectedTo: 'http://127.0.0.1:1/',
+      },
+    ]);
+    assert.equal(
+      failedLoadError(failed[0] as FailedLoad).message,
+      'Could not load http://a.test/ (redirected to http://127.0.0.1:1/): net::ERR_UNSAFE_PORT'
+    );
   });
 });
 
@@ -182,6 +217,17 @@ void describe('navigateToTarget after the navigation', () => {
       await navigateToTarget(cdp, config, store as unknown as TelemetryStore, null, log),
       'L1'
     );
+  });
+
+  void it('the certificate warning is a success, recorded for the start output', async () => {
+    const store: { failedLoad?: FailedLoad } = {};
+    const frame = { url: 'chrome-error://chromewebdata/', unreachableUrl: 'https://self.test/' };
+    const { cdp } = fakePage({
+      ...frameAnswers(frame, 'NET::ERR_CERT_DATE_INVALID'),
+      'Page.navigate': { frameId: 'main', loaderId: 'L1', errorText: 'net::ERR_CERT_DATE_INVALID' },
+    });
+    await navigateToTarget(cdp, config, store as unknown as TelemetryStore, null, log);
+    assert.equal(store.failedLoad?.certificate, true);
   });
 
   void it('a document of the navigation that fails after it committed exits 80', async () => {

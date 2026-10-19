@@ -42,7 +42,7 @@ import type { TelemetryType } from '@/types.js';
 import { OutputBuilder, buildSuccessResponse, stringifyEnvelope } from '@/ui/OutputBuilder.js';
 import { escapeControlChars, joinLines } from '@/ui/formatting.js';
 import { createLogger } from '@/ui/logging/index.js';
-import { failedLoadNote } from '@/ui/messages/commands.js';
+import { failedLoadNote, loadProblemFields } from '@/ui/messages/commands.js';
 import {
   daemonStillExitingHint,
   daemonStillExitingSuggestion,
@@ -616,7 +616,6 @@ function reportStartOutcome(outcome: StartOutcome, options: SessionStartOptions)
     ...(data.dialogs && { dialogs: data.dialogs }),
     ...(data.state && { state: data.state }),
     ...(data.attached && { attached: true }),
-    ...(data.failedLoad && { failedLoad: data.failedLoad }),
   };
   if (options.json) {
     const result = {
@@ -624,6 +623,7 @@ function reportStartOutcome(outcome: StartOutcome, options: SessionStartOptions)
       targetUrl: data.targetUrl,
       ...(data.targetTitle !== undefined && { targetTitle: data.targetTitle }),
       ...notices,
+      ...loadProblemFields(data.failedLoad),
       port: data.port,
       ...(data.chromePid > 0 ? { chromePid: data.chromePid } : { externalChrome: true }),
       daemonPid: data.daemonPid,
@@ -635,6 +635,7 @@ function reportStartOutcome(outcome: StartOutcome, options: SessionStartOptions)
     const page = {
       url: data.targetUrl,
       ...notices,
+      ...(data.failedLoad && { failedLoad: data.failedLoad }),
       ...(autoStopAt && { autoStopAt }),
       ...(session && { session }),
     };

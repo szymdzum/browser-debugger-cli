@@ -106,13 +106,34 @@ export function frameUrlLabel(url: string): string {
 }
 
 /**
- * A main-frame load that failed (#860), for `bdg console` and `bdg attach`.
+ * A main-frame load that failed, or Chrome's certificate warning (#860), for
+ * `bdg console`, the start, `attach`, `page navigate`/`reload` and `dom wait --load`.
  *
  * @param failed - The URL (as `displayUrl` shows it) and Chrome's network error
  * @returns e.g. "Page failed to load: http://localhost:3000/: net::ERR_CONNECTION_REFUSED"
  */
 export function failedLoadNote(failed: FailedLoad): string {
-  return `Page failed to load: ${failed.url}: ${failed.errorText}`;
+  if (failed.certificate) {
+    return `Chrome shows a certificate warning for ${failed.url}: ${failed.errorText}`;
+  }
+  const redirect = failed.redirectedTo ? ` (redirected to ${failed.redirectedTo})` : '';
+  return `Page failed to load: ${failed.url}${redirect}: ${failed.errorText}`;
+}
+
+/**
+ * The `--json` field of a page's load problem: `certificateWarning` for
+ * Chrome's certificate warning (a success), else `failedLoad`.
+ *
+ * @param problem - The failed load or certificate warning, if any
+ * @returns The field, or an empty object
+ */
+export function loadProblemFields(problem: FailedLoad | undefined): {
+  failedLoad?: FailedLoad;
+  certificateWarning?: FailedLoad;
+} {
+  if (!problem) return {};
+  const { certificate, ...fields } = problem;
+  return certificate ? { certificateWarning: fields } : { failedLoad: fields };
 }
 
 /**

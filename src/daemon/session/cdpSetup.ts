@@ -11,8 +11,8 @@ import { sendTyped, type Protocol } from '@/connection/typed-cdp.js';
 import { DEFAULT_PAGE_READINESS_TIMEOUT_MS } from '@/constants.js';
 import type { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
 import type { SessionConfig } from '@/daemon/session/types.js';
-import { assertNavigated, failedLoadError } from '@/runtime/page/failedLoad.js';
-import type { LaunchedChrome } from '@/types.js';
+import { assertNavigated, failedLoadError, readFailedLoad } from '@/runtime/page/failedLoad.js';
+import type { FailedLoad, LaunchedChrome } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
 import { displayUrl } from '@/utils/displayUrl.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -114,7 +114,9 @@ export async function navigateToTarget(
   log.info(`Navigating to ${displayUrl(normalizedUrl)}...`);
   const navigation = await sendNavigate(cdp, normalizedUrl, log, signal);
   const addedScheme = normalizedUrl === `http://${config.url}`;
-  assertNavigated(navigation, normalizedUrl, addedScheme);
+  const ownFailure = (): FailedLoad | undefined =>
+    telemetryStore.failedLoad !== failedBefore ? telemetryStore.failedLoad : undefined;
+  assertNavigated(navigation, normalizedUrl, addedScheme, ownFailure()?.redirectedTo);
   if (navigation.errorText) log.info(`Navigation reported ${navigation.errorText}`);
 
   await waitForPageReady(cdp, {
@@ -122,9 +124,14 @@ export async function navigateToTarget(
     ...(signal && { signal }),
   });
   log.info(`Page ready`);
-  const failedNow = telemetryStore.failedLoad;
-  if (failedNow && failedNow !== failedBefore && !signal?.aborted) {
-    throw failedLoadError(failedNow, addedScheme);
+  const failedNow = ownFailure();
+  if (failedNow && !signal?.aborted) throw failedLoadError(failedNow, addedScheme);
+  if (!signal?.aborted) {
+    const shown = await readFailedLoad(cdp).catch((error: unknown) => {
+      log.debug(`Main frame not read: ${getErrorMessage(error)}`);
+      return undefined;
+    });
+    if (shown?.certificate) telemetryStore.failedLoad = shown;
   }
 
   if (chrome && telemetryStore.targetInfo && !signal?.aborted) {

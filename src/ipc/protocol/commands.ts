@@ -14,6 +14,16 @@ import type {
   CdpEventsData,
 } from '@/ipc/protocol/cdpEventTypes.js';
 import type {
+  DebugClearCommand,
+  DebugClearData,
+  DebugHitsCommand,
+  DebugHitsData,
+  DebugListCommand,
+  DebugListData,
+  DebugLogCommand,
+  DebugLogData,
+} from '@/ipc/protocol/debugTypes.js';
+import type {
   ClickResult,
   DialogChoice,
   DialogInfo,
@@ -33,16 +43,6 @@ import type {
   StateSaveCommand,
   StateSaveData,
 } from '@/ipc/protocol/stateTypes.js';
-import type {
-  DebugClearCommand,
-  DebugClearData,
-  DebugHitsCommand,
-  DebugHitsData,
-  DebugListCommand,
-  DebugListData,
-  DebugLogCommand,
-  DebugLogData,
-} from '@/ipc/protocol/debugTypes.js';
 import type {
   PageCloseCommand,
   PageCloseData,
@@ -594,6 +594,8 @@ export type PageAction = 'navigate' | 'reload' | 'back' | 'forward';
 
 /** Result of a page navigation */
 export interface PageNavigationResult {
+  /** The page is Chrome's certificate warning (a success with a warning; `url` is the URL it is shown for) */
+  certificate?: FailedLoad;
   /** What was done */
   action: PageAction;
   /** URL of the page afterwards (the requested URL with --no-wait) */
@@ -651,6 +653,8 @@ export interface DomWaitCommand {
 
 /** What the page showed when a `dom wait` condition was met */
 export interface DomWaitData {
+  /** The page loaded is Chrome's certificate warning (`--load`; a success with a warning) */
+  certificate?: FailedLoad;
   selector?: string;
   text?: string;
   gone?: boolean;

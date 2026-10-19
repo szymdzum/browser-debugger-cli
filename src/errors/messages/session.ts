@@ -508,16 +508,19 @@ const SCHEME_MISMATCH_ERRORS =
  * @param errorText - Chrome network error (e.g. net::ERR_NAME_NOT_RESOLVED)
  * @param addedScheme - Whether bdg prepended `http://` to the URL as typed
  *   (the hint is shown for errors a wrong scheme can cause)
+ * @param redirectedTo - Where a redirect led, when that request failed
  */
 export function navigationFailedError(
   url: string,
   errorText: string,
-  addedScheme = false
+  addedScheme = false,
+  redirectedTo?: string
 ): ErrorWithSuggestion {
   const check = 'Check the URL and that the server is running and reachable from this machine';
   const shown = displayUrl(url);
+  const redirect = redirectedTo ? ` (redirected to ${displayUrl(redirectedTo)})` : '';
   return {
-    message: `Could not load ${shown}: ${errorText}`,
+    message: `Could not load ${shown}${redirect}: ${errorText}`,
     suggestion:
       addedScheme && SCHEME_MISMATCH_ERRORS.test(errorText)
         ? `bdg added http:// to what you typed. ${check}; for an HTTPS server use: bdg ${shown.replace(/^http:/, 'https:')}`

@@ -183,7 +183,7 @@ export interface SessionInfo {
   state?: StateSummary;
   /** Attached to a tab as it was (`bdg attach`) */
   attached?: boolean;
-  /** The attached tab shows a failed load (`bdg attach`) */
+  /** The attached tab shows a failed load (`bdg attach`), or the page is Chrome's certificate warning */
   failedLoad?: FailedLoad;
 }
 
@@ -380,20 +380,21 @@ export class Session {
    */
   info(): SessionInfo {
     const target = this.store.targetInfo;
+    const problem = this.store.failedLoad;
     const documentStatus = this.store.networkRequests.find(
       (request) => request.requestId === this.documentRequestId && request.status
     )?.status;
     return {
       chromePid: this.chrome?.pid ?? 0,
       port: this.config.port,
-      targetUrl: displayUrl(target?.url ?? this.config.url),
+      targetUrl: problem?.certificate ? problem.url : displayUrl(target?.url ?? this.config.url),
       ...(target?.title && { targetTitle: target.title }),
       ...(documentStatus !== undefined && { documentStatus }),
       ...(this.loading && { loading: this.loading }),
       ...(this.startDialogs.length > 0 && { dialogs: this.startDialogs }),
       ...(this.stateRestored && { state: this.stateRestored }),
       ...(this.attachedTab && { attached: true }),
-      ...(this.attachedTab && this.store.failedLoad && { failedLoad: this.store.failedLoad }),
+      ...(problem && (this.attachedTab || problem.certificate) && { failedLoad: problem }),
     };
   }
 

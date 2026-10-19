@@ -41,7 +41,7 @@ export function parseErrorCode(value: unknown): string {
  * @returns Error to throw
  */
 export function failedLoadError(failed: FailedLoad, addedScheme = false): CommandError {
-  const err = navigationFailedError(failed.url, failed.errorText, addedScheme);
+  const err = navigationFailedError(failed.url, failed.errorText, addedScheme, failed.redirectedTo);
   return new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_URL);
 }
 
@@ -51,25 +51,29 @@ export function failedLoadError(failed: FailedLoad, addedScheme = false): Comman
  * @param navigation - Chrome's answer
  * @param url - URL navigated to
  * @param addedScheme - Whether bdg prepended `http://` to the URL as typed
- * @returns How the navigation ended (`loaded` or `not-a-page`)
+ * @param redirectedTo - Where a redirect led, when its request failed
+ * @returns How the navigation ended (all but `failed`)
  * @throws CommandError (80) when the load ends on Chrome's error page
  */
 export function assertNavigated(
   navigation: { errorText?: string; loaderId?: string },
   url: string,
-  addedScheme = false
+  addedScheme = false,
+  redirectedTo?: string
 ): NavigationOutcome {
   const { errorText, loaderId } = navigation;
   const outcome = navigationOutcome(errorText, loaderId);
-  if (outcome === 'failed' && errorText) throw failedLoadError({ url, errorText }, addedScheme);
+  if (outcome === 'failed' && errorText) {
+    throw failedLoadError({ url, errorText, ...(redirectedTo && { redirectedTo }) }, addedScheme);
+  }
   return outcome;
 }
 
 /**
  * The main frame and the failed load it shows, if it shows Chrome's error
- * page (its `unreachableUrl`, named by the error page). A page Chrome shows
- * for an error that keeps the load (the certificate interstitial,
- * `NET::ERR_CERT_*`) is no failure, as for `Page.navigate`. URLs are as
+ * page (its `unreachableUrl`, named by the error page). The certificate
+ * interstitial (`NET::ERR_CERT_*`) is returned with `certificate: true`: a
+ * success with a warning, as for `Page.navigate`. URLs are as
  * {@link displayUrl} shows them (no user info, tokens masked).
  *
  * @param cdp - CDP connection
@@ -83,12 +87,18 @@ async function readMainFrame(cdp: CDPSender): Promise<{ id: string; failed?: Fai
     returnByValue: true,
   });
   const errorText = parseErrorCode(shown.result?.value);
-  if (navigationOutcome(errorText, frame.loaderId) !== 'failed') return { id: frame.id };
-  return { id: frame.id, failed: { url: displayUrl(frame.unreachableUrl), errorText } };
+  const outcome = navigationOutcome(errorText, frame.loaderId);
+  if (outcome !== 'failed' && outcome !== 'certificate') return { id: frame.id };
+  const failed = { url: displayUrl(frame.unreachableUrl), errorText };
+  return {
+    id: frame.id,
+    failed: outcome === 'certificate' ? { ...failed, certificate: true } : failed,
+  };
 }
 
 /**
- * The failed load the main frame shows, if it shows Chrome's error page.
+ * The failed load the main frame shows, if it shows Chrome's error page
+ * (`certificate: true` for the certificate warning, which is no failure).
  *
  * @param cdp - CDP connection
  * @returns The URL that could not be loaded and its network error, or undefined
@@ -112,7 +122,8 @@ interface DocumentRequest {
  *
  * @param cdp - CDP connection
  * @param mainFrameId - Main frame id
- * @param onFailed - Called with a failed document's request id and the failed load (its URL as requested)
+ * @param onFailed - Called with a failed document's request id and the failed load
+ *   (its URL as requested, and where a redirect led when that request failed)
  * @returns Whether a request is a followed document, a function to forget one, and one to stop
  */
 export function watchMainDocuments(
@@ -124,19 +135,24 @@ export function watchMainDocuments(
   forget: (requestId: string) => void;
   stop: () => void;
 } {
-  const documents = new Map<string, string>();
+  const documents = new Map<string, { url: string; last: string }>();
   const stops = [
     cdp.on<DocumentRequest>('Network.requestWillBeSent', (params) => {
       if (params.type !== 'Document' || params.frameId !== mainFrameId) return;
-      documents.set(params.requestId, params.request?.url ?? '');
+      const last = params.request?.url ?? '';
+      documents.set(params.requestId, { url: documents.get(params.requestId)?.url ?? last, last });
     }),
     cdp.on<Protocol.Network.LoadingFailedEvent>('Network.loadingFailed', (params) => {
-      const url = documents.get(params.requestId);
-      if (url === undefined) return;
+      const document = documents.get(params.requestId);
+      if (document === undefined) return;
       documents.delete(params.requestId);
-      if (navigationOutcome(params.errorText, params.requestId) === 'failed') {
-        onFailed(params.requestId, { url, errorText: params.errorText });
-      }
+      if (navigationOutcome(params.errorText, params.requestId) !== 'failed') return;
+      const { url, last } = document;
+      onFailed(params.requestId, {
+        url,
+        errorText: params.errorText,
+        ...(last !== url && { redirectedTo: last }),
+      });
     }),
   ];
   return {
@@ -162,7 +178,11 @@ export async function trackFailedLoad(
   const mainFrame = await readMainFrame(cdp);
   onChange(mainFrame.failed);
   const documents = watchMainDocuments(cdp, mainFrame.id, (_requestId, failed) =>
-    onChange({ ...failed, url: displayUrl(failed.url) })
+    onChange({
+      ...failed,
+      url: displayUrl(failed.url),
+      ...(failed.redirectedTo && { redirectedTo: displayUrl(failed.redirectedTo) }),
+    })
   );
   const stops = [
     cdp.on<Protocol.Network.ResponseReceivedEvent>('Network.responseReceived', (params) => {

@@ -53,6 +53,7 @@ import {
   tabListText,
   tabSwitchHint,
   tabSwitchedNote,
+  failedLoadNote,
 } from '@/ui/messages/commands.js';
 import { includeSensitiveWarning } from '@/ui/messages/networkMessages.js';
 import { displayUrl, displayUrls } from '@/utils/displayUrl.js';
@@ -88,7 +89,11 @@ function shownTab<T extends TabRef>(tab: T, includeSensitive = false): T {
  */
 function formatPageResult(result: PageNavigationResult): string {
   const fmt = new OutputFormatter()
-    .text(`✓ ${PAGE_ACTION_DONE[result.action]}`)
+    .text(
+      result.certificate
+        ? `⚠ ${failedLoadNote(result.certificate)}`
+        : `✓ ${PAGE_ACTION_DONE[result.action]}`
+    )
     .keyValueList(
       [
         ['URL', result.url],
@@ -164,7 +169,12 @@ async function runPageAction(
           ...(response.suggestion && { errorContext: { suggestion: response.suggestion } }),
         };
       }
-      return { success: true, data: response.data };
+      const { certificate } = response.data;
+      return {
+        success: true,
+        data: response.data,
+        ...(options.json && certificate && { warning: failedLoadNote(certificate) }),
+      };
     },
     options,
     formatPageResult,
