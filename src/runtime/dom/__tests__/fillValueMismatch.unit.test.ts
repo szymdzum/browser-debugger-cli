@@ -9,9 +9,9 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import * as vm from 'node:vm';
 
+import { valueMismatchError } from '@/errors/messages.js';
 import type { FillValueMismatch } from '@/ipc/protocol/domTypes.js';
 import { FILL_VALUE_MISMATCH_JS } from '@/runtime/dom/reactEventHelpers.js';
-import { valueMismatchError } from '@/errors/messages.js';
 import { valueMismatchWarning } from '@/ui/messages/commands.js';
 
 type Mismatch = FillValueMismatch | undefined;
@@ -163,11 +163,18 @@ void describe('valueMismatchError', () => {
       err.message,
       'The field\'s value is "24.00" after filling (expected "8"); the page may have rejected or moved the input'
     );
-    assert.match(err.suggestion, /Check the format the field accepts \(.*bdg dom get '#hours'.* shows the field\)/);
+    assert.match(
+      err.suggestion,
+      /Check the format the field accepts \(.*bdg dom get '#hours'.* shows the field\)/
+    );
   });
 
   void it('names the field a moved value went to, and the maxlength', () => {
-    const moved = valueMismatchError(target, { expected: 'Ada', actual: '', movedTo: 'input#first' });
+    const moved = valueMismatchError(target, {
+      expected: 'Ada',
+      actual: '',
+      movedTo: 'input#first',
+    });
     assert.match(moved.suggestion, /^Fill input#first if the value belongs there/);
     const cut = valueMismatchError(target, { expected: 'abcdef', actual: 'abc', truncatedTo: 3 });
     assert.equal(cut.suggestion, "Fill at most 3 characters, the field's maxlength");

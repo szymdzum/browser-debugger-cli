@@ -119,9 +119,13 @@ function errorLine(cell: Cell): RegExp {
 void describe('dom fill read-back: numbers in formatted text fields, exit 90 on a mismatch (#867)', () => {
   for (const cell of CELLS) {
     void it(`human: ${cellName(cell)} ${cell.mismatch ? 'fails with 90' : 'succeeds'}`, async () => {
-      const result = await runCommand('dom', ['fill', cell.field, cell.value, ...(cell.flags ?? [])], {
-        timeout: 60000,
-      });
+      const result = await runCommand(
+        'dom',
+        ['fill', cell.field, cell.value, ...(cell.flags ?? [])],
+        {
+          timeout: 60000,
+        }
+      );
       const output = `${result.stdout}${result.stderr}`;
       assert.equal(result.exitCode, cell.mismatch ? MISMATCH_EXIT : 0, output);
       if (cell.mismatch) {
