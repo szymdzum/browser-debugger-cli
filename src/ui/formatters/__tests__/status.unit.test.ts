@@ -181,3 +181,19 @@ void describe('status page URLs (#623)', () => {
     assert.match(output, /Session starting: http:\/\/127\.0\.0\.1:4000\/start\?code=••••/);
   });
 });
+
+void describe('dialog default in status (#869)', () => {
+  const dialogOf = (metadata: Partial<SessionMetadata>): string | undefined =>
+    formatStatusAsJson({ ...external, ...metadata }, process.pid).dialog;
+
+  void it('always shows the default of an attach session, dismiss or explicit accept', () => {
+    assert.equal(dialogOf({ attached: true, dialog: 'dismiss' }), 'dismiss');
+    assert.equal(dialogOf({ attached: true, dialog: 'accept' }), 'accept');
+  });
+
+  void it('shows a start session default only when it is dismiss', () => {
+    assert.equal(dialogOf({ dialog: 'dismiss' }), 'dismiss');
+    assert.equal(dialogOf({ dialog: 'accept' }), undefined);
+    assert.equal(dialogOf({}), undefined);
+  });
+});

@@ -87,6 +87,7 @@ export function formatSessionStatus(
   const fmt = new OutputFormatter();
 
   fmt.text(sessionActiveLine(pageState)).blank();
+  const dialogDefault = shownDialogDefault(metadata);
   fmt.text('Session Status').separator('━', 50);
   fmt.keyValueList(
     [
@@ -96,9 +97,7 @@ export function formatSessionStatus(
       ...(metadata.autoStopAt
         ? [['Auto-stop', new Date(metadata.autoStopAt).toLocaleTimeString()] as [string, string]]
         : []),
-      ...(dismissesDialogs(metadata)
-        ? [['Dialogs', dialogDefaultText('dismiss')] as [string, string]]
-        : []),
+      ...(dialogDefault ? [['Dialogs', dialogDefaultText(dialogDefault)] as [string, string]] : []),
     ],
     18
   );
@@ -193,14 +192,18 @@ export function formatSessionStatus(
 }
 
 /**
- * Whether the session's `--dialog` default is dismiss, which status shows
- * (the built-in accept is left out).
+ * The session's `--dialog` default, which status shows unless it is the
+ * built-in accept of `bdg <url>`; an attach session always shows it, since
+ * its built-in default is dismiss.
  *
  * @param metadata - Session metadata (the start options)
- * @returns True for `--dialog dismiss`
+ * @returns The default to show, or undefined for the built-in accept
  */
-function dismissesDialogs(metadata: Pick<SessionMetadata, 'dialog'>): boolean {
-  return metadata.dialog === 'dismiss';
+function shownDialogDefault(
+  metadata: Pick<SessionMetadata, 'dialog' | 'attached'>
+): DialogAnswer | undefined {
+  if (metadata.dialog === 'dismiss') return 'dismiss';
+  return metadata.attached ? metadata.dialog : undefined;
 }
 
 /**
@@ -267,6 +270,7 @@ export function formatStatusAsJson(
 
   const chromeAlive = metadata.chromePid ? isProcessAlive(metadata.chromePid) : false;
 
+  const dialogDefault = shownDialogDefault(metadata);
   return {
     active: true,
     bdgPid: pid,
@@ -281,7 +285,7 @@ export function formatStatusAsJson(
     ...(metadata.autoStopAt && { autoStopAt: new Date(metadata.autoStopAt).toISOString() }),
     ...(metadata.viewport && { viewport: metadata.viewport }),
     ...(metadata.colorScheme && { colorScheme: metadata.colorScheme }),
-    ...(dismissesDialogs(metadata) && { dialog: 'dismiss' as const }),
+    ...(dialogDefault && { dialog: dialogDefault }),
     targetId: metadata.targetId,
     webSocketDebuggerUrl: metadata.webSocketDebuggerUrl,
     telemetry: metadata.activeTelemetry ?? ['network', 'console', 'dom'],

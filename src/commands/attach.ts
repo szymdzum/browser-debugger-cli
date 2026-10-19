@@ -14,7 +14,7 @@ import { jsonOption } from '@/commands/shared/commonOptions.js';
 import { handleValidationError } from '@/commands/shared/handleValidationError.js';
 import type { BaseOptions } from '@/commands/shared/optionTypes.js';
 import { startSessionViaDaemon } from '@/commands/shared/startHelpers.js';
-import { parseStopAfter } from '@/commands/shared/validation.js';
+import { parseDialogAnswer, parseStopAfter } from '@/commands/shared/validation.js';
 import { assertValidChromeWsUrl, resolveChromeWsUrl } from '@/commands/start.js';
 import { connectToBrowser } from '@/connection/browserConnection.js';
 import { listPageTabs, type PageTab } from '@/connection/browserTabs.js';
@@ -25,6 +25,7 @@ import {
 } from '@/connection/devToolsActivePort.js';
 import { CommandError } from '@/errors/index.js';
 import { attachEndpointConflictError } from '@/errors/messages.js';
+import type { DialogAnswer } from '@/ipc/protocol/domTypes.js';
 import { formatTabList } from '@/ui/formatters/attach.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -33,8 +34,16 @@ interface AttachOptions extends BaseOptions {
   chromeWsUrl?: string;
   userDataDir?: string;
   stopAfter?: string;
+  dialog?: string;
   quiet?: boolean;
 }
+
+/**
+ * Session default for dialogs of an attach session: dismiss, unlike `bdg <url>`
+ * (accept). The attached browser is the user's own, where an accepted
+ * confirm() can submit or delete real data.
+ */
+const ATTACH_DIALOG_DEFAULT: DialogAnswer = 'dismiss';
 
 /** The browser to attach to, and the `DevToolsActivePort` file that named it */
 interface BrowserEndpoint {
@@ -111,14 +120,20 @@ export function registerAttachCommand(program: Command): void {
     )
     .option('--stop-after <seconds>', 'Auto-stop the session after this many seconds')
     .option('--timeout <seconds>', 'Old spelling of --stop-after')
+    .option(
+      '--dialog <answer>',
+      'Answer JavaScript dialogs (alert, confirm, prompt) with accept (OK) or dismiss (Cancel), in any case, for the session (default: dismiss, unlike bdg <url>: this is your own browser, where an accepted confirm() can submit or delete real data; a dismissed one is reported as "confirm() dismissed"); a DOM action can choose otherwise with its own --dialog; ignored without a tab, which only lists the tabs'
+    )
     .option('-q, --quiet', 'Quiet mode - minimal output for AI agents', false)
     .addOption(jsonOption())
     .action(async (tab: string | undefined, options: AttachOptions) => {
       let endpoint: BrowserEndpoint;
       let timeout: number | undefined;
+      let dialog: DialogAnswer;
       try {
         endpoint = await browserEndpoint(options);
         timeout = parseStopAfter(options.stopAfter);
+        dialog = parseDialogAnswer(options.dialog ?? ATTACH_DIALOG_DEFAULT);
       } catch (error) {
         handleValidationError(error, options.json ?? false);
       }
@@ -145,6 +160,7 @@ export function registerAttachCommand(program: Command): void {
           quiet: options.quiet ?? false,
           json: options.json ?? false,
           chromeFlags: undefined,
+          dialog,
         },
         ['dom', 'network', 'console']
       );

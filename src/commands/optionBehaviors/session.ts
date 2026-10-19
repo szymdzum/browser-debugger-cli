@@ -41,6 +41,14 @@ export const SESSION_BEHAVIORS: BehaviorTable = {
     whenEnabled:
       'The session stops itself this many seconds (1-3600) after attaching; the tab stays open',
   },
+  'attach:--dialog': {
+    default:
+      'dismiss, unlike bdg <url> (accept): the attached browser is your own, where an accepted confirm() can submit or delete real data. confirm() returns false, prompt() null, and the action result says "confirm() dismissed"',
+    whenEnabled:
+      'accept or dismiss (any case) for every alert, confirm and prompt of the session unless the running DOM action chose otherwise with its own --dialog/--prompt-text. Ignored without a tab (bdg attach only lists the tabs), like --stop-after. Other values exit 81 with a suggestion (ok/yes: accept, cancel/no: dismiss)',
+    automaticBehavior:
+      'beforeunload dialogs are still accepted (navigation is never blocked) unless a DOM action is given --dialog dismiss. bdg status always shows the default of an attach session (Dialogs: dismiss (session default), JSON dialog)',
+  },
   'bdg:--session': {
     default:
       'The default session in ~/.bdg (or $BDG_SESSION_DIR); BDG_SESSION=<name> selects a named session like the flag',
