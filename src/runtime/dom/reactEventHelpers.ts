@@ -689,11 +689,16 @@ export const REACT_FILL_SCRIPT = `
 /**
  * Page script evaluating to whether the field a fill left for typing
  * (`window.__bdgFillPending`) still has the focus ({@link DEEP_FOCUSED_JS}),
- * checked right before the text is typed.
+ * checked right before the text is typed. A field that holds text by now (a
+ * focus handler put the old value back after the fill script emptied it)
+ * gets its whole content selected, so the typed text replaces it like a
+ * user's Ctrl+A and typing (#866); no `input` event is fired for that.
  */
 export const FILL_FOCUS_CHECK_SCRIPT = `(() => {
   const pending = window.__bdgFillPending;
-  return Boolean(pending) && (${DEEP_FOCUSED_JS})(pending.el);
+  if (!pending || !(${DEEP_FOCUSED_JS})(pending.el)) return false;
+  if (pending.el.value !== '') pending.el.select();
+  return true;
 })()`;
 
 /**
