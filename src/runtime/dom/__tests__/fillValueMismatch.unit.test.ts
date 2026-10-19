@@ -10,8 +10,8 @@ import { describe, it } from 'node:test';
 import * as vm from 'node:vm';
 
 import type { FillValueMismatch } from '@/ipc/protocol/domTypes.js';
-import { withValueMismatchWarning } from '@/runtime/dom/formFillHelpers/shared.js';
 import { FILL_VALUE_MISMATCH_JS } from '@/runtime/dom/reactEventHelpers.js';
+import { valueMismatchError } from '@/errors/messages.js';
 import { valueMismatchWarning } from '@/ui/messages/commands.js';
 
 type Mismatch = FillValueMismatch | undefined;
@@ -154,20 +154,28 @@ void describe('FILL_VALUE_MISMATCH_JS normalised values', () => {
   });
 });
 
-void describe('withValueMismatchWarning', () => {
-  void it('puts the mismatch first among the warnings', () => {
-    const result = withValueMismatchWarning({
-      success: true,
-      valueMismatch: { expected: 'Lovelace', actual: '' },
-      warning: 'The field is hidden; a user could not fill it (the value was set anyway)',
-    });
-    assert.match(
-      result.warning ?? '',
-      /^The field's value is "" after filling \(expected "Lovelace"\); the page may have rejected or moved the input; The field is hidden/
+void describe('valueMismatchError', () => {
+  const target = { selector: '#hours', element: 'input#hours' };
+
+  void it('is the read-back, with a suggestion to check the format', () => {
+    const err = valueMismatchError(target, { expected: '8', actual: '24.00' });
+    assert.equal(
+      err.message,
+      'The field\'s value is "24.00" after filling (expected "8"); the page may have rejected or moved the input'
     );
+    assert.match(err.suggestion, /Check the format the field accepts \(.*bdg dom get '#hours'.* shows the field\)/);
   });
 
-  void it('leaves a matching fill alone', () => {
-    assert.equal(withValueMismatchWarning({ success: true, value: 'Ada' }).warning, undefined);
+  void it('names the field a moved value went to, and the maxlength', () => {
+    const moved = valueMismatchError(target, { expected: 'Ada', actual: '', movedTo: 'input#first' });
+    assert.match(moved.suggestion, /^Fill input#first if the value belongs there/);
+    const cut = valueMismatchError(target, { expected: 'abcdef', actual: 'abc', truncatedTo: 3 });
+    assert.equal(cut.suggestion, "Fill at most 3 characters, the field's maxlength");
+  });
+
+  void it('gives no value or length of a secret field', () => {
+    const err = valueMismatchError(target, { expected: '••••', actual: '••••', masked: true });
+    assert.doesNotMatch(`${err.message} ${err.suggestion}`, /\d/);
+    assert.match(err.suggestion, /its value masked/);
   });
 });

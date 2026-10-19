@@ -789,16 +789,18 @@ void describe('DOM interactions', () => {
     );
 
     await bdg(['dom', 'fill', '#first', 'Ada']);
-    const moved = await bdg(['dom', 'fill', '#last', 'Lovelace']);
+    const moved = await bdg(['dom', 'fill', '#last', 'Lovelace'], 90);
     assert.match(
       moved,
-      /^⚠ Element Filled \(with warnings\)\n⚠ Warning: The field's value is "" after filling \(expected "Lovelace"\); the value appeared in input#first instead\n/
+      /The field's value is "" after filling \(expected "Lovelace"\); the value appeared in input#first instead\n/
     );
     await bdg(['dom', 'fill', '#first', 'Ada']);
-    const movedJson = JSON.parse(await bdg(['dom', 'fill', '#last', 'Lovelace', '--json'])) as {
-      data: { valueMismatch?: { expected: string; actual: string; movedTo?: string } };
+    const movedRun = await runCommand('dom', ['fill', '#last', 'Lovelace', '--json']);
+    assert.equal(movedRun.exitCode, 90, movedRun.stdout);
+    const movedJson = JSON.parse(movedRun.stdout) as {
+      valueMismatch?: { expected: string; actual: string; movedTo?: string };
     };
-    assert.deepEqual(movedJson.data.valueMismatch, {
+    assert.deepEqual(movedJson.valueMismatch, {
       expected: 'Lovelace',
       actual: '',
       movedTo: 'input#first',

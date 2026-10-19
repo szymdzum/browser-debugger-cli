@@ -31,7 +31,6 @@ import {
   exceptionSummary,
   throwIfInvalidSelector,
   withMultipleMatchesWarning,
-  withValueMismatchWarning,
 } from '@/runtime/dom/formFillHelpers/shared.js';
 import {
   FILL_FOCUS_CHECK_SCRIPT,
@@ -168,7 +167,7 @@ export async function fillElement(
         const filled = result.insertText
           ? await insertAsUser(cdp, { selector, value, listIndex: options.listIndex }, result)
           : result;
-        return withValueMismatchWarning(await withReadBack(cdp, withFillWarnings(filled)));
+        return withReadBack(cdp, withFillWarnings(filled));
       }
       const uploaded = await setFileInput(cdp, selector, value, options);
       return uploaded.success && result.elementType

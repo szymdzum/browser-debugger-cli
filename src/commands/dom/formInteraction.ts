@@ -30,6 +30,7 @@ import {
   indexSourceText,
   internalError,
   scrollOptionsError,
+  valueMismatchError,
 } from '@/errors/messages.js';
 import { callCDP, domClick, domFill, domPressKey, domScroll, domSubmit } from '@/ipc/client.js';
 import type {
@@ -225,7 +226,7 @@ export function registerFormInteractionCommands(program: Command): void {
       await runCommand(
         async () => {
           const dialogs = dialogChoice(options);
-          return runElementCommand<Parameters<typeof domFill>[0], FillResult>({
+          const filled = await runElementCommand<Parameters<typeof domFill>[0], FillResult>({
             selectorOrIndex,
             index: options.index,
             buildRequest: (target, source) => ({
@@ -243,6 +244,7 @@ export function registerFormInteractionCommands(program: Command): void {
             failureSuggestion:
               'Verify the selector matches a fillable element (input, textarea, select)',
           });
+          return failOnValueMismatch(filled, options.json === true);
         },
         options,
         formatFillOutput,
@@ -782,6 +784,37 @@ function indexSourceRows(result: ActionTarget): Array<[string, string]> {
 function selectorRows(result: ActionTarget): Array<[string, string]> {
   if (result.indexSource?.command === 'dom a11y query') return [];
   return [['Selector', result.selector ?? 'unknown']];
+}
+
+/**
+ * Fail a fill whose value the page did not keep (#867): the read-back
+ * found a `valueMismatch`, so the fill exits 90 (RESOURCE_CONFLICT) instead
+ * of reporting success. The `--json` error envelope carries the fill's data
+ * as top-level fields (`valueMismatch`, `selector`, `element`, `value`…);
+ * the fill's other warnings stay warnings.
+ *
+ * @param result - Result of the fill
+ * @param json - Whether `--json` output was asked for
+ * @returns The result, or the failure for a mismatch
+ */
+function failOnValueMismatch<T extends Omit<FillResult, 'success'> & { indexSource?: IndexSource }>(
+  result: CommandResult<T>,
+  json: boolean
+): CommandResult<T> {
+  const mismatch = result.data?.valueMismatch;
+  if (!result.success || !result.data || !mismatch) return result;
+  const { warning, ...data } = result.data;
+  const err = valueMismatchError(
+    { selector: data.selector ?? '', element: data.element, listIndex: data.indexSource?.index },
+    mismatch
+  );
+  return {
+    success: false,
+    error: err.message,
+    exitCode: EXIT_CODES.RESOURCE_CONFLICT,
+    errorContext: { ...(json && data), suggestion: err.suggestion },
+    ...(warning && { warning }),
+  };
 }
 
 /**

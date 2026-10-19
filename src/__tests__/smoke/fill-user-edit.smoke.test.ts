@@ -228,16 +228,18 @@ void describe('dom fill echoes secret fields masked, as dom query does (#592)', 
   });
 
   void it('reports a secret field the page changed without its value or length', async () => {
-    const data = await json<FillJson>(['dom', 'fill', '#digits', 'ab12cd34ef56']);
+    const run = await runCommand('dom', ['fill', '#digits', 'ab12cd34ef56', '--json']);
+    assert.equal(run.exitCode, 90, run.stdout);
+    const data = JSON.parse(run.stdout) as FillJson & { error?: string; suggestion?: string };
     assert.deepEqual(data.valueMismatch, { expected: MASKED, actual: MASKED, masked: true });
-    assert.match(data.warning ?? '', /secret field, value not shown/);
+    assert.match(data.error ?? '', /secret field, value not shown/);
     assert.doesNotMatch(
-      data.warning ?? '',
+      `${data.error} ${data.suggestion}`,
       /\d/,
-      `warning gives a length or the value: ${data.warning}`
+      `error gives a length or the value: ${data.error} ${data.suggestion}`
     );
     await bdg(['page', 'navigate', `${fixture.url}fill-user-edit`]);
-    const output = await bdg(['dom', 'fill', '#digits', 'ab12cd34ef56']);
+    const output = await bdg(['dom', 'fill', '#digits', 'ab12cd34ef56'], 90);
     assert.match(
       output,
       /The page kept another value than the one filled \(secret field, value not shown\)/
