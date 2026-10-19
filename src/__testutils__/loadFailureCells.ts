@@ -19,6 +19,7 @@ export type Axis =
 export type Expectation =
   | { kind: 'failure'; cause: RegExp }
   | { kind: 'loads'; shows?: RegExp }
+  | { kind: 'warns'; cause: RegExp }
   | { kind: 'pending'; shows: RegExp };
 
 /** One URL of the matrix */
@@ -271,6 +272,12 @@ function judgeHuman(expect: Expectation, run: Observed): string[] {
     if (!expect.cause.test(run.output)) problems.push(`does not name the cause ${expect.cause}`);
     return problems;
   }
+  if (expect.kind === 'warns') {
+    if (!ok) problems.push(`exit ${run.exitCode}, the command must succeed with a warning`);
+    if (!run.output.includes('⚠')) problems.push('no ⚠ warning about the failed load');
+    if (!expect.cause.test(run.output)) problems.push(`does not name the cause ${expect.cause}`);
+    return problems;
+  }
   if (expect.kind === 'loads') {
     if (!ok) problems.push(`exit ${run.exitCode}, the page loads`);
     if (expect.shows && !expect.shows.test(run.output))
@@ -304,6 +311,12 @@ function judgeJson(expect: Expectation, run: ObservedJson): string[] {
     if (!expect.cause.test(String(envelope.error)))
       problems.push(`--json: error does not name the cause ${expect.cause}`);
     return problems;
+  }
+  if (expect.kind === 'warns') {
+    const warnings = JSON.stringify(envelope['warnings'] ?? []);
+    return run.exitCode === 0 && envelope.success === true && expect.cause.test(warnings)
+      ? []
+      : [`--json: exit ${run.exitCode}, success must be true with the cause in warnings`];
   }
   if (expect.kind === 'loads') {
     const shows =
