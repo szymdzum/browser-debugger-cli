@@ -3,15 +3,17 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import { navigationOutcome } from '@/connection/navigationOutcome.js';
 import { waitForPageReady } from '@/connection/pageReadiness.js';
 import { sendTyped } from '@/connection/typed-cdp.js';
-import { UNREACHABLE_ERRORS } from '@/daemon/session/cdpSetup.js';
 import { CommandError } from '@/errors/index.js';
-import { navigationFailedError, noHistoryEntryError } from '@/errors/messages.js';
+import { noHistoryEntryError } from '@/errors/messages.js';
 import type { PageAction, PageNavigationResult } from '@/ipc/protocol/commands.js';
+import { failedLoadError } from '@/runtime/page/failedLoad.js';
 import { readPageLoadingState } from '@/runtime/page/loadingState.js';
 import type { PendingRequest } from '@/telemetry/network.js';
 import type { CDPSender } from '@/telemetry/objectExpander.js';
+import type { FailedLoad } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import {
   documentStatusWarning,
@@ -68,7 +70,7 @@ export function pageReadyTimeoutMs(env: NodeJS.ProcessEnv = process.env): number
  * @param options - `url` for navigate, `wait: false` to return without waiting,
  *   `pendingRequests`: the session's requests still running
  * @returns Where the page is now
- * @throws CommandError (80) for an unreachable URL, (81) without a history entry
+ * @throws CommandError (80) when a navigate or reload ends on Chrome's error page or its document is cut off, (81) without a history entry
  */
 export async function navigatePage(
   cdp: CDPConnection,
@@ -86,7 +88,7 @@ export async function navigatePage(
  * @param action - What to do
  * @param options - Options of {@link navigatePage}
  * @returns Where the page is now
- * @throws CommandError (80) for an unreachable URL, (81) without a history entry
+ * @throws CommandError (80) when a navigate or reload fails to load, (81) without a history entry
  */
 async function runNavigation(
   cdp: CDPConnection,
@@ -118,6 +120,9 @@ async function runNavigation(
     navigated.stop();
     document.stop();
   }
+  const failed =
+    action === 'navigate' || action === 'reload' ? document.failure(loaderId) : undefined;
+  if (failed) throw failedLoadError(failed);
   const result = withStatus(
     { action, ...(await currentLocation(cdp)) },
     document.response(loaderId)
@@ -282,6 +287,7 @@ export function withStatus(
 /** A main-frame document event: request start or response */
 interface DocumentEvent {
   requestId: string;
+  request?: { url: string };
   loaderId?: string;
   type?: string;
   frameId?: string;
@@ -292,24 +298,43 @@ interface DocumentEvent {
  * requested after the watch began count (a response to a request from
  * before belongs to an earlier navigation). The navigation's own document
  * is the one of its loader when the browser named it, else the first; the
- * documents after it were loaded by the page itself.
+ * documents after it were loaded by the page itself. A main document whose
+ * load failed (#860) is kept with Chrome's network error.
  *
  * @param cdp - CDP connection
  * @param mainFrameId - Main frame id
- * @returns The responses seen so far (given the navigation's loader, if known),
- *   and a function to stop listening
+ * @returns The responses and the failed loads seen so far (given the
+ *   navigation's loader, if known; else the first), and a function to stop listening
  */
 export function documentResponse(
   cdp: Pick<CDPConnection, 'on'>,
   mainFrameId: string
-): { response: (loaderId?: string) => DocumentResponses | undefined; stop: () => void } {
-  const requested = new Set<string>();
+): {
+  response: (loaderId?: string) => DocumentResponses | undefined;
+  failure: (loaderId?: string) => FailedLoad | undefined;
+  stop: () => void;
+} {
+  const requested = new Map<string, string>();
+  const failures: Array<FailedLoad & { requestId: string }> = [];
   const responses: Array<DocumentResponse & { loaderId?: string }> = [];
   const isMainDocument = (params: DocumentEvent): boolean =>
     params.type === 'Document' && params.frameId === mainFrameId;
   const stopRequests = cdp.on<DocumentEvent>('Network.requestWillBeSent', (params) => {
-    if (isMainDocument(params)) requested.add(params.requestId);
+    if (isMainDocument(params)) requested.set(params.requestId, params.request?.url ?? '');
   });
+  const stopFailures = cdp.on<{ requestId: string; errorText: string }>(
+    'Network.loadingFailed',
+    ({ requestId, errorText }) => {
+      const url = requested.get(requestId);
+      if (url !== undefined && navigationOutcome(errorText, requestId) === 'failed') {
+        failures.push({ requestId, url, errorText });
+      }
+    }
+  );
+  const failure = (loaderId?: string): FailedLoad | undefined => {
+    const own = loaderId ? failures.find((f) => f.requestId === loaderId) : failures[0];
+    return own && { url: own.url, errorText: own.errorText };
+  };
   const stopResponses = cdp.on<DocumentEvent & { response: DocumentResponse }>(
     'Network.responseReceived',
     (params) => {
@@ -328,9 +353,11 @@ export function documentResponse(
   };
   return {
     response,
+    failure,
     stop: () => {
       stopRequests();
       stopResponses();
+      stopFailures();
     },
   };
 }
@@ -378,18 +405,13 @@ function nextNavigation(
  * @param cdp - CDP connection
  * @param url - Normalized URL
  * @returns Whether a document is loading (not for a download), and its loader
- * @throws CommandError (80) when the URL cannot be reached
+ * @throws CommandError (80) when the load ends on Chrome's error page
  */
 async function navigateTo(cdp: CDPConnection, url: string): Promise<StartedAction> {
-  const navigation = await sendTyped(cdp, 'Page.navigate', { url });
-  if (navigation.errorText === 'net::ERR_ABORTED' && !navigation.loaderId) {
-    return { notAPage: true };
-  }
-  if (!navigation.errorText || !UNREACHABLE_ERRORS.test(navigation.errorText)) {
-    return { notAPage: false, ...(navigation.loaderId && { loaderId: navigation.loaderId }) };
-  }
-  const err = navigationFailedError(url, navigation.errorText);
-  throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_URL);
+  const { errorText, loaderId } = await sendTyped(cdp, 'Page.navigate', { url });
+  const outcome = navigationOutcome(errorText, loaderId);
+  if (outcome === 'failed' && errorText) throw failedLoadError({ url, errorText });
+  return { notAPage: outcome === 'not-a-page', ...(loaderId && { loaderId }) };
 }
 
 /**

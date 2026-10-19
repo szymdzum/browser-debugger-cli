@@ -3,6 +3,7 @@
  */
 
 import type { PageLoadingState, PendingRequestInfo } from '@/ipc/protocol/commands.js';
+import type { FailedLoad } from '@/types.js';
 import { formatDuration, truncateUrl } from '@/ui/formatting.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { truncateByLength } from '@/utils/strings.js';
@@ -102,6 +103,16 @@ export const FRAME_URL_MAX_LENGTH = 100;
  */
 export function frameUrlLabel(url: string): string {
   return url ? truncateByLength(url, FRAME_URL_MAX_LENGTH) : '(no URL)';
+}
+
+/**
+ * A main-frame load that failed (#860), for `bdg console` and `bdg attach`.
+ *
+ * @param failed - The URL (as `displayUrl` shows it) and Chrome's network error
+ * @returns e.g. "Page failed to load: http://localhost:3000/: net::ERR_CONNECTION_REFUSED"
+ */
+export function failedLoadNote(failed: FailedLoad): string {
+  return `Page failed to load: ${failed.url}: ${failed.errorText}`;
 }
 
 /**

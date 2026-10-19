@@ -16,6 +16,7 @@ import { isConnectionError } from '@/ipc/utils/errors.js';
 import type {
   BdgOutput,
   ConsoleMessage,
+  FailedLoad,
   NetworkRequest,
   PageIssue,
   PageNavigation,
@@ -204,6 +205,7 @@ export async function fetchConsoleMessages(
     navigations: PageNavigation[];
     dropped: number;
     pageCrashedAt: number | undefined;
+    failedLoad: FailedLoad | undefined;
     tabSwitch: TabSwitchInfo | undefined;
     issues: PageIssue[];
     issuesDropped: number;
@@ -224,6 +226,7 @@ export async function fetchConsoleMessages(
       navigations: result.data.output.navigations ?? [],
       dropped: result.data.output.totals?.consoleDropped ?? 0,
       pageCrashedAt: result.data.output.pageCrashedAt,
+      failedLoad: result.data.output.failedLoad,
       tabSwitch: result.data.output.tabSwitch,
       issues: result.data.output.data.issues ?? [],
       issuesDropped: result.data.output.totals?.issuesDropped ?? 0,

@@ -7,6 +7,7 @@ import { MAX_CONSOLE_TEXT_LENGTH } from '@/constants.js';
 import type { ConsoleMessage } from '@/types.js';
 import { capForDisplay } from '@/ui/formatters/longValues.js';
 import { OutputFormatter, pluralize } from '@/ui/formatting.js';
+import { failedLoadNote } from '@/ui/messages/commands.js';
 import { consoleDroppedNote, consoleMoreGroupsNote } from '@/ui/messages/consoleMessages.js';
 
 import { renderIssuesSection } from './issues.js';
@@ -122,7 +123,7 @@ export function formatConsoleSummary(
   messages: ConsoleMessage[],
   options: Pick<
     ConsoleFormatOptions,
-    'groupLimit' | 'dropped' | 'full' | 'issues' | 'issuesDropped'
+    'groupLimit' | 'dropped' | 'full' | 'issues' | 'issuesDropped' | 'failedLoad'
   > = {}
 ): string {
   const fmt = new OutputFormatter();
@@ -137,7 +138,10 @@ export function formatConsoleSummary(
   renderErrorSection(fmt, grouped.errors, summary.errors.total, groupLimit, full);
   renderWarningSection(fmt, grouped.warnings, summary.warnings.total, groupLimit, full);
 
-  if (grouped.errors.length === 0 && grouped.warnings.length === 0) {
+  if (options.failedLoad) {
+    fmt.text(failedLoadNote(options.failedLoad));
+    fmt.blank();
+  } else if (grouped.errors.length === 0 && grouped.warnings.length === 0) {
     fmt.text('No errors or warnings found');
     fmt.blank();
   }

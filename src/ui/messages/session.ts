@@ -8,8 +8,9 @@
 import type { PageLoadingState } from '@/ipc/protocol/commands.js';
 import type { DialogInfo } from '@/ipc/protocol/domTypes.js';
 import type { StateSummary } from '@/ipc/protocol/stateTypes.js';
+import type { FailedLoad } from '@/types.js';
 import { joinLines } from '@/ui/formatting.js';
-import { dialogResultText, pageLoadingWarning } from '@/ui/messages/commands.js';
+import { dialogResultText, failedLoadNote, pageLoadingWarning } from '@/ui/messages/commands.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { startStateLine } from '@/ui/messages/stateMessages.js';
 
@@ -33,6 +34,8 @@ export interface LandingPageOptions {
   dialogs?: DialogInfo[];
   /** What `--state` restored */
   state?: StateSummary;
+  /** The attached tab shows a failed load (a warning) */
+  failedLoad?: FailedLoad;
 }
 
 /** Start notice of `bdg attach`: what a late attach recovers and what it cannot */
@@ -64,6 +67,7 @@ export function startNotices(options: LandingPageOptions): string[] {
   const { documentStatus, loading, autoStopAt, session, dialogs = [], state, attached } = options;
   return [
     ...(attached ? [ATTACHED_NOTICE] : []),
+    ...(options.failedLoad ? [`⚠ ${failedLoadNote(options.failedLoad)}`] : []),
     ...(state ? [startStateLine(state)] : []),
     ...(session
       ? [

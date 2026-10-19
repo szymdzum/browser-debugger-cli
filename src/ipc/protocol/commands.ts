@@ -14,6 +14,16 @@ import type {
   CdpEventsData,
 } from '@/ipc/protocol/cdpEventTypes.js';
 import type {
+  DebugClearCommand,
+  DebugClearData,
+  DebugHitsCommand,
+  DebugHitsData,
+  DebugListCommand,
+  DebugListData,
+  DebugLogCommand,
+  DebugLogData,
+} from '@/ipc/protocol/debugTypes.js';
+import type {
   ClickResult,
   DialogChoice,
   DialogInfo,
@@ -34,16 +44,6 @@ import type {
   StateSaveData,
 } from '@/ipc/protocol/stateTypes.js';
 import type {
-  DebugClearCommand,
-  DebugClearData,
-  DebugHitsCommand,
-  DebugHitsData,
-  DebugListCommand,
-  DebugListData,
-  DebugLogCommand,
-  DebugLogData,
-} from '@/ipc/protocol/debugTypes.js';
-import type {
   PageCloseCommand,
   PageCloseData,
   PageSwitchCommand,
@@ -55,6 +55,7 @@ import type {
 import type { PageState, SessionActivity } from '@/ipc/session/types.js';
 import type {
   ColorScheme,
+  FailedLoad,
   NetworkRequest,
   PageIssue,
   PageNavigation,
@@ -125,6 +126,8 @@ export interface SessionPeekData {
   fetchInterception?: true;
   /** When the page's renderer crashed (epoch ms), while it is not loaded again */
   pageCrashedAt?: number;
+  /** The page's latest load failed: Chrome's error page or a document cut off */
+  failedLoad?: FailedLoad;
   /** Total number of network requests (for pagination). */
   totalNetwork: number;
   /** Total number of console messages (for pagination). */

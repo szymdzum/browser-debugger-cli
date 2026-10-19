@@ -32,6 +32,14 @@ import type { NavigationEvent } from '@/telemetry/navigation.js';
  * }
  * ```
  */
+/** A main-frame load that failed (#860): Chrome's error page, or a document cut off */
+export interface FailedLoad {
+  /** URL that could not be loaded, as `displayUrl` shows it */
+  url: string;
+  /** Chrome network error, e.g. `net::ERR_CONNECTION_REFUSED` */
+  errorText: string;
+}
+
 export interface BdgResponse<T = unknown> {
   /** Tool version for schema compatibility checking */
   version: string;
@@ -366,6 +374,8 @@ export interface BdgOutput {
   fetchInterception?: true;
   /** When the page's renderer crashed (epoch ms), while it is not loaded again */
   pageCrashedAt?: number;
+  /** The page's latest load failed: Chrome's error page or a document cut off (live previews) */
+  failedLoad?: FailedLoad;
   /** Downloads that began during the session, oldest first (live previews) */
   downloads?: DownloadInfo[];
   /** The session's latest move to another tab (live previews; absent while it stayed on its first tab) */

@@ -22,7 +22,7 @@ import { consoleLevelOption, positiveIntRule } from '@/commands/shared/validatio
 import { MAX_CONSOLE_JSON_TEXT_LENGTH, MAX_CONSOLE_TEXT_LENGTH } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
 import type { TabSwitchInfo } from '@/ipc/protocol/tabTypes.js';
-import type { ConsoleMessage, PageIssue, PageNavigation } from '@/types.js';
+import type { ConsoleMessage, FailedLoad, PageIssue, PageNavigation } from '@/types.js';
 import { buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import {
   buildConsoleJsonOutput,
@@ -217,6 +217,7 @@ function buildFormatOptions(
     ...(pageCrashedAt !== undefined && { pageCrashedAt }),
     ...(page && { issues: page.issues, issuesDropped: page.issuesDropped }),
     ...(page?.tabSwitch && { tabSwitch: page.tabSwitch }),
+    ...(page?.failedLoad && { failedLoad: page.failedLoad }),
     list: listsMessages(options),
     follow: options.follow,
     last: lastN,
@@ -433,6 +434,8 @@ interface PageNotes extends PageIssues {
   tabSwitch?: TabSwitchInfo | undefined;
   /** Messages `--level` hid, per level */
   hidden?: HiddenByLevel | undefined;
+  /** The page's latest load failed (#860) */
+  failedLoad?: FailedLoad | undefined;
 }
 
 interface ConsoleResult extends PageNotes {
@@ -509,6 +512,7 @@ export function registerConsoleCommand(program: Command): void {
             currentNavigationId,
             dropped,
             pageCrashedAt,
+            failedLoad,
             tabSwitch,
             issues,
             issuesDropped,
@@ -525,6 +529,7 @@ export function registerConsoleCommand(program: Command): void {
                   issuesDropped,
                   tabSwitch,
                   hidden,
+                  failedLoad,
                 })
               ),
             };
@@ -538,6 +543,7 @@ export function registerConsoleCommand(program: Command): void {
               hidden,
               dropped: droppedShown,
               pageCrashedAt,
+              failedLoad,
               tabSwitch,
               issues,
               issuesDropped,
@@ -552,6 +558,7 @@ export function registerConsoleCommand(program: Command): void {
             hidden,
             dropped,
             pageCrashedAt,
+            failedLoad,
             tabSwitch,
             issues,
             issuesDropped,
@@ -568,6 +575,7 @@ export function registerConsoleCommand(program: Command): void {
               issuesDropped,
               tabSwitch,
               hidden,
+              failedLoad,
             })
           );
         }

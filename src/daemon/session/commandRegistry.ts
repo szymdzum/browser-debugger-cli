@@ -772,6 +772,7 @@ export function createCommandRegistry(
         }),
         ...(store.fetchInterceptionEnabled && { fetchInterception: true as const }),
         ...(store.pageCrashedAt !== undefined && { pageCrashedAt: store.pageCrashedAt }),
+        ...(store.failedLoad && { failedLoad: store.failedLoad }),
         network: recentNetwork,
         console: recentConsole,
         totalNetwork,

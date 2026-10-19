@@ -331,6 +331,7 @@ export class SessionController {
             ...(data.navigations && { navigations: data.navigations }),
             ...(data.fetchInterception && { fetchInterception: data.fetchInterception }),
             ...(data.pageCrashedAt !== undefined && { pageCrashedAt: data.pageCrashedAt }),
+            ...(data.failedLoad && { failedLoad: data.failedLoad }),
             ...(data.downloads && { downloads: data.downloads }),
             ...(data.tabSwitch && { tabSwitch: data.tabSwitch }),
             partial: true,

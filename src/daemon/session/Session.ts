@@ -54,7 +54,7 @@ import { reapOrphanedChrome, removeSessionFiles } from '@/session/cleanup/staleS
 import { writeSessionMetadata } from '@/session/metadata.js';
 import { getSessionPort } from '@/session/port.js';
 import { pageCrashedCommandError } from '@/telemetry/pageCrash.js';
-import type { CleanupFunction, LaunchedChrome } from '@/types.js';
+import type { CleanupFunction, FailedLoad, LaunchedChrome } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { formatChromeNotice } from '@/ui/messages/chrome.js';
 import { delay } from '@/utils/async.js';
@@ -183,6 +183,8 @@ export interface SessionInfo {
   state?: StateSummary;
   /** Attached to a tab as it was (`bdg attach`) */
   attached?: boolean;
+  /** The attached tab shows a failed load (`bdg attach`) */
+  failedLoad?: FailedLoad;
 }
 
 /** Session metadata as reported in status responses. */
@@ -239,6 +241,8 @@ export class Session {
   private loading: PageLoadingState | undefined;
   /** Dialogs answered while the session started */
   private startDialogs: DialogInfo[] = [];
+  /** The attached tab showed a failed load (`bdg attach`, #860) */
+  private startFailedLoad: FailedLoad | undefined;
   /** What `--state` restored before the first navigation */
   private stateRestored: StateSummary | undefined;
 
@@ -391,6 +395,7 @@ export class Session {
       ...(this.startDialogs.length > 0 && { dialogs: this.startDialogs }),
       ...(this.stateRestored && { state: this.stateRestored }),
       ...(this.attachedTab && { attached: true }),
+      ...(this.startFailedLoad && { failedLoad: this.startFailedLoad }),
     };
   }
 
@@ -563,6 +568,7 @@ export class Session {
       readReadiness: async (cdp) => {
         this.loading = await readPageLoadingState(cdp, this.store.pendingNetworkRequests.values());
         this.startDialogs = [...this.store.dialogs];
+        this.startFailedLoad = this.attachedTab ? this.store.failedLoad : undefined;
       },
       ...this.startReleases(external),
     };

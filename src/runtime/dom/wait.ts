@@ -25,6 +25,7 @@ import {
   type WaitSnapshot,
 } from '@/runtime/dom/waitCondition.js';
 import { callFunctionInBdgWorld } from '@/runtime/page/bdgWorld.js';
+import { failedLoadError, readFailedLoad } from '@/runtime/page/failedLoad.js';
 import { loadingStateOf } from '@/runtime/page/loadingState.js';
 import type { PendingRequest } from '@/telemetry/network.js';
 import type { CDPSender } from '@/telemetry/objectExpander.js';
@@ -101,7 +102,8 @@ const WAIT_SNAPSHOT_JS = `async function (selector, parts, text, previous, slice
  * @param params - Condition and timeout
  * @param pendingRequests - The session's requests still running (named when the page is still loading at the timeout)
  * @returns What the page showed when it was met, and how long it took
- * @throws CommandError (81) for an invalid selector, (102) when the timeout passed;
+ * @throws CommandError (81) for an invalid selector, (80) when the page loaded is
+ *   Chrome's error page (`--load`), (102) when the timeout passed;
  *   CDP errors other than a lost page context (a closed connection) as they are
  */
 export async function waitForCondition(
@@ -127,6 +129,8 @@ export async function waitForCondition(
       continue;
     }
     if (isWaitConditionMet(snapshot, condition, last)) {
+      const failed = condition.load ? await readFailedLoad(cdp) : undefined;
+      if (failed) throw failedLoadError(failed);
       return {
         ...condition,
         elapsedMs: Date.now() - started,

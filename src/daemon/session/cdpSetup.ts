@@ -6,18 +6,17 @@
 
 import { CDPConnection } from '@/connection/cdp.js';
 import { CDPConnectionError } from '@/connection/errors.js';
+import { navigationOutcome } from '@/connection/navigationOutcome.js';
 import { waitForPageReady } from '@/connection/pageReadiness.js';
 import { sendTyped, type Protocol } from '@/connection/typed-cdp.js';
 import { DEFAULT_PAGE_READINESS_TIMEOUT_MS } from '@/constants.js';
 import type { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
 import type { SessionConfig } from '@/daemon/session/types.js';
-import { CommandError } from '@/errors/index.js';
-import { navigationFailedError } from '@/errors/messages.js';
+import { failedLoadError } from '@/runtime/page/failedLoad.js';
 import type { LaunchedChrome } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
 import { displayUrl } from '@/utils/displayUrl.js';
 import { getErrorMessage } from '@/utils/errors.js';
-import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { fetchCDPTargets } from '@/utils/http.js';
 import { normalizeUrl } from '@/utils/url.js';
 
@@ -88,16 +87,6 @@ export async function connectPage(
 }
 
 /**
- * Network errors that mean the start URL could not be reached at all.
- *
- * Other `Page.navigate` errors still leave a page worth inspecting: HTTP error
- * pages with an empty body (`ERR_HTTP_RESPONSE_CODE_FAILURE`), downloads and
- * 204 responses (`ERR_ABORTED`), certificate interstitials (`ERR_CERT_*`).
- */
-export const UNREACHABLE_ERRORS =
-  /ERR_NAME_NOT_RESOLVED|ERR_NAME_RESOLUTION_FAILED|ERR_CONNECTION_(REFUSED|RESET|CLOSED|FAILED|TIMED_OUT)|ERR_ADDRESS_UNREACHABLE|ERR_INTERNET_DISCONNECTED|ERR_TIMED_OUT|ERR_EMPTY_RESPONSE|ERR_FILE_NOT_FOUND|ERR_UNSAFE_PORT|ERR_INVALID_URL/;
-
-/**
  * Navigate to the configured URL, wait for the page, and refresh target info.
  *
  * @param cdp - Open CDP connection
@@ -109,7 +98,9 @@ export const UNREACHABLE_ERRORS =
  *   to `Page.navigate` (sent only once the page's first response arrives) and
  *   the readiness wait early
  * @returns Loader id of the navigation (the main document's request id)
- * @throws CommandError (80) when the URL cannot be reached at all
+ * @throws CommandError (80) when the load fails: Chrome's error page (any
+ *   network error but those {@link navigationOutcome} keeps) or a main
+ *   document cut off after it committed
  */
 export async function navigateToTarget(
   cdp: CDPConnection,
@@ -122,21 +113,21 @@ export async function navigateToTarget(
   const normalizedUrl = normalizeUrl(config.url);
   log.info(`Navigating to ${displayUrl(normalizedUrl)}...`);
   const navigation = await sendNavigate(cdp, normalizedUrl, log, signal);
-  if (navigation.errorText && UNREACHABLE_ERRORS.test(navigation.errorText)) {
-    const err = navigationFailedError(
-      normalizedUrl,
-      navigation.errorText,
-      normalizedUrl === `http://${config.url}`
-    );
-    throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_URL);
+  const addedScheme = normalizedUrl === `http://${config.url}`;
+  const { errorText, loaderId } = navigation;
+  if (errorText && navigationOutcome(errorText, loaderId) === 'failed') {
+    throw failedLoadError({ url: normalizedUrl, errorText }, addedScheme);
   }
-  if (navigation.errorText) log.info(`Navigation reported ${navigation.errorText}`);
+  if (errorText) log.info(`Navigation reported ${errorText}`);
 
   await waitForPageReady(cdp, {
     maxWaitMs: DEFAULT_PAGE_READINESS_TIMEOUT_MS,
     ...(signal && { signal }),
   });
   log.info(`Page ready`);
+  if (telemetryStore.failedLoad && !signal?.aborted) {
+    throw failedLoadError(telemetryStore.failedLoad, addedScheme);
+  }
 
   if (chrome && telemetryStore.targetInfo && !signal?.aborted) {
     const currentTargetId = telemetryStore.targetInfo.id;

@@ -42,6 +42,7 @@ import type { TelemetryType } from '@/types.js';
 import { OutputBuilder, buildSuccessResponse, stringifyEnvelope } from '@/ui/OutputBuilder.js';
 import { escapeControlChars, joinLines } from '@/ui/formatting.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { failedLoadNote } from '@/ui/messages/commands.js';
 import {
   daemonStillExitingHint,
   daemonStillExitingSuggestion,
@@ -619,12 +620,14 @@ function reportStartOutcome(outcome: StartOutcome, options: SessionStartOptions)
       ...(data.dialogs && { dialogs: data.dialogs }),
       ...(data.state && { state: data.state }),
       ...(data.attached && { attached: true }),
+      ...(data.failedLoad && { failedLoad: data.failedLoad }),
       port: data.port,
       ...(data.chromePid > 0 ? { chromePid: data.chromePid } : { externalChrome: true }),
       daemonPid: data.daemonPid,
       ...(autoStopAt && { autoStopAt: autoStopAt.toISOString() }),
     };
-    console.log(stringifyEnvelope(buildSuccessResponse(result)));
+    const warning = data.failedLoad && failedLoadNote(data.failedLoad);
+    console.log(stringifyEnvelope(buildSuccessResponse(result, warning)));
   } else {
     const page = {
       url: data.targetUrl,
@@ -633,6 +636,7 @@ function reportStartOutcome(outcome: StartOutcome, options: SessionStartOptions)
       ...(data.dialogs && { dialogs: data.dialogs }),
       ...(data.state && { state: data.state }),
       ...(data.attached && { attached: true }),
+      ...(data.failedLoad && { failedLoad: data.failedLoad }),
       ...(autoStopAt && { autoStopAt }),
       ...(session && { session }),
     };
