@@ -16,8 +16,8 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 /** Where Chrome's error page shows the network error's name (e.g. `ERR_CONNECTION_REFUSED`) */
 const ERROR_CODE_EXPRESSION = "document.querySelector('.error-code')?.textContent?.trim() ?? ''";
 
-/** A Chrome network error name */
-const ERROR_NAME = /^ERR_[A-Z0-9_]+$/;
+/** A Chrome network error name, as error pages show it (`ERR_…`, the certificate interstitial `NET::ERR_…`) */
+const ERROR_NAME = /^(?:net::)?(ERR_[A-Z0-9_]+)$/i;
 
 /** Shown when the error page does not name its error: Chrome's generic failure */
 const UNNAMED_ERROR = 'net::ERR_FAILED';
@@ -26,10 +26,11 @@ const UNNAMED_ERROR = 'net::ERR_FAILED';
  * The network error an error page names.
  *
  * @param value - What the page shows as its error code
- * @returns e.g. `net::ERR_CONNECTION_REFUSED`, or {@link UNNAMED_ERROR}
+ * @returns e.g. `net::ERR_CONNECTION_REFUSED`, or {@link UNNAMED_ERROR} for anything else
  */
-function parseErrorCode(value: unknown): string {
-  return typeof value === 'string' && ERROR_NAME.test(value) ? `net::${value}` : UNNAMED_ERROR;
+export function parseErrorCode(value: unknown): string {
+  const name = typeof value === 'string' ? ERROR_NAME.exec(value.trim())?.[1] : undefined;
+  return name ? `net::${name.toUpperCase()}` : UNNAMED_ERROR;
 }
 
 /**
@@ -66,7 +67,9 @@ export function assertNavigated(
 
 /**
  * The main frame and the failed load it shows, if it shows Chrome's error
- * page (its `unreachableUrl`, named by the error page). URLs are as
+ * page (its `unreachableUrl`, named by the error page). A page Chrome shows
+ * for an error that keeps the load (the certificate interstitial,
+ * `NET::ERR_CERT_*`) is no failure, as for `Page.navigate`. URLs are as
  * {@link displayUrl} shows them (no user info, tokens masked).
  *
  * @param cdp - CDP connection
@@ -80,6 +83,7 @@ async function readMainFrame(cdp: CDPSender): Promise<{ id: string; failed?: Fai
     returnByValue: true,
   });
   const errorText = parseErrorCode(shown.result?.value);
+  if (navigationOutcome(errorText, frame.loaderId) !== 'failed') return { id: frame.id };
   return { id: frame.id, failed: { url: displayUrl(frame.unreachableUrl), errorText } };
 }
 
