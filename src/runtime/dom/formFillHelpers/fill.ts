@@ -31,7 +31,6 @@ import {
   exceptionSummary,
   throwIfInvalidSelector,
   withMultipleMatchesWarning,
-  withValueMismatchWarning,
 } from '@/runtime/dom/formFillHelpers/shared.js';
 import {
   FILL_FOCUS_CHECK_SCRIPT,
@@ -168,7 +167,7 @@ export async function fillElement(
         const filled = result.insertText
           ? await insertAsUser(cdp, { selector, value, listIndex: options.listIndex }, result)
           : result;
-        return withValueMismatchWarning(await withReadBack(cdp, withFillWarnings(filled)));
+        return withReadBack(cdp, withFillWarnings(filled));
       }
       const uploaded = await setFileInput(cdp, selector, value, options);
       return uploaded.success && result.elementType
@@ -284,7 +283,8 @@ const READ_BACK_TIMEOUT_MS = 1000;
 
 /**
  * Add the read-back of a successful fill ({@link FILL_READ_BACK_SCRIPT}):
- * `valueMismatch` when the field's value is not the one given. The fill
+ * `valueMismatch` when the field's value is not the one given (the CLI
+ * fails the fill with exit 90 for it). The fill
  * stands without it when the read-back fails, takes longer than
  * {@link READ_BACK_TIMEOUT_MS} or finds nothing (a change handler navigated
  * or replaced the page).

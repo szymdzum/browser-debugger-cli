@@ -6,8 +6,7 @@
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import { actionScriptFailedError, invalidSelectorError } from '@/errors/messages.js';
-import type { FillResult } from '@/ipc/protocol/domTypes.js';
-import { multipleMatchesWarning, valueMismatchWarning } from '@/ui/messages/commands.js';
+import { multipleMatchesWarning } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -26,19 +25,6 @@ export function withMultipleMatchesWarning<
   if (index !== undefined || count <= 1) return result;
   const warning = multipleMatchesWarning(count, action);
   return { ...result, warning: result.warning ? `${result.warning}; ${warning}` : warning };
-}
-
-/**
- * Put a warning first when the filled field's value is not the one given
- * (see `valueMismatch`). Keeps an existing warning after it.
- *
- * @param result - Fill result
- * @returns The result, with the warning when the value differs
- */
-export function withValueMismatchWarning(result: FillResult): FillResult {
-  if (!result.valueMismatch) return result;
-  const warning = valueMismatchWarning(result.valueMismatch);
-  return { ...result, warning: result.warning ? `${warning}; ${result.warning}` : warning };
 }
 
 /**

@@ -16,6 +16,7 @@ import type {
 import { shortUrlName } from '@/ui/formatters/console/shared.js';
 import { formatBytes } from '@/ui/formatting.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
+import { capLength } from '@/utils/strings.js';
 
 /**
  * Warning shown when a click falls back from mouse events to `el.click()`.
@@ -319,7 +320,8 @@ export function alsoChangingText(region: AlsoChanging): string {
 }
 
 /**
- * Warning shown when a filled field's value read back is not the one given:
+ * Read-back of a fill whose value the page did not keep, the message of
+ * the exit 90 error (`valueMismatchError`): the value read back is not the one given:
  * cut to its maxlength, a secret field (one `dom query` masks) whose value
  * has another length (values never shown), or another value (naming the
  * field the value went to, when one has it).
@@ -338,7 +340,26 @@ export function valueMismatchWarning(mismatch: FillValueMismatch): string {
     mismatch.movedTo === undefined
       ? 'the page may have rejected or moved the input'
       : `the value appeared in ${mismatch.movedTo} instead`;
-  return `The field's value is "${mismatch.actual}" after filling (expected "${mismatch.expected}"); ${outcome}`;
+  return `The field's value is ${quotedValue(mismatch.actual)} after filling (expected ${quotedValue(mismatch.expected)}); ${outcome}`;
+}
+
+/** Characters of a value quoted in the read-back message */
+const QUOTED_VALUE_LENGTH = 200;
+
+/**
+ * A value quoted for the read-back message: JSON-quoted (newlines and
+ * quotes escaped, so the message stays one line), its first
+ * {@link QUOTED_VALUE_LENGTH} characters with an ellipsis and its full
+ * length when longer.
+ *
+ * @param text - Value given or read back (not a secret field's)
+ * @returns e.g. `"24.00"`, `"aaa…" (100000 characters)`
+ */
+function quotedValue(text: string): string {
+  const capped = capLength(text, QUOTED_VALUE_LENGTH);
+  return capped.truncatedFrom === undefined
+    ? JSON.stringify(text)
+    : `${JSON.stringify(`${capped.text}…`)} (${capped.truncatedFrom} characters)`;
 }
 
 /**

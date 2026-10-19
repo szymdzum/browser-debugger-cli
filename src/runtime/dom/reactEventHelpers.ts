@@ -40,12 +40,38 @@ const LIST_JS = `(list) => {
 }`;
 
 /**
+ * Page-side number a formatted text field shows, or null when it shows none
+ * (#867): a decimal number (`8`, `-5.2`, `.5`, `8.00`), with thousands
+ * separators only in the unambiguous `1,234.5` and `1 234.5` forms (a space,
+ * NBSP or narrow NBSP; dot decimal), a sign (`-`, `+` or the Unicode minus
+ * `−`) or accounting parentheses (`($5.00)` and `$(5.00)` are -5), and one currency (any Unicode `Sc` symbol, `zł`, or a
+ * three-letter ISO code such as `PLN`) before or after it, or `%` after it;
+ * whitespace around the number and between it and the currency is ignored.
+ * Locale forms (`8,00`, `1.234,5`, `1 234,50`), two signs or two currencies
+ * are no number. Any three uppercase letters count as a code (`8 ABC`).
+ */
+export const NUMERIC_TEXT_JS = `(text) => {
+  let body = String(text).trim();
+  const paren = /^(\\p{Sc}|zł|[A-Z]{3})?\\s*\\((.*)\\)$/u.exec(body);
+  if (paren) body = (paren[1] || '') + paren[2].trim();
+  const match = /^([+\\-\\u2212]?)\\s*(\\p{Sc}|zł|[A-Z]{3})?\\s*([+\\-\\u2212]?)\\s*(\\d{1,3}(?:,\\d{3})+(?:\\.\\d+)?|\\d{1,3}(?:[ \\u00a0\\u202f]\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d*)?|\\.\\d+)\\s*(\\p{Sc}|zł|[A-Z]{3}|%)?$/u.exec(body);
+  if (!match || (match[1] && match[3]) || (match[2] && match[5])) return null;
+  const sign = match[1] || match[3];
+  if (paren && sign) return null;
+  const number = Number(match[4].replace(/[, \\u00a0\\u202f]/g, ''));
+  return paren || (sign && sign !== '+') ? -number : number;
+}`;
+
+/**
  * Page-side read-back of a filled field: a mismatch when its value is not
  * what was asked for (the page rejected, reformatted or moved the input),
  * undefined when it is. Values are compared as the browser normalises them:
  * colors case-insensitively, numbers and ranges as numbers, email trimmed,
  * textarea line endings as `\n`, times and local date-times without zero
- * seconds and with `T` (`2024-01-05 10:00:00` is `2024-01-05T10:00`).
+ * seconds and with `T` (`2024-01-05 10:00:00` is `2024-01-05T10:00`). A
+ * plain number given to a text-like field (text, search, tel, url, password,
+ * textarea) also matches the number the field shows formatted
+ * ({@link NUMERIC_TEXT_JS}: `8` is `$8.00`, `5.2` is `5.20%`).
  * Checkboxes and radios compare as `checked`/`unchecked`, a multiple select
  * as its selected values joined by ", ", contenteditable text with
  * whitespace collapsed. A value cut to the field's maxlength sets
@@ -73,7 +99,11 @@ export const FILL_VALUE_MISMATCH_JS = `(field, expected, secret) => {
     return text;
   };
   const numeric = (type === 'number' || type === 'range') && actual.trim() !== '' && String(expected).trim() !== '';
-  const same = numeric ? Number(actual) === Number(expected) : normalize(actual) === normalize(expected);
+  const textLike = field.localName === 'textarea' ||
+    (field.localName === 'input' && /^(text|search|tel|url|password)$/.test(type));
+  const formattedNumber = !numeric && textLike && /^[+-]?(\\d+(\\.\\d*)?|\\.\\d+)$/.test(String(expected)) &&
+    (${NUMERIC_TEXT_JS})(actual) === Number(expected);
+  const same = numeric ? Number(actual) === Number(expected) : formattedNumber || normalize(actual) === normalize(expected);
   if (same) return undefined;
   if (secret || type === 'password') {
     const mask = (text) => (text === '' ? '' : '${MASKED_VALUE}');
