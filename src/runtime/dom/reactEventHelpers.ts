@@ -40,6 +40,12 @@ const LIST_JS = `(list) => {
 }`;
 
 /**
+ * Page-side number a text field shows, or null when it shows none (#867).
+ * Skeleton: not implemented yet.
+ */
+export const NUMERIC_TEXT_JS = `(text) => { throw new Error('not implemented'); }`;
+
+/**
  * Page-side read-back of a filled field: a mismatch when its value is not
  * what was asked for (the page rejected, reformatted or moved the input),
  * undefined when it is. Values are compared as the browser normalises them:
