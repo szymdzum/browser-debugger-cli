@@ -82,7 +82,7 @@ export const ROWS: readonly Row[] = [
     full: true,
     na: { submit: NONDETERMINISTIC },
     console: true,
-    attach: (s) => String(new URL(s.refusedUrl).port),
+    attach: (s) => new URL(s.refusedUrl).host,
     todo: {
       click: ISSUE_873,
     },
