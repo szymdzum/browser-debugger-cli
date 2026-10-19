@@ -85,7 +85,7 @@ export const EXIT_CODE_REGISTRY: readonly ExitCodeEntry[] = [
   {
     code: EXIT_CODES.INVALID_URL,
     name: 'INVALID_URL',
-    description: 'Invalid URL format or unreachable URL',
+    description: 'Invalid URL format, or a URL that failed to load (a net:: error)',
   },
   {
     code: EXIT_CODES.INVALID_ARGUMENTS,
