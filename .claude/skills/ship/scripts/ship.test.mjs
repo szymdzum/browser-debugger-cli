@@ -6,7 +6,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -40,6 +40,8 @@ import {
   insertLogRow,
   isTransientGhError,
   testChromeOrphans,
+  liveSessionChrome,
+  foreignSession,
   jobsLostWithoutResult,
   listEntries,
   mainGateVerdict,
@@ -1204,7 +1206,7 @@ test('proxyNote tells agents that run bdg to bypass a configured proxy', () => {
   assert.equal(proxyNote({}, 'tester'), null);
   assert.equal(proxyNote({ HTTPS_PROXY: 'http://127.0.0.1:9000' }, 'implementer'), null);
   const note = proxyNote({ HTTPS_PROXY: 'http://127.0.0.1:9000', http_proxy: 'x' }, 'reviewer');
-  assert.match(note, /env -u HTTPS_PROXY -u http_proxy bdg/);
+  assert.match(note, /exec env -u HTTPS_PROXY -u http_proxy node …/);
   assert.match(note, /--no-proxy-server/);
 });
 
@@ -1232,10 +1234,24 @@ test('templatePlaceholders includes the long optional lines, so --check refuses 
   assert.match(briefProblems(`${'x'.repeat(300)}\n- ${optional[0]}`, placeholders)[0], /placeholders still open/);
 });
 
-test('the proxy note puts the bypass inside the bdg function, never in front of bdg', () => {
+test('the proxy note puts the bypass inside the bdg script the brief creates', () => {
   const note = proxyNote({ HTTPS_PROXY: 'http://127.0.0.1:9000' }, 'tester');
-  assert.match(note, /inside your `bdg\(\)` function/);
-  assert.match(note, /Never run `env -u HTTPS_PROXY bdg …`/);
+  assert.match(note, /inside the `bdg` script your brief creates/);
+  assert.doesNotMatch(note, /bdg\(\)/);
+});
+
+test('every brief that runs bdg exports the attach guard, and bdg is a script on PATH, not a shell function', () => {
+  const values = { N: '1', MAIN: '/m', HEAD: 'h', BASE: 'b', RED: 'r', BRANCH: 'x', AGENT: 'a', URLS: 'u', DATE: 'd' };
+  for (const role of ['implementer', 'reviewer', 'tester', 'verifier', 'design']) {
+    const { brief } = renderBrief(BRIEFS, role, values);
+    assert.match(brief, /^export .*BDG_ATTACH_REQUIRE_WS_URL=1/m, role);
+    assert.doesNotMatch(brief, /bdg\(\) \{/, role);
+  }
+  for (const [role, bin] of [['tester', '/tmp/bdg-t-1-a-bin'], ['verifier', '/tmp/verify-d-bin'], ['design', '/tmp/design-1-bin']]) {
+    const { brief } = renderBrief(BRIEFS, role, values);
+    assert.ok(brief.includes(`> ${bin}/bdg && chmod +x ${bin}/bdg`), role);
+    assert.ok(brief.includes(`PATH=${bin}:$PATH`), role);
+  }
 });
 
 test('only the implementer brief gets a default CAP: reviewer and tester stay open until set', () => {
@@ -1285,4 +1301,37 @@ test('testChromeOrphans names a throwaway-profile Chrome with no PID file, not t
   assert.deepEqual(testChromeOrphans(ps, where, new Set([300]), 0).map((p) => p.pid), [52977, 94308]);
   const since = Date.parse('Sun Oct 18 00:00:00 2026');
   assert.deepEqual(testChromeOrphans(ps, where, new Set([300]), since).map((p) => p.pid), [94308]);
+});
+
+test('liveSessionChrome covers a Chrome only while the session\'s daemon lives', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ship-session-'));
+  writeFileSync(join(dir, 'chrome.pid'), String(process.pid));
+  assert.equal(liveSessionChrome(dir), null);
+  writeFileSync(join(dir, 'daemon.pid'), '999999');
+  assert.equal(liveSessionChrome(dir), null);
+  writeFileSync(join(dir, 'daemon.pid'), String(process.pid));
+  assert.equal(liveSessionChrome(dir), process.pid);
+  rmSync(dir, { recursive: true });
+});
+
+test('foreignSession: only another thread\'s or PR\'s session, never this PR\'s agents or the verifier', () => {
+  const scope = ['880', '873'];
+  assert.equal(foreignSession('/tmp/fuzz-863-ab12/s3', scope), true);
+  assert.equal(foreignSession('/tmp/bdg-t-861-a', scope), true);
+  assert.equal(foreignSession('/tmp/bdg-t-873-a', scope), false);
+  assert.equal(foreignSession('/tmp/rv-880-t/x', scope), false);
+  assert.equal(foreignSession('/tmp/verify-2026-10-20', scope), false);
+  assert.equal(foreignSession('/tmp/fuzz-863-ab12/s3', undefined), false);
+  assert.equal(foreignSession('/tmp/bdg-t-529a-a', ['529a']), false);
+});
+
+test('testChromeOrphans counts a bdg session\'s chrome.pid next to the profile as its PID file', () => {
+  const ps = [
+    '61000     1 Tue Oct 20 08:10:00 2026     /opt/chrome/chrome --user-data-dir=/tmp/fuzz-863-ab12/s3/chrome-profile --headless=new',
+    '61100     1 Tue Oct 20 08:11:00 2026     /opt/chrome/chrome --user-data-dir=/tmp/fuzz-863-ab12/s4/chrome-profile --headless=new',
+  ].join('\n');
+  const where = { home: '/Users/me', parent: '/Users/me/Developer' };
+  const pids = { '/tmp/fuzz-863-ab12/s3/chrome-profile': 61000, '/tmp/fuzz-863-ab12/s4/chrome-profile': 99 };
+  assert.deepEqual(testChromeOrphans(ps, where, new Set(), 0, (profile) => pids[profile] ?? null).map((p) => p.pid), [61100]);
+  assert.deepEqual(testChromeOrphans(ps, where, new Set(), 0).map((p) => p.pid), [61000, 61100]);
 });

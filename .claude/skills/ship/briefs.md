@@ -25,10 +25,10 @@ export PATH="$HOME/.nvm/versions/node/v22.15.0/bin:$PATH"
 <!-- block:forbidden -->
 **Rules.**
 - No `git stash` (the stash is shared across worktrees); no `--no-verify` or any other hook bypass.
-- No `pkill`, `killall` or `pkill -P`. A background process you start writes its PID at start (`cmd & echo $! > /tmp/bdg-<ROLE>-<N>-NAME.pid`); kill only PIDs read back from those files, and only when `ps -o lstart= -p <pid>` shows the process started before the file was written (a reused PID names an unrelated process). A stray bdg session is ended with `bdg stop` (or `bdg cleanup --force`) in its own `BDG_SESSION_DIR`.
+- No `pkill`, `killall` or `pkill -P`. A background process you start writes its PID at start (`cmd & echo $! > /tmp/bdg-<ROLE>-<N>-NAME.pid`); kill only PIDs read back from those files, and only when `ps -o lstart= -p <pid>` shows the process started before the file was written (a reused PID names an unrelated process). A stray bdg session is ended with `bdg stop` (or `bdg cleanup --force`) in its own `BDG_SESSION_DIR`, run by the build that started it (`node <worktree>/dist/index.js stop` where your brief creates no `bdg` script).
 - Never touch `~/.bdg`, other agents' worktrees, or the main checkout `<MAIN>` (its `.tmp/` included); the one exception is adding and removing your own worktrees with `git -C <MAIN> worktree …`. Nothing may land in `~/Downloads`.
 - Don't open GitHub issues. Report findings with the command and its output; the orchestrator verifies and files them.
-- `bdg attach` only with `--chrome-ws-url` to a Chrome you launched yourself: without it, attach reads the stable profile's `DevToolsActivePort`, which is the owner's everyday Chrome (S19: a reviewer attached to it).
+- `bdg attach` only with `--chrome-ws-url` to a Chrome you launched yourself: without it, attach reads the stable profile's `DevToolsActivePort`, which is the owner's everyday Chrome (S19: a reviewer attached to it; S25: an implementer made it ask "Allow remote debugging?"). `BDG_ATTACH_REQUIRE_WS_URL=1`, exported by every shell block below, makes bdg refuse that with exit 81; never unset it, and a test that needs it off sets it in the child's own env.
 <!-- /block -->
 
 <!-- block:findings -->
@@ -49,7 +49,7 @@ Implement issue #<N> in bdg (github.com/szymdzum/browser-debugger-cli). Read the
 **Scope** (the issue's acceptance criteria, plus):
 - <concrete expectations>
 - <decisions you must make and justify, and the options>
-- Contracts: `--json` output in the `BdgResponse` envelope, additive only; exit codes from `src/utils/exitCodes.ts`; messages centralized (`src/ui/messages`, `src/errors/messages.ts`); `CommandError` or `{success, error}`, never both. Removing a `--json` field or changing an exit code or a default is not yours to decide: stop and report it as a decision.
+- Contracts: `--json` output in the `BdgResponse` envelope, additive only; exit codes from `src/utils/exitCodes.ts`; messages centralized (`src/ui/messages`, `src/errors/messages.ts`); `CommandError` or `{success, error}`, never both. Removing a `--json` field or changing an exit code or a default is not yours to decide: stop and report it as a decision. An owner's decision on the issue covers exactly the commands and flags it names: carrying it over to another one is a new decision, so stop and report it (S26 #884: a decision for `--sort duration` carried over to `--filter duration:` changed a negated filter's result).
 - Validation of a value (an environment variable, a flag, an argument) covers **every entry path** that uses it, the start path (`bdg URL`) included: start spawns the daemon before most helpers run, so a check only in a shared helper fires too late there.
 - Page-side code (anything `Runtime.evaluate` or `callFunctionOn` runs) gets its parameters as function arguments, never interpolated into the source (CodeQL `js/bad-code-sanitization`); the page returns keys or data, Node builds the messages.
 - Secrets: no message, hint or `--json` field carries a secret's value, a fragment of it, or its length.
@@ -76,7 +76,7 @@ Implement issue #<N> in bdg (github.com/szymdzum/browser-debugger-cli). Read the
 **Verify.** Every shell call starts with:
 ```
 {{node}}
-export BDG_TEST_SESSION_PARENT=/tmp/bt-<N> BDG_TEST_HOME_DIR=/tmp/bt-<N>-h   # manual runs: BDG_SESSION_DIR=/tmp/bdg-<N>-manual
+export BDG_TEST_SESSION_PARENT=/tmp/bt-<N> BDG_TEST_HOME_DIR=/tmp/bt-<N>-h BDG_ATTACH_REQUIRE_WS_URL=1   # manual runs: BDG_SESSION_DIR=/tmp/bdg-<N>-manual
 ```
 Rebuild (`npm run build`) after every change to `src/` before a smoke run: a smoke test that hangs on an old build is a reason to stop, rebuild and say so in the report, never to kill processes you didn't start with a PID file (S22 #846). Run `npm run check`, `npm test`, `npm run build` and the affected smoke files (`npx tsx --test --test-concurrency=1 src/__tests__/smoke/<file>.smoke.test.ts`); CI runs the full smoke suite. When the change alters human or `--json` output, also run every test that asserts the old text (`rg` the old string across `src/`), not only the files you added (a shared formatter change passed 2 smoke files and CI found a third, #691). Collect before/after evidence on a fixture page (`npx tsx src/__testutils__/serveFixtures.ts`) or a real site: two lines, not a capture of every command; case matrices up to ~30 cells unless the scope asks for more.
 
@@ -126,7 +126,7 @@ Scratch files in `/tmp/review-<N>-work`; remove the worktree at the end (`git -C
 **Run** in `/tmp/review-<N>`, every shell call starting with:
 ```
 {{node}}
-export BDG_TEST_SESSION_PARENT=/tmp/rv-<N>-t BDG_TEST_HOME_DIR=/tmp/rv-<N>-h
+export BDG_TEST_SESSION_PARENT=/tmp/rv-<N>-t BDG_TEST_HOME_DIR=/tmp/rv-<N>-h BDG_ATTACH_REQUIRE_WS_URL=1
 ```
 `npm run build`, <the targeted unit tests>, <one targeted smoke test>. Check cheap claims by hand with the session directory on that command only: `BDG_SESSION_DIR=/tmp/rv-<N> node /tmp/review-<N>/dist/index.js …`. Never export `BDG_SESSION_DIR` in the shell that runs `npm test`: the IPC tests then fail by the dozen (S15: ~22 false failures, twice).
 
@@ -162,13 +162,16 @@ Build the branch in its worktree first (`npm run build` in `../bdg-<N>`, Node pi
 <!-- brief:tester -->
 You are a coding agent who has never used bdg, a CLI for debugging Chrome. Test it on realistic tasks and report what works, what is confusing, and any bugs. You are testing build `<HEAD>`; report that SHA as given (you have no git, don't try to confirm it).
 
-**Setup.** Every shell call starts with:
+**Setup.** Once, before anything else, create the `bdg` command (a script on `PATH`, not a shell function: `timeout`, `xargs` and `env` can't run a function and fall through to whatever `bdg` is installed globally, S26 #880: `timeout 90 bdg` ran 0.20.0):
+```
+mkdir -p /tmp/bdg-t-<N>-<AGENT>-bin && printf '#!/bin/sh\nexec node <MAIN>/../bdg-<N>/dist/index.js "$@"\n' > /tmp/bdg-t-<N>-<AGENT>-bin/bdg && chmod +x /tmp/bdg-t-<N>-<AGENT>-bin/bdg
+```
+Every shell call starts with:
 ```
 {{node}}
-export BDG_SESSION_DIR=/tmp/bdg-t-<N>-<AGENT>
-bdg() { node <MAIN>/../bdg-<N>/dist/index.js "$@"; }
+export BDG_SESSION_DIR=/tmp/bdg-t-<N>-<AGENT> PATH=/tmp/bdg-t-<N>-<AGENT>-bin:$PATH BDG_ATTACH_REQUIRE_WS_URL=1
 ```
-Learn bdg the way a new user would: `bdg --help`, `bdg --help --json`, `<MAIN>/../bdg-<N>/.claude/skills/bdg/SKILL.md`. Read the source only to confirm a bug. To send Ctrl-C, use a tiny Node spawner that runs `child_process.spawn` on the bdg command, calls `child.kill('SIGINT')` after N ms and prints the exit code or signal, stdout and stderr (`kill -INT` on a `&` job does nothing: a non-interactive shell starts it with SIGINT ignored). `kill -TERM <pid>` works for a background `node <MAIN>/../bdg-<N>/dist/index.js …` with its PID in a file. Kill only PIDs you started.
+Learn bdg the way a new user would: `bdg --help`, `bdg --help --json`, `<MAIN>/../bdg-<N>/.claude/skills/bdg/SKILL.md`. Read the source only to confirm a bug. To send Ctrl-C, use a tiny Node spawner that runs `child_process.spawn` on the bdg command, calls `child.kill('SIGINT')` after N ms and prints the exit code or signal, stdout and stderr (`kill -INT` on a `&` job does nothing: a non-interactive shell starts it with SIGINT ignored). `kill -TERM <pid>` works for a background `bdg …` with its PID in a file (the script `exec`s node, so the PID is node's). Kill only PIDs you started.
 
 **Pages.** <URLS>. Scratch files in `/tmp/bdg-t-<N>-<AGENT>-work`.
 
@@ -194,11 +197,14 @@ Learn bdg the way a new user would: `bdg --help`, `bdg --help --json`, `<MAIN>/.
 Runs after a fresh-agent round on everything about older code, and at session start as the sweep (then the findings are the selected issues, "re-run its recorded command"). Prepare its checkout yourself, since it runs no git: `git worktree add ../bdg-verify --detach origin/main && ln -s <main>/node_modules ../bdg-verify/node_modules && npm --prefix ../bdg-verify run build`; remove it after the report.
 
 <!-- brief:verifier -->
-Verify the findings below against bdg on `main` at `<HEAD>`, built for you at `<MAIN>/../bdg-verify`. Every shell call starts with:
+Verify the findings below against bdg on `main` at `<HEAD>`, built for you at `<MAIN>/../bdg-verify`. Once, before anything else, create the `bdg` command (a script on `PATH`, not a shell function: `timeout`, `xargs` and `env` can't run a function and fall through to whatever `bdg` is installed globally, S26 #880: `timeout 90 bdg` ran 0.20.0):
+```
+mkdir -p /tmp/verify-<DATE>-bin && printf '#!/bin/sh\nexec node <MAIN>/../bdg-verify/dist/index.js "$@"\n' > /tmp/verify-<DATE>-bin/bdg && chmod +x /tmp/verify-<DATE>-bin/bdg
+```
+Every shell call starts with:
 ```
 {{node}}
-export BDG_SESSION_DIR=/tmp/verify-<DATE>
-bdg() { node <MAIN>/../bdg-verify/dist/index.js "$@"; }
+export BDG_SESSION_DIR=/tmp/verify-<DATE> PATH=/tmp/verify-<DATE>-bin:$PATH BDG_ATTACH_REQUIRE_WS_URL=1
 ```
 Start the fixtures from that directory when a finding needs them (`cd <MAIN>/../bdg-verify && npx tsx src/__testutils__/serveFixtures.ts & echo $! > /tmp/bdg-verify-<N>-fixtures.pid`). Keep **one bdg session at a time**: other agents may be running smoke suites.
 
@@ -228,11 +234,14 @@ For a detection heuristic, before any code (SKILL.md, Recurring traps): the impl
 <!-- brief:design -->
 Review a design for issue #<N> in bdg (github.com/szymdzum/browser-debugger-cli) before any code is written. The design and the issue are quoted at the end of this brief. You decide whether the design works on real pages; you write no product code.
 
-Build each case as a scratch page under `/tmp/design-<N>-pages` (serve with `python3 -m http.server <port> & echo $! > /tmp/bdg-design-<N>-http.pid`) and observe what the page really does in Chrome with bdg from `main`, built at `<MAIN>/../bdg-verify`. Every shell call starts with:
+Build each case as a scratch page under `/tmp/design-<N>-pages` (serve with `python3 -m http.server <port> & echo $! > /tmp/bdg-design-<N>-http.pid`) and observe what the page really does in Chrome with bdg from `main`, built at `<MAIN>/../bdg-verify`. Once, before anything else, create the `bdg` command (a script on `PATH`, not a shell function: `timeout`, `xargs` and `env` can't run a function and fall through to whatever `bdg` is installed globally, S26 #880: `timeout 90 bdg` ran 0.20.0):
+```
+mkdir -p /tmp/design-<N>-bin && printf '#!/bin/sh\nexec node <MAIN>/../bdg-verify/dist/index.js "$@"\n' > /tmp/design-<N>-bin/bdg && chmod +x /tmp/design-<N>-bin/bdg
+```
+Every shell call starts with:
 ```
 {{node}}
-export BDG_SESSION_DIR=/tmp/design-<N>
-bdg() { node <MAIN>/../bdg-verify/dist/index.js "$@"; }
+export BDG_SESSION_DIR=/tmp/design-<N> PATH=/tmp/design-<N>-bin:$PATH BDG_ATTACH_REQUIRE_WS_URL=1
 ```
 Keep one bdg session at a time.
 
