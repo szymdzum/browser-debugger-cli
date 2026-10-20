@@ -29,6 +29,7 @@ import {
 } from '@/telemetry/filterDsl.js';
 import { resolvePreset, FILTER_PRESETS } from '@/telemetry/filterPresets.js';
 import { filterByResourceType } from '@/telemetry/filters.js';
+import { currentNavigationOf } from '@/telemetry/pageScope.js';
 import type { NetworkRequest } from '@/types.js';
 import { buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import {
@@ -155,12 +156,21 @@ function filterRequests(
   currentNavigationId: number | undefined
 ): NetworkRequest[] {
   let filtered = requests;
+  const navigationId = currentNavigationOf(requests, currentNavigationId);
 
-  const filterString = buildFilterString(options);
-  if (filterString) {
-    const validation = validateFilterString(filterString);
-    if (validation.valid) {
-      filtered = applyFilters(filtered, validation.filters, { currentNavigationId });
+  if (options.preset) {
+    const preset = validateFilterString(resolvePreset(options.preset));
+    if (preset.valid) {
+      filtered = applyFilters(filtered, preset.filters, {
+        currentNavigationId: navigationId,
+        pendingElapsed: true,
+      });
+    }
+  }
+  if (options.filter) {
+    const explicit = validateFilterString(options.filter);
+    if (explicit.valid) {
+      filtered = applyFilters(filtered, explicit.filters, { currentNavigationId: navigationId });
     }
   }
 
@@ -350,7 +360,7 @@ function formatPresetHelp(): string {
 interface NetworkListResult {
   /**
    * Requests after filters and `--last`: oldest first, or in `--sort` order. With
-   * `--sort duration` or a `duration:` filter (`--preset slow`) a request that has
+   * `--sort duration` or `--preset slow` a request that has
    * not finished carries `pending: true` and `elapsedMs`, and is ranked and matched
    * by that time
    */
@@ -475,7 +485,7 @@ export function registerListCommand(networkCmd: Command): void {
           const { currentNavigationId, pageCrashedAt, evictions } = result.data;
           const requests = displayUrls(result.data.requests, options.includeSensitive);
           const tabSwitch = displayTabSwitch(result.data.tabSwitch, options.includeSensitive);
-          const timed = usesElapsedTime(buildFilterString(options), options.sort)
+          const timed = usesElapsedTime(options.preset, options.sort)
             ? withElapsedTime(requests, Date.now())
             : requests;
           const matching = filterRequests(timed, options, resourceTypes, currentNavigationId);

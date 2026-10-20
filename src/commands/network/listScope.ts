@@ -186,21 +186,21 @@ export function selectRequests(
 }
 
 /**
- * Whether a listing ranks or filters by duration, so a request still pending
- * needs its elapsed time.
+ * Whether a listing ranks or filters by elapsed time, so a request still
+ * pending needs it: `--sort duration` and the `slow` preset.
  *
- * @param filter - The combined `--preset` and `--filter` string
+ * @param preset - `--preset` name, if any
  * @param sort - `--sort` key, if any
- * @returns True for `--sort duration` or a `duration:` filter
+ * @returns True for `--sort duration` or `--preset slow`
  */
 export function usesElapsedTime(preset: string | undefined, sort: SortKey | undefined): boolean {
-  return sort === 'duration' || /(^|\s)!?duration:/.test(preset ?? '');
+  return sort === 'duration' || preset?.toLowerCase() === 'slow';
 }
 
 /**
  * Mark the requests that have not finished as pending, with the time
  * elapsed since they started. A request whose response headers arrived but
- * whose body is still loading is pending too; a failed one is not.
+ * whose body is still loading is pending too.
  *
  * @param requests - Requests in capture order
  * @param now - Current time, epoch ms
@@ -208,7 +208,7 @@ export function usesElapsedTime(preset: string | undefined, sort: SortKey | unde
  */
 export function withElapsedTime(requests: NetworkRequest[], now: number): NetworkRequest[] {
   return requests.map((request) =>
-    request.duration === undefined && request.status !== 0
+    request.duration === undefined
       ? { ...request, pending: true, elapsedMs: Math.max(0, now - request.timestamp) }
       : request
   );

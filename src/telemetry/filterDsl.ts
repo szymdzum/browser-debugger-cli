@@ -561,7 +561,7 @@ function matchesFilter(
     case 'duration': {
       const operator = filter.operator === '=' ? '>=' : filter.operator;
       const lowerBound = operator === '>' || operator === '>=';
-      const elapsed = lowerBound ? request.elapsedMs : undefined;
+      const elapsed = lowerBound && context.pendingElapsed ? request.elapsedMs : undefined;
       const value = request.duration ?? elapsed;
       return value !== undefined && compareNumeric(value, parseDuration(filter.value), operator);
     }
@@ -613,6 +613,7 @@ export function applyFilters(
   const resolved: FilterContext = {
     currentNavigationId: currentNavigationOf(requests, context.currentNavigationId),
     urlOf: context.urlOf,
+    pendingElapsed: context.pendingElapsed,
   };
 
   return requests.filter((request) =>
