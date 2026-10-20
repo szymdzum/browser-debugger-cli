@@ -4,19 +4,21 @@
  * test's Chrome. The oracle and the rows are described in `loadFailureCells.ts`;
  * the other commands are in `load-failure-start.smoke.test.ts`.
  *
- * `dom submit` on a failed load is skipped: its result depends on whether the
- * network goes idle inside `--timeout` (nondeterministic until #873).
+ * A failed load exits 80 with a ⚠ verdict naming the cause and the action's
+ * data (`navigationFailed` in `--json`); a response that never ends is a ⚠
+ * "still loading" with exit 0 (#873).
  */
 
-import { after, before, describe } from 'node:test';
+import * as assert from 'node:assert/strict';
+import { after, before, describe, it } from 'node:test';
 
 import {
   WAIT_MS,
   bdg,
   cellsFor,
   failsLoad,
-  reachLaunch,
-  runOn,
+  hostileServer,
+  runAction,
   setUpMatrix,
   startSession,
   tearDownMatrix,
@@ -39,12 +41,27 @@ void describe('Load-failure matrix: actions', () => {
     }
   });
 
-  cellsFor('click', (row) => runOn(row, 'dom', ['click', '#go'], reachLaunch, failsLoad(row)), {
+  cellsFor('click', (row) => runAction(row, 'click', ['click', '#go'], failsLoad(row)), {
     full: true,
   });
   cellsFor(
     'submit',
-    (row) => runOn(row, 'dom', ['submit', '#form', '--timeout', WAIT_MS], reachLaunch, false),
+    (row) => runAction(row, 'submit', ['submit', '#form', '--timeout', WAIT_MS], failsLoad(row)),
     { full: true }
   );
+
+  void it('click: an iframe whose response never ends is no new page still loading', async () => {
+    const server = hostileServer();
+    await bdg('page', ['navigate', `${server.url}ok`]);
+    const added = await bdg('eval', [
+      `const b = document.createElement('button'); b.id = 'frame'; b.textContent = 'frame';
+       b.onclick = () => { const f = document.createElement('iframe'); f.src = '/endless'; document.body.append(f); };
+       document.body.append(b); 1`,
+    ]);
+    assert.equal(added.exitCode, 0, added.output);
+    const clicked = await bdg('dom', ['click', '#frame']);
+    assert.equal(clicked.exitCode, 0, clicked.output);
+    assert.match(clicked.output, /\/endless → 200 \(loading\)/, clicked.output);
+    assert.doesNotMatch(clicked.output, /new page still loading|navigation failed/, clicked.output);
+  });
 });

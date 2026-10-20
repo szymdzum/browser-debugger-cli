@@ -173,6 +173,12 @@ export interface ControlChange {
 export interface ActionEffects {
   /** The page navigated or changed its URL (absent when it did not) */
   navigation?: PageNavigation;
+  /**
+   * The new document it navigated to is Chrome's error page (#873): the URL
+   * that could not be loaded (as shown: no user info, tokens masked) and
+   * Chrome's network error (absent otherwise, and for the certificate warning)
+   */
+  navigationFailed?: { url: string; errorText: string };
   /** Messages that appeared or changed (at most 3; absent when none did) */
   messages?: NewMessage[];
   /** How many more new messages there were than `messages` lists */

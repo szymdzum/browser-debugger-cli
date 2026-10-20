@@ -11,6 +11,7 @@ import {
   NO_MATCH_SUFFIX,
   invalidFormMessage,
   submitNetworkBusyWarning,
+  submitStillLoadingWarning,
   submitTimeoutError,
 } from '@/errors/messages.js';
 import type { PendingRequestInfo } from '@/ipc/protocol/commands.js';
@@ -148,6 +149,8 @@ interface TrackedDocumentRequest {
   status?: number;
   statusText?: string;
   errorText?: string;
+  /** Its response ended (`Network.loadingFinished`) */
+  finished?: true;
 }
 
 /**
@@ -160,6 +163,7 @@ interface TrackedDocumentRequest {
  */
 class SubmissionWatcher {
   private navigated = false;
+  private errorPage = false;
   private documentRequest: TrackedDocumentRequest | undefined;
   private onChange: (() => void) | null = null;
   private readonly requests: InFlightRequests;
@@ -175,6 +179,7 @@ class SubmissionWatcher {
       cdp.on<Protocol.Page.FrameNavigatedEvent>('Page.frameNavigated', (params, sessionId) => {
         if (sessionId !== undefined || params.frame.parentId !== undefined) return;
         this.navigated = true;
+        this.errorPage = params.frame.unreachableUrl !== undefined;
         this.onChange?.();
       }),
       cdp.on<Protocol.Network.RequestWillBeSentEvent>(
@@ -197,6 +202,10 @@ class SubmissionWatcher {
       cdp.on<Protocol.Network.LoadingFailedEvent>('Network.loadingFailed', (params) => {
         if (params.requestId !== this.documentRequest?.requestId) return;
         this.documentRequest.errorText = params.errorText;
+      }),
+      cdp.on<Protocol.Network.LoadingFinishedEvent>('Network.loadingFinished', (params) => {
+        if (params.requestId === this.documentRequest?.requestId)
+          this.documentRequest.finished = true;
       })
     );
   }
@@ -221,6 +230,17 @@ class SubmissionWatcher {
     };
   }
 
+  /** Whether the new page answered and its response has not ended yet */
+  private get documentLoading(): boolean {
+    const request = this.documentRequest;
+    return (
+      this.navigated &&
+      request?.status !== undefined &&
+      request.errorText === undefined &&
+      request.finished !== true
+    );
+  }
+
   /** Requests still in flight */
   get pendingRequests(): number {
     return this.requests.count;
@@ -235,17 +255,23 @@ class SubmissionWatcher {
    * Wait until the network is idle for `waitNetwork` ms and, if requested,
    * the main frame navigated. When a requested navigation happened but the
    * network was still busy at the timeout (a slow script or tracker on the
-   * new page), the wait ends without an error: resolves to `'busy'`.
+   * new page), the wait ends without an error: resolves to `'busy'`. Two
+   * outcomes do not depend on the network going idle (#873): the main frame
+   * committed Chrome's error page (`'failed'`, at once: the load is over,
+   * while the error page's own requests could keep the network busy past the
+   * timeout), and a new page whose response had not ended at the timeout
+   * (`'loading'`).
    *
    * @param options - Wait conditions
-   * @returns `'idle'`, or `'busy'` when only the network wait timed out
+   * @returns `'idle'`; `'busy'` when only the network wait timed out;
+   *   `'failed'` for Chrome's error page; `'loading'` for a page still loading
    * @throws CDPTimeoutError after `timeout` ms
    */
   wait(options: {
     waitNavigation: boolean;
     waitNetwork: number;
     timeout: number;
-  }): Promise<'idle' | 'busy'> {
+  }): Promise<'idle' | 'busy' | 'failed' | 'loading'> {
     const { waitNavigation, waitNetwork, timeout } = options;
     return new Promise((resolve, reject) => {
       let idle: NodeJS.Timeout | null = null;
@@ -256,11 +282,17 @@ class SubmissionWatcher {
       };
       const deadline = setTimeout(() => {
         finish();
-        if (waitNavigation && this.navigated) resolve('busy');
+        if (this.documentLoading) resolve('loading');
+        else if (waitNavigation && this.navigated) resolve('busy');
         else
           reject(new CDPTimeoutError('Wait for completion timed out', new Error(`${timeout}ms`)));
       }, timeout);
       const check = (): void => {
+        if (this.errorPage) {
+          finish();
+          resolve('failed');
+          return;
+        }
         const networkIdle = waitNetwork === 0 || this.requests.count === 0;
         if (networkIdle && (!waitNavigation || this.navigated)) {
           finish();
@@ -270,7 +302,7 @@ class SubmissionWatcher {
       const schedule = (): void => {
         if (idle) clearTimeout(idle);
         idle = null;
-        if (waitNetwork === 0) check();
+        if (waitNetwork === 0 || this.errorPage) check();
         else if (this.requests.count === 0) idle = setTimeout(check, waitNetwork);
       };
       this.onChange = schedule;
@@ -404,6 +436,7 @@ export async function submitForm(
       ...(outcome === 'busy' && {
         warning: submitNetworkBusyWarning(timeout, watcher.pendingRequests),
       }),
+      ...(outcome === 'loading' && { warning: submitStillLoadingWarning(timeout) }),
     };
   } catch (error) {
     if (!(error instanceof CDPTimeoutError)) throw error;

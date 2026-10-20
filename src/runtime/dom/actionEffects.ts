@@ -223,6 +223,8 @@ export interface PageWork {
   unresponsive: boolean;
   /** A main-frame load was still pending */
   navigating: boolean;
+  /** Loader (= request) id of the main-frame document the action committed, if any */
+  document?: string;
 }
 
 /** Effects, plus the page's work for deciding whether it had settled */
@@ -436,7 +438,9 @@ export function domKeptChanging(settle: SettleSignals | undefined, sinceMs: numb
 /**
  * What the page was still working on when the action returned, or undefined
  * when it looked settled: content requests (documents, fetch/XHR, scripts)
- * still pending, a new document still loading, a loading indicator that
+ * still pending, a new document still loading (not committed, or the
+ * main-frame document the action committed answered but its response not
+ * ended; an iframe's document does not count), a loading indicator that
  * appeared, a DOM still changing ({@link domKeptChanging}), or a page that
  * did not answer (a long script). A result a timer renders later, with no
  * DOM change before it, is not seen.
@@ -453,9 +457,12 @@ export function pendingChanges(
   const pendingRequests = requests.filter(
     (request) => request.pending && CONTENT_REQUEST_TYPES.has(request.resourceType ?? '')
   ).length;
+  const documentLoading =
+    work.document !== undefined &&
+    requests.some((request) => request.loading && request.requestId === work.document);
   const pending: PendingChanges = {
     ...(pendingRequests > 0 && { requests: pendingRequests }),
-    ...(work.navigating && { navigation: true as const }),
+    ...((work.navigating || documentLoading) && { navigation: true as const }),
     ...(settle?.loading && { loading: settle.loading }),
     ...(work.domChanging && { domChanging: true as const }),
     ...(work.unresponsive && { busy: true as const }),
@@ -804,6 +811,7 @@ function pageWork(watch: Watch, snapshot?: ReadSnapshot, domChanging = false): P
     domChanging,
     unresponsive: watch.unresponsive,
     navigating: watch.listener.navigationPending(),
+    ...(watch.listener.events.document && { document: watch.listener.events.document.loaderId }),
   };
 }
 

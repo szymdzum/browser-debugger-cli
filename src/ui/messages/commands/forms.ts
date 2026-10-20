@@ -76,23 +76,33 @@ export const NO_VISIBLE_EFFECT =
 /**
  * Status line of a DOM action: a check mark only for a clean success. A
  * blocked submit says so instead of "no visible effect" (the line below it
- * names the fields).
+ * names the fields), and so does a navigation that ended on Chrome's error
+ * page (#873).
  *
  * @param done - What was done, e.g. "Element Clicked"
  * @param state - Whether the action has warnings (shown right below), had its
  *   submit blocked by validation, had no visible effect, or returned while the
- *   page was still changing
+ *   page was still changing; the network error of a navigation that failed
  * @returns e.g. "✓ Element Clicked", "⚠ Element Clicked (with warnings)",
+ *   "⚠ Element Clicked (navigation failed: net::ERR_CONNECTION_REFUSED)",
  *   "⚠ Element Clicked (submit blocked)",
  *   "⚠ Element Clicked (page still changing)" or
  *   "⚠ Element Clicked (no visible effect observed: no DOM change, requests or navigation within 300 ms)"
  */
 export function actionStatusLine(
   done: string,
-  state: { warned: boolean; noEffect?: boolean; stillChanging?: boolean; submitBlocked?: boolean }
+  state: {
+    warned: boolean;
+    noEffect?: boolean;
+    stillChanging?: boolean;
+    submitBlocked?: boolean;
+    navigationFailed?: string;
+  }
 ): string {
-  if (state.noEffect && !state.submitBlocked) return `⚠ ${done} (${NO_VISIBLE_EFFECT})`;
+  if (state.noEffect && !state.submitBlocked && !state.navigationFailed)
+    return `⚠ ${done} (${NO_VISIBLE_EFFECT})`;
   const notes = [
+    state.navigationFailed && `navigation failed: ${state.navigationFailed}`,
     state.submitBlocked && 'submit blocked',
     state.warned && 'with warnings',
     state.stillChanging && 'page still changing',
