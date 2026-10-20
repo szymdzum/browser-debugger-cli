@@ -4,8 +4,9 @@
  * test's Chrome. The oracle and the rows are described in `loadFailureCells.ts`;
  * the other commands are in `load-failure-start.smoke.test.ts`.
  *
- * `dom submit` on a failed load is skipped: its result depends on whether the
- * network goes idle inside `--timeout` (nondeterministic until #873).
+ * A failed load exits 80 with a ⚠ verdict naming the cause and the action's
+ * data (`navigationFailed` in `--json`); a response that never ends is a ⚠
+ * "still loading" with exit 0 (#873).
  */
 
 import { after, before, describe } from 'node:test';
@@ -15,8 +16,7 @@ import {
   bdg,
   cellsFor,
   failsLoad,
-  reachLaunch,
-  runOn,
+  runAction,
   setUpMatrix,
   startSession,
   tearDownMatrix,
@@ -39,12 +39,10 @@ void describe('Load-failure matrix: actions', () => {
     }
   });
 
-  cellsFor('click', (row) => runOn(row, 'dom', ['click', '#go'], reachLaunch, failsLoad(row)), {
-    full: true,
-  });
+  cellsFor('click', (row) => runAction(row, ['click', '#go'], failsLoad(row)), { full: true });
   cellsFor(
     'submit',
-    (row) => runOn(row, 'dom', ['submit', '#form', '--timeout', WAIT_MS], reachLaunch, false),
+    (row) => runAction(row, ['submit', '#form', '--timeout', WAIT_MS], failsLoad(row)),
     { full: true }
   );
 });

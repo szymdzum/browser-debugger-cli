@@ -89,7 +89,13 @@ export const NO_VISIBLE_EFFECT =
  */
 export function actionStatusLine(
   done: string,
-  state: { warned: boolean; noEffect?: boolean; stillChanging?: boolean; submitBlocked?: boolean }
+  state: {
+    warned: boolean;
+    noEffect?: boolean;
+    stillChanging?: boolean;
+    submitBlocked?: boolean;
+    navigationFailed?: string;
+  }
 ): string {
   if (state.noEffect && !state.submitBlocked) return `⚠ ${done} (${NO_VISIBLE_EFFECT})`;
   const notes = [

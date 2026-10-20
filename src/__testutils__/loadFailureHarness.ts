@@ -13,6 +13,7 @@ import { cleanupAllSessions } from '@/__testutils__/daemonHelpers.js';
 import { getFreePort } from '@/__testutils__/fixtureServer.js';
 import { startHostileServer, type HostileServer } from '@/__testutils__/hostileServer.js';
 import {
+  actionExpectation,
   judge,
   ROWS,
   type Axis,
@@ -257,6 +258,23 @@ export function runOn(
     { ...row, expect: expectationFor(row, args.includes('--load')) },
     (json) => (json ? bdgJson(command, args) : bdg(command, args)),
     () => reach(row),
+    withJson
+  );
+}
+
+/**
+ * Run an action that starts a navigation (`dom click`, `dom submit`) from the
+ * page that leads to a row, judged by {@link actionExpectation}.
+ *
+ * @param row - The row
+ * @param args - Arguments of `bdg dom`
+ * @param withJson - Also run it with `--json`
+ */
+export function runAction(row: Row, args: string[], withJson: boolean): Promise<void> {
+  return checkCell(
+    { ...row, expect: actionExpectation(row) },
+    (json) => (json ? bdgJson('dom', args) : bdg('dom', args)),
+    () => reachLaunch(row),
     withJson
   );
 }

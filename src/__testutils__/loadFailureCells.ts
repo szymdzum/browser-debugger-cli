@@ -20,7 +20,9 @@ export type Expectation =
   | { kind: 'failure'; cause: RegExp }
   | { kind: 'loads'; shows?: RegExp }
   | { kind: 'warns'; cause: RegExp }
-  | { kind: 'pending'; shows: RegExp };
+  | { kind: 'pending'; shows: RegExp }
+  | { kind: 'actionFailure'; cause: RegExp }
+  | { kind: 'loading' };
 
 /** One URL of the matrix */
 export interface Row {
@@ -38,6 +40,8 @@ export interface Row {
   full?: boolean;
   /** `bdg console` after the load must not say "No errors" */
   console?: boolean;
+  /** What `dom click` and `dom submit` must report, when it is not {@link actionExpectation}'s default */
+  actions?: Expectation;
   /** Pattern that picks the row's tab for `attach` (rows without one have no attach cell) */
   attach?: (server: HostileServer) => string;
 }
@@ -66,11 +70,8 @@ const EXIT_VALUES: ReadonlySet<number> = new Set(Object.values(EXIT_CODES));
 const NO_LINK_TO = (what: string): string =>
   `a page cannot link to ${what} (Chrome blocks the navigation)`;
 
-/** Tracks a click or submit that ends on a failed or never-ending navigation and reports success */
-const ISSUE_873 = '#873: a click or submit on a failed or never-ending navigation reports success';
-
-/** Why `dom submit` on a failed load has no cell */
-const NONDETERMINISTIC = 'nondeterministic until #873: the result depends on the network-idle wait';
+/** How an action says the new page has not finished loading */
+const STILL_LOADING = /still loading/i;
 
 const UNREACHABLE = 'Chrome never shows a document for a request the server does not answer';
 
@@ -81,12 +82,8 @@ export const ROWS: readonly Row[] = [
     url: (s) => s.refusedUrl,
     expect: { kind: 'failure', cause: /ERR_CONNECTION_REFUSED/ },
     full: true,
-    na: { submit: NONDETERMINISTIC },
     console: true,
     attach: (s) => new URL(s.refusedUrl).host,
-    todo: {
-      click: ISSUE_873,
-    },
   },
   {
     id: 'DNS failure',
@@ -113,12 +110,8 @@ export const ROWS: readonly Row[] = [
     url: (s) => s.tlsToPlainUrl,
     expect: { kind: 'failure', cause: /ERR_SSL_PROTOCOL_ERROR/ },
     full: true,
-    na: { submit: NONDETERMINISTIC },
     console: true,
     attach: () => 'https://127.0.0.1',
-    todo: {
-      click: ISSUE_873,
-    },
   },
   {
     id: 'body shorter than Content-Length',
@@ -131,11 +124,7 @@ export const ROWS: readonly Row[] = [
     url: (s) => `${s.url}redirect-loop`,
     expect: { kind: 'failure', cause: /ERR_TOO_MANY_REDIRECTS/ },
     full: true,
-    na: { submit: NONDETERMINISTIC },
     console: true,
-    todo: {
-      click: ISSUE_873,
-    },
   },
   {
     id: 'redirect to chrome://',
@@ -181,7 +170,7 @@ export const ROWS: readonly Row[] = [
     url: (s) => `${s.url}endless`,
     expect: { kind: 'pending', shows: NOT_DONE },
     full: true,
-    todo: { click: ISSUE_873 },
+    actions: { kind: 'loading' },
   },
   {
     id: '204 No Content',
@@ -264,6 +253,22 @@ export const ROWS: readonly Row[] = [
 function judgeHuman(expect: Expectation, run: Observed): string[] {
   const problems: string[] = [];
   const ok = run.exitCode === 0;
+  if (expect.kind === 'actionFailure') {
+    if (run.exitCode !== EXIT_CODES.INVALID_URL)
+      problems.push(
+        `exit ${run.exitCode}, a navigation that failed exits ${EXIT_CODES.INVALID_URL}`
+      );
+    if (!run.output.includes('⚠')) problems.push('no ⚠ verdict about the failed navigation');
+    if (run.output.includes('✓')) problems.push('says "✓" about a failed navigation');
+    if (!expect.cause.test(run.output)) problems.push(`does not name the cause ${expect.cause}`);
+    return problems;
+  }
+  if (expect.kind === 'loading') {
+    if (!ok) problems.push(`exit ${run.exitCode}, a page still loading is no failure`);
+    if (!run.output.includes('⚠')) problems.push('no ⚠ warning about a page still loading');
+    if (!STILL_LOADING.test(run.output)) problems.push(`does not say ${STILL_LOADING}`);
+    return problems;
+  }
   if (expect.kind === 'failure') {
     if (!EXIT_VALUES.has(run.exitCode) || ok)
       problems.push(`exit ${run.exitCode} is not an error code`);
@@ -301,6 +306,14 @@ function judgeHuman(expect: Expectation, run: Observed): string[] {
 function judgeJson(expect: Expectation, run: ObservedJson): string[] {
   const { envelope } = run;
   const shown = JSON.stringify(envelope);
+  if (expect.kind === 'actionFailure') return judgeActionFailureJson(expect.cause, run);
+  if (expect.kind === 'loading') {
+    return run.exitCode === 0 &&
+      envelope.success === true &&
+      /still loading|"navigation":true/i.test(shown)
+      ? []
+      : [`--json: exit ${run.exitCode}, success must be true and say the page is still loading`];
+  }
   if (expect.kind === 'failure') {
     const problems: string[] = [];
     if (envelope.success !== false) problems.push(`--json: success is ${String(envelope.success)}`);
@@ -328,6 +341,43 @@ function judgeJson(expect: Expectation, run: ObservedJson): string[] {
   return expect.shows.test(shown)
     ? []
     : [`--json: does not say the page is not done (${expect.shows})`];
+}
+
+/**
+ * Check the `--json` run of an action whose navigation failed: an error
+ * envelope (exit 80) that names the cause and keeps the action's data.
+ *
+ * @param cause - The network error the output must name
+ * @param run - The command's exit code and envelope
+ * @returns What breaks the oracle (empty when it holds)
+ */
+function judgeActionFailureJson(cause: RegExp, run: ObservedJson): string[] {
+  const { envelope } = run;
+  const failed = envelope['navigationFailed'] as { errorText?: string } | undefined;
+  const problems: string[] = [];
+  if (envelope.success !== false) problems.push(`--json: success is ${String(envelope.success)}`);
+  if (run.exitCode !== EXIT_CODES.INVALID_URL || envelope.exitCode !== run.exitCode)
+    problems.push(`--json: exit ${run.exitCode} (exitCode ${String(envelope.exitCode)}), not 80`);
+  if (!cause.test(String(envelope.error))) problems.push(`--json: error does not name ${cause}`);
+  if (!cause.test(String(failed?.errorText)))
+    problems.push(`--json: navigationFailed.errorText does not name ${cause}`);
+  if (envelope['selector'] === undefined) problems.push("--json: the action's data is missing");
+  return problems;
+}
+
+/**
+ * What an action that starts a navigation (`dom click`, `dom submit`) must
+ * report for a row: its own expectation when it has one, a failed load as
+ * an action failure (exit 80, ⚠, the cause), the row's expectation otherwise.
+ *
+ * @param row - The row
+ * @returns The expectation for the action's cell
+ */
+export function actionExpectation(row: Row): Expectation {
+  if (row.actions) return row.actions;
+  return row.expect.kind === 'failure'
+    ? { kind: 'actionFailure', cause: row.expect.cause }
+    : row.expect;
 }
 
 /**

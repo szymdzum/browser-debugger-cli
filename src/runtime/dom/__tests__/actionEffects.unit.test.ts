@@ -364,6 +364,20 @@ void describe('effect output', () => {
     assert.equal(actionStatusLine('Element Clicked', { warned: false }), '✓ Element Clicked');
   });
 
+  void it('says a failed navigation instead of a success, naming the error (#873)', () => {
+    assert.equal(
+      actionStatusLine('Element Clicked', {
+        warned: true,
+        navigationFailed: 'net::ERR_CONNECTION_REFUSED',
+      }),
+      '⚠ Element Clicked (navigation failed: net::ERR_CONNECTION_REFUSED; with warnings)'
+    );
+    assert.equal(
+      actionStatusLine('Form Submitted', { warned: false, navigationFailed: 'net::ERR_FAILED' }),
+      '⚠ Form Submitted (navigation failed: net::ERR_FAILED)'
+    );
+  });
+
   void it('says a blocked submit instead of no visible effect, naming every field', () => {
     assert.equal(
       actionStatusLine('Element Clicked', { warned: false, noEffect: true, submitBlocked: true }),
@@ -755,6 +769,11 @@ void describe('pendingChanges', () => {
       .map((type) => request(type))
       .concat(request('Fetch', false));
     assert.deepEqual(pendingChanges(work(), requests), { requests: 4 });
+  });
+
+  void it('names a new page whose response has not ended as still loading (#873)', () => {
+    const endless: TriggeredRequest = { ...request('Document', false), status: 200, loading: true };
+    assert.deepEqual(pendingChanges(work(), [endless]), { navigation: true });
   });
 
   void it('names a loader, a pending navigation, an ongoing DOM and a busy page', () => {
