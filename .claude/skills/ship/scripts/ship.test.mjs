@@ -6,7 +6,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -40,6 +40,8 @@ import {
   insertLogRow,
   isTransientGhError,
   testChromeOrphans,
+  liveSessionChrome,
+  foreignSession,
   jobsLostWithoutResult,
   listEntries,
   mainGateVerdict,
@@ -1299,6 +1301,28 @@ test('testChromeOrphans names a throwaway-profile Chrome with no PID file, not t
   assert.deepEqual(testChromeOrphans(ps, where, new Set([300]), 0).map((p) => p.pid), [52977, 94308]);
   const since = Date.parse('Sun Oct 18 00:00:00 2026');
   assert.deepEqual(testChromeOrphans(ps, where, new Set([300]), since).map((p) => p.pid), [94308]);
+});
+
+test('liveSessionChrome covers a Chrome only while the session\'s daemon lives', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ship-session-'));
+  writeFileSync(join(dir, 'chrome.pid'), String(process.pid));
+  assert.equal(liveSessionChrome(dir), null);
+  writeFileSync(join(dir, 'daemon.pid'), '999999');
+  assert.equal(liveSessionChrome(dir), null);
+  writeFileSync(join(dir, 'daemon.pid'), String(process.pid));
+  assert.equal(liveSessionChrome(dir), process.pid);
+  rmSync(dir, { recursive: true });
+});
+
+test('foreignSession: only another thread\'s or PR\'s session, never this PR\'s agents or the verifier', () => {
+  const scope = ['880', '873'];
+  assert.equal(foreignSession('/tmp/fuzz-863-ab12/s3', scope), true);
+  assert.equal(foreignSession('/tmp/bdg-t-861-a', scope), true);
+  assert.equal(foreignSession('/tmp/bdg-t-873-a', scope), false);
+  assert.equal(foreignSession('/tmp/rv-880-t/x', scope), false);
+  assert.equal(foreignSession('/tmp/verify-2026-10-20', scope), false);
+  assert.equal(foreignSession('/tmp/fuzz-863-ab12/s3', undefined), false);
+  assert.equal(foreignSession('/tmp/bdg-t-529a-a', ['529a']), false);
 });
 
 test('testChromeOrphans counts a bdg session\'s chrome.pid next to the profile as its PID file', () => {

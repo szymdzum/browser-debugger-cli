@@ -2122,28 +2122,52 @@ function strayTestChromes(scope) {
   );
   const ps = spawnSync('ps', ['-axo', 'pid=,ppid=,lstart=,command='], { encoding: 'utf8' }).stdout ?? '';
   const since = scope && existsSync(SNAPSHOT.time) ? Number(readFileSync(SNAPSHOT.time, 'utf8').trim()) || 0 : 0;
-  const sessionPid = (profile) =>
-    livePidOf(join(dirname(profile), 'daemon.pid')) ? livePidOf(join(dirname(profile), 'chrome.pid')) : null;
+  const sessionPid = (profile) => (foreignSession(dirname(profile), scope) ? liveSessionChrome(dirname(profile)) : null);
   return testChromeOrphans(ps, { home: homedir(), parent: dirname(mainCheckout()) }, pidFiles, since, sessionPid).map(
     (p) => `test Chrome ${p.pid} (profile ${p.profile}) has no PID file`
   );
 }
 
 /**
+ * The Chrome PID a live bdg session in `dir` keeps in `chrome.pid`, or null
+ * when its daemon is gone: bdg keeps `chrome.pid` after a daemon crash, so a
+ * Chrome that outlived its daemon is still an orphan.
+ *
+ * @param {string} dir session directory
+ */
+export function liveSessionChrome(dir) {
+  return livePidOf(join(dir, 'daemon.pid')) ? livePidOf(join(dir, 'chrome.pid')) : null;
+}
+
+/**
+ * Whether a session directory belongs to work outside a PR's scope (another
+ * thread's harness, another PR's agents), so its live session doesn't block
+ * this PR's merge. Never without a scope (`ship leftovers` lists them all),
+ * never a directory naming a scope number (`/tmp/bdg-t-873-a`, `/tmp/rv-873-t`)
+ * and never the session's verifier (`/tmp/verify-<date>`).
+ *
+ * @param {string} dir
+ * @param {string[]} [scope]
+ */
+export function foreignSession(dir, scope) {
+  if (!scope?.length || /\/verify-/.test(dir)) return false;
+  return !scope.some((s) => new RegExp(`(^|[^0-9a-z])${s}([^0-9a-z]|$)`, 'i').test(dir));
+}
+
+/**
  * Main Chrome processes (not helpers) in `ps -axo pid=,ppid=,lstart=,command=`
  * output whose `--user-data-dir` is a throwaway location, started after
- * `sinceMs`, with no PID file on themselves or an ancestor. A bdg session
- * keeps its Chrome's PID in `chrome.pid` next to the profile
- * (`<session>/chrome-profile`): while that session's daemon lives, the file
- * covers the process too (S26: a fuzzer's live sessions under
- * `/tmp/fuzz-863-*` blocked two merges). bdg keeps `chrome.pid` after a
- * daemon crash, so a Chrome that outlived its daemon still counts.
+ * `sinceMs`, with no PID file on themselves or an ancestor. `sessionPid`
+ * names the Chrome of a live bdg session outside the PR's scope, from the
+ * `chrome.pid` next to its profile (`<session>/chrome-profile`), which covers
+ * it too (S26: a fuzzer's live sessions under `/tmp/fuzz-863-*` blocked two
+ * merges).
  *
  * @param {string} ps
  * @param {{ home: string, parent: string }} where
  * @param {Set<number>} pidFiles
  * @param {number} sinceMs
- * @param {(profile: string) => number | null} [sessionPid] the PID in the profile's sibling `chrome.pid` while its `daemon.pid` lives
+ * @param {(profile: string) => number | null} [sessionPid] the Chrome PID of a live session outside the scope that owns this profile
  */
 export function testChromeOrphans(ps, where, pidFiles, sinceMs, sessionPid = () => null) {
   const throwaway = [/^\/tmp\//, /^\/private\/tmp\//, /^\/var\/folders\//, new RegExp(`^${where.home.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\.tmp/`), new RegExp(`^${where.parent.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/bdg-`)];
