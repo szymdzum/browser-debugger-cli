@@ -25,6 +25,8 @@ const LIMITS = { busyAfterMs: 30, livenessMs: 30 };
 function fakeCdp(pageAnswers: boolean): { cdp: CDPConnection; sent: string[] } {
   const sent: string[] = [];
   const cdp = {
+    on: () => () => undefined,
+    isPagePaused: () => false,
     send: (method: string) => {
       sent.push(method);
       if (method === 'Runtime.evaluate' && !pageAnswers) return new Promise(() => undefined);
@@ -104,6 +106,8 @@ void describe('lost execution contexts', () => {
    */
   const lostPage = (message: string, closed = false): CDPConnection =>
     ({
+      on: () => () => undefined,
+      isPagePaused: () => false,
       send: (method: string, params?: { expression?: string }) => {
         const isProbe = method === 'Runtime.evaluate' && params?.expression === '1';
         if (method !== 'Runtime.evaluate' || (isProbe && !closed)) return Promise.resolve({});
@@ -144,6 +148,8 @@ void describe('lost execution contexts', () => {
 void describe('unrecoverable busy targets', () => {
   void it('does not claim the target is usable when its scripts could not be stopped', async () => {
     const cdp = {
+      on: () => () => undefined,
+      isPagePaused: () => false,
       send: (method: string) =>
         method.startsWith('Runtime.') ? new Promise(() => undefined) : Promise.resolve({}),
     } as unknown as CDPConnection;

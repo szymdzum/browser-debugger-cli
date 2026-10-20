@@ -22,6 +22,8 @@ import { wrapEvalScript } from '@/runtime/dom/evalSource.js';
 function pageThatCannotSend(script: string): CDPConnection {
   const never = new Promise<never>(() => undefined);
   return {
+    on: () => () => undefined,
+    isPagePaused: () => false,
     send: (method: string, params?: { expression?: string }) =>
       method === 'Runtime.evaluate' && params?.expression === wrapEvalScript(script)
         ? never

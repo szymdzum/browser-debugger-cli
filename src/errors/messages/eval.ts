@@ -102,6 +102,19 @@ export function resultNotSentError(): ErrorWithSuggestion {
   };
 }
 
+/**
+ * A `bdg eval` script cannot run (or finish) because the page is paused in
+ * the debugger (a breakpoint, `debugger;`, or DevTools).
+ *
+ * @returns Error with suggestion
+ */
+export function pagePausedInDebuggerError(): ErrorWithSuggestion {
+  return {
+    message: 'The page is paused in the debugger, so the script cannot run',
+    suggestion: 'Resume it with: bdg cdp Debugger.resume',
+  };
+}
+
 /** How to get a smaller `eval` result */
 const SMALLER_RESULT_SUGGESTION =
   'Return a smaller part of the value (a slice of a string or array, a few keys of an object) or a count (.length)';

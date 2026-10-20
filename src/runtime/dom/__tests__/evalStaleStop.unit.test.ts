@@ -26,6 +26,14 @@ class LostResultPage {
    * @param params - Its parameters
    * @returns The answer
    */
+  on(): () => void {
+    return () => undefined;
+  }
+
+  isPagePaused(): boolean {
+    return false;
+  }
+
   send(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
     this.sent.push(method);
     if (method === 'Runtime.evaluate' && params['expression'] === wrapEvalScript('lost')) {
