@@ -1204,7 +1204,7 @@ test('proxyNote tells agents that run bdg to bypass a configured proxy', () => {
   assert.equal(proxyNote({}, 'tester'), null);
   assert.equal(proxyNote({ HTTPS_PROXY: 'http://127.0.0.1:9000' }, 'implementer'), null);
   const note = proxyNote({ HTTPS_PROXY: 'http://127.0.0.1:9000', http_proxy: 'x' }, 'reviewer');
-  assert.match(note, /env -u HTTPS_PROXY -u http_proxy bdg/);
+  assert.match(note, /exec env -u HTTPS_PROXY -u http_proxy node …/);
   assert.match(note, /--no-proxy-server/);
 });
 
@@ -1232,10 +1232,24 @@ test('templatePlaceholders includes the long optional lines, so --check refuses 
   assert.match(briefProblems(`${'x'.repeat(300)}\n- ${optional[0]}`, placeholders)[0], /placeholders still open/);
 });
 
-test('the proxy note puts the bypass inside the bdg function, never in front of bdg', () => {
+test('the proxy note puts the bypass inside the bdg script the brief creates', () => {
   const note = proxyNote({ HTTPS_PROXY: 'http://127.0.0.1:9000' }, 'tester');
-  assert.match(note, /inside your `bdg\(\)` function/);
-  assert.match(note, /Never run `env -u HTTPS_PROXY bdg …`/);
+  assert.match(note, /inside the `bdg` script your brief creates/);
+  assert.doesNotMatch(note, /bdg\(\)/);
+});
+
+test('every brief that runs bdg exports the attach guard, and bdg is a script on PATH, not a shell function', () => {
+  const values = { N: '1', MAIN: '/m', HEAD: 'h', BASE: 'b', RED: 'r', BRANCH: 'x', AGENT: 'a', URLS: 'u', DATE: 'd' };
+  for (const role of ['implementer', 'reviewer', 'tester', 'verifier', 'design']) {
+    const { brief } = renderBrief(BRIEFS, role, values);
+    assert.match(brief, /^export .*BDG_ATTACH_REQUIRE_WS_URL=1/m, role);
+    assert.doesNotMatch(brief, /bdg\(\) \{/, role);
+  }
+  for (const [role, bin] of [['tester', '/tmp/bdg-t-1-a-bin'], ['verifier', '/tmp/verify-d-bin'], ['design', '/tmp/design-1-bin']]) {
+    const { brief } = renderBrief(BRIEFS, role, values);
+    assert.ok(brief.includes(`> ${bin}/bdg && chmod +x ${bin}/bdg`), role);
+    assert.ok(brief.includes(`PATH=${bin}:$PATH`), role);
+  }
 });
 
 test('only the implementer brief gets a default CAP: reviewer and tester stay open until set', () => {
@@ -1285,4 +1299,15 @@ test('testChromeOrphans names a throwaway-profile Chrome with no PID file, not t
   assert.deepEqual(testChromeOrphans(ps, where, new Set([300]), 0).map((p) => p.pid), [52977, 94308]);
   const since = Date.parse('Sun Oct 18 00:00:00 2026');
   assert.deepEqual(testChromeOrphans(ps, where, new Set([300]), since).map((p) => p.pid), [94308]);
+});
+
+test('testChromeOrphans counts a bdg session\'s chrome.pid next to the profile as its PID file', () => {
+  const ps = [
+    '61000     1 Tue Oct 20 08:10:00 2026     /opt/chrome/chrome --user-data-dir=/tmp/fuzz-863-ab12/s3/chrome-profile --headless=new',
+    '61100     1 Tue Oct 20 08:11:00 2026     /opt/chrome/chrome --user-data-dir=/tmp/fuzz-863-ab12/s4/chrome-profile --headless=new',
+  ].join('\n');
+  const where = { home: '/Users/me', parent: '/Users/me/Developer' };
+  const pids = { '/tmp/fuzz-863-ab12/s3/chrome-profile': 61000, '/tmp/fuzz-863-ab12/s4/chrome-profile': 99 };
+  assert.deepEqual(testChromeOrphans(ps, where, new Set(), 0, (profile) => pids[profile] ?? null).map((p) => p.pid), [61100]);
+  assert.deepEqual(testChromeOrphans(ps, where, new Set(), 0).map((p) => p.pid), [61000, 61100]);
 });

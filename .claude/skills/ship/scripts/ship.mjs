@@ -2122,7 +2122,9 @@ function strayTestChromes(scope) {
   );
   const ps = spawnSync('ps', ['-axo', 'pid=,ppid=,lstart=,command='], { encoding: 'utf8' }).stdout ?? '';
   const since = scope && existsSync(SNAPSHOT.time) ? Number(readFileSync(SNAPSHOT.time, 'utf8').trim()) || 0 : 0;
-  return testChromeOrphans(ps, { home: homedir(), parent: dirname(mainCheckout()) }, pidFiles, since).map(
+  const sessionPid = (profile) =>
+    livePidOf(join(dirname(profile), 'daemon.pid')) ? livePidOf(join(dirname(profile), 'chrome.pid')) : null;
+  return testChromeOrphans(ps, { home: homedir(), parent: dirname(mainCheckout()) }, pidFiles, since, sessionPid).map(
     (p) => `test Chrome ${p.pid} (profile ${p.profile}) has no PID file`
   );
 }
@@ -2130,14 +2132,20 @@ function strayTestChromes(scope) {
 /**
  * Main Chrome processes (not helpers) in `ps -axo pid=,ppid=,lstart=,command=`
  * output whose `--user-data-dir` is a throwaway location, started after
- * `sinceMs`, with no PID file on themselves or an ancestor.
+ * `sinceMs`, with no PID file on themselves or an ancestor. A bdg session
+ * keeps its Chrome's PID in `chrome.pid` next to the profile
+ * (`<session>/chrome-profile`): while that session's daemon lives, the file
+ * covers the process too (S26: a fuzzer's live sessions under
+ * `/tmp/fuzz-863-*` blocked two merges). bdg keeps `chrome.pid` after a
+ * daemon crash, so a Chrome that outlived its daemon still counts.
  *
  * @param {string} ps
  * @param {{ home: string, parent: string }} where
  * @param {Set<number>} pidFiles
  * @param {number} sinceMs
+ * @param {(profile: string) => number | null} [sessionPid] the PID in the profile's sibling `chrome.pid` while its `daemon.pid` lives
  */
-export function testChromeOrphans(ps, where, pidFiles, sinceMs) {
+export function testChromeOrphans(ps, where, pidFiles, sinceMs, sessionPid = () => null) {
   const throwaway = [/^\/tmp\//, /^\/private\/tmp\//, /^\/var\/folders\//, new RegExp(`^${where.home.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\.tmp/`), new RegExp(`^${where.parent.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/bdg-`)];
   const procs = ps
     .split('\n')
@@ -2154,7 +2162,7 @@ export function testChromeOrphans(ps, where, pidFiles, sinceMs) {
     .map((p) => ({ ...p, profile: /--user-data-dir=(\S+)/.exec(p.command)?.[1] }))
     .filter((p) => p.profile && throwaway.some((re) => re.test(p.profile)))
     .filter((p) => !(p.started < sinceMs))
-    .filter((p) => !covered(p.pid));
+    .filter((p) => !covered(p.pid) && sessionPid(p.profile) !== p.pid);
 }
 
 /**
@@ -2598,7 +2606,7 @@ export function proxyNote(env, role) {
   const set = ['HTTPS_PROXY', 'HTTP_PROXY', 'ALL_PROXY', 'https_proxy', 'http_proxy', 'all_proxy'].filter((k) => env[k]);
   if (!set.length || role === 'implementer') return null;
   const without = set.map((k) => `-u ${k}`).join(' ');
-  return `**Proxy.** This machine sets ${set.join(', ')}. Bypass it for bdg only (gh, git and npm may need it): put \`env ${without}\` inside your \`bdg()\` function, in front of its \`node …/dist/index.js\`, and start sessions with \`--chrome-flags="--no-proxy-server"\`. Never run \`env ${without} bdg …\`: that skips your function and runs whatever \`bdg\` is installed globally (S23 #859). Without the bypass every request goes through the proxy as http/1.1.`;
+  return `**Proxy.** This machine sets ${set.join(', ')}. Bypass it for bdg only (gh, git and npm may need it): put \`env ${without}\` inside the \`bdg\` script your brief creates, in front of its \`node …/dist/index.js\` (\`exec env ${without} node …\`), and start sessions with \`--chrome-flags="--no-proxy-server"\`. Without the bypass every request goes through the proxy as http/1.1.`;
 }
 
 /**
