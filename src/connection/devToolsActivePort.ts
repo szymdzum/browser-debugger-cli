@@ -28,6 +28,26 @@ const BROWSER_PATH = /^\/devtools\/browser\/[\w.-]+$/;
 /** The port line */
 const PORT = /^\d{1,5}$/;
 
+/** Test-only variable: `bdg attach` must be given `--chrome-ws-url` (or `--user-data-dir`) */
+export const REQUIRE_WS_URL_ENV = 'BDG_ATTACH_REQUIRE_WS_URL';
+
+/** Values of `BDG_ATTACH_REQUIRE_WS_URL` that leave the guard off */
+const GUARD_OFF_VALUES = ['', '0', 'false', 'no', 'off'];
+
+/**
+ * Whether `BDG_ATTACH_REQUIRE_WS_URL` forbids reading Chrome's default
+ * profile: any value but unset, empty, `0`, `false`, `no` or `off` (any case),
+ * so a mistyped value keeps the guard on instead of silently disabling it.
+ *
+ * @param env - Environment (default: this process)
+ * @returns True when attach may only connect through `--chrome-ws-url`
+ */
+export function isWsUrlRequired(
+  env: Readonly<Record<string, string | undefined>> = process.env
+): boolean {
+  return !GUARD_OFF_VALUES.includes(env[REQUIRE_WS_URL_ENV]?.trim().toLowerCase() ?? '');
+}
+
 /** Where the default Chrome profile lives: the platform and its environment */
 export interface ChromeDirContext {
   platform: NodeJS.Platform;

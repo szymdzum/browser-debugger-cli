@@ -180,6 +180,19 @@ export function attachEndpointConflictError(): ErrorWithSuggestion {
 }
 
 /**
+ * `BDG_ATTACH_REQUIRE_WS_URL` is set and `bdg attach` was given neither
+ * `--chrome-ws-url` nor `--user-data-dir`.
+ */
+export function attachWsUrlRequiredError(): ErrorWithSuggestion {
+  return {
+    message:
+      'BDG_ATTACH_REQUIRE_WS_URL is set: bdg attach does not look for a running Chrome through its DevToolsActivePort file',
+    suggestion:
+      'Pass --chrome-ws-url (a debugging port, http://host:port or ws://…/devtools/browser/<id>) of a Chrome you launched yourself',
+  };
+}
+
+/**
  * No tab's URL or title contains the `bdg attach` pattern.
  *
  * @param pattern - The pattern
