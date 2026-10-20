@@ -78,7 +78,7 @@ export const FILTER_PRESETS: Record<string, FilterPreset> = {
   },
   slow: {
     name: 'slow',
-    description: 'Requests that took at least 1 second',
+    description: 'Requests that took at least 1 second, or have been pending that long',
     filter: 'duration:>=1s',
     page: 'current',
   },

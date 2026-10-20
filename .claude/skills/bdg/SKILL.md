@@ -211,7 +211,7 @@ Scripts run like the DevTools console (top-level `await`, last expression is the
 ```bash
 bdg network list                              # Requests of all page loads (--page current: the current one; only --preset errors|failed|slow default to current)
 bdg network list --filter "status-code:>=400 domain:api.*"   # DevTools DSL: status-code:, domain: (host or host:port), url: (part of the URL as shown; masked tokens never match), method:, mime-type:, ! negates; space = AND
-bdg network list --sort size --last 5         # 5 heaviest requests (--sort duration: slowest; --page current|all; DSL page:current; a footer says when earlier pages are included)
+bdg network list --sort size --last 5         # 5 heaviest requests (--sort duration: slowest, a still-pending request ranked by elapsed time as `≥25.0s` with `pending`/`elapsedMs` in --json; --page current|all; DSL page:current; a footer says when earlier pages are included)
 bdg network details <id>                      # Headers, body; Timing phases + dominant one ("why is this request slow"; --json data.timingBreakdown) (cut at 20000 chars; --json bodyTruncated/bodyLength); Blocked Cookies: set rejected / not sent + reason
 bdg network details <id> --no-body            # Metadata only; --body prints just the whole raw body (pipe to jq); --body-max <chars>
 bdg network headers <id>                      # Headers only (no id: the main document)

@@ -151,11 +151,12 @@ function byStart(a: NetworkRequest, b: NetworkRequest): number {
  * Value a descending sort orders by (requests without one go last).
  *
  * @param request - Request
- * @param key - `size` (bytes transferred) or `duration`
+ * @param key - `size` (bytes transferred) or `duration` (a pending request: its elapsed time)
  * @returns Value, or -1 when unknown (pending)
  */
 function descendingValue(request: NetworkRequest, key: 'size' | 'duration'): number {
-  const value = key === 'size' ? request.encodedDataLength : request.duration;
+  const value =
+    key === 'size' ? request.encodedDataLength : (request.duration ?? request.elapsedMs);
   return value ?? -1;
 }
 
@@ -182,4 +183,33 @@ export function selectRequests(
   }
   const ordered = sort === 'start' ? [...requests].sort(byStart) : requests;
   return lastN === 0 ? ordered : ordered.slice(-lastN);
+}
+
+/**
+ * Whether a listing ranks or filters by elapsed time, so a request still
+ * pending needs it: `--sort duration` and the `slow` preset.
+ *
+ * @param preset - `--preset` name, if any
+ * @param sort - `--sort` key, if any
+ * @returns True for `--sort duration` or `--preset slow`
+ */
+export function usesElapsedTime(preset: string | undefined, sort: SortKey | undefined): boolean {
+  return sort === 'duration' || preset?.toLowerCase() === 'slow';
+}
+
+/**
+ * Mark the requests that have not finished as pending, with the time
+ * elapsed since they started. A request whose response headers arrived but
+ * whose body is still loading is pending too.
+ *
+ * @param requests - Requests in capture order
+ * @param now - Current time, epoch ms
+ * @returns The requests, the unfinished ones with `pending` and `elapsedMs`
+ */
+export function withElapsedTime(requests: NetworkRequest[], now: number): NetworkRequest[] {
+  return requests.map((request) =>
+    request.duration === undefined
+      ? { ...request, pending: true, elapsedMs: Math.max(0, now - request.timestamp) }
+      : request
+  );
 }

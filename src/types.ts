@@ -189,6 +189,10 @@ export interface NetworkRequest {
   sentTime?: number;
   /** Milliseconds from the request start to its last byte or failure (a redirect hop: to the redirect) */
   duration?: number;
+  /** `network list` only, when elapsed time is used (`--sort duration`, `--preset slow`): the request has not finished */
+  pending?: boolean;
+  /** `network list` only, with `pending`: milliseconds from the request start to now */
+  elapsedMs?: number;
   /** For a redirect hop: the URL it redirected to */
   redirectURL?: string;
   /** Bytes received, headers and framing included (CDP `loadingFinished.encodedDataLength`) */

@@ -52,6 +52,7 @@ export type PageStart = Pick<NetworkRequest, 'sentTime' | 'timestamp'>;
 
 const SIZE_UNITS = ['B', 'KB', 'MB', 'GB'] as const;
 const SEPARATOR_WIDTH = 80;
+const MIN_TIME_WIDTH = 6;
 
 function formatSize(bytes: number | undefined): string {
   if (bytes === undefined || bytes === 0) return '-';
@@ -83,6 +84,20 @@ function formatStatus(request: NetworkRequest): string {
 function formatDuration(ms: number | undefined): string {
   if (ms === undefined) return '-';
   return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`;
+}
+
+/**
+ * TIME column of a row: the duration, or for a request still pending whose
+ * elapsed time is known, that time with a `≥` mark.
+ *
+ * @param request - Request
+ * @returns e.g. "85ms", "≥25.0s", or "-"
+ */
+function formatTime(request: NetworkRequest): string {
+  if (request.duration === undefined && request.pending && request.elapsedMs !== undefined) {
+    return `≥${formatDuration(request.elapsedMs)}`;
+  }
+  return formatDuration(request.duration);
 }
 
 /**
@@ -152,6 +167,8 @@ interface ColumnWidths {
   id: number;
   /** HTTP method (`OPTIONS` is longer than the usual 4) */
   method: number;
+  /** TIME text (`≥25.0s` is wider than the usual 6) */
+  time: number;
 }
 
 /**
@@ -161,7 +178,7 @@ interface ColumnWidths {
  * @returns Header line
  */
 function formatColumnHeader(widths: ColumnWidths): string {
-  return `${'[ID]'.padEnd(widths.id)} ${'START'.padStart(6)} STS ${'METH'.padEnd(widths.method)} TYP ${'SIZE'.padStart(8)} ${'TIME'.padStart(6)}  URL`;
+  return `${'[ID]'.padEnd(widths.id)} ${'START'.padStart(6)} STS ${'METH'.padEnd(widths.method)} TYP ${'SIZE'.padStart(8)} ${'TIME'.padStart(widths.time)}  URL`;
 }
 
 /**
@@ -183,7 +200,7 @@ function formatRequestLine(
   const method = request.method.padEnd(widths.method);
   const type = getResourceTypeAbbr(request.resourceType, request.mimeType).padEnd(3);
   const size = formatSize(request.encodedDataLength).padStart(8);
-  const time = formatDuration(request.duration).padStart(6);
+  const time = formatTime(request).padStart(widths.time);
   const url = options.verbose ? request.url : truncateUrl(request.url, 50);
   const blocked = request.blockedCookieSummary ?? summarizeBlockedCookies(request);
   const mark = blocked ? `  ${COOKIE_BLOCKED_MARK}` : '';
@@ -202,6 +219,7 @@ function columnWidths(requests: NetworkRequest[], minIdWidth: number): ColumnWid
   return {
     id: Math.max(minIdWidth, ...requests.map((r) => r.requestId.length + 2)),
     method: Math.max('METH'.length, ...requests.map((r) => r.method.length)),
+    time: Math.max(MIN_TIME_WIDTH, ...requests.map((r) => formatTime(r).length)),
   };
 }
 

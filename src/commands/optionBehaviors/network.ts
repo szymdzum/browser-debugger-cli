@@ -57,9 +57,9 @@ export const NETWORK_BEHAVIORS: BehaviorTable = {
   'list:--sort': {
     default: 'Capture order (oldest first); --last n keeps the latest n',
     whenEnabled:
-      'size: bytes transferred, largest first; duration: slowest first (pending requests last); start: by start time. With size or duration, --last n keeps the n largest/slowest ("--sort size --last 5" = the 5 heaviest); with start, the latest n',
+      'size: bytes transferred, largest first; duration: slowest first (a request still pending is ranked by its elapsed time); start: by start time. With size or duration, --last n keeps the n largest/slowest ("--sort size --last 5" = the 5 heaviest); with start, the latest n',
     automaticBehavior:
-      'Applied after --filter, --preset, --type and --page. The header says the order (5 largest of 42, or 42, slowest first); JSON sort: <key> and requests in that order. A list of all pages that includes earlier-page requests ends with a note (JSON earlierPagesIncluded). Not with --follow (exit 81)',
+      'Applied after --filter, --preset, --type and --page. The header says the order (5 largest of 42, or 42, slowest first); JSON sort: <key> and requests in that order. With duration, a request that has not finished shows its elapsed time with a mark (TIME ≥25.0s next to PND) and has pending: true and elapsedMs in JSON (duration stays absent). A list of all pages that includes earlier-page requests ends with a note (JSON earlierPagesIncluded). Not with --follow (exit 81)',
     tokenImpact:
       'Answers "heaviest/slowest request?" in --last n rows instead of listing everything',
   },

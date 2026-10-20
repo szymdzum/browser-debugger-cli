@@ -515,6 +515,8 @@ export interface FilterContext {
   currentNavigationId?: number | undefined;
   /** The URL of a request as the output shows it (`url:`); default: as captured */
   urlOf?: ((request: NetworkRequest) => string) | undefined;
+  /** `duration:` lower bounds match a request that has not finished by its `elapsedMs` (the `slow` preset) */
+  pendingElapsed?: boolean | undefined;
 }
 
 function matchesFilter(
@@ -556,15 +558,13 @@ function matchesFilter(
       return compareNumeric(size, threshold, effectiveOperator);
     }
 
-    case 'duration':
-      return (
-        request.duration !== undefined &&
-        compareNumeric(
-          request.duration,
-          parseDuration(filter.value),
-          filter.operator === '=' ? '>=' : filter.operator
-        )
-      );
+    case 'duration': {
+      const operator = filter.operator === '=' ? '>=' : filter.operator;
+      const lowerBound = operator === '>' || operator === '>=';
+      const elapsed = lowerBound && context.pendingElapsed ? request.elapsedMs : undefined;
+      const value = request.duration ?? elapsed;
+      return value !== undefined && compareNumeric(value, parseDuration(filter.value), operator);
+    }
 
     case 'has-response-header': {
       if (!request.responseHeaders) return false;
@@ -613,6 +613,7 @@ export function applyFilters(
   const resolved: FilterContext = {
     currentNavigationId: currentNavigationOf(requests, context.currentNavigationId),
     urlOf: context.urlOf,
+    pendingElapsed: context.pendingElapsed,
   };
 
   return requests.filter((request) =>
