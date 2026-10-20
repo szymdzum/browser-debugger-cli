@@ -9,6 +9,7 @@
 
 import { InvalidArgumentError, Option, type Command } from 'commander';
 
+import { failOnNavigationFailed } from '@/commands/dom/helpers/navigationFailed.js';
 import { runElementCommand } from '@/commands/dom/helpers/runElementCommand.js';
 import { runCommand, type CommandResult } from '@/commands/shared/CommandRunner.js';
 import { jsonOption, SELECTOR_OR_INDEX_ARGUMENT } from '@/commands/shared/commonOptions.js';
@@ -28,6 +29,7 @@ import {
   hoverOffWithTargetError,
   missingArgumentError,
   indexSourceText,
+  navigationFailedError,
   internalError,
   scrollOptionsError,
   valueMismatchError,
@@ -163,7 +165,10 @@ function addPressKeyCommand(parent: Command, name: string): void {
       await runCommand(
         async () => {
           const dialogs = dialogChoice(options);
-          return runElementCommand<Parameters<typeof domPressKey>[0], PressKeyResult>({
+          const pressed = await runElementCommand<
+            Parameters<typeof domPressKey>[0],
+            PressKeyResult
+          >({
             selectorOrIndex,
             index: options.index,
             buildRequest: (target, source) => ({
@@ -180,6 +185,7 @@ function addPressKeyCommand(parent: Command, name: string): void {
             action: 'press key',
             failureSuggestion: 'Verify the selector matches a focusable element',
           });
+          return failOnNavigationFailed(pressed);
         },
         options,
         formatPressKeyOutput,
@@ -244,7 +250,7 @@ export function registerFormInteractionCommands(program: Command): void {
             failureSuggestion:
               'Verify the selector matches a fillable element (input, textarea, select)',
           });
-          return failOnValueMismatch(filled, options.json === true);
+          return failOnNavigationFailed(failOnValueMismatch(filled, options.json === true));
         },
         options,
         formatFillOutput,
@@ -317,7 +323,7 @@ export function registerFormInteractionCommands(program: Command): void {
       await runCommand(
         async () => {
           const dialogs = dialogChoice(options);
-          return runElementCommand<Parameters<typeof domSubmit>[0], SubmitResult>({
+          const submitted = await runElementCommand<Parameters<typeof domSubmit>[0], SubmitResult>({
             selectorOrIndex,
             index: options.index,
             buildRequest: (target, source) => ({
@@ -335,6 +341,7 @@ export function registerFormInteractionCommands(program: Command): void {
             action: 'submit form',
             failureSuggestion: 'Verify the selector matches a form or submit button',
           });
+          return failOnNavigationFailed(submitted);
         },
         options,
         formatSubmitOutput,
@@ -364,9 +371,14 @@ export function registerFormInteractionCommands(program: Command): void {
     .addOption(promptTextOption())
     .addOption(jsonOption())
     .action(async (selector: string | undefined, options: ScrollCommandOptions) => {
-      await runCommand(() => runScroll(selector, options), options, formatScrollOutput, {
-        sent: 'scroll',
-      });
+      await runCommand(
+        async () => failOnNavigationFailed(await runScroll(selector, options)),
+        options,
+        formatScrollOutput,
+        {
+          sent: 'scroll',
+        }
+      );
     });
 }
 
@@ -518,7 +530,7 @@ async function runPointerCommand(
         );
       }
       const dialogs = dialogChoice(options);
-      return runElementCommand<Parameters<typeof domClick>[0], ClickResult>({
+      const clicked = await runElementCommand<Parameters<typeof domClick>[0], ClickResult>({
         selectorOrIndex,
         index: options.index,
         buildRequest: (target, source) => ({
@@ -534,6 +546,7 @@ async function runPointerCommand(
         action: action === 'hover' ? 'hover element' : 'click element',
         failureSuggestion: 'Verify the selector matches a clickable element',
       });
+      return failOnNavigationFailed(clicked);
     },
     options,
     formatClickOutput,
@@ -594,8 +607,13 @@ function formatActionOutput(
       noEffect: result.effect === 'none',
       stillChanging,
       submitBlocked: result.submitBlocked !== undefined,
+      ...(result.navigationFailed && { navigationFailed: result.navigationFailed.errorText }),
     })
   );
+  if (result.navigationFailed) {
+    const { url, errorText } = result.navigationFailed;
+    fmt.text(`⚠ ${navigationFailedError(url, errorText).message}`);
+  }
   if (result.submitBlocked) {
     fmt.text(`⚠ ${submitBlockedNote(result.submitBlocked, result.submitBlockedOmitted)}`);
   }

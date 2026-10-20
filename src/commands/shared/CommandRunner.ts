@@ -94,7 +94,11 @@ export async function runJsonCommand<T>(fn: () => Promise<T>): Promise<never> {
 export interface CommandResult<T = unknown> {
   /** Whether the command succeeded */
   success: boolean;
-  /** Data to output (for successful commands) */
+  /**
+   * Data to output: of a successful command, or of a failed one that still
+   * reports what it did (in `--json` its fields go next to the error, in
+   * human output the formatter shows it in place of the error line)
+   */
   data?: T;
   /** Error message (for failed commands) */
   error?: string;
@@ -237,6 +241,7 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
           stringifyEnvelope(
             withTabMove(
               OutputBuilder.buildJsonError(result.error ?? 'Unknown error', {
+                ...(result.data as object | undefined),
                 ...result.errorContext,
                 ...(result.warning && { warning: result.warning }),
                 exitCode,
@@ -245,7 +250,11 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
           )
         );
       } else {
-        console.error(result.error ? genericError(result.error) : unknownError());
+        if (formatter && result.data !== undefined) {
+          console.log(escapeControlChars(formatter(result.data)));
+        } else {
+          console.error(result.error ? genericError(result.error) : unknownError());
+        }
         printTabMove(result.error);
         if (result.errorContext && typeof result.errorContext === 'object') {
           for (const value of Object.values(result.errorContext)) {

@@ -4,7 +4,9 @@
  */
 
 import type { CommandResult } from '@/commands/shared/CommandRunner.js';
+import { navigationFailedError } from '@/errors/messages.js';
 import type { ActionEffects } from '@/ipc/protocol/domTypes.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
  * Fail an action whose navigation ended on Chrome's error page: exit 80
@@ -18,6 +20,16 @@ import type { ActionEffects } from '@/ipc/protocol/domTypes.js';
 export function failOnNavigationFailed<T extends ActionEffects & { warning?: string | undefined }>(
   result: CommandResult<T>
 ): CommandResult<T> {
-  void result;
-  throw new Error('not implemented');
+  const failed = result.data?.navigationFailed;
+  if (!result.success || !result.data || !failed) return result;
+  const { warning, ...data } = result.data;
+  const err = navigationFailedError(failed.url, failed.errorText);
+  return {
+    success: false,
+    error: err.message,
+    exitCode: EXIT_CODES.INVALID_URL,
+    data: data as T,
+    errorContext: { suggestion: err.suggestion },
+    ...(warning && { warning }),
+  };
 }

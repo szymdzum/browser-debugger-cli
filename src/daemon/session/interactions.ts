@@ -12,6 +12,7 @@ import type {
   DialogChoice,
   DialogInfo,
   InvalidField,
+  PageNavigation,
   TriggeredRequest,
 } from '@/ipc/protocol/domTypes.js';
 import type { LogpointActionHit } from '@/ipc/protocol/debugTypes.js';
@@ -23,6 +24,7 @@ import {
 } from '@/runtime/dom/actionEffects.js';
 import type { BoundedInvalidFields } from '@/runtime/dom/blockedSubmit.js';
 import { UNBIND_TARGET_SCRIPT } from '@/runtime/dom/targetNode.js';
+import { readFailedLoad } from '@/runtime/page/failedLoad.js';
 import { toDownloadInfo } from '@/telemetry/downloads.js';
 import { mayCarrySubmit } from '@/telemetry/requestKinds.js';
 import { createLogger } from '@/ui/logging/index.js';
@@ -211,6 +213,32 @@ async function blockedSubmit(
 }
 
 /**
+ * Where a new document an action navigated to failed to load: the main frame
+ * shows Chrome's error page (#873, read as for `page navigate`, #860; the
+ * certificate warning is no failure). A load that fails after the action
+ * returned is not seen.
+ *
+ * @param cdp - CDP connection
+ * @param navigation - The action's navigation, if any
+ * @returns The URL that could not be loaded and Chrome's network error, or undefined
+ */
+async function failedNavigation(
+  cdp: CDPConnection,
+  navigation: PageNavigation | undefined
+): Promise<ActionEffects['navigationFailed']> {
+  if (!navigation || navigation.sameDocument) return undefined;
+  try {
+    const failed = await readFailedLoad(cdp);
+    return failed && !failed.certificate
+      ? { url: failed.url, errorText: failed.errorText }
+      : undefined;
+  } catch (error) {
+    log.debug(`Main frame not read after the action: ${getErrorMessage(error)}`);
+    return undefined;
+  }
+}
+
+/**
  * The logpoints that logged during an action, as many as the report lists.
  *
  * @param hit - Every logpoint hit during the action
@@ -309,6 +337,7 @@ export function createInteractionRunner(
           detectUnsettled: options.detectUnsettled === true,
         });
         const { work, ...changes } = collected ?? {};
+        const navigationFailed = await failedNavigation(cdp, changes.navigation);
         const requests = collectRequests?.();
         const blocked = await blockedSubmit(options.readBlockedSubmit, collected, requests);
         if (effects) await tabs?.pageLost(cdp);
@@ -323,6 +352,7 @@ export function createInteractionRunner(
           ...result,
           ...(dialogs.length > 0 && { dialogs }),
           ...otherChanges,
+          ...(navigationFailed && { navigationFailed }),
           ...(domChanges !== undefined && !errors?.errors?.length && { domChanges }),
           ...errors,
           ...logpointReport(store.logpoints.hitsSince(logpointMark)),

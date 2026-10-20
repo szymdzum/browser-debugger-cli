@@ -436,7 +436,8 @@ export function domKeptChanging(settle: SettleSignals | undefined, sinceMs: numb
 /**
  * What the page was still working on when the action returned, or undefined
  * when it looked settled: content requests (documents, fetch/XHR, scripts)
- * still pending, a new document still loading, a loading indicator that
+ * still pending, a new document still loading (not committed, or answered
+ * but its response not ended), a loading indicator that
  * appeared, a DOM still changing ({@link domKeptChanging}), or a page that
  * did not answer (a long script). A result a timer renders later, with no
  * DOM change before it, is not seen.
@@ -453,9 +454,12 @@ export function pendingChanges(
   const pendingRequests = requests.filter(
     (request) => request.pending && CONTENT_REQUEST_TYPES.has(request.resourceType ?? '')
   ).length;
+  const documentLoading = requests.some(
+    (request) => request.loading && request.resourceType === 'Document'
+  );
   const pending: PendingChanges = {
     ...(pendingRequests > 0 && { requests: pendingRequests }),
-    ...(work.navigating && { navigation: true as const }),
+    ...((work.navigating || documentLoading) && { navigation: true as const }),
     ...(settle?.loading && { loading: settle.loading }),
     ...(work.domChanging && { domChanging: true as const }),
     ...(work.unresponsive && { busy: true as const }),

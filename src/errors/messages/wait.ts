@@ -125,6 +125,17 @@ export function submitNetworkBusyWarning(timeout: number, pending: number): stri
 }
 
 /**
+ * Warning of a `dom submit` whose new page answered but had not finished
+ * loading at the timeout (a response that never ends, #873): no failure.
+ *
+ * @param timeout - Timeout in milliseconds
+ * @returns Warning text
+ */
+export function submitStillLoadingWarning(timeout: number): string {
+  return `The new page was still loading after ${timeout}ms (its response had not ended)`;
+}
+
+/**
  * `bdg dom wait` without a selector or --load, or with --text/--gone but no selector.
  *
  * @returns Message and suggestion
