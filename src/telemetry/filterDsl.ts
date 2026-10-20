@@ -556,15 +556,13 @@ function matchesFilter(
       return compareNumeric(size, threshold, effectiveOperator);
     }
 
-    case 'duration':
-      return (
-        request.duration !== undefined &&
-        compareNumeric(
-          request.duration,
-          parseDuration(filter.value),
-          filter.operator === '=' ? '>=' : filter.operator
-        )
-      );
+    case 'duration': {
+      const operator = filter.operator === '=' ? '>=' : filter.operator;
+      const lowerBound = operator === '>' || operator === '>=';
+      const elapsed = lowerBound ? request.elapsedMs : undefined;
+      const value = request.duration ?? elapsed;
+      return value !== undefined && compareNumeric(value, parseDuration(filter.value), operator);
+    }
 
     case 'has-response-header': {
       if (!request.responseHeaders) return false;

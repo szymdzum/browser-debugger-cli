@@ -151,11 +151,12 @@ function byStart(a: NetworkRequest, b: NetworkRequest): number {
  * Value a descending sort orders by (requests without one go last).
  *
  * @param request - Request
- * @param key - `size` (bytes transferred) or `duration`
+ * @param key - `size` (bytes transferred) or `duration` (a pending request: its elapsed time)
  * @returns Value, or -1 when unknown (pending)
  */
 function descendingValue(request: NetworkRequest, key: 'size' | 'duration'): number {
-  const value = key === 'size' ? request.encodedDataLength : request.duration;
+  const value =
+    key === 'size' ? request.encodedDataLength : (request.duration ?? request.elapsedMs);
   return value ?? -1;
 }
 
@@ -192,18 +193,23 @@ export function selectRequests(
  * @param sort - `--sort` key, if any
  * @returns True for `--sort duration` or a `duration:` filter
  */
-export function usesElapsedTime(_filter: string, _sort: SortKey | undefined): boolean {
-  throw new Error('not implemented');
+export function usesElapsedTime(filter: string, sort: SortKey | undefined): boolean {
+  return sort === 'duration' || /(^|\s)!?duration:/.test(filter);
 }
 
 /**
  * Mark the requests that have not finished as pending, with the time
- * elapsed since they started.
+ * elapsed since they started. A request whose response headers arrived but
+ * whose body is still loading is pending too; a failed one is not.
  *
- * @param _requests - Requests in capture order
- * @param _now - Current time, epoch ms
+ * @param requests - Requests in capture order
+ * @param now - Current time, epoch ms
  * @returns The requests, the unfinished ones with `pending` and `elapsedMs`
  */
-export function withElapsedTime(_requests: NetworkRequest[], _now: number): NetworkRequest[] {
-  throw new Error('not implemented');
+export function withElapsedTime(requests: NetworkRequest[], now: number): NetworkRequest[] {
+  return requests.map((request) =>
+    request.duration === undefined && request.status !== 0
+      ? { ...request, pending: true, elapsedMs: Math.max(0, now - request.timestamp) }
+      : request
+  );
 }
