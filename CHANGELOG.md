@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-10-20
+
+Fewer false successes: a page that failed to load, an action whose navigation failed, a fill the page didn't keep and an eval on a paused page now say so, with an exit code a script can check. New: logpoints (`bdg debug`), an accessibility audit, and request timing phases.
+
+### Changed behaviour
+
+- **A load that ends on Chrome's error page exits 80** (#875, #860): `bdg <url>`, `bdg page navigate`, `bdg page reload` and `bdg dom wait --load` print `Could not load <url>: net::…` and exit 80 (`INVALID_URL`) for every network error that leaves Chrome's error page (refused, DNS, TLS, redirect loop, blocked, …). Before, several of them said "Session Started" / `✓ Navigated` with exit 0. A redirect names where it led. `bdg attach` to a tab already on the error page still attaches (exit 0) with `⚠ Page failed to load` and `data.failedLoad`; `bdg console` says `Page failed to load` instead of "No errors or warnings found". A certificate interstitial (`ERR_CERT_*`) stays exit 0 but prints `⚠` instead of `✓`.
+- **An action whose navigation fails exits 80** (#880, #873): `dom click` (and `--double`/`--right`, `hover`), `dom submit`, `dom press-key`, `dom fill` and `dom scroll` print `⚠ <Action> (navigation failed: net::…)` + `⚠ Could not load <url>: …` instead of `✓`, and exit 80; `--json` is an error envelope with `navigationFailed: { url, errorText }` next to the action's fields. A new page whose response never ends is not a failure: `⚠ … still loading`, exit 0 (`dom submit` used to exit 102 there). `dom submit` on a failed navigation is now deterministic.
+- **`dom fill` exits 90 when the page doesn't keep the value** (#874, #867): before, exit 0 with a warning. The `--json` error envelope carries `valueMismatch` and the fill's fields at top level. A plain number in a formatted text field now matches (`8` → `$8.00`, `1234.5` → `$1,234.50`).
+- **`bdg eval` on a page paused in the debugger exits 85** (#885, #857) with "The page is paused in the debugger, so the script cannot run" and `Resume it with: bdg cdp Debugger.resume`; before, exit 102 "result too large to send" (after ~13 s when the page was already paused).
+- **`bdg attach` dismisses JavaScript dialogs by default** (#876, #869); `--dialog accept|dismiss` sets it. `bdg <url>` still accepts. `bdg status` shows an attach session's dialog default.
+- **`bdg dom audit` runs the accessibility audit by default** (#833, #455): human output gains an `A11y:` section, `--json` gains `data.a11y`.
+- **`network list --sort duration` and `--preset slow` include a request still pending** (#884, #861), ranked by its elapsed time and shown as `PND ≥25.0s`; `--json` adds `pending: true` and `elapsedMs` for those rows (`duration` unchanged). Before, the slowest request could be missing from the "slowest" list. A user-written `--filter duration:` is unchanged.
+- **HAR timings include Chrome's queue time** (#855): `timings.blocked` and `time` in `bdg network har` match `network details`; phases are whole milliseconds.
+
+### Added
+
+- **`bdg debug`: logpoints** (#858, #859, #848): `bdg debug log <file:line> [expr…] [--if] [--max]` logs values a page's code has at a line without pausing it; `debug list`, `debug hits`, `debug clear`; hits appear in action reports. Works on source-mapped bundles with the original file and line.
+- **`bdg dom audit a11y`** (#833, #455): image alt text, control names, heading order, landmarks, duplicate ids, broken `aria-labelledby`/`aria-describedby` references, from the computed accessibility tree (frames and open shadow roots included).
+- **Request timing phases in `network details`** (#840, #837): queued, dns, connect, tls, send, wait, download, and a verdict naming the dominant phase; `--json` `timingBreakdown`.
+- **`bdg attach --dialog accept|dismiss`** (#876).
+
+### Fixed
+
+- **`dom fill` no longer appends to a value a field puts back on focus** (#871, #866): an old Telerik numeric box turned `8.00` into `0.008.00`.
+
+### Internal
+
+- `BDG_ATTACH_REQUIRE_WS_URL`: a test-only variable that makes `bdg attach` refuse to look for a running Chrome without `--chrome-ws-url` (#879, #878).
+- CLI contract fuzzer `scripts/cli-fuzz.mjs` (#882, #863), hostile test server and load-failure matrix (#872, #862).
+- Message modules split by command area (#854); typed CDP results throughout (#834, #841, #846); shorter and steadier smoke suites (#835, #842, #856); smoke timing trend script (#839).
+
 ## [0.20.0] - 2026-10-17
 
 **The last 0.x release.** bdg 1.0 renames a set of commands and flags (#465). In 0.20.0 every old spelling still works, prints one `Warning:` line on stderr (in `--json`: an entry in the envelope's `warnings` array) and is hidden from help; **in 1.0 each one stops working** and exits 81 naming its replacement. Switch scripts and notes now; the warnings name the new spelling.
