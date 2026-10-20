@@ -110,7 +110,10 @@ void describe('network list with a request that never answers (#861)', () => {
     assert.match(result.stdout, /NETWORK REQUESTS \(2 slowest of \d+\)/);
     const row = result.stdout.split('\n').find((line) => line.includes('/never')) ?? '';
     assert.match(row, /PND .*≥\d+\.\ds {2}/, result.stdout);
-    assert.equal(result.stdout.split('\n').findIndex((line) => line.includes('/never')), 4);
+    assert.equal(
+      result.stdout.split('\n').findIndex((line) => line.includes('/never')),
+      4
+    );
   });
 
   void it('--preset slow includes it, marked pending', async () => {

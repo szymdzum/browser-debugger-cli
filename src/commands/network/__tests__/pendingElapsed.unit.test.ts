@@ -6,11 +6,7 @@
 import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import {
-  selectRequests,
-  usesElapsedTime,
-  withElapsedTime,
-} from '@/commands/network/listScope.js';
+import { selectRequests, usesElapsedTime, withElapsedTime } from '@/commands/network/listScope.js';
 import { applyFilters, validateFilterString } from '@/telemetry/filterDsl.js';
 import type { NetworkRequest } from '@/types.js';
 import { formatNetworkList } from '@/ui/formatters/networkList.js';
