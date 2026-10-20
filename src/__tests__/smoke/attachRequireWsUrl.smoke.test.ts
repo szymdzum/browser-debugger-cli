@@ -33,6 +33,7 @@ const profileEnv = {
   HOME: home,
   XDG_CONFIG_HOME: path.join(home, '.config'),
   CHROME_CONFIG_HOME: '',
+  LOCALAPPDATA: path.join(home, 'AppData', 'Local'),
 };
 const portFile = path.join(
   defaultChromeUserDataDir({ platform: process.platform, home, env: profileEnv }),
@@ -100,6 +101,17 @@ void describe('BDG_ATTACH_REQUIRE_WS_URL (#878)', () => {
   void it('0 leaves the guard off', async () => {
     const result = await attach([], '0');
     assert.notEqual(result.exitCode, 81, result.output);
+  });
+
+  void it('--user-data-dir is not refused and its file is read', async () => {
+    const profile = path.join(root, 'named-profile');
+    const namedFile = path.join(profile, 'DevToolsActivePort');
+    fs.mkdirSync(profile, { recursive: true });
+    fs.writeFileSync(namedFile, `${port}\n/devtools/browser/0123-abcd\n`);
+    const result = await attach(['--user-data-dir', profile], '1');
+    assert.notEqual(result.exitCode, 81, result.output);
+    assert.ok(result.output.includes(namedFile), result.output);
+    assert.ok(!result.output.includes(portFile), result.output);
   });
 
   void it('--chrome-ws-url is not refused', async () => {
