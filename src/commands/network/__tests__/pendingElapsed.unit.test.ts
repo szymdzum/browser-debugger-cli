@@ -95,7 +95,7 @@ void describe('duration: filter with a pending request', () => {
   });
 
   void it('never matches an upper bound: it is still running', () => {
-    assert.deepEqual(filtered('duration:<=10s', marked), ['js', 'dns']);
+    assert.deepEqual(filtered('duration:<=10s', marked), ['css', 'js', 'dns']);
   });
 
   void it('leaves a request without elapsed time out, as before', () => {
