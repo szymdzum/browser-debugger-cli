@@ -193,8 +193,8 @@ export function selectRequests(
  * @param sort - `--sort` key, if any
  * @returns True for `--sort duration` or a `duration:` filter
  */
-export function usesElapsedTime(filter: string, sort: SortKey | undefined): boolean {
-  return sort === 'duration' || /(^|\s)!?duration:/.test(filter);
+export function usesElapsedTime(preset: string | undefined, sort: SortKey | undefined): boolean {
+  return sort === 'duration' || /(^|\s)!?duration:/.test(preset ?? '');
 }
 
 /**

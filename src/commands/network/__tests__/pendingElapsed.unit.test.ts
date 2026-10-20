@@ -7,7 +7,7 @@ import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { selectRequests, usesElapsedTime, withElapsedTime } from '@/commands/network/listScope.js';
-import { applyFilters, validateFilterString } from '@/telemetry/filterDsl.js';
+import { applyFilters, validateFilterString, type FilterContext } from '@/telemetry/filterDsl.js';
 import type { NetworkRequest } from '@/types.js';
 import { formatNetworkList } from '@/ui/formatters/networkList.js';
 
@@ -34,10 +34,14 @@ const unfinished: NetworkRequest = pendingFields;
 
 const ids = (requests: NetworkRequest[]): string[] => requests.map((r) => r.requestId);
 
-function filtered(filter: string, requests: NetworkRequest[]): string[] {
+function filtered(
+  filter: string,
+  requests: NetworkRequest[],
+  context: FilterContext = {}
+): string[] {
   const validation = validateFilterString(filter);
   assert.ok(validation.valid);
-  return ids(applyFilters(requests, validation.filters));
+  return ids(applyFilters(requests, validation.filters, context));
 }
 
 void describe('withElapsedTime', () => {
@@ -52,13 +56,13 @@ void describe('withElapsedTime', () => {
 });
 
 void describe('usesElapsedTime', () => {
-  void it('is true for --sort duration and any duration: filter, false otherwise', () => {
-    assert.equal(usesElapsedTime('', 'duration'), true);
-    assert.equal(usesElapsedTime('duration:>=1s', undefined), true);
-    assert.equal(usesElapsedTime('status-code:>=400 !duration:<1s', undefined), true);
-    assert.equal(usesElapsedTime('', 'size'), false);
-    assert.equal(usesElapsedTime('domain:a.test', 'start'), false);
-    assert.equal(usesElapsedTime('url:duration', undefined), false);
+  void it('is true for --sort duration and the slow preset, false otherwise', () => {
+    assert.equal(usesElapsedTime(undefined, 'duration'), true);
+    assert.equal(usesElapsedTime('slow', undefined), true);
+    assert.equal(usesElapsedTime('SLOW', 'start'), true);
+    assert.equal(usesElapsedTime(undefined, 'size'), false);
+    assert.equal(usesElapsedTime('errors', undefined), false);
+    assert.equal(usesElapsedTime(undefined, undefined), false);
   });
 });
 
@@ -84,18 +88,25 @@ void describe('--sort duration with a pending request', () => {
 
 void describe('duration: filter with a pending request', () => {
   const marked = withElapsedTime([slowFinished, fast, unfinished, failed], NOW);
+  const slowPreset = { pendingElapsed: true };
 
-  void it('matches a lower bound by the elapsed time (the slow preset)', () => {
-    assert.deepEqual(filtered('duration:>=1s', marked), ['css', 'xhr']);
-    assert.deepEqual(filtered('duration:>30s', marked), []);
+  void it('matches a lower bound by the elapsed time for the slow preset', () => {
+    assert.deepEqual(filtered('duration:>=1s', marked, slowPreset), ['css', 'xhr']);
+    assert.deepEqual(filtered('duration:>30s', marked, slowPreset), []);
   });
 
   void it('never matches an upper bound: it is still running', () => {
-    assert.deepEqual(filtered('duration:<=10s', marked), ['css', 'js', 'dns']);
+    assert.deepEqual(filtered('duration:<=10s', marked, slowPreset), ['css', 'js', 'dns']);
+  });
+
+  void it('leaves a user-written duration: filter as on main, pending request or not', () => {
+    assert.deepEqual(filtered('duration:>1s', marked), ['css']);
+    assert.deepEqual(filtered('duration:=1s', marked), ['css']);
+    assert.deepEqual(filtered('!duration:>1s', marked), ['js', 'xhr', 'dns']);
   });
 
   void it('leaves a request without elapsed time out, as before', () => {
-    assert.deepEqual(filtered('duration:>=1s', [slowFinished, unfinished]), ['css']);
+    assert.deepEqual(filtered('duration:>=1s', [slowFinished, unfinished], slowPreset), ['css']);
   });
 });
 

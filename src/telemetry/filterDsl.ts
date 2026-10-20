@@ -515,6 +515,8 @@ export interface FilterContext {
   currentNavigationId?: number | undefined;
   /** The URL of a request as the output shows it (`url:`); default: as captured */
   urlOf?: ((request: NetworkRequest) => string) | undefined;
+  /** `duration:` lower bounds match a request that has not finished by its `elapsedMs` (the `slow` preset) */
+  pendingElapsed?: boolean | undefined;
 }
 
 function matchesFilter(
