@@ -239,6 +239,8 @@ export const ROWS: readonly Row[] = [
       navigate: 'a blob: URL exists in the document that made it only',
       reload: 'a blob: URL exists in the document that made it only',
       wait: 'a blob: URL exists in the document that made it only',
+      submit:
+        'a GET form adds its query to the blob: URL, which then names no blob (ERR_FILE_NOT_FOUND)',
     },
   },
 ];
