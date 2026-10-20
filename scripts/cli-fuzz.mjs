@@ -708,7 +708,7 @@ export const EXCEPTIONS = [
   { id: 'E3', invariant: 5, reason: '`install-skill` writes the skill files into HOME or the cwd by design', applies: (inv) => inv.key === 'install-skill' },
   { id: 'E4', invariant: 4, reason: 'a declared `--timeout`/`--wait` beyond the 60 s fuzzer cap is cut at the cap, not a hang', applies: (_inv, ctx) => Boolean(ctx.longDeclared) },
   { id: 'E5', invariant: 7, reason: '`stop` and `cleanup` that exit 0 end the session on purpose', applies: (inv, ctx) => SESSION_ENDERS.has(inv.key) && ctx.code === 0 },
-  { id: 'E6', invariant: 6, reason: '`cdp --out` and `eval` return what the page or the user asked for, unredacted by design', applies: (inv) => inv.argv.includes('--out') },
+  { id: 'E6', invariant: 6, reason: '`cdp --out` writes the events it was asked for to a file unredacted, by design (its help says so)', applies: (inv) => inv.argv.includes('--out') },
   { id: 'E7', invariant: 'harness', reason: 'a 1 MB argument cannot be passed (ARG_MAX, MAX_ARG_STRLEN): the "huge string" edge value is 120 KB', applies: () => false },
 ];
 
@@ -740,7 +740,7 @@ export function applyExceptions(violations, inv, ctx) {
 export function jsonRequested(argv, spec) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--') return false;
+    if (a === '--' || (argv[i + 1] === '--' && spec.options.some((o) => o.takesValue && (o.long === a || o.short === a)))) return false;
     if (a === '--json' || a === '-j') return true;
     const opt = spec.options.find((o) => o.takesValue && (o.long === a || o.short === a));
     if (!opt) continue;
@@ -923,7 +923,7 @@ async function runChunk(opts) {
   const violationsFile = path.join(opts.reportDir, `violations-${seed}-${offset}-${count}.jsonl`);
   fs.writeFileSync(violationsFile, '');
   const state = { up: false };
-  const stopAll = async () => { await endSession(opts.bdg, env, dirs.cwd, ctx); state.up = false; };
+  const stopAll = async () => { await endSession(opts.bdg, env, dirs.cwd); state.up = false; };
   for (const sig of ['SIGINT', 'SIGTERM']) process.once(sig, () => { void stopAll().then(() => { fixtures.stop(); process.exit(130); }); });
   try {
     for (let i = offset; i < offset + count; i++) {
@@ -1006,10 +1006,8 @@ function startFixtures(opts) {
  * @param {string} bdgPath dist/index.js
  * @param {object} env child environment
  * @param {string} cwd working directory
- * @param {object} ctx run context
  */
-async function endSession(bdgPath, env, cwd, ctx) {
-  void ctx;
+async function endSession(bdgPath, env, cwd) {
   await runBdg(bdgPath, ['stop', '--json'], { env, cwd, limitMs: 30_000 });
   await runBdg(bdgPath, ['cleanup', '--force', '--json'], { env, cwd, limitMs: 30_000 });
 }
@@ -1037,7 +1035,7 @@ async function startSession(p) {
   for (let attempt = 0; attempt < 2; attempt++) {
     const run = await runBdg(p.opts.bdg, [`${p.ctx.fixture}${FIXTURE_PAGE}`, '--headless', '--port', String(p.ctx.freePort), '--json'], { env: p.env, cwd: p.dirs.cwd, limitMs: START_LIMIT_MS });
     if (run.code === 0) { p.stats.restarts++; return true; }
-    await endSession(p.opts.bdg, p.env, p.dirs.cwd, p.ctx);
+    await endSession(p.opts.bdg, p.env, p.dirs.cwd);
   }
   return false;
 }
@@ -1050,7 +1048,7 @@ async function startSession(p) {
 async function runOne(p) {
   const inv = buildInvocation(p.specs, p.seed, p.index);
   const spec = p.specs.find((s) => s.key === inv.key);
-  if (inv.mode === 'down' && p.state.up) { await endSession(p.opts.bdg, p.env, p.dirs.cwd, p.ctx); p.state.up = false; }
+  if (inv.mode === 'down' && p.state.up) { await endSession(p.opts.bdg, p.env, p.dirs.cwd); p.state.up = false; }
   if (inv.mode === 'up' && !p.state.up) {
     if (!(await startSession(p))) return { violations: [], fatal: 'could not start the fuzzer session twice' };
     p.state.up = true;
@@ -1091,10 +1089,10 @@ async function runOne(p) {
     }
   } else {
     const st = await statusOf(p.opts.bdg, p.env, p.dirs.cwd);
-    if (st.active) await endSession(p.opts.bdg, p.env, p.dirs.cwd, p.ctx);
+    if (st.active) await endSession(p.opts.bdg, p.env, p.dirs.cwd);
   }
   const expectEnd = SESSION_ENDERS.has(inv.key) && run.code === 0;
-  if (ended || expectEnd) { await endSession(p.opts.bdg, p.env, p.dirs.cwd, p.ctx); p.state.up = false; }
+  if (ended || expectEnd) { await endSession(p.opts.bdg, p.env, p.dirs.cwd); p.state.up = false; }
   for (const name of fs.readdirSync(p.dirs.cwd)) fs.rmSync(path.join(p.dirs.cwd, name), { recursive: true, force: true });
   for (const name of fs.readdirSync(p.dirs.home)) fs.rmSync(path.join(p.dirs.home, name), { recursive: true, force: true });
   for (const name of fs.readdirSync(path.dirname(p.dirs.cwd))) if (!['cwd', 'home', 'session'].includes(name)) fs.rmSync(path.join(path.dirname(p.dirs.cwd), name), { recursive: true, force: true });

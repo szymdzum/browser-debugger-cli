@@ -171,6 +171,7 @@ test('jsonRequested ignores --json after -- or consumed as an option value', () 
   assert.equal(jsonRequested(['dom', 'screenshot', 'a.png', '--json'], spec), true);
   assert.equal(jsonRequested(['dom', 'screenshot', '--', '--json'], spec), false);
   assert.equal(jsonRequested(['dom', 'screenshot', '--out', '--json'], spec), false);
+  assert.equal(jsonRequested(['dom', 'screenshot', '--out', '--', '--json'], spec), false);
   assert.equal(jsonRequested(['dom', 'screenshot', '--out', 'x', '-j'], spec), true);
 });
 
