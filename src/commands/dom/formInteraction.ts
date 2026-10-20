@@ -375,9 +375,7 @@ export function registerFormInteractionCommands(program: Command): void {
         async () => failOnNavigationFailed(await runScroll(selector, options)),
         options,
         formatScrollOutput,
-        {
-          sent: 'scroll',
-        }
+        { sent: 'scroll' }
       );
     });
 }
