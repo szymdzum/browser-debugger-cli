@@ -12,6 +12,10 @@
  *   for {@link DELAY_MS}, the rest are answered at once. Chrome opens at most
  *   6 HTTP/1.1 connections per host, so the 7th and 8th request wait in
  *   Chrome's queue until a held one finishes.
+ *
+ * `/pending` (#861) is a second page: it fetches {@link FAST_REQUESTS} quick
+ * `/fast` assets and `/never`, which the server leaves open without a byte, so one request stays
+ * pending. The title becomes `fast-done` once the fast ones are read.
  */
 
 import * as http from 'http';
@@ -27,6 +31,9 @@ export const CONNECTION_LIMIT = 6;
 /** Requests the page makes to `/hold` */
 export const HOLD_REQUESTS = 8;
 
+/** Quick requests `/pending` makes besides `/never` */
+export const FAST_REQUESTS = 3;
+
 /** Chunks `/download` sends its body in */
 const DOWNLOAD_CHUNKS = 7;
 
@@ -37,6 +44,13 @@ const read = (url) => fetch(url).then((r) => r.text());
 Promise.all([read('/wait'), read('/download'), cut('/trickle')])
   .then(() => Promise.all(Array.from({ length: ${HOLD_REQUESTS} }, (_, i) => read('/hold?i=' + i))))
   .then(() => { document.title = 'done'; });
+</script>`;
+
+const PENDING_PAGE = `<!doctype html><title>start</title>
+<script>
+fetch('/never').catch(() => {});
+Promise.all(Array.from({ length: ${FAST_REQUESTS} }, (_, i) => fetch('/fast?i=' + i).then((r) => r.text())))
+  .then(() => { document.title = 'fast-done'; });
 </script>`;
 
 /** Running server */
@@ -80,9 +94,16 @@ export async function startTimingServer(): Promise<TimingServer> {
   };
   const server = http.createServer((req, res) => {
     const route = new URL(req.url ?? '/', 'http://timing').pathname;
+    if (route === '/never') return;
     if (route === '/wait') reply(res, DELAY_MS);
     else if (route === '/download' || route === '/trickle') trickleBody(res);
-    else if (route === '/hold') reply(res, ++holdArrivals <= CONNECTION_LIMIT ? DELAY_MS : 0);
+    else if (route === '/fast') {
+      res.writeHead(200, { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' });
+      res.end('ok');
+    } else if (route === '/pending') {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(PENDING_PAGE);
+    } else if (route === '/hold') reply(res, ++holdArrivals <= CONNECTION_LIMIT ? DELAY_MS : 0);
     else {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(PAGE);

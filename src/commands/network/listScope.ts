@@ -183,3 +183,27 @@ export function selectRequests(
   const ordered = sort === 'start' ? [...requests].sort(byStart) : requests;
   return lastN === 0 ? ordered : ordered.slice(-lastN);
 }
+
+/**
+ * Whether a listing ranks or filters by duration, so a request still pending
+ * needs its elapsed time.
+ *
+ * @param filter - The combined `--preset` and `--filter` string
+ * @param sort - `--sort` key, if any
+ * @returns True for `--sort duration` or a `duration:` filter
+ */
+export function usesElapsedTime(_filter: string, _sort: SortKey | undefined): boolean {
+  throw new Error('not implemented');
+}
+
+/**
+ * Mark the requests that have not finished as pending, with the time
+ * elapsed since they started.
+ *
+ * @param _requests - Requests in capture order
+ * @param _now - Current time, epoch ms
+ * @returns The requests, the unfinished ones with `pending` and `elapsedMs`
+ */
+export function withElapsedTime(_requests: NetworkRequest[], _now: number): NetworkRequest[] {
+  throw new Error('not implemented');
+}
