@@ -41,7 +41,7 @@ export interface Row {
   /** `bdg console` after the load must not say "No errors" */
   console?: boolean;
   /** What `dom click` and `dom submit` must report, when it is not {@link actionExpectation}'s default */
-  actions?: Expectation;
+  actions?: Partial<Record<'click' | 'submit', Expectation>>;
   /** Pattern that picks the row's tab for `attach` (rows without one have no attach cell) */
   attach?: (server: HostileServer) => string;
 }
@@ -170,7 +170,7 @@ export const ROWS: readonly Row[] = [
     url: (s) => `${s.url}endless`,
     expect: { kind: 'pending', shows: NOT_DONE },
     full: true,
-    actions: { kind: 'loading' },
+    actions: { click: { kind: 'loading' }, submit: { kind: 'loading' } },
   },
   {
     id: '204 No Content',
@@ -239,8 +239,9 @@ export const ROWS: readonly Row[] = [
       navigate: 'a blob: URL exists in the document that made it only',
       reload: 'a blob: URL exists in the document that made it only',
       wait: 'a blob: URL exists in the document that made it only',
-      submit:
-        'a GET form adds its query to the blob: URL, which then names no blob (ERR_FILE_NOT_FOUND)',
+    },
+    actions: {
+      submit: { kind: 'actionFailure', cause: /ERR_FILE_NOT_FOUND/ },
     },
   },
 ];
@@ -372,11 +373,16 @@ function judgeActionFailureJson(cause: RegExp, run: ObservedJson): string[] {
  * report for a row: its own expectation when it has one, a failed load as
  * an action failure (exit 80, ⚠, the cause), the row's expectation otherwise.
  *
+ * A GET form to a `blob:` URL adds its query to it, which then names no blob:
+ * Chrome shows its error page (`ERR_FILE_NOT_FOUND`), a failed navigation.
+ *
  * @param row - The row
+ * @param axis - The action
  * @returns The expectation for the action's cell
  */
-export function actionExpectation(row: Row): Expectation {
-  if (row.actions) return row.actions;
+export function actionExpectation(row: Row, axis: 'click' | 'submit'): Expectation {
+  const own = row.actions?.[axis];
+  if (own) return own;
   return row.expect.kind === 'failure'
     ? { kind: 'actionFailure', cause: row.expect.cause }
     : row.expect;

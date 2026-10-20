@@ -130,7 +130,13 @@ export const DOM_ACTION_BEHAVIORS: BehaviorTable = {
     default: 'Waits for network stability only',
     whenEnabled: 'Waits for page navigation to complete (use for forms that redirect)',
     automaticBehavior:
-      'A navigation is a new document loading in the main frame, also at the same URL (a POST that redirects back to the form after a login error). When the new page loaded but requests were still running at --timeout, the submit succeeds with a warning; so does a new page whose response had not ended at --timeout (The new page was still loading after <timeout>ms, with or without this flag); a navigation to Chrome\'s error page ends the wait at once and exits 80, whatever the network does; without a navigation it exits 102, and the hint says whether a page request was sent (slow server) or not (the form may submit via fetch)',
+      "A navigation is a new document loading in the main frame, also at the same URL (a POST that redirects back to the form after a login error). When the new page loaded but requests were still running at --timeout, the submit succeeds with a warning; so does a new page whose response had not ended at --timeout (The new page was still loading after <timeout>ms, with or without this flag); a navigation to Chrome's error page ends the wait at once and exits 80, whatever the network does; without a navigation it exits 102, and the hint says whether a page request was sent (slow server) or not (the form may submit via fetch)",
+  },
+  'submit:--timeout': {
+    default: 'Waits up to 10000 ms for the submit to finish',
+    whenEnabled: 'Waits up to the given ms',
+    automaticBehavior:
+      "At the deadline: a new page whose response started (status and headers arrived) but whose body has not ended is no failure: exit 0 with the warning The new page was still loading after <timeout>ms; a page request that got no response byte by then (a server answering later or never), or a network still busy after a page that finished loading (without --wait-navigation) or without any navigation, exits 102 (CDP_TIMEOUT) naming what it waited on; with --wait-navigation, a new page that loaded with requests still running is a warning, exit 0. A navigation to Chrome's error page ends the wait at once (exit 80), whatever the deadline",
   },
   'submit:--wait-network': {
     default: 'Default network idle timeout',

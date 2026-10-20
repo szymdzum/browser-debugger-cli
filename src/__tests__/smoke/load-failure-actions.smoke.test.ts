@@ -9,13 +9,15 @@
  * "still loading" with exit 0 (#873).
  */
 
-import { after, before, describe } from 'node:test';
+import * as assert from 'node:assert/strict';
+import { after, before, describe, it } from 'node:test';
 
 import {
   WAIT_MS,
   bdg,
   cellsFor,
   failsLoad,
+  hostileServer,
   runAction,
   setUpMatrix,
   startSession,
@@ -39,10 +41,27 @@ void describe('Load-failure matrix: actions', () => {
     }
   });
 
-  cellsFor('click', (row) => runAction(row, ['click', '#go'], failsLoad(row)), { full: true });
+  cellsFor('click', (row) => runAction(row, 'click', ['click', '#go'], failsLoad(row)), {
+    full: true,
+  });
   cellsFor(
     'submit',
-    (row) => runAction(row, ['submit', '#form', '--timeout', WAIT_MS], failsLoad(row)),
+    (row) => runAction(row, 'submit', ['submit', '#form', '--timeout', WAIT_MS], failsLoad(row)),
     { full: true }
   );
+
+  void it('click: an iframe whose response never ends is no new page still loading', async () => {
+    const server = hostileServer();
+    await bdg('page', ['navigate', `${server.url}ok`]);
+    const added = await bdg('eval', [
+      `const b = document.createElement('button'); b.id = 'frame'; b.textContent = 'frame';
+       b.onclick = () => { const f = document.createElement('iframe'); f.src = '/endless'; document.body.append(f); };
+       document.body.append(b); 1`,
+    ]);
+    assert.equal(added.exitCode, 0, added.output);
+    const clicked = await bdg('dom', ['click', '#frame']);
+    assert.equal(clicked.exitCode, 0, clicked.output);
+    assert.match(clicked.output, /\/endless → 200 \(loading\)/, clicked.output);
+    assert.doesNotMatch(clicked.output, /new page still loading|navigation failed/, clicked.output);
+  });
 });

@@ -267,12 +267,18 @@ export function runOn(
  * page that leads to a row, judged by {@link actionExpectation}.
  *
  * @param row - The row
+ * @param axis - The action
  * @param args - Arguments of `bdg dom`
  * @param withJson - Also run it with `--json`
  */
-export function runAction(row: Row, args: string[], withJson: boolean): Promise<void> {
+export function runAction(
+  row: Row,
+  axis: 'click' | 'submit',
+  args: string[],
+  withJson: boolean
+): Promise<void> {
   return checkCell(
-    { ...row, expect: actionExpectation(row) },
+    { ...row, expect: actionExpectation(row, axis) },
     (json) => (json ? bdgJson('dom', args) : bdg('dom', args)),
     () => reachLaunch(row),
     withJson

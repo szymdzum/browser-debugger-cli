@@ -773,7 +773,15 @@ void describe('pendingChanges', () => {
 
   void it('names a new page whose response has not ended as still loading (#873)', () => {
     const endless: TriggeredRequest = { ...request('Document', false), status: 200, loading: true };
-    assert.deepEqual(pendingChanges(work(), [endless]), { navigation: true });
+    assert.deepEqual(pendingChanges(work({ document: 'Document' }), [endless]), {
+      navigation: true,
+    });
+  });
+
+  void it("does not call an iframe's streaming document a new page (#873)", () => {
+    const frame: TriggeredRequest = { ...request('Document', false), status: 200, loading: true };
+    assert.equal(pendingChanges(work(), [frame]), undefined);
+    assert.equal(pendingChanges(work({ document: 'top' }), [frame]), undefined);
   });
 
   void it('names a loader, a pending navigation, an ongoing DOM and a busy page', () => {
