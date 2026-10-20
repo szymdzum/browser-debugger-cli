@@ -16,6 +16,7 @@ import {
   defaultChromeUserDataDir,
   discoverBrowser,
   expandHome,
+  isWsUrlRequired,
   parseDevToolsActivePort,
 } from '@/connection/devToolsActivePort.js';
 import { CommandError } from '@/errors/index.js';
@@ -164,5 +165,23 @@ void describe('discoverBrowser', () => {
     const dir = profile(undefined);
     fs.mkdirSync(path.join(dir, 'DevToolsActivePort'));
     assertNotFound(dir, /could not be read/);
+  });
+});
+
+void describe('isWsUrlRequired (#878)', () => {
+  const required = (value: string | undefined): boolean =>
+    isWsUrlRequired({ BDG_ATTACH_REQUIRE_WS_URL: value });
+
+  void it('is off when unset, empty, 0, false, no or off (any case)', () => {
+    assert.equal(isWsUrlRequired({}), false);
+    for (const value of ['', ' ', '0', 'false', 'FALSE', 'no', 'off', ' Off ']) {
+      assert.equal(required(value), false, JSON.stringify(value));
+    }
+  });
+
+  void it('is on for 1, true and any other value', () => {
+    for (const value of ['1', 'true', 'TRUE', 'yes', 'enabled', 'treu']) {
+      assert.equal(required(value), true, value);
+    }
   });
 });

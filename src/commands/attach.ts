@@ -22,9 +22,10 @@ import {
   defaultChromeUserDataDir,
   discoverBrowser,
   expandHome,
+  isWsUrlRequired,
 } from '@/connection/devToolsActivePort.js';
 import { CommandError } from '@/errors/index.js';
-import { attachEndpointConflictError } from '@/errors/messages.js';
+import { attachEndpointConflictError, attachWsUrlRequiredError } from '@/errors/messages.js';
 import type { DialogAnswer } from '@/ipc/protocol/domTypes.js';
 import { formatTabList } from '@/ui/formatters/attach.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -54,11 +55,13 @@ interface BrowserEndpoint {
 /**
  * The browser endpoint: `--chrome-ws-url` checked and resolved (a port or
  * HTTP endpoint through its `/json/version`), else the `DevToolsActivePort`
- * file of `--user-data-dir` or Chrome stable's default profile (no HTTP).
+ * file of `--user-data-dir` or Chrome stable's default profile (no HTTP);
+ * the default profile is refused under the test-only
+ * `BDG_ATTACH_REQUIRE_WS_URL`, before any file is read.
  *
  * @param options - Command options
  * @returns Browser WebSocket URL, and the file it came from
- * @throws CommandError 81 for both options, 83 without a readable file, 80/101 for a bad or unreachable endpoint
+ * @throws CommandError 81 for both options or the default profile under `BDG_ATTACH_REQUIRE_WS_URL`, 83 without a readable file, 80/101 for a bad or unreachable endpoint
  */
 async function browserEndpoint(options: AttachOptions): Promise<BrowserEndpoint> {
   const { chromeWsUrl, userDataDir } = options;
@@ -71,6 +74,14 @@ async function browserEndpoint(options: AttachOptions): Promise<BrowserEndpoint>
     );
   }
   if (chromeWsUrl === undefined) {
+    if (userDataDir === undefined && isWsUrlRequired()) {
+      const err = attachWsUrlRequiredError();
+      throw new CommandError(
+        err.message,
+        { suggestion: err.suggestion },
+        EXIT_CODES.INVALID_ARGUMENTS
+      );
+    }
     const { wsUrl, file } = discoverBrowser(
       userDataDir === undefined ? defaultChromeUserDataDir() : expandHome(userDataDir)
     );

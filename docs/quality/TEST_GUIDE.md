@@ -245,6 +245,10 @@ Tests run automatically on GitHub Actions:
 - **macOS smoke tests:** Run on main, nightly, and on PRs that touch timing-sensitive paths (`src/runtime`, `src/connection`, `src/daemon`, `src/ipc`, `src/session`, `src/telemetry`, the smoke tests and their utils, workflows, `package.json`). Not required for merge (not part of `CI OK`).
 - **Failed smoke tests** are listed in the job summary of the run, per run.
 
+### `BDG_ATTACH_REQUIRE_WS_URL` for automated agents
+
+`bdg attach` without `--chrome-ws-url` reads Chrome stable's `DevToolsActivePort` in the default profile: the owner's everyday Chrome, which then asks "Allow remote debugging?". Agents testing bdg export `BDG_ATTACH_REQUIRE_WS_URL=1` in their shell: `bdg attach` and `bdg attach <tab>` without `--chrome-ws-url` (or `--user-data-dir`) then exit 81 before any file is read. It is test-only and not in `--help`; `src/__tests__/smoke/attachRequireWsUrl.smoke.test.ts` proves the profile file is ignored.
+
 ### Repeat timing tests before merge
 
 A new or changed smoke test that asserts on timing (`settled`, `pending.*`, interrupts such as Ctrl-C, wall-clock deadlines) passes 10 runs in a row on Linux and macOS before merge. Dispatch the CI workflow on your branch; it runs the selection on both:
