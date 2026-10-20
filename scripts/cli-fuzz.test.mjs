@@ -220,3 +220,30 @@ test('renderSummary groups violations by command and invariant with a replay com
   assert.match(text, /--seed 7 --offset 4 --count 1/);
   assert.match(text, /invocations: 100/);
 });
+
+test('unsafeReason checks --chrome-ws-url on the root start command too', () => {
+  assert.match(unsafeReason(['http://127.0.0.1:5000/', '--chrome-ws-url', '9222'], CTX), /not a closed port/);
+  assert.match(unsafeReason(['--chrome-ws-url=localhost:9222', 'about:blank'], CTX), /not a closed port/);
+  assert.match(unsafeReason(['attach', '--chrome-ws-url', 'ws://127.0.0.1:6000/x', '--chrome-ws-url', '9222'], CTX), /not a closed port/);
+  assert.equal(unsafeReason(['about:blank', '--chrome-ws-url', 'ws://127.0.0.1:6000/devtools/browser/x'], CTX), undefined);
+});
+
+test('unexpectedFiles: a path argument naming the cwd excuses nothing', () => {
+  const after = new Set(['stray.log', 'sub', 'sub/x']);
+  assert.deepEqual(unexpectedFiles(new Set(), after, '/tmp/r/cwd', ['/tmp/r/cwd']), ['stray.log', 'sub', 'sub/x']);
+  assert.deepEqual(unexpectedFiles(new Set(), after, '/tmp/r/cwd', [path.resolve('/tmp/r/cwd', '.')]), ['stray.log', 'sub', 'sub/x']);
+  assert.deepEqual(unexpectedFiles(new Set(), after, '/tmp/r/cwd', ['/tmp/r/cwd/sub']), ['stray.log']);
+});
+
+test('checkSecrets catches a leaked fragment, URL-encoded when a character encodes', () => {
+  const secret = 'Zqdeadbeef+Xk=';
+  assert.match(checkSecrets([secret], 'token=Zqdead', ''), /fragment/);
+  assert.match(checkSecrets([secret], `x ${encodeURIComponent('beef+Xk')} y`, ''), /fragment/);
+  assert.equal(checkSecrets([secret], 'token=Zqde\u2022\u2022\u2022\u2022', ''), undefined);
+});
+
+test('the start-with-credentials scenario always runs in down mode, where a session can start', () => {
+  const hits = Array.from({ length: 6000 }, (_, i) => buildInvocation(specs, 11, i)).filter((inv) => inv.key === '' && inv.secrets.length > 0);
+  assert.ok(hits.length > 3);
+  for (const inv of hits) assert.equal(inv.mode, 'down');
+});

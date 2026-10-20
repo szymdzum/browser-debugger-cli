@@ -249,7 +249,7 @@ export function kindOf(name, valueName) {
  * @returns {string} secret value
  */
 function makeSecret(rng) {
-  return `Zq${Math.floor(rng() * 0xffffffff).toString(16).padStart(8, '0')}Xk`;
+  return `Zq${Math.floor(rng() * 0xffffffff).toString(16).padStart(8, '0')}+Xk=`;
 }
 
 /**
@@ -391,12 +391,13 @@ export function buildInvocation(specs, seed, index) {
   const rng = mulberry32(hash32(`${seed}:${index}`));
   const spec = pick(rng, specs);
   const secrets = [];
-  const mode = SESSION_FREE_COMMANDS.has(spec.key) && rng() < 0.2 ? 'down' : 'up';
+  let mode = SESSION_FREE_COMMANDS.has(spec.key) && rng() < 0.2 ? 'down' : 'up';
   let tail;
   const secretA = makeSecret(rng);
   const secretB = makeSecret(rng);
   const scenario = rng() < 0.07 ? secretScenario(spec.key, secretA, secretB, rng) : undefined;
   if (scenario) {
+    if (spec.key === '') mode = 'down';
     tail = [...scenario, ...(spec.hasJson ? ['--json'] : [])];
     secrets.push(secretA, secretB);
   } else {
@@ -494,12 +495,15 @@ const ALLOWED_HOSTS = /^(127\.0\.0\.1|localhost|\[::1\]|[^/:@]*\.invalid)$/i;
  * @returns {string | undefined} the reason it is unsafe, or undefined
  */
 export function unsafeReason(argv, ctx) {
-  if (argv.includes('attach')) {
-    const wsFlag = argv.findIndex((a) => a === '--chrome-ws-url' || a.startsWith('--chrome-ws-url='));
-    if (wsFlag < 0) return 'attach without --chrome-ws-url';
-    const value = argv[wsFlag].includes('=') ? argv[wsFlag].slice('--chrome-ws-url='.length) : (argv[wsFlag + 1] ?? '');
+  const wsValues = [];
+  argv.forEach((a, i) => {
+    if (a === '--chrome-ws-url') wsValues.push(argv[i + 1] ?? '');
+    else if (a.startsWith('--chrome-ws-url=')) wsValues.push(a.slice('--chrome-ws-url='.length));
+  });
+  if (argv.includes('attach') && wsValues.length === 0) return 'attach without --chrome-ws-url';
+  for (const value of wsValues) {
     const safe = value === '' || /^(wss?|https?):\/\/$/.test(value) || value.includes(`:${ctx.closedPort}`) || value === String(ctx.closedPort) || /\.invalid/.test(value) || /:(0|99999)\//.test(value);
-    if (!safe) return `attach --chrome-ws-url ${value.slice(0, 40)} is not a closed port`;
+    if (!safe) return `--chrome-ws-url ${value.slice(0, 40)} is not a closed port`;
   }
   for (const a of argv) {
     for (const m of a.matchAll(/\b[a-z][a-z0-9+.-]*:\/\/([^/\s?#]*)/gi)) {
@@ -606,9 +610,21 @@ export function checkEnvelope(run, flags) {
 export function checkSecrets(secrets, stdout, stderr) {
   const text = `${stdout}\n${stderr}`;
   for (const [i, secret] of secrets.entries()) {
-    if (text.includes(secret) || text.includes(encodeURIComponent(secret))) return `planted secret #${i + 1} (${secret}) is echoed unmasked`;
+    const fragments = secretFragments(secret);
+    if (fragments.some((f) => text.includes(f) || text.includes(encodeURIComponent(f)))) return `planted secret #${i + 1} (${secret}) or a fragment of it is echoed`;
   }
   return undefined;
+}
+
+/**
+ * The secret and every 6-character window of it: a partly masked value still leaks.
+ * @param {string} secret planted secret
+ * @returns {string[]} strings that must not appear in the output
+ */
+export function secretFragments(secret) {
+  const windows = [];
+  for (let i = 0; i + 6 <= secret.length; i++) windows.push(secret.slice(i, i + 6));
+  return secret.length < 6 ? [secret] : windows;
 }
 
 /**
@@ -685,7 +701,7 @@ export function unexpectedFiles(before, after, base, askedFor) {
   const created = [...after].filter((p) => !before.has(p));
   return created.filter((p) => {
     const abs = path.join(base, p);
-    return !askedFor.some((a) => a === abs || a.startsWith(`${abs}${path.sep}`) || abs.startsWith(`${a}${path.sep}`));
+    return !askedFor.some((a) => a === abs || abs.startsWith(`${a}${path.sep}`) && a !== base || a.startsWith(`${abs}${path.sep}`));
   });
 }
 
@@ -922,9 +938,8 @@ async function runChunk(opts) {
   fs.mkdirSync(opts.reportDir, { recursive: true });
   const violationsFile = path.join(opts.reportDir, `violations-${seed}-${offset}-${count}.jsonl`);
   fs.writeFileSync(violationsFile, '');
-  const state = { up: false };
-  const stopAll = async () => { await endSession(opts.bdg, env, dirs.cwd); state.up = false; };
-  for (const sig of ['SIGINT', 'SIGTERM']) process.once(sig, () => { void stopAll().then(() => { fixtures.stop(); process.exit(130); }); });
+  const state = { up: false, abort: false };
+  for (const sig of ['SIGINT', 'SIGTERM']) process.once(sig, () => { state.abort = true; });
   try {
     for (let i = offset; i < offset + count; i++) {
       ctx.freePort = await getFreePort();
@@ -934,25 +949,37 @@ async function runChunk(opts) {
         stats.violations++;
         fs.appendFileSync(violationsFile, `${JSON.stringify(v)}\n`);
       }
+      if (state.abort) { process.stderr.write('interrupted: finishing the current invocation, then stopping\n'); break; }
       if (result.fatal) { process.stderr.write(`fatal harness error: ${result.fatal}\n`); break; }
       if ((i - offset + 1) % 100 === 0) process.stdout.write(`  ${i - offset + 1}/${count} violations=${stats.violations} elapsed=${Math.round((Date.now() - started) / 1000)}s\n`);
     }
   } finally {
-    await stopAll();
+    await endSession(opts.bdg, env, dirs.cwd);
     fixtures.stop();
   }
-  const realAfter = { bdg: listTree(path.join(realHome, '.bdg'), 0), downloads: listTree(path.join(realHome, 'Downloads'), 0) };
-  stats.realDirChanges = [];
-  for (const k of ['bdg', 'downloads']) {
-    const changed = [...realAfter[k]].filter((p) => !realBefore[k].has(p)).concat([...realBefore[k]].filter((p) => !realAfter[k].has(p)));
-    if (changed.length > 0) stats.realDirChanges.push(`~/${k === 'bdg' ? '.bdg' : 'Downloads'}: ${changed.slice(0, 5).join(', ')}`);
-  }
+  stats.realDirChanges = realDirChanges(realBefore);
   stats.leftovers = await findLeftovers(root);
   stats.runtimeSeconds = (Date.now() - started) / 1000;
   fs.writeFileSync(path.join(opts.reportDir, `run-${seed}-${offset}-${count}.json`), JSON.stringify(stats, null, 2));
   process.stdout.write(`done seed=${seed} offset=${offset} total=${stats.total} violations=${stats.violations} restarts=${stats.restarts} harnessErrors=${stats.harnessErrors} leftovers=${stats.leftovers.length} runtime=${Math.round(stats.runtimeSeconds)}s\n`);
   if (!opts.keep && stats.leftovers.length === 0) fs.rmSync(root, { recursive: true, force: true });
-  return 0;
+  return state.abort ? 130 : 0;
+}
+
+/**
+ * Changes to the real ~/.bdg and ~/Downloads listings since the snapshot.
+ * @param {{bdg: Set<string>, downloads: Set<string>}} before snapshot taken at the start of the chunk
+ * @returns {string[]} one line per changed directory
+ */
+function realDirChanges(before) {
+  const home = os.userInfo().homedir;
+  const notes = [];
+  for (const [k, dir] of [['bdg', '.bdg'], ['downloads', 'Downloads']]) {
+    const after = listTree(path.join(home, dir), 0);
+    const changed = [...after].filter((p) => !before[k].has(p)).concat([...before[k]].filter((p) => !after.has(p)));
+    if (changed.length > 0) notes.push(`~/${dir}: ${changed.slice(0, 5).join(', ')}`);
+  }
+  return notes;
 }
 
 /**
