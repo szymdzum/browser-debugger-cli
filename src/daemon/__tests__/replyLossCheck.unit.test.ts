@@ -6,8 +6,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import type { CDPConnection } from '@/connection/cdp.js';
 import { mayLoseReply, withReplyLossCheck } from '@/daemon/session/commandRegistry.js';
 import { CommandError } from '@/errors/index.js';
+import { evaluateScript } from '@/runtime/dom/evalHelpers.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 type Call = Parameters<typeof mayLoseReply>[0];
@@ -84,5 +86,75 @@ void describe('withReplyLossCheck', () => {
     const result = withReplyLossCheck(cdp, evaluate(), answer, TIMING);
     pause();
     assert.equal(await result, 'value');
+  });
+});
+
+/**
+ * A page connection for `evaluateScript`: the script never answers, the
+ * trivial check does, and the test pauses the debugger like Chrome does.
+ *
+ * @param pausedAtStart - Whether the page is paused before the call
+ * @returns The connection and a way to pause it
+ */
+function pageCdp(pausedAtStart: boolean): { cdp: CDPConnection; pause: () => void } {
+  let paused = pausedAtStart;
+  const handlers: Array<() => void> = [];
+  const cdp = {
+    send: (method: string, params?: { expression?: string }) =>
+      method === 'Runtime.evaluate' && params?.expression !== '1'
+        ? new Promise<never>(() => undefined)
+        : Promise.resolve({ result: { value: 1 } }),
+    on: (event: string, handler: () => void) => {
+      if (event === 'Debugger.paused') handlers.push(handler);
+      return () => undefined;
+    },
+    isPagePaused: () => paused,
+  } as unknown as CDPConnection;
+  return {
+    cdp,
+    pause: () => {
+      paused = true;
+      handlers.forEach((handler) => handler());
+    },
+  };
+}
+
+/**
+ * What `evaluateScript` ends with within two seconds.
+ *
+ * @param evaluation - The call
+ * @returns Its error, or a note that it was still waiting
+ */
+async function outcomeWithin2s(evaluation: Promise<unknown>): Promise<unknown> {
+  const waiting = new Promise<string>((resolve) =>
+    setTimeout(() => resolve('still waiting'), 2000)
+  );
+  return Promise.race([
+    evaluation.then(
+      () => 'resolved',
+      (error: unknown) => error
+    ),
+    waiting,
+  ]);
+}
+
+void describe('evaluateScript on a paused page (#857)', () => {
+  void it('fails with exit 85 naming the pause when the page pauses during the call', async () => {
+    const { cdp, pause } = pageCdp(false);
+    const evaluation = evaluateScript(cdp, '1+1');
+    setTimeout(pause, 20);
+    const error = await outcomeWithin2s(evaluation);
+    assert.ok(error instanceof CommandError, String(error));
+    assert.equal(error.exitCode, EXIT_CODES.RESOURCE_BUSY);
+    assert.match(error.message, /paused in the debugger/i);
+    assert.match(error.metadata.suggestion ?? '', /Debugger\.resume/);
+  });
+
+  void it('fails with exit 85 at once when the page was paused before the call', async () => {
+    const { cdp } = pageCdp(true);
+    const error = await outcomeWithin2s(evaluateScript(cdp, '1+1'));
+    assert.ok(error instanceof CommandError, String(error));
+    assert.equal(error.exitCode, EXIT_CODES.RESOURCE_BUSY);
+    assert.match(error.message, /paused in the debugger/i);
   });
 });

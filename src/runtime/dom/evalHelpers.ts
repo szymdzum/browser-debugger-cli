@@ -12,6 +12,7 @@ import {
   pageClosedDuringEvalError,
   pageNavigatedDuringEvalError,
   promiseTimeoutError,
+  pagePausedInDebuggerError,
   resultNotSentError,
   scriptExecutionError,
   scriptTimeoutError,
@@ -1241,6 +1242,48 @@ function evaluateOptions(
   };
 }
 
+/** How long a pause must last before an eval gives up (a logpoint resumes at once) */
+const PAUSE_SETTLE_MS = 300;
+
+/**
+ * The error for a script that cannot run on a page paused in the debugger.
+ *
+ * @returns Command error (85)
+ */
+function pagePausedError(): CommandError {
+  const err = pagePausedInDebuggerError();
+  return new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.RESOURCE_BUSY);
+}
+
+/**
+ * Fail an eval once the page is paused in the debugger: the script cannot
+ * finish (nor its result be told from a lost one) until it is resumed.
+ *
+ * @param cdp - CDP connection of the page
+ * @returns A promise that rejects on a pause lasting {@link PAUSE_SETTLE_MS}, and how to stop watching
+ */
+function failOnPause(cdp: CDPConnection): { paused: Promise<never>; stop: () => void } {
+  let timer: NodeJS.Timeout | undefined;
+  let stopListening = (): void => undefined;
+  const paused = new Promise<never>((_resolve, reject) => {
+    stopListening = cdp.on('Debugger.paused', (_params, sessionId) => {
+      if (sessionId !== undefined) return;
+      timer ??= setTimeout(() => {
+        timer = undefined;
+        if (cdp.isPagePaused()) reject(pagePausedError());
+      }, PAUSE_SETTLE_MS);
+    });
+  });
+  paused.catch(() => undefined);
+  return {
+    paused,
+    stop: () => {
+      stopListening();
+      clearTimeout(timer);
+    },
+  };
+}
+
 /**
  * Evaluate a `bdg eval` script.
  *
@@ -1259,7 +1302,7 @@ function evaluateOptions(
  * @param target - Session and execution context to run in (default: the page)
  * @returns Value and type
  * @throws CommandError (102) when the script was terminated or a promise did
- *   not settle, (91) when it threw, (83) when the page navigated while it ran
+ *   not settle, (85) when the page is paused in the debugger, (91) when it threw, (83) when the page navigated while it ran
  *   (in a frame, Chrome's context-lost error is passed on for the caller to explain)
  */
 export async function evaluateScript(
@@ -1273,7 +1316,9 @@ export async function evaluateScript(
   const awaits = hasTopLevelAwait(script);
   const sessionId = target.sessionId ?? '';
   let tracking: EvalTracking | undefined;
+  const pauseWatch = target.sessionId === undefined ? failOnPause(cdp) : undefined;
   try {
+    if (target.sessionId === undefined && cdp.isPagePaused()) throw pagePausedError();
     checkAwaitingEvaluations(session, sessionId);
     const evaluation = executeScript(session, script, evaluateOptions(target, objectGroup));
     tracking = stopWhenAbandoned(
@@ -1283,8 +1328,15 @@ export async function evaluateScript(
       trackEvaluation(awaits, sessionId),
       target.abandoned
     );
+    const lostCheck = untilResultLost(
+      session,
+      evaluation,
+      awaits,
+      target.full ?? false,
+      tracking.scriptFinished
+    );
     const response = await withDeadline(
-      untilResultLost(session, evaluation, awaits, target.full ?? false, tracking.scriptFinished),
+      pauseWatch ? Promise.race([lostCheck, pauseWatch.paused]) : lostCheck,
       evalTimeoutMs() + terminationGraceMs(),
       () => evaluationTimeoutError(target.recovery ?? session, scope, awaits, target.full ?? false)
     );
@@ -1301,6 +1353,7 @@ export async function evaluateScript(
       ? await pageContextLostError(error, session)
       : error;
   } finally {
+    pauseWatch?.stop();
     tracking?.answered();
     void releaseObjectGroup(session, objectGroup);
   }

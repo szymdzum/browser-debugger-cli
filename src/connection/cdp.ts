@@ -104,6 +104,8 @@ export class CDPConnection implements CDPEventSource {
     Map<number, (params: unknown, sessionId?: string) => void>
   >();
 
+  private pagePaused = false;
+
   private pingInterval: NodeJS.Timeout | null = null;
   private missedPongs = 0;
 
@@ -456,10 +458,33 @@ export class CDPConnection implements CDPEventSource {
     if (!message.method) return;
     if (this.defaultSessionId !== undefined && !this.toPageEvent(message)) return;
 
+    if (message.sessionId === undefined) this.trackPause(message.method);
     const handlers = this.eventHandlers.get(message.method);
     if (handlers) {
       handlers.forEach((handler) => handler(message.params, message.sessionId));
     }
+  }
+
+  /**
+   * Note whether the page is paused in the debugger, from the page's
+   * `Debugger.paused` / `Debugger.resumed` events (sent only while the
+   * Debugger domain is enabled, so this costs nothing when it is off).
+   *
+   * @param method - Event name
+   */
+  private trackPause(method: string): void {
+    if (method === 'Debugger.paused') this.pagePaused = true;
+    else if (method === 'Debugger.resumed') this.pagePaused = false;
+  }
+
+  /**
+   * Whether the page is paused in the debugger (a breakpoint, `debugger;`
+   * or DevTools): no script runs until it is resumed.
+   *
+   * @returns True after `Debugger.paused` and before `Debugger.resumed`
+   */
+  isPagePaused(): boolean {
+    return this.pagePaused;
   }
 
   /**
@@ -643,6 +668,7 @@ export class CDPConnection implements CDPEventSource {
     sessionId?: string,
     signal?: AbortSignal
   ): Promise<unknown> {
+    if (method === 'Debugger.disable' && sessionId === undefined) this.pagePaused = false;
     return this.sendMessage(method, params, sessionId ?? this.defaultSessionId, signal);
   }
 

@@ -71,6 +71,14 @@ export class FakeObjectPage {
    * @returns The result
    * @throws Error like Chrome's for a released object or an unknown node
    */
+  on(): () => void {
+    return () => undefined;
+  }
+
+  isPagePaused(): boolean {
+    return false;
+  }
+
   async send(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
     switch (method) {
       case 'DOM.resolveNode':
