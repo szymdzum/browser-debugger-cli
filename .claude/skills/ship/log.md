@@ -125,6 +125,8 @@ One row per merged PR, appended with `ship log <pr> …` right after the merge. 
 | 2026-10-20 | #885 | #857 | 2 | 0/1/2 | 0 | 0 | sonnet | ~250k | #857 eval on paused page exit 85 + resume hint; should-fix (pause-during unit test) already covered; tester friction recorded: status doesn't show a pause, cdp Debugger.resume when not paused exits 110 |
 | 2026-10-20 | #884 | #861 | 2 | 0/2/3 | 0 | 1 | sonnet | ~210k | #861 pending in --sort duration/--preset slow; implementer extended to --filter duration: without a decision, narrowed back in round 1 |
 | 2026-10-20 | #886 | - | 1 | - | - | 0 | - | 0 | release v0.21.0 (ship merge --release), tag d6b4d86d, dry_run 39410602958, publish 39411133707, wiki e3e2847 |
+| 2026-10-21 | #889 | #888 | 1 | 4/6/9 | - | 4 | sonnet | ~1.54M | harness #888; oracle redesigned twice (value server→interaction-time value logged by page); round 3+4 with owner yes; hand merge (gate 8 = S27 verifier Chrome, not this PR); #888 reopened for measurement; dev API spend $0.13 Haiku |
+| 2026-10-21 | #897 | #888 | 1 | 0/0/1 | - | 0 | sonnet | ~0.10M | part of #888: popup task reworded (Sonnet declined sign-in/token wording 2/3) |
 
 ## Escaped
 
@@ -166,4 +168,6 @@ Process changes seen in one session only (SKILL.md, Keep the books: a second ses
 | A product decision that comes out of a fresh-agent test during a PR is new scope, not a fix round: it resets the two-round limit or goes to its own PR | S25 (#875 rounds 3–4 were the certificate decision) | S26 #884 (an owner decision carried over to a neighbouring flag) was the same family and became a line in the implementer brief |
 | Remove: the second fresh-agent round for a feature | S25 (#871, #876: both rounds found nothing) | sessions with no catch: 1 of 3; it caught in S20, S21, S23; S26: no new feature, not counted |
 | Remove: the first-draft repeat run (keep the final-head one) | S26 (#880, #884, #885: only Prettier) | sessions with no catch: 1 of 3; it caught in S11 #761 and S16 #804, so narrow it to timing-sensitive paths before removing it |
+| Tasks and tester prompts avoid sign-in, token and credential wording (the eval tasks already do, `scenarios.md` Measured runs) | S27 (#888: Sonnet declined 2 of 3 runs of a "sign in… token" task, and the orchestrator's classifier blocked reading the transcript) | for fresh-agent testers, not only eval tasks |
+| The agent-eval measurement is a step before a release that changes help text, messages, suggestions, action verdicts or command and flag names: Haiku ×10 and Sonnet ×3, compared with the last release, every drop triaged | S27 (#888: Haiku 90/90, Sonnet 27/27 after the popup rewording, $0.60) | needs harder tasks first (pages from #890–#892): at 100% a regression doesn't show |
 

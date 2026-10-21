@@ -6,6 +6,7 @@
 - Scenarios S01–S17
 - Measured runs (agent-eval)
 - Exploratory sweep
+- Cloud round (red team)
 
 A fixed list of tasks for fresh-agent test rounds, so rounds can be compared over time. A fresh agent is a new agent with no context about bdg's internals: it gets a realistic task and an installed `bdg`, and is **not told which feature is being tested**. What it discovers, works around and rates shows how agent-friendly bdg is; unit, smoke and integration tests don't catch false successes, misleading hints or friction.
 
@@ -217,3 +218,7 @@ The scenarios keep rounds comparable; the sweep finds what they don't cover. Run
 3. **Watch for**: false success (an action claims success but nothing happened), wrong or stale data, outputs too big to read, hints pointing to the wrong command, workarounds (`dom eval`, screenshots, `sleep` loops, raw CDP for something bdg has), leaks (secret values, files outside the session directory, `~/Downloads`), sessions left running.
 4. **Report** in the same format (result, ease, bugs, friction), plus "would add to the scenario list?". A finding that should be checked every round becomes a new scenario here (next free ID, with its setup and a History line).
 5. **Triage**: every finding is fixed, filed as a verified issue (reproduced, with the command and output) with a `priority:` label, or recorded as a known limit (SKILL.md, "Fix, file or record").
+
+## Cloud round (red team)
+
+A round in Claude cloud routines is a **red team with proof**, never user tasks: five agents, one area each, try to make bdg lie or crash, may read the source, and count a finding only with the page, the bdg output and an independent check that contradicts it. S24 (user tasks with truth files) reproduced none of its findings; S27 (red team) reproduced 23 of 23, three of them high. The kit, its steps and the triage are in `cloud/README.md`; update each agent's `COVERED` and `TARGETS` before a round.

@@ -22,7 +22,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { createConnection } from 'node:net';
-import { homedir } from 'node:os';
+import { homedir, loadavg } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -30,12 +30,16 @@ const SKILL_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = process.env.SHIP_REPO ?? 'szymdzum/browser-debugger-cli';
 const NODE_BIN = join(homedir(), '.nvm/versions/node/v22.15.0/bin');
 const POLL_MS = 60_000;
+/** Session state that must survive a reboot (S27: the Mac restarted and the /tmp snapshot was gone) */
+const STATE_DIR = join(homedir(), '.cache', 'ship');
 const SNAPSHOT = {
-  bdg: '/tmp/ship-snapshot-bdg.txt',
-  downloads: '/tmp/ship-snapshot-downloads.txt',
-  main: '/tmp/ship-snapshot-main-checkout.txt',
-  time: '/tmp/ship-snapshot-time.txt',
+  bdg: join(STATE_DIR, 'snapshot-bdg.txt'),
+  downloads: join(STATE_DIR, 'snapshot-downloads.txt'),
+  main: join(STATE_DIR, 'snapshot-main-checkout.txt'),
+  time: join(STATE_DIR, 'snapshot-time.txt'),
 };
+/** 1-minute load average above which starting more Chromes is risky (S27: the Mac rebooted at ~97 ffmpeg processes) */
+const LOAD_LIMIT = 50;
 
 /** Exit codes of this script, so the orchestrator can branch on them */
 export const EXIT = { ok: 0, failed: 1, usage: 2, superseded: 3, timeout: 4 };
@@ -763,6 +767,41 @@ export function staleDependencies(lock, installed) {
       have[path] ? have[path].version !== entry.version : !entry.optional && !entry.devOptional
     )
     .map(([path, entry]) => `${path.slice('node_modules/'.length)} ${have[path]?.version ?? 'missing'} → ${entry.version}`);
+}
+
+/**
+ * The warning `ship snapshot` and `ship brief` print when this machine is
+ * already loaded, or null: a wave of Chromes on top of a load near the
+ * machine's limit rebooted it in S27.
+ *
+ * @param {number} load 1-minute load average
+ */
+export function loadWarning(load) {
+  return load > LOAD_LIMIT
+    ? `warning: load average ${load.toFixed(0)} is above ${LOAD_LIMIT}: find what is running (ps -axo pcpu,command -r | head) before starting agents or Chromes`
+    : null;
+}
+
+/**
+ * The warning gate 8 and `ship leftovers` print when the snapshot is from an
+ * earlier session, or null. Since it lives in ~/.cache/ship it survives a
+ * reboot, and a days-old one counts every Chrome and file since then.
+ *
+ * @param {string} timeText contents of the snapshot's time file
+ * @param {number} nowMs
+ */
+export function staleSnapshotWarning(timeText, nowMs) {
+  const taken = Number(timeText.trim());
+  const hours = taken ? (nowMs - taken) / 3_600_000 : 0;
+  return hours > 12
+    ? `warning: the snapshot is ${Math.round(hours)} h old, probably from an earlier session: run ship snapshot at session start`
+    : null;
+}
+
+/** Prints the load warning on stderr when it applies */
+function warnOnLoad() {
+  const warning = loadWarning(loadavg()[0]);
+  if (warning) console.error(warning);
 }
 
 /**
@@ -1653,6 +1692,7 @@ async function snapshot(argv = []) {
   const dirs = { bdg: join(homedir(), '.bdg'), downloads: join(homedir(), 'Downloads') };
   const parsed = parseSnapshotArgs(argv, dirs);
   if ('error' in parsed) return usage(`snapshot [--accept <name>… | --accept-live | --accept-main]: ${parsed.error}`);
+  mkdirSync(STATE_DIR, { recursive: true });
   if (parsed.acceptLive) return acceptLiveSession(dirs.bdg);
   if (parsed.acceptMain) {
     writeFileSync(SNAPSHOT.main, mainCheckoutStatus().join('\n'));
@@ -1670,6 +1710,7 @@ async function snapshot(argv = []) {
     return EXIT.ok;
   }
   checkDependencies();
+  warnOnLoad();
   rmSync(LIVE_MARKER, { force: true });
   writeFileSync(SNAPSHOT.main, mainCheckoutStatus().join('\n'));
   writeFileSync(SNAPSHOT.time, `${Date.now()}\n`);
@@ -1845,6 +1886,8 @@ export function tempWorktrees(porcelain) {
  */
 function leftoverLines(scope) {
   const lines = [];
+  const stale = staleSnapshotWarning(existsSync(SNAPSHOT.time) ? readFileSync(SNAPSHOT.time, 'utf8') : '', Date.now());
+  if (stale) console.error(stale);
   for (const [key, dir] of [
     ['bdg', '.bdg'],
     ['downloads', 'Downloads'],
@@ -2143,14 +2186,16 @@ export function liveSessionChrome(dir) {
  * Whether a session directory belongs to work outside a PR's scope (another
  * thread's harness, another PR's agents), so its live session doesn't block
  * this PR's merge. Never without a scope (`ship leftovers` lists them all),
- * never a directory naming a scope number (`/tmp/bdg-t-873-a`, `/tmp/rv-873-t`)
- * and never the session's verifier (`/tmp/verify-<date>`).
+ * and never a directory naming a scope number (`/tmp/bdg-t-873-a`,
+ * `/tmp/rv-873-t`). The session's verifier counts as foreign: it runs next to
+ * merges (S27: a red-team verifier blocked #889), and `ship leftovers` at the
+ * end still lists one left behind.
  *
  * @param {string} dir
  * @param {string[]} [scope]
  */
 export function foreignSession(dir, scope) {
-  if (!scope?.length || /\/verify-/.test(dir)) return false;
+  if (!scope?.length) return false;
   return !scope.some((s) => new RegExp(`(^|[^0-9a-z])${s}([^0-9a-z]|$)`, 'i').test(dir));
 }
 
@@ -2659,6 +2704,33 @@ function prBriefValues(prNumber) {
   return red ? { ...values, RED: red } : values;
 }
 
+/** The verifier brief's placeholder line for the findings */
+const FINDINGS_LINE = '1. <finding as reported, or "issue #N: re-run its recorded command">';
+
+/**
+ * Replaces the verifier's findings line with the report files that hold the
+ * findings (S27: a cloud round's five reports and their pages were listed by
+ * hand). Each file is named, not quoted: a report with its pages can be
+ * longer than the rest of the brief.
+ *
+ * @param {string} rendered the rendered brief
+ * @param {string} list comma-separated report files
+ * @returns {{ text: string } | { error: string }}
+ */
+export function findingsList(rendered, list) {
+  const files = list.split(',').map((f) => f.trim()).filter(Boolean).map((f) => resolve(f));
+  if (!rendered.includes(FINDINGS_LINE)) return { error: 'FINDINGS= only fills the verifier brief' };
+  const missing = files.filter((f) => !existsSync(f));
+  if (!files.length || missing.length) return { error: `FINDINGS=: no file ${missing.join(', ') || list}` };
+  const lines = files.map((f) => `- \`${f}\``).join('\n');
+  return {
+    text: rendered.replace(
+      FINDINGS_LINE,
+      `Read each of these reports in full; every finding heading in them (\`### F<n>: …\`) is one finding, with its page and commands. You may read these files and the pages next to them even when they are in the main checkout's \`.tmp/\` (a second exception to the rule about the main checkout, read-only), never change them: copy a page into your scratch directory before you edit or serve a changed version:\n${lines}`
+    ),
+  };
+}
+
 /**
  * Renders a brief. N=<issue> quotes the issue (title, body, comments);
  * PR=<pr> fills BASE, HEAD, RED and BRANCH from the PR; explicit KEY=value
@@ -2690,7 +2762,7 @@ function brief(argv) {
     ...(given.PR ? prBriefValues(given.PR) : {}),
     ...given,
   };
-  const { DESIGN: designFile, ISSUES: issueList, TIER: tier, PART: part, KIND: kind, ...rest } = values;
+  const { DESIGN: designFile, ISSUES: issueList, TIER: tier, PART: part, KIND: kind, FINDINGS: findingFiles, ...rest } = values;
   const defaults = positional[0] === 'implementer' ? { CAP: '80' } : {};
   const rendered = briefVariant(renderBrief(briefsText, positional[0], { ...defaults, ...rest }).brief, {
     tier1: tier === '1',
@@ -2703,11 +2775,14 @@ function brief(argv) {
   const issues = rendered.includes('<ISSUE>')
     ? numbers.map((n) => ghJson(['issue', 'view', n, '--json', 'number,title,body,comments']))
     : [];
+  const findings = findingFiles ? findingsList(rendered, findingFiles) : { text: rendered };
+  if (findings.error) return usage(`brief ${positional[0]}: ${findings.error}`);
+  warnOnLoad();
   if (rendered.includes('<DESIGN>') && !(designFile && existsSync(designFile)))
     return usage(`brief ${positional[0]}: needs DESIGN=<file> with the design note`);
   const design = rendered.includes('<DESIGN>') ? formatDesign(readFileSync(designFile, 'utf8')) : '';
   const proxy = proxyNote(process.env, positional[0]);
-  const text = (proxy ? `${rendered}\n\n${proxy}` : rendered)
+  const text = (proxy ? `${findings.text}\n\n${proxy}` : findings.text)
     .split('<ISSUE>')
     .join(issues.length ? issues.map(formatIssue).join('\n\n') : '(no issue)')
     .split('<DESIGN>')
@@ -2808,7 +2883,7 @@ const COMMANDS = {
   worktree: [worktree, '<N> <branch>: agent worktree from origin/main, node_modules linked'],
   brief: [
     brief,
-    '<role> N=<issue> [PR=<pr>] KEY=value… [--out=<file>]: render a brief (quotes the issue; PR fills BASE/HEAD/RED/BRANCH); --check=<file>: refuse an empty or unfilled brief',
+    '<role> N=<issue> [PR=<pr>] [FINDINGS=<file,file…>] KEY=value… [--out=<file>]: render a brief (quotes the issue; PR fills BASE/HEAD/RED/BRANCH; FINDINGS lists report files for the verifier); --check=<file>: refuse an empty or unfilled brief',
   ],
   'ci-wait': [ciWait, '<pr> [--head=<sha>] | <sha> --push: wait for CI (+ Security); --head waits for that pushed commit; exit 3 when superseded'],
   repeat: [repeat, '<pr> <smoke files…> [--node=22|24|26] [--replace] [--timeout=10]: dispatch the repeat=10 run on the PR head; --replace cancels a running one first'],
