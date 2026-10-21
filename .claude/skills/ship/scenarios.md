@@ -4,6 +4,7 @@
 - Running a round
 - Report format
 - Scenarios S01–S17
+- Measured runs (agent-eval)
 - Exploratory sweep
 
 A fixed list of tasks for fresh-agent test rounds, so rounds can be compared over time. A fresh agent is a new agent with no context about bdg's internals: it gets a realistic task and an installed `bdg`, and is **not told which feature is being tested**. What it discovers, works around and rates shows how agent-friendly bdg is; unit, smoke and integration tests don't catch false successes, misleading hints or friction.
@@ -192,6 +193,18 @@ Each scenario has an ID, the task given to the agent, how to set it up, what "wo
 - **Works:** no "Session Started" or `✓ Navigated` on a page that never loaded: start fails or warns, naming the `net::` error, in human output and `--json`; `page info`, `console` and `peek` don't present Chrome's error page as the site. A refused connection keeps exit 80 `Could not load …`.
 - **Rate:** whether the agent's answer said the page failed to load, and from which bdg output it learned that (or whether it found out only from `network list`).
 - **History:** from S24 (cloud round, 2026-10-18): `bdg http://www.uitestingplayground.com/` (307, then `ERR_BLOCKED_BY_CLIENT`) said "Session Started", exit 0, and `console` "No errors or warnings found"; filed #860.
+
+## Measured runs (agent-eval)
+
+`scripts/agent-eval.mjs` (#888) turns scenarios into numbers: it runs graded tasks (`scripts/agent-eval-tasks.mjs`, each from a scenario on a fixture page of `src/__testutils__/fixturePages/agentEvalFixtures.ts`) through `claude -p` N times per model and writes `runs.jsonl` and `SUMMARY.md` (success %, tool calls, tokens, dollars per task and model) under `--out`. It spends API money, so it is never part of CI or `npm test`; `--dry-run` prints the plan and the worst-case cost.
+
+```bash
+npm run build
+node scripts/agent-eval.mjs --dry-run --model=claude-haiku-5-5 --runs=10
+node scripts/agent-eval.mjs --model=claude-haiku-5-5 --runs=10 --budget=10      # key from ~/.config/bdg-eval/anthropic-key or ANTHROPIC_API_KEY
+```
+
+The agent gets a goal and `bdg` on `PATH` (a copy of the build, headless, `BDG_ATTACH_REQUIRE_WS_URL=1`, its own session directory) and nothing from `~/.claude`, the repo's CLAUDE.md or skills, so it learns bdg from `--help` like a new user. A run whose tool calls touch the repo path or `~/.claude` is graded `contaminated`. Triage every failure as a bdg problem (fix, file or record), a task or oracle problem (fix the task), or a model limit. To add a task: a fixture page, a row in `TASKS` with a fixed `ANSWER:` format and a checker, and cases in `scripts/agent-eval.test.mjs` (the truth, two plausible wrong answers, a missing and a hedged answer).
 
 ## Exploratory sweep
 
