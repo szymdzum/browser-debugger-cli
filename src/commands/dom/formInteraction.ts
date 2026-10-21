@@ -223,7 +223,10 @@ export function registerFormInteractionCommands(program: Command): void {
     )
     .option('--index <n>', 'Element index if selector matches multiple (0-based)', integerOption(0))
     .option('--no-blur', 'Do not blur after filling (keeps focus on element)')
-    .option('--no-wait', 'Skip waiting for network stability after fill')
+    .option(
+      '--no-wait',
+      'Skip waiting for network stability after fill, and the second read of the value 2 s later'
+    )
     .addOption(dialogOption())
     .addOption(promptTextOption())
     .addOption(jsonOption())
