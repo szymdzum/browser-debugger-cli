@@ -6,14 +6,13 @@
 
 import { CDPConnection } from '@/connection/cdp.js';
 import { CDPConnectionError } from '@/connection/errors.js';
-import { ABORTED_ERROR } from '@/connection/navigationOutcome.js';
 import { waitForPageReady } from '@/connection/pageReadiness.js';
 import { sendTyped, type Protocol } from '@/connection/typed-cdp.js';
 import { DEFAULT_PAGE_READINESS_TIMEOUT_MS } from '@/constants.js';
 import type { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
 import type { SessionConfig } from '@/daemon/session/types.js';
 import { assertNavigated, failedLoadError, readFailedLoad } from '@/runtime/page/failedLoad.js';
-import { readMainFrameId, watchRefusedRedirects } from '@/runtime/page/refusedRedirect.js';
+import { refusedAfterAbort, watchRefusedRedirects } from '@/runtime/page/refusedRedirect.js';
 import type { FailedLoad, LaunchedChrome } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
 import { displayUrl } from '@/utils/displayUrl.js';
@@ -120,6 +119,7 @@ export async function navigateToTarget(
   const navigation = await navigateOrFail(cdp, normalizedUrl, log, signal, {
     addedScheme,
     redirectedTo: () => ownFailure()?.redirectedTo,
+    mainFrameId: telemetryStore.targetInfo?.id,
   });
   if (navigation.errorText) log.info(`Navigation reported ${navigation.errorText}`);
 
@@ -160,7 +160,8 @@ export async function navigateToTarget(
  * @param url - Normalized URL
  * @param log - Logger
  * @param signal - The session's stop signal
- * @param failure - Whether bdg added `http://`, and where a failed redirect led
+ * @param failure - Whether bdg added `http://`, where a failed redirect led, and
+ *   the page's main frame (its target id; without one, refused redirects are not followed)
  * @returns Chrome's answer
  * @throws CommandError (80) when the load failed
  */
@@ -169,20 +170,23 @@ async function navigateOrFail(
   url: string,
   log: Logger,
   signal: AbortSignal | undefined,
-  failure: { addedScheme: boolean; redirectedTo: () => string | undefined }
+  failure: {
+    addedScheme: boolean;
+    redirectedTo: () => string | undefined;
+    mainFrameId: string | undefined;
+  }
 ): Promise<Protocol.Page.NavigateResponse> {
-  const redirects = watchRefusedRedirects(cdp, () => readMainFrameId(cdp));
+  const redirects = failure.mainFrameId
+    ? watchRefusedRedirects(cdp, failure.mainFrameId)
+    : undefined;
   try {
     const navigation = await sendNavigate(cdp, url, log, signal);
     assertNavigated(navigation, url, failure.addedScheme, failure.redirectedTo());
-    const refused =
-      navigation.errorText === ABORTED_ERROR
-        ? await redirects.refused(undefined, { awaitOpen: true })
-        : undefined;
+    const refused = redirects && (await refusedAfterAbort(redirects, navigation));
     if (refused) throw failedLoadError(refused, failure.addedScheme);
     return navigation;
   } finally {
-    redirects.stop();
+    redirects?.stop();
   }
 }
 

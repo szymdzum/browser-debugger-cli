@@ -25,7 +25,11 @@ import {
 import type { BoundedInvalidFields } from '@/runtime/dom/blockedSubmit.js';
 import { UNBIND_TARGET_SCRIPT } from '@/runtime/dom/targetNode.js';
 import { readFailedLoad } from '@/runtime/page/failedLoad.js';
-import { readMainFrameId, watchRefusedRedirects } from '@/runtime/page/refusedRedirect.js';
+import { mainFrameId } from '@/runtime/page/navigation.js';
+import {
+  watchRefusedRedirects,
+  type RefusedRedirectWatch,
+} from '@/runtime/page/refusedRedirect.js';
 import { toDownloadInfo } from '@/telemetry/downloads.js';
 import { mayCarrySubmit } from '@/telemetry/requestKinds.js';
 import { createLogger } from '@/ui/logging/index.js';
@@ -240,6 +244,22 @@ async function failedNavigation(
 }
 
 /**
+ * Follow the redirects Chrome refuses during an action (#890); a page whose
+ * frame cannot be read is not followed.
+ *
+ * @param cdp - CDP connection
+ * @returns The watch, or undefined
+ */
+async function watchActionRedirects(cdp: CDPConnection): Promise<RefusedRedirectWatch | undefined> {
+  try {
+    return watchRefusedRedirects(cdp, await mainFrameId(cdp));
+  } catch (error) {
+    log.debug(`Main frame not read before the action: ${getErrorMessage(error)}`);
+    return undefined;
+  }
+}
+
+/**
  * A redirect Chrome refused during the action (#890): the page stays, so no
  * navigation is seen. The failure names the refused URL.
  *
@@ -247,17 +267,12 @@ async function failedNavigation(
  * @returns The refused URL and Chrome's network error, or undefined
  */
 async function refusedNavigation(
-  redirects: ReturnType<typeof watchRefusedRedirects> | undefined
+  redirects: RefusedRedirectWatch | undefined
 ): Promise<ActionEffects['navigationFailed']> {
-  try {
-    const refused = await redirects?.refused();
-    return refused?.redirectedTo
-      ? { url: displayUrl(refused.redirectedTo), errorText: refused.errorText }
-      : undefined;
-  } catch (error) {
-    log.debug(`Refused redirect not read after the action: ${getErrorMessage(error)}`);
-    return undefined;
-  }
+  const refused = await redirects?.refused();
+  return refused?.redirectedTo
+    ? { url: displayUrl(refused.redirectedTo), errorText: refused.errorText }
+    : undefined;
 }
 
 /**
@@ -344,7 +359,7 @@ export function createInteractionRunner(
         options.reportRequests === false ? undefined : watchTriggeredRequests(store);
       const effects = options.reportEffects === false ? undefined : watchActionEffects(cdp);
       const collectErrors = effects && watchActionErrors(store);
-      const redirects = effects && watchRefusedRedirects(cdp, () => readMainFrameId(cdp));
+      const redirects = effects && (await watchActionRedirects(cdp));
       let result: T | undefined;
       try {
         store.dialogAnswers.setActionChoice(options.dialogs);

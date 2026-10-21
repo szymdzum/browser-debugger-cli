@@ -3,7 +3,6 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import { ABORTED_ERROR } from '@/connection/navigationOutcome.js';
 import { waitForPageReady } from '@/connection/pageReadiness.js';
 import { sendTyped } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
@@ -16,7 +15,7 @@ import {
   watchMainDocuments,
 } from '@/runtime/page/failedLoad.js';
 import { readPageLoadingState } from '@/runtime/page/loadingState.js';
-import { watchRefusedRedirects } from '@/runtime/page/refusedRedirect.js';
+import { refusedAfterAbort, watchRefusedRedirects } from '@/runtime/page/refusedRedirect.js';
 import type { PendingRequest } from '@/telemetry/network.js';
 import type { CDPSender } from '@/telemetry/objectExpander.js';
 import type { FailedLoad } from '@/types.js';
@@ -103,10 +102,10 @@ async function runNavigation(
 ): Promise<PageNavigationResult> {
   const url = action === 'navigate' ? normalizeUrl(options.url ?? '') : undefined;
   if (options.wait === false) return startWithoutWaiting(cdp, action, url);
-  const mainFrameId = (await pageTarget(cdp)).targetId;
-  const navigated = nextNavigation(cdp, mainFrameId);
-  const document = documentResponse(cdp, mainFrameId);
-  const redirects = watchRefusedRedirects(cdp, mainFrameId);
+  const frameId = await mainFrameId(cdp);
+  const navigated = nextNavigation(cdp, frameId);
+  const document = documentResponse(cdp, frameId);
+  const redirects = watchRefusedRedirects(cdp, frameId);
   const readyTimeoutMs = pageReadyTimeoutMs();
   const deadline = Date.now() + readyTimeoutMs;
   let loaderId: string | undefined;
@@ -115,9 +114,7 @@ async function runNavigation(
     sent.catch(() => undefined);
     const started = await raceTimeout(sent, readyTimeoutMs);
     if (started === undefined) return await stillLoading(cdp, action, readyTimeoutMs);
-    const refused = started.aborted
-      ? await redirects.refused(undefined, { awaitOpen: true })
-      : undefined;
+    const refused = await refusedAfterAbort(redirects, started);
     if (refused) throw failedLoadError(refused);
     if (started.notAPage) {
       return { action, ...(await currentLocation(cdp)), warning: notAPageWarning() };
@@ -205,8 +202,8 @@ interface StartedAction {
   notAPage: boolean;
   /** Loader of the new document, when the browser names it (navigate only) */
   loaderId?: string;
-  /** Chrome aborted the request (`net::ERR_ABORTED`: a 204, a download, or a refused redirect, #890) */
-  aborted?: true;
+  /** Chrome's network error, when it answered with one (`net::ERR_ABORTED`: a 204, a download, or a refused redirect, #890) */
+  errorText?: string;
 }
 
 /**
@@ -241,6 +238,17 @@ async function startAction(
 async function pageTarget(cdp: CDPSender): Promise<{ targetId: string; url: string }> {
   const { targetInfo } = await sendTyped(cdp, 'Target.getTargetInfo', {});
   return targetInfo;
+}
+
+/**
+ * The page's main frame id (a page target's id is its main frame's); answers
+ * while a navigation waits for the server.
+ *
+ * @param cdp - CDP connection
+ * @returns Main frame id
+ */
+export async function mainFrameId(cdp: CDPSender): Promise<string> {
+  return (await pageTarget(cdp)).targetId;
 }
 
 /**
@@ -440,11 +448,11 @@ function nextNavigation(
  */
 async function navigateTo(cdp: CDPConnection, url: string): Promise<StartedAction> {
   const navigation = await sendTyped(cdp, 'Page.navigate', { url });
-  const { loaderId } = navigation;
+  const { loaderId, errorText } = navigation;
   return {
     notAPage: assertNavigated(navigation, url) === 'not-a-page',
     ...(loaderId && { loaderId }),
-    ...(navigation.errorText === ABORTED_ERROR && { aborted: true }),
+    ...(errorText && { errorText }),
   };
 }
 

@@ -90,7 +90,7 @@ void describe('watchRefusedRedirects', () => {
       hop('myapp://callback'),
       ['failed', 'net::ERR_ABORTED'],
     ]);
-    assert.deepEqual(await watch.refused('L1'), {
+    assert.deepEqual(await watch.refused(), {
       url: `${SERVER}/r`,
       errorText: 'net::ERR_ABORTED',
       redirectedTo: 'myapp://callback',
@@ -106,7 +106,7 @@ void describe('watchRefusedRedirects', () => {
         ['request', `${SERVER}/r`],
         ['failed', 'net::ERR_ABORTED'],
       ]);
-      const verdict = watch.refused('L1');
+      const verdict = watch.refused();
       play(emit, [['extra', 302, target]]);
       assert.deepEqual(await verdict, {
         url: `${SERVER}/r`,
@@ -174,7 +174,7 @@ void describe('watchRefusedRedirects', () => {
       const { cdp, emit } = fakeEvents();
       const watch = watchRefusedRedirects(cdp, 'main', 0);
       play(emit, steps);
-      assert.equal(await watch.refused('L1'), undefined);
+      assert.equal(await watch.refused(), undefined);
       assert.equal(await watch.refused(), undefined);
       watch.stop();
     });
@@ -188,7 +188,7 @@ void describe('watchRefusedRedirects', () => {
       ['failed', 'net::ERR_ABORTED'],
       ['extra', 302, '/ok'],
     ]);
-    assert.equal(await watch.refused('L1'), undefined);
+    assert.equal(await watch.refused(), undefined);
     watch.stop();
   });
 

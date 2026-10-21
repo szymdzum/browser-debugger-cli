@@ -10,6 +10,9 @@
  */
 export type NavigationOutcome = 'loaded' | 'not-a-page' | 'certificate' | 'failed';
 
+/** Chrome's error for an aborted request: a download, a 204, or a redirect it refused (#890) */
+export const ABORTED_ERROR = 'net::ERR_ABORTED';
+
 /**
  * Chrome network errors that still leave a page worth inspecting; every other
  * one ends on Chrome's error page. `ERR_HTTP_RESPONSE_CODE_FAILURE`: an HTTP
@@ -18,10 +21,10 @@ export type NavigationOutcome = 'loaded' | 'not-a-page' | 'certificate' | 'faile
  * `ERR_CERT_*` (Chrome's -200 range): the certificate interstitial, which the
  * user can go through.
  */
-const PAGE_KEPT_ERRORS = /^net::(ERR_HTTP_RESPONSE_CODE_FAILURE|ERR_ABORTED)$/;
-
-/** Chrome's error for an aborted request: a download, a 204, or a redirect it refused (#890) */
-export const ABORTED_ERROR = 'net::ERR_ABORTED';
+const PAGE_KEPT_ERRORS: ReadonlySet<string> = new Set([
+  'net::ERR_HTTP_RESPONSE_CODE_FAILURE',
+  ABORTED_ERROR,
+]);
 
 /** Certificate errors (Chrome's -200 range): the page is Chrome's certificate warning */
 const CERTIFICATE_ERROR = /^net::ERR_CERT_[A-Z_]+$/;
@@ -38,5 +41,5 @@ export function navigationOutcome(errorText?: string, loaderId?: string): Naviga
   if (!errorText) return 'loaded';
   if (errorText === ABORTED_ERROR && !loaderId) return 'not-a-page';
   if (CERTIFICATE_ERROR.test(errorText)) return 'certificate';
-  return PAGE_KEPT_ERRORS.test(errorText) ? 'loaded' : 'failed';
+  return PAGE_KEPT_ERRORS.has(errorText) ? 'loaded' : 'failed';
 }
