@@ -782,6 +782,22 @@ export function loadWarning(load) {
     : null;
 }
 
+/**
+ * The warning gate 8 and `ship leftovers` print when the snapshot is from an
+ * earlier session, or null. Since it lives in ~/.cache/ship it survives a
+ * reboot, and a days-old one counts every Chrome and file since then.
+ *
+ * @param {string} timeText contents of the snapshot's time file
+ * @param {number} nowMs
+ */
+export function staleSnapshotWarning(timeText, nowMs) {
+  const taken = Number(timeText.trim());
+  const hours = taken ? (nowMs - taken) / 3_600_000 : 0;
+  return hours > 12
+    ? `warning: the snapshot is ${Math.round(hours)} h old, probably from an earlier session: run ship snapshot at session start`
+    : null;
+}
+
 /** Prints the load warning on stderr when it applies */
 function warnOnLoad() {
   const warning = loadWarning(loadavg()[0]);
@@ -1676,6 +1692,7 @@ async function snapshot(argv = []) {
   const dirs = { bdg: join(homedir(), '.bdg'), downloads: join(homedir(), 'Downloads') };
   const parsed = parseSnapshotArgs(argv, dirs);
   if ('error' in parsed) return usage(`snapshot [--accept <name>… | --accept-live | --accept-main]: ${parsed.error}`);
+  mkdirSync(STATE_DIR, { recursive: true });
   if (parsed.acceptLive) return acceptLiveSession(dirs.bdg);
   if (parsed.acceptMain) {
     writeFileSync(SNAPSHOT.main, mainCheckoutStatus().join('\n'));
@@ -1695,7 +1712,6 @@ async function snapshot(argv = []) {
   checkDependencies();
   warnOnLoad();
   rmSync(LIVE_MARKER, { force: true });
-  mkdirSync(STATE_DIR, { recursive: true });
   writeFileSync(SNAPSHOT.main, mainCheckoutStatus().join('\n'));
   writeFileSync(SNAPSHOT.time, `${Date.now()}\n`);
   writeFileSync(SNAPSHOT.bdg, snapshotLines(listEntries(dirs.bdg)).join('\n'));
@@ -1870,6 +1886,8 @@ export function tempWorktrees(porcelain) {
  */
 function leftoverLines(scope) {
   const lines = [];
+  const stale = staleSnapshotWarning(existsSync(SNAPSHOT.time) ? readFileSync(SNAPSHOT.time, 'utf8') : '', Date.now());
+  if (stale) console.error(stale);
   for (const [key, dir] of [
     ['bdg', '.bdg'],
     ['downloads', 'Downloads'],
@@ -2708,7 +2726,7 @@ export function findingsList(rendered, list) {
   return {
     text: rendered.replace(
       FINDINGS_LINE,
-      `Read each of these reports in full; every finding heading in them (\`### F<n>: …\`) is one finding, with its page and commands. You may read these files and the pages next to them (the one exception to the rule about the main checkout), never change them: copy a page into your scratch directory before you edit or serve a changed version:\n${lines}`
+      `Read each of these reports in full; every finding heading in them (\`### F<n>: …\`) is one finding, with its page and commands. You may read these files and the pages next to them even when they are in the main checkout's \`.tmp/\` (a second exception to the rule about the main checkout, read-only), never change them: copy a page into your scratch directory before you edit or serve a changed version:\n${lines}`
     ),
   };
 }

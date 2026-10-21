@@ -45,6 +45,7 @@ import {
   liveSessionChrome,
   foreignSession,
   loadWarning,
+  staleSnapshotWarning,
   findingsList,
   jobsLostWithoutResult,
   listEntries,
@@ -1375,5 +1376,12 @@ test('cloud render fills every placeholder of the real template and agents, and 
   const body = triggerBody('p', { round: 's28', agent: 'smoke', at: '2026-10-25T10:00:00Z', environment: 'env_test' });
   assert.equal(body.job_config.ccr.environment_id, 'env_test');
   assert.equal(body.job_config.ccr.events[0].data.message.content, 'p');
+});
+
+test('staleSnapshotWarning flags a snapshot older than 12 hours, not a fresh or missing one', () => {
+  const now = Date.parse('2026-10-22T10:00:00Z');
+  assert.equal(staleSnapshotWarning(`${now - 3_600_000}\n`, now), null);
+  assert.equal(staleSnapshotWarning('', now), null);
+  assert.match(staleSnapshotWarning(`${now - 30 * 3_600_000}\n`, now), /30 h old/);
 });
 

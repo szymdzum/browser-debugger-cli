@@ -4,7 +4,7 @@
 // The cloud environment id comes from SHIP_CLOUD_ENV (not kept in this public repo).
 // --prompt prints the prompt text only (for review).
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -87,6 +87,10 @@ function main() {
   const [round, agent, sha, at] = args.filter((a) => a !== '--prompt');
   if (!/^s\d+$/.test(round ?? '') || !agent || !/^[0-9a-f]{7,40}$/.test(sha ?? '')) {
     console.error('usage: node render.mjs <round, e.g. s28> <agent> <sha> [run_once_at] [--prompt]');
+    return 2;
+  }
+  if (!existsSync(join(here, 'agents', `${agent}.md`))) {
+    console.error(`no agents/${agent}.md; agents: ${readdirSync(join(here, 'agents')).map((f) => f.replace(/\.md$/, '')).join(', ')}`);
     return 2;
   }
   const environment = process.env.SHIP_CLOUD_ENV;
