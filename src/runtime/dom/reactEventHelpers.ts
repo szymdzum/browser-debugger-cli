@@ -115,6 +115,15 @@ export const FILL_VALUE_MISMATCH_JS = `(field, expected, secret) => {
 }`;
 
 /**
+ * Page-side rule of the late read of a fill (#892): whether the value read
+ * 2 s after filling is a revert (a mismatch, as {@link FILL_VALUE_MISMATCH_JS}
+ * gives it) or the page formatting the value (undefined).
+ */
+export const LATE_REVERT_JS = `(field, check) => {
+  throw new Error('not implemented');
+}`;
+
+/**
  * Page-side list of the other text-like fields of a field's form (of the
  * document when it has none), with their values: taken before a fill, so
  * {@link MOVED_VALUE_JS} can tell which one the page changed.
