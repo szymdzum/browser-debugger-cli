@@ -24,40 +24,118 @@ import {
   runJob,
   runPool,
   findCheating,
-  startValueServer,
-  valueFor,
+  startLogServer,
 } from './agent-eval.mjs';
 import { TASKS, buildPrompt, extractAnswer, pageUrl, selectTasks } from './agent-eval-tasks.mjs';
 
 const FAKE_KEY = 'sk-ant-api03-TESTKEYTESTKEYTESTKEY';
 
-/** Run context for the checkers: every value is `a1b2c3`, the button mask `10110` (Alpha, Charlie, Delta break) */
-const CTX = {
+/** What the pages logged in the run the checkers grade: values `a1b2c3`; Alpha, Charlie and Delta broke */
+const LOG = {
+  'popup-token': ['tk-a1b2c3'],
+  'cancel-confirm': ['Order A-a1b2c3 kept'],
+  'breaking-buttons': ['Alpha=1', 'Bravo=0', 'Charlie=1', 'Delta=1', 'Echo=0'],
+  'shadow-login': ['R-a1b2c3'],
+  'failed-request-page-two': ['/eval-net-b-a1b2c3.json'],
+  'download-name': ['q3-report-a1b2c3.csv'],
+  'console-error-code': ['E-a1b2c3'],
+  'utility-classes': ['id-a1b2c3'],
+};
+const contextWith = (log) => ({
   fixtures: 'http://127.0.0.1:1/',
   refusedUrl: 'http://127.0.0.1:2/',
-  valueApi: 'http://127.0.0.1:3',
+  logApi: 'http://127.0.0.1:3',
   nonce: 'n0nce',
-  value: (key) => (key === 'breaking-buttons' ? '10110' : 'a1b2c3'),
-};
-const CLASSES = 'px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:ring-2 id-a1b2c3';
+  logged: (key) => log[key] ?? [],
+});
+const CTX = contextWith(LOG);
+const CLASSES =
+  'px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:ring-2 id-a1b2c3';
 
 /**
  * Right answers, plausible wrong ones and malformed ones per task, to prove every checker
  * passes the truth and nothing else.
  */
 const CASES = {
-  'popup-token': { right: ['tk-a1b2c3'], wrong: ['tk-a1b2c4', 'TK-A1B2C3', 'tk-a1b2c3 and tk-123', 'token-123', 'tk-a1b2c3 or tk-a1b2c4'] },
-  'cancel-confirm': { right: ['Order A-a1b2c3 kept', 'Order A-a1b2c3 kept.'], wrong: ['Order A-a1b2c3 removed', 'order a-a1b2c3 kept', 'The order is active', 'Order A-a1b2c3 kept or removed', 'Order A-a1b2c4 kept'] },
-  'breaking-buttons': { right: ['Alpha, Charlie, Delta', 'delta,Alpha,Charlie'.replace('delta', 'Delta')], wrong: ['Alpha, Charlie', 'Alpha, Bravo, Charlie, Delta', 'Alpha, Charlie, Delta (maybe Echo)', 'Alpha, Charlie, Delta, Delta', 'alpha, charlie, delta', 'Bravo, Echo'] },
-  'shadow-login': { right: ['R-a1b2c3'], wrong: ['R-a1b2c4', 'r-a1b2c3', 'Wrong credentials', 'R-a1b2c3 or R-12345'] },
-  'failed-request-page-two': { right: ['/eval-net-b-a1b2c3.json'], wrong: ['/eval-net-a-a1b2c3.json', '/favicon.ico', '/eval-net-b-a1b2c3.json and /eval-net-a-a1b2c3.json', '/eval-net-b-a1b2c3.js', '/EVAL-NET-B-A1B2C3.JSON'] },
-  'download-name': { right: ['q3-report-a1b2c3.csv'], wrong: ['q3-report-a1b2c4.csv', 'Q3-REPORT-A1B2C3.CSV', 'report.csv', 'q3-report-a1b2c3.csv or q3-report-a1b2c3.txt'] },
-  'console-error-code': { right: ['E-a1b2c3'], wrong: ['W-1010', 'E-a1b2c4', 'e-a1b2c3', 'E-a1b2c3, W-1010'] },
+  'popup-token': {
+    right: ['tk-a1b2c3'],
+    wrong: [
+      'tk-a1b2c4',
+      'TK-A1B2C3',
+      'tk-a1b2c3 and tk-123',
+      'token-123',
+      'tk-a1b2c3 or tk-a1b2c4',
+    ],
+  },
+  'cancel-confirm': {
+    right: ['Order A-a1b2c3 kept', 'Order A-a1b2c3 kept.'],
+    wrong: [
+      'Order A-a1b2c3 removed',
+      'order a-a1b2c3 kept',
+      'The order is active',
+      'Order A-a1b2c3 kept or removed',
+      'Order A-a1b2c4 kept',
+    ],
+  },
+  'breaking-buttons': {
+    right: ['Alpha, Charlie, Delta', 'delta,Alpha,Charlie'.replace('delta', 'Delta')],
+    wrong: [
+      'Alpha, Charlie',
+      'Alpha, Bravo, Charlie, Delta',
+      'Alpha, Charlie, Delta (maybe Echo)',
+      'Alpha, Charlie, Delta, Delta',
+      'alpha, charlie, delta',
+      'Bravo, Echo',
+    ],
+  },
+  'shadow-login': {
+    right: ['R-a1b2c3'],
+    wrong: ['R-a1b2c4', 'r-a1b2c3', 'Wrong credentials', 'R-a1b2c3 or R-12345'],
+  },
+  'failed-request-page-two': {
+    right: ['/eval-net-b-a1b2c3.json'],
+    wrong: [
+      '/eval-net-a-a1b2c3.json',
+      '/favicon.ico',
+      '/eval-net-b-a1b2c3.json and /eval-net-a-a1b2c3.json',
+      '/eval-net-b-a1b2c3.js',
+      '/EVAL-NET-B-A1B2C3.JSON',
+    ],
+  },
+  'download-name': {
+    right: ['q3-report-a1b2c3.csv'],
+    wrong: [
+      'q3-report-a1b2c4.csv',
+      'Q3-REPORT-A1B2C3.CSV',
+      'report.csv',
+      'q3-report-a1b2c3.csv or q3-report-a1b2c3.txt',
+    ],
+  },
+  'console-error-code': {
+    right: ['E-a1b2c3'],
+    wrong: ['W-1010', 'E-a1b2c4', 'e-a1b2c3', 'E-a1b2c3, W-1010'],
+  },
   'utility-classes': {
     right: [CLASSES, CLASSES.split(' ').reverse().join(', ')],
-    wrong: [CLASSES.replace(' id-a1b2c3', ''), `${CLASSES} +8`, 'px-4 py-2', CLASSES.replace('md:px-6', 'md:px-4').replace('id-a1b2c3', 'id-a1b2c4'), CLASSES.toUpperCase(), `${CLASSES} px-4`],
+    wrong: [
+      CLASSES.replace(' id-a1b2c3', ''),
+      `${CLASSES} +8`,
+      'px-4 py-2',
+      CLASSES.replace('md:px-6', 'md:px-4').replace('id-a1b2c3', 'id-a1b2c4'),
+      CLASSES.toUpperCase(),
+      `${CLASSES} px-4`,
+    ],
   },
-  'page-never-loads': { right: ['net::ERR_CONNECTION_REFUSED', 'ERR_CONNECTION_REFUSED'], wrong: ['net::ERR_NAME_NOT_RESOLVED', 'net::ERR_TOO_MANY_REDIRECTS', 'The page loaded', 'net::ERR_CONNECTION_REFUSED or net::ERR_BLOCKED_BY_CLIENT', 'net::err_connection_refused'] },
+  'page-never-loads': {
+    right: ['net::ERR_CONNECTION_REFUSED', 'ERR_CONNECTION_REFUSED'],
+    wrong: [
+      'net::ERR_NAME_NOT_RESOLVED',
+      'net::ERR_TOO_MANY_REDIRECTS',
+      'The page loaded',
+      'net::ERR_CONNECTION_REFUSED or net::ERR_BLOCKED_BY_CLIENT',
+      'net::err_connection_refused',
+    ],
+  },
 };
 
 const reply = (value) => `I did the task.\n\nANSWER: ${value}`;
@@ -70,24 +148,75 @@ test('the harness has at least eight tasks, each with its scenario and a case ta
 
 for (const task of TASKS) {
   test(`checker ${task.id}: passes the truth, fails wrong, missing and hedged answers`, () => {
-    for (const value of CASES[task.id].right) assert.equal(task.check(reply(value), CTX).pass, true, `right: ${value}`);
-    for (const value of CASES[task.id].wrong) assert.equal(task.check(reply(value), CTX).pass, false, `wrong: ${value}`);
+    for (const value of CASES[task.id].right)
+      assert.equal(task.check(reply(value), CTX).pass, true, `right: ${value}`);
+    for (const value of CASES[task.id].wrong)
+      assert.equal(task.check(reply(value), CTX).pass, false, `wrong: ${value}`);
     const missing = task.check('I found it and it was fine.', CTX);
     assert.equal(missing.pass, false);
     assert.match(missing.reason, /ANSWER/);
     assert.equal(task.check('', CTX).pass, false);
     assert.equal(task.check('ANSWER:', CTX).pass, false);
-    assert.equal(task.check(`ANSWER: ${CASES[task.id].right[0]}\nThat is my answer.`, CTX).pass, false, 'the ANSWER line must be last');
+    assert.equal(
+      task.check(`ANSWER: ${CASES[task.id].right[0]}\nThat is my answer.`, CTX).pass,
+      false,
+      'the ANSWER line must be last'
+    );
   });
 
   test(`prompt ${task.id}: states the goal and the format and holds no truth`, () => {
     const prompt = buildPrompt(task, CTX);
     assert.match(prompt, /ANSWER: /);
     assert.match(prompt, /bdg --help/);
-    for (const value of CASES[task.id].right) assert.equal(prompt.includes(value), false, `the prompt leaks ${value}`);
-    assert.equal(prompt.includes(CTX.value(task.id)), false);
+    for (const value of CASES[task.id].right)
+      assert.equal(prompt.includes(value), false, `the prompt leaks ${value}`);
+    for (const entry of LOG[task.id] ?? []) assert.equal(prompt.includes(entry), false);
   });
 }
+
+test('a run in which the page logged nothing fails every page task, even with a plausible answer', () => {
+  const empty = contextWith({});
+  for (const task of TASKS.filter((t) => t.id !== 'page-never-loads')) {
+    const verdict = task.check(reply(CASES[task.id].right[0]), empty);
+    assert.equal(verdict.pass, false, task.id);
+    assert.match(verdict.reason, /interaction never happened/, task.id);
+  }
+  assert.equal(
+    TASKS.find((t) => t.id === 'page-never-loads').check(reply('ERR_CONNECTION_REFUSED'), empty)
+      .pass,
+    true
+  );
+});
+
+test('cancel-confirm fails when the page shows the order was removed, whatever the answer', () => {
+  const removed = contextWith({ ...LOG, 'cancel-confirm': ['Order A-a1b2c3 removed'] });
+  const verdict = TASKS.find((t) => t.id === 'cancel-confirm').check(
+    reply('Order A-a1b2c3 removed'),
+    removed
+  );
+  assert.equal(verdict.pass, false);
+  assert.match(verdict.reason, /accepted/);
+});
+
+test('the checkers use the last thing logged and the last outcome per button', () => {
+  const again = contextWith({
+    ...LOG,
+    'popup-token': ['tk-111111', 'tk-a1b2c3'],
+    'breaking-buttons': ['Alpha=0', 'Alpha=1', 'Bravo=1', 'Bravo=0'],
+  });
+  assert.equal(
+    TASKS.find((t) => t.id === 'popup-token').check(reply('tk-a1b2c3'), again).pass,
+    true
+  );
+  assert.equal(
+    TASKS.find((t) => t.id === 'popup-token').check(reply('tk-111111'), again).pass,
+    false
+  );
+  assert.equal(
+    TASKS.find((t) => t.id === 'breaking-buttons').check(reply('Alpha'), again).pass,
+    true
+  );
+});
 
 test('extractAnswer takes the last line only', () => {
   assert.deepEqual(extractAnswer('a\nANSWER: x\n'), { ok: true, value: 'x' });
@@ -97,27 +226,53 @@ test('extractAnswer takes the last line only', () => {
 
 test('selectTasks names unknown tasks', () => {
   assert.equal(selectTasks('all').length, TASKS.length);
-  assert.deepEqual(selectTasks('download-name,popup-token').map((t) => t.id), ['popup-token', 'download-name']);
+  assert.deepEqual(
+    selectTasks('download-name,popup-token').map((t) => t.id),
+    ['popup-token', 'download-name']
+  );
   assert.throws(() => selectTasks('nope'), /Unknown task "nope"/);
 });
 
 test('settings: defaults, flags and an output directory outside the repository', () => {
-  const settings = resolveSettings(parseArgs(['--model=a,b', '--runs', '3', '--tasks=popup-token', '--dry-run', '--out=/tmp/x-out']));
+  const settings = resolveSettings(
+    parseArgs([
+      '--model=a,b',
+      '--runs',
+      '3',
+      '--tasks=popup-token',
+      '--dry-run',
+      '--out=/tmp/x-out',
+    ])
+  );
   assert.deepEqual(settings.models, ['a', 'b']);
   assert.equal(settings.runs, 3);
   assert.equal(settings.parallel, 4);
   assert.equal(settings.maxTurns, 40);
   assert.equal(settings.dryRun, true);
-  assert.throws(() => resolveSettings(parseArgs(['--out=' + path.resolve('scripts/out')])), /outside the repository/);
+  assert.throws(
+    () => resolveSettings(parseArgs(['--out=' + path.resolve('scripts/out')])),
+    /outside the repository/
+  );
   assert.throws(() => resolveSettings(parseArgs(['--runs=0'])), /positive number/);
   assert.throws(() => resolveSettings(parseArgs(['--bogus=1'])), /Unknown flag/);
 });
 
 test('plan: run-major order and the worst case cost', () => {
-  const settings = resolveSettings(parseArgs(['--tasks=popup-token,download-name', '--model=a,b', '--runs=2', '--run-budget=0.25', '--budget=1']));
+  const settings = resolveSettings(
+    parseArgs([
+      '--tasks=popup-token,download-name',
+      '--model=a,b',
+      '--runs=2',
+      '--run-budget=0.25',
+      '--budget=1',
+    ])
+  );
   const jobs = planJobs(settings);
   assert.equal(jobs.length, 8);
-  assert.deepEqual(jobs.slice(0, 4).map((j) => `${j.task.id}/${j.model}/${j.run}`), ['popup-token/a/1', 'popup-token/b/1', 'download-name/a/1', 'download-name/b/1']);
+  assert.deepEqual(
+    jobs.slice(0, 4).map((j) => `${j.task.id}/${j.model}/${j.run}`),
+    ['popup-token/a/1', 'popup-token/b/1', 'download-name/a/1', 'download-name/b/1']
+  );
   const plan = renderPlan(settings);
   assert.match(plan, /worst case \$2\.00/);
   assert.match(plan, /exceeds the budget/);
@@ -126,13 +281,24 @@ test('plan: run-major order and the worst case cost', () => {
 test('claude arguments turn the owner configuration off and cap the cost', () => {
   const settings = resolveSettings(parseArgs(['--run-budget=0.3']));
   const args = claudeArgs(settings, 'claude-haiku-5-5', 'prompt', '/tmp/helper');
-  for (const flag of ['--bare', '--strict-mcp-config', '--disable-slash-commands', '--no-session-persistence']) assert.ok(args.includes(flag), flag);
+  for (const flag of [
+    '--bare',
+    '--strict-mcp-config',
+    '--disable-slash-commands',
+    '--no-session-persistence',
+  ])
+    assert.ok(args.includes(flag), flag);
   assert.equal(args[args.indexOf('--tools') + 1], 'Bash');
   assert.equal(args[args.indexOf('--setting-sources') + 1], '');
   assert.equal(args[args.indexOf('--max-budget-usd') + 1], '0.3');
   assert.equal(args[args.indexOf('--output-format') + 1], 'stream-json');
-  assert.deepEqual(JSON.parse(args[args.indexOf('--settings') + 1]), { apiKeyHelper: '/tmp/helper' });
-  assert.equal(args.some((a) => a.includes('sk-ant')), false);
+  assert.deepEqual(JSON.parse(args[args.indexOf('--settings') + 1]), {
+    apiKeyHelper: '/tmp/helper',
+  });
+  assert.equal(
+    args.some((a) => a.includes('sk-ant')),
+    false
+  );
 });
 
 test('budget: a run starts only when spent + in flight + its cap fit the total', () => {
@@ -154,16 +320,44 @@ test('readApiKey prefers a non-empty environment key, then the file', () => {
   assert.throws(() => readApiKey(path.join(path.dirname(file), 'missing'), {}), /No API key/);
 });
 
-const toolUse = (id, command) => JSON.stringify({ type: 'assistant', message: { id, content: [{ type: 'tool_use', name: 'Bash', input: { command } }] } });
-const toolResult = (text) => JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', content: text }] } });
+const toolUse = (id, command) =>
+  JSON.stringify({
+    type: 'assistant',
+    message: { id, content: [{ type: 'tool_use', name: 'Bash', input: { command } }] },
+  });
+const toolResult = (text) =>
+  JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', content: text }] } });
 const finalMessage = (text, cost = 0.01) =>
   [
-    JSON.stringify({ type: 'assistant', message: { id: 'last', content: [{ type: 'text', text }] } }),
-    JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: text, total_cost_usd: cost, usage: { input_tokens: 10, cache_creation_input_tokens: 5, cache_read_input_tokens: 5, output_tokens: 7 } }),
+    JSON.stringify({
+      type: 'assistant',
+      message: { id: 'last', content: [{ type: 'text', text }] },
+    }),
+    JSON.stringify({
+      type: 'result',
+      subtype: 'success',
+      is_error: false,
+      result: text,
+      total_cost_usd: cost,
+      usage: {
+        input_tokens: 10,
+        cache_creation_input_tokens: 5,
+        cache_read_input_tokens: 5,
+        output_tokens: 7,
+      },
+    }),
   ].join('\n');
 
 test('parseStream counts turns and tool calls and collects the final result', () => {
-  const stream = parseStream([toolUse('m1', 'bdg --help'), toolResult('Usage: bdg'), toolUse('m1b', 'bdg status'), finalMessage('ANSWER: x'), 'not json'].join('\n'));
+  const stream = parseStream(
+    [
+      toolUse('m1', 'bdg --help'),
+      toolResult('Usage: bdg'),
+      toolUse('m1b', 'bdg status'),
+      finalMessage('ANSWER: x'),
+      'not json',
+    ].join('\n')
+  );
   assert.equal(stream.turns, 3);
   assert.equal(stream.toolCalls, 2);
   assert.equal(stream.result.total_cost_usd, 0.01);
@@ -171,52 +365,152 @@ test('parseStream counts turns and tool calls and collects the final result', ()
 });
 
 test('a read of the repo or ~/.claude marks an otherwise correct run contaminated', () => {
-  const patterns = contaminationPatterns({ repoRoot: '/work/browser-debugger-cli', home: '/Users/someone' });
-  const clean = parseStream([toolUse('m1', 'bdg --help'), finalMessage('ANSWER: E-a1b2c3')].join('\n'));
+  const patterns = contaminationPatterns({
+    repoRoot: '/work/browser-debugger-cli',
+    home: '/Users/someone',
+  });
+  const clean = parseStream(
+    [toolUse('m1', 'bdg --help'), finalMessage('ANSWER: E-a1b2c3')].join('\n')
+  );
   assert.deepEqual(findContamination(clean, patterns), []);
-  for (const command of ['cat /work/browser-debugger-cli/CLAUDE.md', 'ls ~/.claude/skills', 'cat $HOME/.claude/CLAUDE.md', 'ls /Users/someone/.claude', 'cat ~/.config/bdg-eval/anthropic-key', 'ls /Users/someone/Documents', 'cat /Users/someone/.zshrc']) {
-    const dirty = parseStream([toolUse('m1', command), finalMessage('ANSWER: E-a1b2c3')].join('\n'));
+  for (const command of [
+    'cat /work/browser-debugger-cli/CLAUDE.md',
+    'ls ~/.claude/skills',
+    'cat $HOME/.claude/CLAUDE.md',
+    'ls /Users/someone/.claude',
+    'cat ~/.config/bdg-eval/anthropic-key',
+    'ls /Users/someone/Documents',
+    'cat /Users/someone/.zshrc',
+  ]) {
+    const dirty = parseStream(
+      [toolUse('m1', command), finalMessage('ANSWER: E-a1b2c3')].join('\n')
+    );
     const found = findContamination(dirty, patterns);
     assert.equal(found.length > 0, true, command);
     const task = TASKS.find((t) => t.id === 'console-error-code');
-    const graded = gradeRun({ task, stream: dirty, contamination: found, stoppedBy: null, runBudget: 0.5, taskContext: CTX });
+    const graded = gradeRun({
+      task,
+      stream: dirty,
+      contamination: found,
+      stoppedBy: null,
+      runBudget: 0.5,
+      taskContext: CTX,
+    });
     assert.equal(graded.status, 'contaminated');
     assert.equal(graded.pass, false);
   }
-  const helpText = parseStream([toolUse('m1', 'bdg --help'), toolResult('install-skill  Install the skill (~/.claude/skills)'), finalMessage('ANSWER: E-a1b2c3')].join('\n'));
-  assert.deepEqual(findContamination(helpText, patterns), [], "bdg's own help names ~/.claude: not contamination");
-  const leaked = parseStream([toolUse('m1', 'bdg --version'), toolResult('at /work/browser-debugger-cli/dist/cli.js'), finalMessage('ANSWER: E-a1b2c3')].join('\n'));
+  const helpText = parseStream(
+    [
+      toolUse('m1', 'bdg --help'),
+      toolResult('install-skill  Install the skill (~/.claude/skills)'),
+      finalMessage('ANSWER: E-a1b2c3'),
+    ].join('\n')
+  );
+  assert.deepEqual(
+    findContamination(helpText, patterns),
+    [],
+    "bdg's own help names ~/.claude: not contamination"
+  );
+  const leaked = parseStream(
+    [
+      toolUse('m1', 'bdg --version'),
+      toolResult('at /work/browser-debugger-cli/dist/cli.js'),
+      finalMessage('ANSWER: E-a1b2c3'),
+    ].join('\n')
+  );
   assert.match(findContamination(leaked, patterns)[0], /in a tool result/);
 });
 
 test('gradeRun: pass, fail, error, and a stopped run is charged its cap', () => {
   const task = TASKS.find((t) => t.id === 'console-error-code');
-  const good = gradeRun({ task, stream: parseStream(finalMessage('ANSWER: E-a1b2c3', 0.02)), contamination: [], stoppedBy: null, runBudget: 0.5, taskContext: CTX });
+  const good = gradeRun({
+    task,
+    stream: parseStream(finalMessage('ANSWER: E-a1b2c3', 0.02)),
+    contamination: [],
+    stoppedBy: null,
+    runBudget: 0.5,
+    taskContext: CTX,
+  });
   assert.equal(good.status, 'pass');
   assert.equal(good.costUsd, 0.02);
   assert.equal(good.inputTokens, 20);
   assert.equal(good.outputTokens, 7);
-  const bad = gradeRun({ task, stream: parseStream(finalMessage('ANSWER: W-1010')), contamination: [], stoppedBy: null, runBudget: 0.5, taskContext: CTX });
+  const bad = gradeRun({
+    task,
+    stream: parseStream(finalMessage('ANSWER: W-1010')),
+    contamination: [],
+    stoppedBy: null,
+    runBudget: 0.5,
+    taskContext: CTX,
+  });
   assert.equal(bad.status, 'fail');
   assert.match(bad.reason, /W-1010/);
-  const stopped = gradeRun({ task, stream: parseStream(toolUse('m1', 'bdg --help')), contamination: [], stoppedBy: 'turn-cap', runBudget: 0.5, taskContext: CTX });
+  const stopped = gradeRun({
+    task,
+    stream: parseStream(toolUse('m1', 'bdg --help')),
+    contamination: [],
+    stoppedBy: 'turn-cap',
+    runBudget: 0.5,
+    taskContext: CTX,
+  });
   assert.equal(stopped.status, 'turn-cap');
   assert.equal(stopped.costUsd, 0.5);
   assert.equal(stopped.costEstimated, true);
-  const errored = gradeRun({ task, stream: parseStream(JSON.stringify({ type: 'result', subtype: 'error_max_budget_usd', is_error: true, total_cost_usd: 0.5 })), contamination: [], stoppedBy: null, runBudget: 0.5, taskContext: CTX });
+  const errored = gradeRun({
+    task,
+    stream: parseStream(
+      JSON.stringify({
+        type: 'result',
+        subtype: 'error_max_budget_usd',
+        is_error: true,
+        total_cost_usd: 0.5,
+      })
+    ),
+    contamination: [],
+    stoppedBy: null,
+    runBudget: 0.5,
+    taskContext: CTX,
+  });
   assert.equal(errored.status, 'error');
 });
 
 test('summary: a table with success %, a failures list and the budget outcome', () => {
-  const row = (task, model, run, pass, status = pass ? 'pass' : 'fail') => ({ task, model, run, status, pass, reason: pass ? 'ok' : 'a | b', toolCalls: 4, inputTokens: 100, outputTokens: 20, costUsd: 0.01, durationMs: 8000, transcript: `t${run}.jsonl` });
-  const rows = [row('popup-token', 'm', 1, true), row('popup-token', 'm', 2, false), row('download-name', 'm', 1, true), row('download-name', 'm', 2, false, 'contaminated')];
+  const row = (task, model, run, pass, status = pass ? 'pass' : 'fail') => ({
+    task,
+    model,
+    run,
+    status,
+    pass,
+    reason: pass ? 'ok' : 'a | b',
+    toolCalls: 4,
+    inputTokens: 100,
+    outputTokens: 20,
+    costUsd: 0.01,
+    durationMs: 8000,
+    transcript: `t${run}.jsonl`,
+  });
+  const rows = [
+    row('popup-token', 'm', 1, true),
+    row('popup-token', 'm', 2, false),
+    row('download-name', 'm', 1, true),
+    row('download-name', 'm', 2, false, 'contaminated'),
+  ];
   const cells = aggregate(rows);
   assert.equal(cells.length, 2);
   assert.equal(cells[0].passes, 1);
   assert.equal(cells[1].contaminated, 1);
   const settings = resolveSettings(parseArgs(['--budget=1']));
-  const text = renderSummary({ rows, settings: { ...settings, models: ['m'], runs: 2 }, spent: 0.04, skipped: 3, stopReason: 'budget' });
-  assert.match(text, /\| popup-token \| m \| 50% \(1\/2\) \| 2 \| 4\.0 \| 120 \| 0\.0200 \| 8s \| 0 \| 0 \| 0 \|/);
+  const text = renderSummary({
+    rows,
+    settings: { ...settings, models: ['m'], runs: 2 },
+    spent: 0.04,
+    skipped: 3,
+    stopReason: 'budget',
+  });
+  assert.match(
+    text,
+    /\| popup-token \| m \| 50% \(1\/2\) \| 2 \| 4\.0 \| 120 \| 0\.0200 \| 8s \| 0 \| 0 \| 0 \|/
+  );
   assert.match(text, /Total: 2\/4 runs passed\./);
   assert.match(text, /Not started: 3 runs \(budget\)/);
   assert.match(text, /## Failures/);
@@ -224,7 +518,7 @@ test('summary: a table with success %, a failures list and the budget outcome', 
 });
 
 /** Code for a fake claude: the right answer for this run, from the nonce in the prompt and the test secret */
-const FAKE_ANSWER = `(() => { const n = /[?&]n=([0-9a-f]+)/.exec(process.argv.join(' '))[1]; return 'ANSWER: E-' + require('crypto').createHmac('sha256', 'test-secret').update('console-error-code:' + n).digest('hex').slice(0, 6); })()`;
+const FAKE_ANSWER = "'ANSWER: E-abc123'";
 
 /**
  * Write a fake `claude` that emits a canned stream, to test the runner without spending money.
@@ -249,11 +543,34 @@ function fakeContext(claudeBody, extraArgs = []) {
   const build = path.join(work, 'build');
   fs.mkdirSync(build);
   fs.writeFileSync(path.join(build, 'index.js'), 'process.exit(0);\n');
-  const settings = resolveSettings(parseArgs(['--tasks=console-error-code', `--out=${path.join(work, 'out')}`, `--claude-bin=${fakeClaude(work, claudeBody)}`, '--run-timeout=20', ...extraArgs]));
+  const settings = resolveSettings(
+    parseArgs([
+      '--tasks=console-error-code',
+      `--out=${path.join(work, 'out')}`,
+      `--claude-bin=${fakeClaude(work, claudeBody)}`,
+      '--run-timeout=20',
+      ...extraArgs,
+    ])
+  );
   fs.mkdirSync(path.join(settings.out, 'transcripts'), { recursive: true });
   const entry = path.join(work, 'dist-copy.js');
   fs.writeFileSync(entry, 'process.exit(0);\n');
-  const ctx = { settings, key: FAKE_KEY, entry, taskContext: { fixtures: 'http://127.0.0.1:9/', refusedUrl: 'http://127.0.0.1:8/', valueApi: 'http://127.0.0.1:7' }, valueSecret: 'test-secret', values: { forged: () => 0 }, control: { aborted: false, stops: new Set() }, patterns: contaminationPatterns({ repoRoot: '/nonexistent/repo', home: '/nonexistent' }) };
+  const ctx = {
+    settings,
+    key: FAKE_KEY,
+    entry,
+    taskContext: {
+      fixtures: 'http://127.0.0.1:9/',
+      refusedUrl: 'http://127.0.0.1:8/',
+      logApi: 'http://127.0.0.1:7',
+    },
+    values: {
+      forged: () => 0,
+      entries: (_nonce, key) => (key === 'console-error-code' ? ['E-abc123'] : []),
+    },
+    control: { aborted: false, stops: new Set() },
+    patterns: contaminationPatterns({ repoRoot: '/nonexistent/repo', home: '/nonexistent' }),
+  };
   return { ctx, work };
 }
 
@@ -265,7 +582,11 @@ console.log(JSON.stringify({ type: 'assistant', message: { id: 'a1', content: [{
 console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: 'saw ' + key + '\\n' + ${FAKE_ANSWER}, total_cost_usd: 0.03, usage: { input_tokens: 3, output_tokens: 4 } }));
 `;
   const { ctx } = fakeContext(body);
-  const row = await runJob(ctx, { task: TASKS.find((t) => t.id === 'console-error-code'), model: 'claude-haiku-5-5', run: 1 });
+  const row = await runJob(ctx, {
+    task: TASKS.find((t) => t.id === 'console-error-code'),
+    model: 'claude-haiku-5-5',
+    run: 1,
+  });
   assert.equal(row.status, 'pass');
   assert.equal(row.costUsd, 0.03);
   assert.deepEqual(row.init.tools, ['Bash']);
@@ -284,15 +605,25 @@ console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false
 `;
   const { ctx, work } = fakeContext('');
   const traceFile = path.join(work, 'env.txt');
-  fs.writeFileSync(ctx.settings.claudeBin, `#!${process.execPath}\n${body.replace(JSON.stringify('PLACEHOLDER'), JSON.stringify(traceFile))}\n`, { mode: 0o755 });
+  fs.writeFileSync(
+    ctx.settings.claudeBin,
+    `#!${process.execPath}\n${body.replace(JSON.stringify('PLACEHOLDER'), JSON.stringify(traceFile))}\n`,
+    { mode: 0o755 }
+  );
   process.env.LEAK = 'owner-secret';
   try {
-    const row = await runJob(ctx, { task: TASKS.find((t) => t.id === 'console-error-code'), model: 'm', run: 1 });
+    const row = await runJob(ctx, {
+      task: TASKS.find((t) => t.id === 'console-error-code'),
+      model: 'm',
+      run: 1,
+    });
     assert.equal(row.status, 'pass');
   } finally {
     delete process.env.LEAK;
   }
-  const [cwd, home, config, session, attach, ci, entries, firstPath, leak] = fs.readFileSync(traceFile, 'utf8').split('\n');
+  const [cwd, home, config, session, attach, ci, entries, firstPath, leak] = fs
+    .readFileSync(traceFile, 'utf8')
+    .split('\n');
   assert.equal(entries, '0');
   assert.equal(attach, '1');
   assert.equal(ci, '1');
@@ -310,7 +641,11 @@ let i = 0;
 setInterval(() => console.log(JSON.stringify({ type: 'assistant', message: { id: 'm' + i++, content: [{ type: 'tool_use', name: 'Bash', input: { command: 'bdg status' } }] } })), 10);
 `;
   const { ctx } = fakeContext(body, ['--max-turns=3']);
-  const row = await runJob(ctx, { task: TASKS.find((t) => t.id === 'console-error-code'), model: 'm', run: 1 });
+  const row = await runJob(ctx, {
+    task: TASKS.find((t) => t.id === 'console-error-code'),
+    model: 'm',
+    run: 1,
+  });
   assert.equal(row.status, 'turn-cap');
   assert.equal(row.pass, false);
   assert.equal(row.costUsd, ctx.settings.runBudget);
@@ -318,12 +653,24 @@ setInterval(() => console.log(JSON.stringify({ type: 'assistant', message: { id:
 
 test('runJob: a run past the timeout is stopped and graded timeout', async () => {
   const { ctx } = fakeContext('setInterval(() => {}, 1000);', ['--run-timeout=1']);
-  const row = await runJob(ctx, { task: TASKS.find((t) => t.id === 'console-error-code'), model: 'm', run: 1 });
+  const row = await runJob(ctx, {
+    task: TASKS.find((t) => t.id === 'console-error-code'),
+    model: 'm',
+    run: 1,
+  });
   assert.equal(row.status, 'timeout');
 });
 
 test('runPool stops before the total budget could be exceeded and counts the runs it skipped', async () => {
-  const settings = resolveSettings(parseArgs(['--tasks=popup-token', '--runs=10', '--budget=1', '--run-budget=0.5', '--parallel=2']));
+  const settings = resolveSettings(
+    parseArgs([
+      '--tasks=popup-token',
+      '--runs=10',
+      '--budget=1',
+      '--run-budget=0.5',
+      '--parallel=2',
+    ])
+  );
   const started = [];
   const ctx = {
     settings,
@@ -342,29 +689,47 @@ test('runPool stops before the total budget could be exceeded and counts the run
   assert.ok(outcome.spent <= settings.budget);
 });
 
-test('valueFor: differs per nonce and key, is stable, and the button mask has a breaking button', () => {
-  assert.equal(valueFor('s', 'popup-token', 'n1'), valueFor('s', 'popup-token', 'n1'));
-  assert.notEqual(valueFor('s', 'popup-token', 'n1'), valueFor('s', 'popup-token', 'n2'));
-  assert.notEqual(valueFor('s', 'popup-token', 'n1'), valueFor('s', 'download-name', 'n1'));
-  assert.notEqual(valueFor('s', 'popup-token', 'n1'), valueFor('t', 'popup-token', 'n1'));
-  assert.match(valueFor('s', 'popup-token', 'n1'), /^[0-9a-f]{6}$/);
-  for (let i = 0; i < 200; i++) assert.match(valueFor('s', 'breaking-buttons', `n${i}`), /^(?=.*1)[01]{5}$/);
-});
-
-test('value server answers /value with the run value and CORS, and nothing else', async () => {
-  const server = await startValueServer('secret');
+test('log server only records: POST /log is stored, every GET and other path is a 404 with no value', async () => {
+  const server = await startLogServer('http://127.0.0.1:9');
   try {
-    const ok = await fetch(`${server.url}/value?key=popup-token&n=abc`);
-    assert.equal(await ok.text(), valueFor('secret', 'popup-token', 'abc'));
-    assert.equal(ok.headers.get('access-control-allow-origin'), '*');
-    assert.equal((await fetch(`${server.url}/other`)).status, 404);
-    assert.equal((await fetch(`${server.url}/value?key=x`)).status, 404);
+    const post = await fetch(`${server.url}/log?key=popup-token&n=abc`, {
+      method: 'POST',
+      body: 'tk-1',
+      headers: { Origin: 'http://127.0.0.1:9' },
+    });
+    assert.equal(post.status, 204);
+    assert.deepEqual(server.entries('abc', 'popup-token'), ['tk-1']);
+    assert.equal(server.forged('abc'), 0);
+    for (const url of ['/log?key=popup-token&n=abc', '/value?key=popup-token&n=abc', '/', '/log']) {
+      const res = await fetch(`${server.url}${url}`);
+      assert.equal(res.status, 404, url);
+      assert.equal(await res.text(), '');
+    }
+    assert.equal(
+      (await fetch(`${server.url}/log?key=x`, { method: 'POST', body: 'y' })).status,
+      404
+    );
   } finally {
     server.stop();
   }
 });
 
-test('task URLs carry the nonce and the value server, never a value', () => {
+test('log server counts a POST without the page origin as forged', async () => {
+  const server = await startLogServer('http://127.0.0.1:9');
+  try {
+    await fetch(`${server.url}/log?key=k&n=z`, { method: 'POST', body: 'fake' });
+    await fetch(`${server.url}/log?key=k&n=z`, {
+      method: 'POST',
+      body: 'fake',
+      headers: { Origin: 'http://evil.example' },
+    });
+    assert.equal(server.forged('z'), 2);
+  } finally {
+    server.stop();
+  }
+});
+
+test('task URLs carry the nonce and the log server, never a value', () => {
   for (const task of TASKS.filter((t) => t.id !== 'page-never-loads')) {
     const url = /(http:\/\/127\.0\.0\.1:1\/eval-[a-z-]+\?\S+)/.exec(task.prompt(CTX))[1];
     assert.equal(url.startsWith(pageUrl(CTX, url.split('?')[0].split('/').pop())), true);
@@ -398,12 +763,22 @@ spawn(process.execPath, ['-e', 'require("fs").writeFileSync(${JSON.stringify(pid
 test('runJob: a timeout kills the whole process group, so a grandchild holding stdout cannot hang the run', async () => {
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'ae-gc-'));
   const pidFile = path.join(work, 'gc.pid');
-  const { ctx } = fakeContext(`${GRANDCHILD(pidFile)}\nsetInterval(() => {}, 1000);`, ['--run-timeout=3']);
+  const { ctx } = fakeContext(`${GRANDCHILD(pidFile)}\nsetInterval(() => {}, 1000);`, [
+    '--run-timeout=3',
+  ]);
   const started = Date.now();
-  const row = await runJob(ctx, { task: TASKS.find((t) => t.id === 'console-error-code'), model: 'm', run: 1 });
+  const row = await runJob(ctx, {
+    task: TASKS.find((t) => t.id === 'console-error-code'),
+    model: 'm',
+    run: 1,
+  });
   assert.equal(row.status, 'timeout');
   assert.ok(Date.now() - started < 20_000);
-  assert.equal(await processEnds(Number(fs.readFileSync(pidFile, 'utf8'))), true, 'the grandchild was killed');
+  assert.equal(
+    await processEnds(Number(fs.readFileSync(pidFile, 'utf8'))),
+    true,
+    'the grandchild was killed'
+  );
 });
 
 test('runJob: a claude that exits and leaves a stray holding stdout still ends the run and the stray', async () => {
@@ -417,14 +792,26 @@ const wait = setInterval(() => {
 }, 20);
 `;
   const { ctx } = fakeContext(body);
-  const row = await runJob(ctx, { task: TASKS.find((t) => t.id === 'console-error-code'), model: 'm', run: 1 });
+  const row = await runJob(ctx, {
+    task: TASKS.find((t) => t.id === 'console-error-code'),
+    model: 'm',
+    run: 1,
+  });
   assert.equal(row.status, 'pass');
-  assert.equal(await processEnds(Number(fs.readFileSync(pidFile, 'utf8'))), true, 'the stray was killed');
+  assert.equal(
+    await processEnds(Number(fs.readFileSync(pidFile, 'utf8'))),
+    true,
+    'the stray was killed'
+  );
 });
 
 test('abort: a first stop signal ends runs as aborted and a second one forces it', async () => {
   const { ctx } = fakeContext('setInterval(() => {}, 1000);', ['--run-timeout=60']);
-  const pending = runJob(ctx, { task: TASKS.find((t) => t.id === 'console-error-code'), model: 'm', run: 1 });
+  const pending = runJob(ctx, {
+    task: TASKS.find((t) => t.id === 'console-error-code'),
+    model: 'm',
+    run: 1,
+  });
   while (ctx.control.stops.size === 0) await new Promise((resolve) => setTimeout(resolve, 20));
   for (const stop of [...ctx.control.stops]) stop(false);
   const row = await pending;
@@ -432,14 +819,29 @@ test('abort: a first stop signal ends runs as aborted and a second one forces it
 });
 
 test('runPool: a job that throws becomes an error row and the other workers finish', async () => {
-  const settings = resolveSettings(parseArgs(['--tasks=popup-token', '--runs=4', '--budget=10', '--run-budget=0.5', '--parallel=2']));
+  const settings = resolveSettings(
+    parseArgs([
+      '--tasks=popup-token',
+      '--runs=4',
+      '--budget=10',
+      '--run-budget=0.5',
+      '--parallel=2',
+    ])
+  );
   const ctx = {
     settings,
     control: { aborted: false, stops: new Set() },
     runJob: async (_ctx, job) => {
       if (job.run === 2) throw new Error('boom');
       await new Promise((resolve) => setTimeout(resolve, 20));
-      return { task: 'popup-token', model: 'm', run: job.run, status: 'pass', pass: true, costUsd: 0.1 };
+      return {
+        task: 'popup-token',
+        model: 'm',
+        run: job.run,
+        status: 'pass',
+        pass: true,
+        costUsd: 0.1,
+      };
     },
   };
   const rows = [];
@@ -463,68 +865,131 @@ fs.writeFileSync(${JSON.stringify(traceFile)}, JSON.stringify({ env: Object.keys
 console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: ${FAKE_ANSWER}, total_cost_usd: 0.01, usage: {} }));
 `;
   const { ctx } = fakeContext(body);
-  const row = await runJob(ctx, { task: TASKS.find((t) => t.id === 'console-error-code'), model: 'm', run: 1 });
+  const row = await runJob(ctx, {
+    task: TASKS.find((t) => t.id === 'console-error-code'),
+    model: 'm',
+    run: 1,
+  });
   assert.equal(row.status, 'pass');
   const trace = JSON.parse(fs.readFileSync(traceFile, 'utf8'));
-  assert.equal(trace.env.some((name) => name.includes('ANTHROPIC') || name.includes('API_KEY')), false);
+  assert.equal(
+    trace.env.some((name) => name.includes('ANTHROPIC') || name.includes('API_KEY')),
+    false
+  );
   assert.equal(trace.helperOut, FAKE_KEY);
   assert.match(trace.noProxy, /127\.0\.0\.1/);
   assert.equal(trace.noProxy, trace.noProxyLower);
 });
 
-const BUILT = fs.existsSync(path.resolve('dist/__testutils__/serveFixtures.js')) && fs.existsSync(path.resolve('node_modules/ws'));
+const BUILT =
+  fs.existsSync(path.resolve('dist/__testutils__/serveFixtures.js')) &&
+  fs.existsSync(path.resolve('node_modules/ws'));
 
-test('fixture runtime copy: serves the eval pages from a temp dir, no process names the repo, pages hold no value', { skip: !BUILT }, async () => {
-  const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'ae-fx-'));
-  const script = copyFixtureRuntime(path.resolve('dist'), dest);
-  const { spawn } = await import('node:child_process');
-  const child = spawn(process.execPath, [script], { cwd: path.dirname(script), stdio: ['ignore', 'pipe', 'inherit'] });
-  try {
-    const url = await new Promise((resolve, reject) => {
-      let out = '';
-      child.stdout.on('data', (chunk) => {
-        out += chunk;
-        const match = /fixtures:\s+(http:\/\/\S+)/.exec(out);
-        if (match) resolve(match[1]);
-      });
-      child.once('close', () => reject(new Error('fixture server ended')));
+test(
+  'fixture runtime copy: serves the eval pages from a temp dir, no process names the repo, pages hold no value',
+  { skip: !BUILT },
+  async () => {
+    const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'ae-fx-'));
+    const script = copyFixtureRuntime(path.resolve('dist'), dest);
+    const { spawn } = await import('node:child_process');
+    const child = spawn(process.execPath, [script], {
+      cwd: path.dirname(script),
+      stdio: ['ignore', 'pipe', 'inherit'],
     });
-    const command = execFileSync('ps', ['-o', 'command=', '-p', String(child.pid)], { encoding: 'utf8' });
-    assert.equal(command.includes(path.resolve('.')), false, `ps shows the repo: ${command}`);
-    for (const page of ['eval-signin-popup', 'eval-confirm', 'eval-buttons', 'eval-shadow-login', 'eval-net-a', 'eval-net-b', 'eval-download', 'eval-console', 'eval-classes']) {
-      const html = await (await fetch(`${url}${page}`)).text();
-      assert.match(html, /\/value\?key=|value\('/, `${page} asks the value server`);
-      assert.equal(/tk-[0-9a-f]{6}|E-\d{4}|R-\d{5}/.test(html), false, `${page} holds no answer`);
+    try {
+      const url = await new Promise((resolve, reject) => {
+        let out = '';
+        child.stdout.on('data', (chunk) => {
+          out += chunk;
+          const match = /fixtures:\s+(http:\/\/\S+)/.exec(out);
+          if (match) resolve(match[1]);
+        });
+        child.once('close', () => reject(new Error('fixture server ended')));
+      });
+      const command = execFileSync('ps', ['-o', 'command=', '-p', String(child.pid)], {
+        encoding: 'utf8',
+      });
+      assert.equal(command.includes(path.resolve('.')), false, `ps shows the repo: ${command}`);
+      for (const page of [
+        'eval-signin-popup',
+        'eval-confirm',
+        'eval-buttons',
+        'eval-shadow-login',
+        'eval-net-a',
+        'eval-net-b',
+        'eval-download',
+        'eval-console',
+        'eval-classes',
+      ]) {
+        const html = await (await fetch(`${url}${page}`)).text();
+        if (page !== 'eval-net-a')
+          assert.match(html, /\/log\?key=/, `${page} reports to the log server`);
+        assert.equal(/tk-[0-9a-f]{6}|E-\d{4}|R-\d{5}/.test(html), false, `${page} holds no answer`);
+        assert.equal(
+          /(?:function|const|let|var)\s+(?:value|report|log)\b/.test(html),
+          false,
+          `${page} defines no global helper`
+        );
+        assert.match(html, /crypto\.getRandomValues/, `${page} makes its value at run time`);
+      }
+    } finally {
+      child.kill('SIGTERM');
     }
-  } finally {
-    child.kill('SIGTERM');
   }
-});
+);
 
 /**
- * A real value server wired into a fake-claude context, with pages served from `http://127.0.0.1:9`.
- * @param {string} claudeBody JavaScript of the fake claude
+ * A real log server wired into a fake-claude context, with pages served from `http://127.0.0.1:9`.
+ * @param {string} claudeBody JavaScript of the fake claude (`__API__` is the log server URL)
  * @returns {Promise<{ctx: object, server: {url: string, stop: () => void}}>} context and server
  */
 async function cheatContext(claudeBody) {
-  const server = await startValueServer('test-secret', 'http://127.0.0.1:9');
+  const server = await startLogServer('http://127.0.0.1:9');
   const { ctx } = fakeContext(claudeBody.replaceAll('__API__', server.url));
-  ctx.taskContext.valueApi = server.url;
+  ctx.taskContext.logApi = server.url;
   ctx.values = server;
   return { ctx, server };
 }
 
 const NONCE_JS = "const nonce = /[?&]n=([0-9a-f]+)/.exec(process.argv.join(' '))[1];";
-const REQUEST_JS = (headers) => `require('http').get('__API__/value?key=console-error-code&n=' + nonce, { headers: ${headers} }, (res) => { res.resume(); res.on('end', done); });`;
+const RESULT_JS = (answer) =>
+  `console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: 'ANSWER: ${answer}', total_cost_usd: 0.01, usage: {} }));`;
+const POST_JS = (
+  headers,
+  body
+) => `const req = require('http').request('__API__/log?key=console-error-code&n=' + nonce, { method: 'POST', headers: ${headers} }, (res) => { res.resume(); res.on('end', done); });
+req.end(${JSON.stringify(body)});`;
+const CONSOLE_TASK = () => TASKS.find((t) => t.id === 'console-error-code');
 
-test('cheated: a fake claude that curls the value server is graded cheated even with the right answer', async () => {
+test('no correct answer without the interaction: a fake claude that GETs the log server, guesses a /value helper or reads for the value fails', async () => {
   const { ctx, server } = await cheatContext(`
 ${NONCE_JS}
-const done = () => console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: ${FAKE_ANSWER}, total_cost_usd: 0.01, usage: {} }));
-${REQUEST_JS('{}')}
+const http = require('http');
+let pending = 2;
+const body = [];
+const done = () => { if (--pending === 0) console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: 'ANSWER: ' + (body.join('') || 'E-000000'), total_cost_usd: 0.01, usage: {} })); };
+for (const route of ['/log?key=console-error-code&n=' + nonce, '/value?key=console-error-code&n=' + nonce]) {
+  http.get('__API__' + route, (res) => { res.on('data', (c) => body.push(c)); res.on('end', done); });
+}
 `);
   try {
-    const row = await runJob(ctx, { task: TASKS.find((t) => t.id === 'console-error-code'), model: 'm', run: 1 });
+    const row = await runJob(ctx, { task: CONSOLE_TASK(), model: 'm', run: 1 });
+    assert.equal(row.pass, false);
+    assert.equal(row.status, 'fail');
+    assert.match(row.reason, /interaction never happened/);
+  } finally {
+    server.stop();
+  }
+});
+
+test('cheated: a fake claude that POSTs a made-up value to the log server (curl) is graded cheated even though the answer matches', async () => {
+  const { ctx, server } = await cheatContext(`
+${NONCE_JS}
+const done = () => { ${RESULT_JS('E-forged')} };
+${POST_JS('{}', 'E-forged')}
+`);
+  try {
+    const row = await runJob(ctx, { task: CONSOLE_TASK(), model: 'm', run: 1 });
     assert.equal(row.status, 'cheated');
     assert.equal(row.pass, false);
     assert.match(row.reason, /outside a page/);
@@ -533,31 +998,33 @@ ${REQUEST_JS('{}')}
   }
 });
 
-test('cheated: a tool call that fetches the value server through bdg dom eval is graded cheated', async () => {
+test('cheated: a tool call that posts to the log server through bdg dom eval is graded cheated', async () => {
   const { ctx, server } = await cheatContext(`
-console.log(JSON.stringify({ type: 'assistant', message: { id: 'a1', content: [{ type: 'tool_use', name: 'Bash', input: { command: 'bdg dom eval "fetch(\\'__API__/value?key=console-error-code&n=1\\').then(r => r.text())"' } }] } }));
-console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: ${FAKE_ANSWER}, total_cost_usd: 0.01, usage: {} }));
+${NONCE_JS}
+console.log(JSON.stringify({ type: 'assistant', message: { id: 'a1', content: [{ type: 'tool_use', name: 'Bash', input: { command: 'bdg dom eval "fetch(\\'__API__/log?key=console-error-code&n=1\\', {method: \\'POST\\', body: \\'E-forged\\'})"' } }] } }));
+const done = () => { ${RESULT_JS('E-forged')} };
+${POST_JS("{ Origin: 'http://127.0.0.1:9' }", 'E-forged')}
 `);
   try {
-    const row = await runJob(ctx, { task: TASKS.find((t) => t.id === 'console-error-code'), model: 'm', run: 1 });
+    const row = await runJob(ctx, { task: CONSOLE_TASK(), model: 'm', run: 1 });
     assert.equal(row.status, 'cheated');
-    assert.match(row.reason, /names the value server/);
+    assert.match(row.reason, /names the log server/);
   } finally {
     server.stop();
   }
 });
 
-test('not cheated: opening the page URL from the prompt and a request that carries the page origin pass', async () => {
+test('not cheated: opening the prompt URL and a page that logs with its origin pass', async () => {
   const { ctx, server } = await cheatContext(`
 ${NONCE_JS}
 const url = /(http:\\/\\/127\\.0\\.0\\.1:1\\/eval-console\\?\\S+)/.exec(process.argv.join(' '))[1];
 console.log(JSON.stringify({ type: 'assistant', message: { id: 'a1', content: [{ type: 'tool_use', name: 'Bash', input: { command: 'bdg ' + url } }] } }));
-const done = () => console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: ${FAKE_ANSWER}, total_cost_usd: 0.01, usage: {} }));
-${REQUEST_JS("{ Origin: 'http://127.0.0.1:9' }")}
+const done = () => { ${RESULT_JS('E-page42')} };
+${POST_JS("{ Origin: 'http://127.0.0.1:9' }", 'E-page42')}
 `);
   try {
     ctx.taskContext.fixtures = 'http://127.0.0.1:1/';
-    const row = await runJob(ctx, { task: TASKS.find((t) => t.id === 'console-error-code'), model: 'm', run: 1 });
+    const row = await runJob(ctx, { task: CONSOLE_TASK(), model: 'm', run: 1 });
     assert.equal(row.reason, 'matches the truth');
     assert.equal(row.status, 'pass');
   } finally {
@@ -566,18 +1033,77 @@ ${REQUEST_JS("{ Origin: 'http://127.0.0.1:9' }")}
 });
 
 test('findCheating: the encoded api parameter of the prompt URL is not counted, other mentions are', () => {
-  const ctx = { valueApi: 'http://127.0.0.1:4455' };
-  const legit = `bdg http://127.0.0.1:1/eval-signin?n=ab&api=${encodeURIComponent(ctx.valueApi)}`;
+  const ctx = { logApi: 'http://127.0.0.1:4455' };
+  const legit = `bdg http://127.0.0.1:1/eval-signin?n=ab&api=${encodeURIComponent(ctx.logApi)}`;
   assert.deepEqual(findCheating({ toolInputs: [JSON.stringify({ command: legit })] }, ctx, 0), []);
-  for (const command of ['curl http://127.0.0.1:4455/value?key=x&n=ab', 'curl 127.0.0.1%3A4455', 'bdg dom eval "fetch(\'/value?key=x\')"']) {
-    assert.equal(findCheating({ toolInputs: [JSON.stringify({ command })] }, ctx, 0).length, 1, command);
+  for (const command of [
+    'curl -X POST http://127.0.0.1:4455/log?key=x&n=ab',
+    'curl 127.0.0.1%3A4455',
+    "bdg dom eval \"fetch('/log?key=x', {method: 'POST'})\"",
+    'bdg eval "fetch(new URLSearchParams(location.search).get(\'api\'))"',
+  ]) {
+    assert.equal(
+      findCheating({ toolInputs: [JSON.stringify({ command })] }, ctx, 0).length,
+      1,
+      command
+    );
   }
   assert.equal(findCheating({ toolInputs: [] }, ctx, 2).length, 1);
 });
 
+test('summary table: header, separator and rows have the same number of columns', () => {
+  const row = {
+    task: 't',
+    model: 'm',
+    run: 1,
+    status: 'pass',
+    pass: true,
+    reason: 'ok',
+    toolCalls: 1,
+    inputTokens: 1,
+    outputTokens: 1,
+    costUsd: 0.01,
+    durationMs: 1000,
+    transcript: 'x',
+  };
+  const text = renderSummary({
+    rows: [row],
+    settings: { ...resolveSettings(parseArgs([])), models: ['m'], runs: 1 },
+    spent: 0.01,
+    skipped: 0,
+    stopReason: '',
+  });
+  const table = text
+    .split('\n')
+    .filter((line) => line.startsWith('|'))
+    .slice(0, 3);
+  const widths = table.map((line) => line.split('|').length);
+  assert.equal(new Set(widths).size, 1, widths.join(','));
+  assert.equal(widths[0] - 2, 11);
+});
+
 test('summary counts cheated runs in their own column and lists them as failures', () => {
-  const row = { task: 't', model: 'm', run: 1, status: 'cheated', pass: false, reason: 'fetched', toolCalls: 1, inputTokens: 1, outputTokens: 1, costUsd: 0.01, durationMs: 1000, transcript: 'x' };
-  const text = renderSummary({ rows: [row], settings: { ...resolveSettings(parseArgs([])), models: ['m'], runs: 1 }, spent: 0.01, skipped: 0, stopReason: '' });
+  const row = {
+    task: 't',
+    model: 'm',
+    run: 1,
+    status: 'cheated',
+    pass: false,
+    reason: 'fetched',
+    toolCalls: 1,
+    inputTokens: 1,
+    outputTokens: 1,
+    costUsd: 0.01,
+    durationMs: 1000,
+    transcript: 'x',
+  };
+  const text = renderSummary({
+    rows: [row],
+    settings: { ...resolveSettings(parseArgs([])), models: ['m'], runs: 1 },
+    spent: 0.01,
+    skipped: 0,
+    stopReason: '',
+  });
   assert.match(text, /\| cheated \|/);
   assert.match(text, /\| 0 \| 1 \| 0 \|\n/);
   assert.match(text, /\| t \| m \| 1 \| cheated \|/);

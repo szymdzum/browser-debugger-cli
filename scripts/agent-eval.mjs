@@ -26,8 +26,8 @@
  * - a scrubbed environment: only the API key, proxy settings and a minimal PATH reach the child.
  * A transcript with a tool call that names the repo, ~/.claude, ~/.config/bdg-eval or the owner's home
  * (or a result that names the repo or the real <home>/.claude) is graded `contaminated`, not pass.
- * A run that fetched its per-run value without the interaction (a tool call naming the value server,
- * or a request to it from outside a page) is graded `cheated`.
+ * A run that tampered with the log (a tool call naming the log server, or a POST to it from outside a
+ * page) is graded `cheated`.
  * Known limits: Bash can still read any path the user can, the key file of the run sits in the run's
  * temp dir, and the harness's own command line (`ps`) shows how it was started (use a relative path).
  * `claude` has no turn-cap flag, so the harness counts assistant turns in the stream and stops the run.
@@ -48,7 +48,18 @@ const DEFAULT_KEY_FILE = path.join(os.homedir(), '.config/bdg-eval/anthropic-key
 const DEFAULT_MODEL = 'claude-haiku-5-5';
 const KILL_GRACE_MS = 5_000;
 const CLEANUP_TIMEOUT_MS = 30_000;
-const PASSTHROUGH_ENV = ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy', 'NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE', 'CHROME_PATH', 'LANG'];
+const PASSTHROUGH_ENV = [
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'ALL_PROXY',
+  'http_proxy',
+  'https_proxy',
+  'all_proxy',
+  'NODE_EXTRA_CA_CERTS',
+  'SSL_CERT_FILE',
+  'CHROME_PATH',
+  'LANG',
+];
 const BUILD_FILES = ['index.js', 'cli.js', 'daemon.js'];
 
 /**
@@ -83,7 +94,8 @@ export function parseArgs(argv) {
 function numberFlag(flags, name, fallback) {
   if (flags[name] === undefined) return fallback;
   const value = Number(flags[name]);
-  if (!Number.isFinite(value) || value <= 0) throw new Error(`--${name} must be a positive number, got "${flags[name]}"`);
+  if (!Number.isFinite(value) || value <= 0)
+    throw new Error(`--${name} must be a positive number, got "${flags[name]}"`);
   return value;
 }
 
@@ -94,15 +106,34 @@ function numberFlag(flags, name, fallback) {
  * @returns {object} settings
  */
 export function resolveSettings(flags, now = new Date()) {
-  const known = new Set(['tasks', 'model', 'runs', 'parallel', 'budget', 'run-budget', 'max-turns', 'run-timeout', 'build', 'out', 'key-file', 'fixtures-url', 'claude-bin', 'dry-run']);
+  const known = new Set([
+    'tasks',
+    'model',
+    'runs',
+    'parallel',
+    'budget',
+    'run-budget',
+    'max-turns',
+    'run-timeout',
+    'build',
+    'out',
+    'key-file',
+    'fixtures-url',
+    'claude-bin',
+    'dry-run',
+  ]);
   const unknown = Object.keys(flags).find((name) => !known.has(name));
   if (unknown) throw new Error(`Unknown flag --${unknown}`);
   const stamp = now.toISOString().replace(/[-:]/g, '').slice(0, 15);
   const out = path.resolve(String(flags.out ?? path.join(os.tmpdir(), `bdg-agent-eval-${stamp}`)));
-  if (out === REPO_ROOT || out.startsWith(REPO_ROOT + path.sep)) throw new Error('--out must be outside the repository');
+  if (out === REPO_ROOT || out.startsWith(REPO_ROOT + path.sep))
+    throw new Error('--out must be outside the repository');
   const settings = {
     tasks: selectTasks(flags.tasks === undefined ? undefined : String(flags.tasks)),
-    models: String(flags.model ?? DEFAULT_MODEL).split(',').map((m) => m.trim()).filter(Boolean),
+    models: String(flags.model ?? DEFAULT_MODEL)
+      .split(',')
+      .map((m) => m.trim())
+      .filter(Boolean),
     runs: numberFlag(flags, 'runs', 1),
     parallel: numberFlag(flags, 'parallel', 4),
     budget: numberFlag(flags, 'budget', 5),
@@ -152,7 +183,9 @@ export function renderPlan(settings) {
     `cost:    worst case $${worst.toFixed(2)} (${jobs.length} x $${settings.runBudget} per-run cap); total budget $${settings.budget}`,
   ];
   if (worst > settings.budget) {
-    lines.push(`note:    the worst case exceeds the budget: the eval stops starting runs when spent + in flight + the per-run cap would pass $${settings.budget}`);
+    lines.push(
+      `note:    the worst case exceeds the budget: the eval stops starting runs when spent + in flight + the per-run cap would pass $${settings.budget}`
+    );
   }
   return lines.join('\n');
 }
@@ -193,7 +226,15 @@ export function readApiKey(keyFile, env = process.env) {
  * @returns {{turns: number, toolCalls: number, toolInputs: string[], toolResults: string[], result: object | null, lastText: string, init: object | null}} summary
  */
 export function parseStream(streamText) {
-  const summary = { turns: 0, toolCalls: 0, toolInputs: [], toolResults: [], result: null, lastText: '', init: null };
+  const summary = {
+    turns: 0,
+    toolCalls: 0,
+    toolInputs: [],
+    toolResults: [],
+    result: null,
+    lastText: '',
+    init: null,
+  };
   const seenTurns = new Set();
   for (const line of streamText.split('\n')) {
     let message;
@@ -242,7 +283,9 @@ function collectToolResults(message, summary) {
   if (!Array.isArray(content)) return;
   for (const block of content) {
     if (block.type !== 'tool_result') continue;
-    summary.toolResults.push(typeof block.content === 'string' ? block.content : JSON.stringify(block.content ?? ''));
+    summary.toolResults.push(
+      typeof block.content === 'string' ? block.content : JSON.stringify(block.content ?? '')
+    );
   }
 }
 
@@ -260,11 +303,18 @@ export function contaminationPatterns(paths) {
     roots.add(paths.repoRoot);
   }
   return [
-    ...[...roots].map((root) => ({ label: `repository path ${root}`, pattern: new RegExp(escape(root)) })),
+    ...[...roots].map((root) => ({
+      label: `repository path ${root}`,
+      pattern: new RegExp(escape(root)),
+    })),
     { label: `${paths.home}/.claude`, pattern: new RegExp(escape(`${paths.home}/.claude`)) },
     { label: '~/.claude', pattern: /(?:~|\$HOME|\$\{HOME\})\/\.claude\b/, inputsOnly: true },
     { label: '~/.config/bdg-eval', pattern: /\.config\/bdg-eval/, inputsOnly: true },
-    { label: `the owner's home ${paths.home}`, pattern: new RegExp(`${escape(paths.home)}(?![\\w-])`), inputsOnly: true },
+    {
+      label: `the owner's home ${paths.home}`,
+      pattern: new RegExp(`${escape(paths.home)}(?![\\w-])`),
+      inputsOnly: true,
+    },
   ];
 }
 
@@ -278,7 +328,8 @@ export function findContamination(stream, patterns) {
   const found = [];
   for (const { label, pattern, inputsOnly } of patterns) {
     if (stream.toolInputs.some((text) => pattern.test(text))) found.push(`${label} in a tool call`);
-    else if (!inputsOnly && stream.toolResults.some((text) => pattern.test(text))) found.push(`${label} in a tool result`);
+    else if (!inputsOnly && stream.toolResults.some((text) => pattern.test(text)))
+      found.push(`${label} in a tool result`);
   }
   return found;
 }
@@ -289,38 +340,73 @@ export function findContamination(stream, patterns) {
  * @param {{id: string, check: (reply: string, ctx: object) => {pass: boolean, reason: string}}} args.task the task
  * @param {ReturnType<typeof parseStream>} args.stream parsed stream
  * @param {string[]} args.contamination what contaminated the run
- * @param {string[]} args.cheating how the run fetched its value without the interaction, if it did
+ * @param {string[]} args.cheating how the run tampered with the log, if it did
  * @param {'turn-cap' | 'timeout' | 'aborted' | null} args.stoppedBy why the harness stopped the child, if it did
  * @param {number} args.runBudget per-run cap, charged when the cost is unknown
- * @param {object} args.taskContext the run's context (nonce and values) for the checker
+ * @param {object} args.taskContext the run's context (nonce and what the page logged) for the checker
  * @returns {object} the graded fields of the run
  */
-export function gradeRun({ task, stream, contamination, cheating = [], stoppedBy, runBudget, taskContext }) {
+export function gradeRun({
+  task,
+  stream,
+  contamination,
+  cheating = [],
+  stoppedBy,
+  runBudget,
+  taskContext,
+}) {
   const result = stream.result;
   const costKnown = typeof result?.total_cost_usd === 'number';
-  const reply = typeof result?.result === 'string' && result.result !== '' ? result.result : stream.lastText;
+  const reply =
+    typeof result?.result === 'string' && result.result !== '' ? result.result : stream.lastText;
   const usage = result?.usage ?? {};
   const base = {
     turns: stream.turns,
     toolCalls: stream.toolCalls,
-    inputTokens: (usage.input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0),
+    inputTokens:
+      (usage.input_tokens ?? 0) +
+      (usage.cache_creation_input_tokens ?? 0) +
+      (usage.cache_read_input_tokens ?? 0),
     outputTokens: usage.output_tokens ?? 0,
     costUsd: costKnown ? result.total_cost_usd : runBudget,
     costEstimated: !costKnown,
     answer: extractAnswer(reply).value ?? null,
   };
-  if (stoppedBy) return { ...base, status: stoppedBy, pass: false, reason: `stopped: ${stoppedBy}` };
+  if (stoppedBy)
+    return { ...base, status: stoppedBy, pass: false, reason: `stopped: ${stoppedBy}` };
   if (!result || result.is_error) {
-    return { ...base, status: 'error', pass: false, reason: result ? `claude reported ${result.subtype ?? 'an error'}` : 'claude ended without a result' };
+    return {
+      ...base,
+      status: 'error',
+      pass: false,
+      reason: result
+        ? `claude reported ${result.subtype ?? 'an error'}`
+        : 'claude ended without a result',
+    };
   }
   const verdict = task.check(reply, taskContext);
   if (verdict.pass && cheating.length > 0) {
-    return { ...base, status: 'cheated', pass: false, reason: `fetched the value without the interaction: ${cheating.join('; ')}` };
+    return {
+      ...base,
+      status: 'cheated',
+      pass: false,
+      reason: `tampered with the log: ${cheating.join('; ')}`,
+    };
   }
   if (verdict.pass && contamination.length > 0) {
-    return { ...base, status: 'contaminated', pass: false, reason: `read outside the sandbox: ${contamination.join('; ')}` };
+    return {
+      ...base,
+      status: 'contaminated',
+      pass: false,
+      reason: `read outside the sandbox: ${contamination.join('; ')}`,
+    };
   }
-  return { ...base, status: verdict.pass ? 'pass' : 'fail', pass: verdict.pass, reason: verdict.reason };
+  return {
+    ...base,
+    status: verdict.pass ? 'pass' : 'fail',
+    pass: verdict.pass,
+    reason: verdict.reason,
+  };
 }
 
 /**
@@ -332,7 +418,19 @@ export function aggregate(rows) {
   const cells = new Map();
   for (const row of rows) {
     const key = `${row.task}\u0000${row.model}`;
-    const cell = cells.get(key) ?? { task: row.task, model: row.model, runs: 0, passes: 0, contaminated: 0, cheated: 0, errors: 0, toolCalls: 0, tokens: 0, cost: 0, durationMs: 0 };
+    const cell = cells.get(key) ?? {
+      task: row.task,
+      model: row.model,
+      runs: 0,
+      passes: 0,
+      contaminated: 0,
+      cheated: 0,
+      errors: 0,
+      toolCalls: 0,
+      tokens: 0,
+      cost: 0,
+      durationMs: 0,
+    };
     cell.runs++;
     if (row.pass) cell.passes++;
     if (row.status === 'contaminated') cell.contaminated++;
@@ -365,7 +463,7 @@ export function renderSummary({ rows, settings, spent, skipped, stopReason }) {
     `Models: ${settings.models.join(', ')}. Runs per task and model: ${settings.runs}. Cost: $${spent.toFixed(4)} of $${settings.budget} budget.`,
     '',
     '| task | model | success | runs | tool calls (avg) | tokens (avg) | $ | time (avg) | contaminated | cheated | errors |',
-    '| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
+    '| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
   ];
   for (const c of cells) {
     const pct = Math.round((c.passes / c.runs) * 100);
@@ -379,8 +477,17 @@ export function renderSummary({ rows, settings, spent, skipped, stopReason }) {
   if (skipped > 0) lines.push(`Not started: ${skipped} runs (${stopReason || 'stopped early'}).`);
   const failures = rows.filter((r) => !r.pass);
   if (failures.length > 0) {
-    lines.push('', '## Failures', '', '| task | model | run | status | reason | transcript |', '| --- | --- | ---: | --- | --- | --- |');
-    for (const r of failures) lines.push(`| ${r.task} | ${r.model} | ${r.run} | ${r.status} | ${String(r.reason).replace(/\|/g, '/')} | ${r.transcript} |`);
+    lines.push(
+      '',
+      '## Failures',
+      '',
+      '| task | model | run | status | reason | transcript |',
+      '| --- | --- | ---: | --- | --- | --- |'
+    );
+    for (const r of failures)
+      lines.push(
+        `| ${r.task} | ${r.model} | ${r.run} | ${r.status} | ${String(r.reason).replace(/\|/g, '/')} | ${r.transcript} |`
+      );
   }
   return lines.join('\n') + '\n';
 }
@@ -395,70 +502,69 @@ export function fitsBudget({ spent, inFlight, runBudget, budget }) {
 }
 
 /**
- * The per-run value of a task: an HMAC of the task key and the run's nonce, so it differs in every
- * run and cannot be known from page source. `breaking-buttons` gets a 5-bit mask instead (at least
- * one bit set); every other key gets 6 hex characters.
- * @param {string} secret the eval's random secret
- * @param {string} key task key
- * @param {string} nonce the run's nonce
- * @returns {string} value
- */
-export function valueFor(secret, key, nonce) {
-  const digest = crypto.createHmac('sha256', secret).update(`${key}:${nonce}`).digest();
-  if (key !== 'breaking-buttons') return digest.toString('hex').slice(0, 6);
-  const bits = Array.from({ length: 5 }, (_, i) => String(digest[i] & 1));
-  if (!bits.includes('1')) bits[digest[5] % 5] = '1';
-  return bits.join('');
-}
-
-/**
- * Start the value server the fixture pages ask for their per-run values (`/value?key=&n=`). It
- * cannot tell a page from a script, so it logs: a request without the fixture pages' `Origin`
- * (a curl, a script) is recorded per nonce for `forged`; requests from a page (`fetch` in a
- * page, which includes `bdg dom eval`) carry the origin and are caught by the tool-call scan.
- * @param {string} secret the eval's random secret
+ * Start the log server the fixture pages report to. A page generates its per-run value in the
+ * handler of the interaction, shows it, and POSTs what it showed to `/log?key=<task>&n=<nonce>`;
+ * the server only records. No request returns a value: a GET (or any other method) is a 404, so
+ * the value exists only in a page that ran the handler. A POST without the fixture pages' `Origin`
+ * header (a curl or a script forging an entry) is counted for `forged`; a forged entry made from
+ * a page (`bdg dom eval`) is caught by the tool-call scan in `findCheating`.
  * @param {string} [pageOrigin] origin the fixture pages are served from, such as `http://127.0.0.1:5000`
- * @returns {Promise<{url: string, stop: () => void, forged: (nonce: string) => number}>} server handle; `url` has no trailing slash
+ * @returns {Promise<{url: string, stop: () => void, entries: (nonce: string, key: string) => string[], forged: (nonce: string) => number}>} server handle; `url` has no trailing slash
  */
-export function startValueServer(secret, pageOrigin) {
+export function startLogServer(pageOrigin) {
+  const logged = new Map();
   const forgedByNonce = new Map();
   const server = http.createServer((req, res) => {
-    const url = new URL(req.url ?? '/', 'http://value');
+    const url = new URL(req.url ?? '/', 'http://log');
     const key = url.searchParams.get('key');
     const nonce = url.searchParams.get('n');
-    if (url.pathname !== '/value' || !key || !nonce) {
+    if (req.method !== 'POST' || url.pathname !== '/log' || !key || !nonce) {
       res.writeHead(404).end();
       return;
     }
-    if (pageOrigin !== undefined && req.headers.origin !== pageOrigin) forgedByNonce.set(nonce, (forgedByNonce.get(nonce) ?? 0) + 1);
-    res.writeHead(200, { 'Content-Type': 'text/plain', 'Access-Control-Allow-Origin': '*' });
-    res.end(valueFor(secret, key, nonce));
+    let body = '';
+    req.on('data', (chunk) => (body += chunk.toString()));
+    req.on('end', () => {
+      if (pageOrigin !== undefined && req.headers.origin !== pageOrigin)
+        forgedByNonce.set(nonce, (forgedByNonce.get(nonce) ?? 0) + 1);
+      const id = `${nonce}\u0000${key}`;
+      logged.set(id, [...(logged.get(id) ?? []), body]);
+      res.writeHead(204, { 'Access-Control-Allow-Origin': '*' }).end();
+    });
   });
   return new Promise((resolve) => {
     server.listen(0, '127.0.0.1', () => {
-      resolve({ url: `http://127.0.0.1:${server.address().port}`, stop: () => server.close(), forged: (nonce) => forgedByNonce.get(nonce) ?? 0 });
+      resolve({
+        url: `http://127.0.0.1:${server.address().port}`,
+        stop: () => server.close(),
+        entries: (nonce, key) => logged.get(`${nonce}\u0000${key}`) ?? [],
+        forged: (nonce) => forgedByNonce.get(nonce) ?? 0,
+      });
     });
   });
 }
 
 /**
- * The ways a run fetched its value without the interaction: the value server saw a request
- * without a page origin, or a tool call names the value server (its host and port, plain or
- * URL-encoded, or the `/value` path). The page URL the prompt gives carries the server as an
- * encoded `api=` parameter; that exact text is not counted.
+ * The ways a run tampered with the log: the log server saw a POST without a page origin, or a tool
+ * call names the log server (host and port, plain or URL-encoded, or the `/log` path) or reads the
+ * page's `api` parameter. The prompt URL carries the server as an encoded `api=` parameter; that
+ * exact text is not counted. This is detection: a forged entry from a script that names nothing
+ * of the above is not caught.
  * @param {{toolInputs: string[]}} stream parsed stream
- * @param {{valueApi: string}} taskContext the run's context
- * @param {number} forgedRequests requests the value server saw from outside a page
+ * @param {{logApi: string}} taskContext the run's context
+ * @param {number} forgedRequests POSTs the log server saw from outside a page
  * @returns {string[]} what was seen
  */
 export function findCheating(stream, taskContext, forgedRequests) {
   const found = [];
-  if (forgedRequests > 0) found.push(`the value server got ${forgedRequests} request(s) from outside a page`);
-  const legit = `api=${encodeURIComponent(taskContext.valueApi)}`;
-  const hostPort = taskContext.valueApi.replace(/^https?:\/\//, '');
-  const pattern = new RegExp(`${hostPort.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(':', '(?::|%3A)')}|/value(?:\\?|\\b)`, 'i');
+  if (forgedRequests > 0)
+    found.push(`the log server got ${forgedRequests} POST(s) from outside a page`);
+  const legit = `api=${encodeURIComponent(taskContext.logApi)}`;
+  const hostPort = taskContext.logApi.replace(/^https?:\/\//, '');
+  const escaped = hostPort.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(':', '(?::|%3A)');
+  const pattern = new RegExp(`${escaped}|/log(?:\\?|\\b)|get\\(\\s*['"\`]api['"\`]`, 'i');
   const named = stream.toolInputs.some((text) => pattern.test(text.split(legit).join('')));
-  if (named) found.push('a tool call names the value server');
+  if (named) found.push('a tool call names the log server');
   return found;
 }
 
@@ -489,13 +595,16 @@ function resolveBin(name, searchPath) {
  */
 export function copyBuild(build, dest) {
   fs.mkdirSync(path.join(dest, 'dist'), { recursive: true });
-  if (!fs.existsSync(path.join(build, 'index.js'))) throw new Error(`No build at ${build}: run npm run build first`);
+  if (!fs.existsSync(path.join(build, 'index.js')))
+    throw new Error(`No build at ${build}: run npm run build first`);
   for (const file of BUILD_FILES) {
-    if (fs.existsSync(path.join(build, file))) fs.copyFileSync(path.join(build, file), path.join(dest, 'dist', file));
+    if (fs.existsSync(path.join(build, file)))
+      fs.copyFileSync(path.join(build, file), path.join(dest, 'dist', file));
   }
   fs.writeFileSync(path.join(dest, 'package.json'), '{"type":"module"}\n');
   const protocol = path.join(path.dirname(build), 'node_modules/devtools-protocol');
-  if (fs.existsSync(protocol)) fs.cpSync(protocol, path.join(dest, 'node_modules/devtools-protocol'), { recursive: true });
+  if (fs.existsSync(protocol))
+    fs.cpSync(protocol, path.join(dest, 'node_modules/devtools-protocol'), { recursive: true });
   return path.join(dest, 'dist/index.js');
 }
 
@@ -508,11 +617,16 @@ export function copyBuild(build, dest) {
  */
 export function copyFixtureRuntime(build, dest) {
   const server = path.join(build, '__testutils__/serveFixtures.js');
-  if (!fs.existsSync(server)) throw new Error(`No fixture server in ${build}: run npm run build first`);
+  if (!fs.existsSync(server))
+    throw new Error(`No fixture server in ${build}: run npm run build first`);
   fs.cpSync(build, path.join(dest, 'dist'), { recursive: true });
   const root = path.dirname(build);
-  fs.cpSync(path.join(root, 'src/__tests__/fixtures'), path.join(dest, 'dist/__tests__/fixtures'), { recursive: true });
-  fs.cpSync(path.join(root, 'node_modules/ws'), path.join(dest, 'node_modules/ws'), { recursive: true });
+  fs.cpSync(path.join(root, 'src/__tests__/fixtures'), path.join(dest, 'dist/__tests__/fixtures'), {
+    recursive: true,
+  });
+  fs.cpSync(path.join(root, 'node_modules/ws'), path.join(dest, 'node_modules/ws'), {
+    recursive: true,
+  });
   fs.writeFileSync(path.join(dest, 'package.json'), '{"type":"module"}\n');
   return path.join(dest, 'dist/__testutils__/serveFixtures.js');
 }
@@ -536,7 +650,16 @@ function writeBdgScript(binDir, entry, sessionDir) {
  */
 function childEnv({ binDir, home, configDir, sessionDir }) {
   const env = {
-    PATH: [binDir, path.dirname(process.execPath), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'].join(path.delimiter),
+    PATH: [
+      binDir,
+      path.dirname(process.execPath),
+      '/opt/homebrew/bin',
+      '/usr/local/bin',
+      '/usr/bin',
+      '/bin',
+      '/usr/sbin',
+      '/sbin',
+    ].join(path.delimiter),
     HOME: home,
     CLAUDE_CONFIG_DIR: configDir,
     BDG_SESSION_DIR: sessionDir,
@@ -561,18 +684,26 @@ function childEnv({ binDir, home, configDir, sessionDir }) {
  */
 export function claudeArgs(settings, model, prompt, keyHelper) {
   return [
-    '-p', prompt,
-    '--model', model,
+    '-p',
+    prompt,
+    '--model',
+    model,
     '--bare',
-    '--settings', JSON.stringify({ apiKeyHelper: keyHelper }),
-    '--setting-sources', '',
+    '--settings',
+    JSON.stringify({ apiKeyHelper: keyHelper }),
+    '--setting-sources',
+    '',
     '--strict-mcp-config',
     '--disable-slash-commands',
-    '--tools', 'Bash',
-    '--permission-mode', 'bypassPermissions',
+    '--tools',
+    'Bash',
+    '--permission-mode',
+    'bypassPermissions',
     '--no-session-persistence',
-    '--max-budget-usd', String(settings.runBudget),
-    '--output-format', 'stream-json',
+    '--max-budget-usd',
+    String(settings.runBudget),
+    '--output-format',
+    'stream-json',
     '--verbose',
   ];
 }
@@ -599,7 +730,9 @@ function assistantTurnId(line) {
   if (!line.includes('"type":"assistant"')) return null;
   try {
     const message = JSON.parse(line);
-    return message.type === 'assistant' ? String(message.message?.id ?? line.length + ':' + line.slice(-40)) : null;
+    return message.type === 'assistant'
+      ? String(message.message?.id ?? line.length + ':' + line.slice(-40))
+      : null;
   } catch {
     return null;
   }
@@ -632,7 +765,12 @@ function signalGroup(child, signal) {
  */
 function runClaude({ claudeBin, argv, env, cwd, maxTurns, timeoutMs, control, key }) {
   return new Promise((resolve) => {
-    const child = spawn(claudeBin, argv, { env, cwd, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+    const child = spawn(claudeBin, argv, {
+      env,
+      cwd,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: true,
+    });
     let streamText = '';
     let stoppedBy = null;
     let finished = false;
@@ -702,22 +840,58 @@ function writeKeyHelper(root, key) {
 export async function runJob(ctx, job) {
   const { settings, key, entry } = ctx;
   const root = fs.mkdtempSync(path.join('/tmp', 'bdge-'));
-  const dirs = { home: path.join(root, 'h'), configDir: path.join(root, 'c'), cwd: path.join(root, 'w'), sessionDir: path.join(root, 's'), binDir: path.join(root, 'bin') };
+  const dirs = {
+    home: path.join(root, 'h'),
+    configDir: path.join(root, 'c'),
+    cwd: path.join(root, 'w'),
+    sessionDir: path.join(root, 's'),
+    binDir: path.join(root, 'bin'),
+  };
   const started = Date.now();
   const env = childEnv(dirs);
   const nonce = crypto.randomBytes(4).toString('hex');
-  const taskContext = { ...ctx.taskContext, nonce, value: (valueKey) => valueFor(ctx.valueSecret, valueKey, nonce) };
+  const taskContext = {
+    ...ctx.taskContext,
+    nonce,
+    logged: (logKey) => ctx.values.entries(nonce, logKey),
+  };
   try {
-    for (const dir of [dirs.home, dirs.configDir, dirs.cwd, dirs.sessionDir]) fs.mkdirSync(dir, { recursive: true });
+    for (const dir of [dirs.home, dirs.configDir, dirs.cwd, dirs.sessionDir])
+      fs.mkdirSync(dir, { recursive: true });
     writeBdgScript(dirs.binDir, entry, dirs.sessionDir);
     const keyHelper = writeKeyHelper(root, key);
     const prompt = buildPrompt(job.task, taskContext);
-    const run = await runClaude({ claudeBin: settings.claudeBin, argv: claudeArgs(settings, job.model, prompt, keyHelper), env, cwd: dirs.cwd, maxTurns: settings.maxTurns, timeoutMs: settings.runTimeoutMs, control: ctx.control, key });
+    const run = await runClaude({
+      claudeBin: settings.claudeBin,
+      argv: claudeArgs(settings, job.model, prompt, keyHelper),
+      env,
+      cwd: dirs.cwd,
+      maxTurns: settings.maxTurns,
+      timeoutMs: settings.runTimeoutMs,
+      control: ctx.control,
+      key,
+    });
     const stream = parseStream(run.streamText);
-    const graded = gradeRun({ task: job.task, stream, contamination: findContamination(stream, ctx.patterns), cheating: findCheating(stream, ctx.taskContext, ctx.values.forged(nonce)), stoppedBy: run.stoppedBy, runBudget: settings.runBudget, taskContext });
+    const graded = gradeRun({
+      task: job.task,
+      stream,
+      contamination: findContamination(stream, ctx.patterns),
+      cheating: findCheating(stream, ctx.taskContext, ctx.values.forged(nonce)),
+      stoppedBy: run.stoppedBy,
+      runBudget: settings.runBudget,
+      taskContext,
+    });
     const name = `${job.task.id}-${job.model}-${job.run}.jsonl`;
     fs.writeFileSync(path.join(settings.out, 'transcripts', name), redact(run.streamText, key));
-    return { task: job.task.id, model: job.model, run: job.run, ...graded, durationMs: Date.now() - started, transcript: path.join('transcripts', name), init: summariseInit(stream.init) };
+    return {
+      task: job.task.id,
+      model: job.model,
+      run: job.run,
+      ...graded,
+      durationMs: Date.now() - started,
+      transcript: path.join('transcripts', name),
+      init: summariseInit(stream.init),
+    };
   } finally {
     await runQuietly(path.join(dirs.binDir, 'bdg'), ['stop'], env);
     await runQuietly(path.join(dirs.binDir, 'bdg'), ['cleanup', '--force'], env);
@@ -732,7 +906,13 @@ export async function runJob(ctx, job) {
  */
 function summariseInit(init) {
   if (!init) return null;
-  return { tools: init.tools, mcpServers: init.mcp_servers, skills: init.skills, slashCommands: init.slash_commands, cwd: init.cwd };
+  return {
+    tools: init.tools,
+    mcpServers: init.mcp_servers,
+    skills: init.skills,
+    slashCommands: init.slash_commands,
+    cwd: init.cwd,
+  };
 }
 
 /**
@@ -744,7 +924,23 @@ function summariseInit(init) {
  */
 function failedRow(job, error, runBudget) {
   const reason = `harness error: ${error instanceof Error ? error.message : String(error)}`;
-  return { task: job.task.id, model: job.model, run: job.run, status: 'error', pass: false, reason, turns: 0, toolCalls: 0, inputTokens: 0, outputTokens: 0, costUsd: runBudget, costEstimated: true, answer: null, durationMs: 0, transcript: '' };
+  return {
+    task: job.task.id,
+    model: job.model,
+    run: job.run,
+    status: 'error',
+    pass: false,
+    reason,
+    turns: 0,
+    toolCalls: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    costUsd: runBudget,
+    costEstimated: true,
+    answer: null,
+    durationMs: 0,
+    transcript: '',
+  };
 }
 
 /**
@@ -760,15 +956,25 @@ export async function runPool(ctx, jobs, onRow) {
   const state = { next: 0, spent: 0, inFlight: 0, stopReason: '' };
   const worker = async () => {
     while (state.next < jobs.length && !state.stopReason && !ctx.control.aborted) {
-      if (!fitsBudget({ spent: state.spent, inFlight: state.inFlight, runBudget: settings.runBudget, budget: settings.budget })) {
-        if (state.inFlight === 0) state.stopReason = `budget: $${state.spent.toFixed(4)} spent, another run could cost $${settings.runBudget}`;
+      if (
+        !fitsBudget({
+          spent: state.spent,
+          inFlight: state.inFlight,
+          runBudget: settings.runBudget,
+          budget: settings.budget,
+        })
+      ) {
+        if (state.inFlight === 0)
+          state.stopReason = `budget: $${state.spent.toFixed(4)} spent, another run could cost $${settings.runBudget}`;
         else await new Promise((resolve) => setTimeout(resolve, 200));
         continue;
       }
       const job = jobs[state.next++];
       state.inFlight += settings.runBudget;
       try {
-        const row = await ctx.runJob(ctx, job).catch((error) => failedRow(job, error, settings.runBudget));
+        const row = await ctx
+          .runJob(ctx, job)
+          .catch((error) => failedRow(job, error, settings.runBudget));
         state.spent += row.costUsd;
         onRow(row);
       } finally {
@@ -803,7 +1009,10 @@ function freePort() {
  */
 function startFixtures(script) {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [script], { cwd: path.dirname(script), stdio: ['ignore', 'pipe', 'inherit'] });
+    const child = spawn(process.execPath, [script], {
+      cwd: path.dirname(script),
+      stdio: ['ignore', 'pipe', 'inherit'],
+    });
     let output = '';
     child.once('error', reject);
     child.stdout.on('data', (chunk) => {
@@ -811,7 +1020,9 @@ function startFixtures(script) {
       const match = /fixtures:\s+(http:\/\/\S+)/.exec(output);
       if (match) resolve({ url: match[1], stop: () => child.kill('SIGTERM') });
     });
-    child.once('close', () => reject(new Error('The fixture server ended before it printed its URL')));
+    child.once('close', () =>
+      reject(new Error('The fixture server ended before it printed its URL'))
+    );
   });
 }
 
@@ -822,7 +1033,12 @@ function startFixtures(script) {
  */
 function printProgress(row, key) {
   const status = row.pass ? 'pass' : row.status.padEnd(4);
-  process.stdout.write(redact(`${status}  ${row.task} ${row.model} #${row.run}  $${row.costUsd.toFixed(4)}  ${row.reason}\n`, key));
+  process.stdout.write(
+    redact(
+      `${status}  ${row.task} ${row.model} #${row.run}  $${row.costUsd.toFixed(4)}  ${row.reason}\n`,
+      key
+    )
+  );
 }
 
 /**
@@ -850,21 +1066,43 @@ export async function main(settings) {
   const rows = [];
   try {
     const entry = copyBuild(settings.build, build);
-    const fixtureScript = settings.fixturesUrl ? null : copyFixtureRuntime(settings.build, path.join(build, 'fx'));
-    const fixtures = fixtureScript ? await startFixtures(fixtureScript) : { url: settings.fixturesUrl.replace(/\/?$/, '/'), stop: () => {} };
+    const fixtureScript = settings.fixturesUrl
+      ? null
+      : copyFixtureRuntime(settings.build, path.join(build, 'fx'));
+    const fixtures = fixtureScript
+      ? await startFixtures(fixtureScript)
+      : { url: settings.fixturesUrl.replace(/\/?$/, '/'), stop: () => {} };
     stops.push(fixtures.stop);
-    const valueSecret = crypto.randomBytes(16).toString('hex');
-    const values = await startValueServer(valueSecret, new URL(fixtures.url).origin);
+    const values = await startLogServer(new URL(fixtures.url).origin);
     stops.push(values.stop);
-    const taskContext = { fixtures: fixtures.url, refusedUrl: `http://127.0.0.1:${await freePort()}/`, valueApi: values.url };
-    const ctx = { settings, key, entry, taskContext, valueSecret, values, control, runJob, patterns: contaminationPatterns({ repoRoot: REPO_ROOT, home: os.homedir() }) };
+    const taskContext = {
+      fixtures: fixtures.url,
+      refusedUrl: `http://127.0.0.1:${await freePort()}/`,
+      logApi: values.url,
+    };
+    const ctx = {
+      settings,
+      key,
+      entry,
+      taskContext,
+      values,
+      control,
+      runJob,
+      patterns: contaminationPatterns({ repoRoot: REPO_ROOT, home: os.homedir() }),
+    };
     const jsonl = path.join(settings.out, 'runs.jsonl');
     const outcome = await runPool(ctx, planJobs(settings), (row) => {
       rows.push(row);
       fs.appendFileSync(jsonl, redact(JSON.stringify(row), key) + '\n');
       printProgress(row, key);
     });
-    const summary = renderSummary({ rows, settings, spent: outcome.spent, skipped: outcome.skipped, stopReason: outcome.stopReason });
+    const summary = renderSummary({
+      rows,
+      settings,
+      spent: outcome.spent,
+      skipped: outcome.skipped,
+      stopReason: outcome.stopReason,
+    });
     fs.writeFileSync(path.join(settings.out, 'SUMMARY.md'), redact(summary, key));
     process.stdout.write(`\n${summary}\nOutput: ${settings.out}\n`);
     return control.aborted ? 130 : 0;
