@@ -136,7 +136,11 @@ void describe('dom fill reads the value again 2 s after filling (#892)', () => {
 
   void it('a field the page empties later suggests the fill may have taken effect', async () => {
     await reload();
-    const { exitCode, envelope } = await fill({ name: 'emptied', field: '#cleared', value: 'shoes' });
+    const { exitCode, envelope } = await fill({
+      name: 'emptied',
+      field: '#cleared',
+      value: 'shoes',
+    });
     assert.equal(exitCode, MISMATCH_EXIT, JSON.stringify(envelope));
     assert.match(envelope.suggestion ?? '', /clears the field after an automatic submit/);
   });

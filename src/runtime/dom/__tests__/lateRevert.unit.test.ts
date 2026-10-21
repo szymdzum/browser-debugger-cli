@@ -26,7 +26,9 @@ const pageRule = vm.runInNewContext(`(${LATE_REVERT_JS})`) as (
  * @returns True for a revert
  */
 function reverted(late: string, expected: string, old = ''): boolean {
-  return pageRule({ localName: 'input', type: 'text', value: late }, { expected, old }) !== undefined;
+  return (
+    pageRule({ localName: 'input', type: 'text', value: late }, { expected, old }) !== undefined
+  );
 }
 
 void describe('LATE_REVERT_JS', () => {
