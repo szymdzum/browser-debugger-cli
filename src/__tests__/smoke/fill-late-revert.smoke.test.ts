@@ -8,7 +8,9 @@
  * (#867). Others reformat the value later (a phone mask, upper-casing,
  * trimming, an autocomplete), show only a validation message, remount
  * keeping the value, or change something else meanwhile (another field, a
- * ticker): the fill succeeds. `--no-wait` reads the value only right after
+ * ticker): the fill succeeds. A field emptied later (a search box that
+ * submits by itself) fails too, its suggestion saying the fill may have
+ * taken effect. `--no-wait` reads the value only right after
  * the fill, as before.
  */
 
@@ -33,18 +35,33 @@ interface Cell {
   value: string;
   /** The page put back another value: the fill fails with exit 90, `actual` read back */
   reverted?: string;
-  /** Extra `dom fill` flags */
-  flags?: string[];
+  /** `expected` of the mismatch, when it is not the value given */
+  expected?: string;
+  /** What the suggestion of the failure says */
+  suggestion?: RegExp;
 }
 
 const CELLS: Cell[] = [
   { name: 'revert after 50 ms', field: '#r50', value: 'new', reverted: 'o' },
   { name: 'revert after 300 ms', field: '#r300', value: 'new', reverted: 'o' },
   { name: 'revert after 1500 ms', field: '#r1500', value: 'new', reverted: 'o' },
-  { name: 'checkbox unchecked after 100 ms', field: '#cb', value: 'true', reverted: 'unchecked' },
+  {
+    name: 'checkbox unchecked after 100 ms',
+    field: '#cb',
+    value: 'true',
+    expected: 'checked',
+    reverted: 'unchecked',
+  },
   { name: 'select reset after 100 ms', field: '#sel', value: 'b', reverted: 'a' },
   { name: 'controlled input rejecting the value', field: '#ctl', value: 'abc', reverted: 'o' },
   { name: 'remount with the old value', field: '#remount-old', value: 'new', reverted: 'o' },
+  {
+    name: 'search box emptied after submitting by itself',
+    field: '#cleared',
+    value: 'shoes',
+    reverted: '',
+    suggestion: /clears the field after an automatic submit/,
+  },
   { name: 'late phone mask', field: '#phone', value: '5551234567' },
   { name: 'upper-cased after blur', field: '#upper', value: 'abc' },
   { name: 'trimmed after change', field: '#trim', value: 'abc ' },
@@ -75,15 +92,19 @@ async function reload(): Promise<void> {
 /**
  * Fill a field with `--json`.
  *
- * @param cell - Matrix cell
+ * @param field - Selector of the field
+ * @param value - Value to fill
+ * @param flags - Extra `dom fill` flags
  * @returns Exit code and envelope
  */
-async function fill(cell: Cell): Promise<{ exitCode: number; envelope: FillEnvelope }> {
-  const result = await runCommand(
-    'dom',
-    ['fill', cell.field, cell.value, ...(cell.flags ?? []), '--json'],
-    { timeout: 60000 }
-  );
+async function fill(
+  field: string,
+  value: string,
+  flags: string[] = []
+): Promise<{ exitCode: number; envelope: FillEnvelope }> {
+  const result = await runCommand('dom', ['fill', field, value, ...flags, '--json'], {
+    timeout: 60000,
+  });
   return { exitCode: result.exitCode, envelope: JSON.parse(result.stdout) as FillEnvelope };
 }
 
@@ -109,7 +130,7 @@ void describe('dom fill reads the value again 2 s after filling (#892)', () => {
     const outcome = cell.reverted === undefined ? 'succeeds' : 'fails with 90';
     void it(`${cell.name}: ${cell.value} into ${cell.field} ${outcome}`, async () => {
       await reload();
-      const { exitCode, envelope } = await fill(cell);
+      const { exitCode, envelope } = await fill(cell.field, cell.value);
       if (cell.reverted === undefined) {
         assert.equal(exitCode, 0, JSON.stringify(envelope));
         assert.equal(envelope.valueMismatch, undefined);
@@ -117,31 +138,16 @@ void describe('dom fill reads the value again 2 s after filling (#892)', () => {
       }
       assert.equal(exitCode, MISMATCH_EXIT, JSON.stringify(envelope));
       assert.deepEqual(envelope.valueMismatch, {
-        expected: cell.field === '#cb' ? 'checked' : cell.value,
+        expected: cell.expected ?? cell.value,
         actual: cell.reverted,
       });
+      if (cell.suggestion) assert.match(envelope.suggestion ?? '', cell.suggestion);
     });
   }
 
   void it('--no-wait reads the value only right after the fill', async () => {
     await reload();
-    const { exitCode, envelope } = await fill({
-      name: 'no wait',
-      field: '#r300',
-      value: 'new',
-      flags: ['--no-wait'],
-    });
+    const { exitCode, envelope } = await fill('#r300', 'new', ['--no-wait']);
     assert.equal(exitCode, 0, JSON.stringify(envelope));
-  });
-
-  void it('a field the page empties later suggests the fill may have taken effect', async () => {
-    await reload();
-    const { exitCode, envelope } = await fill({
-      name: 'emptied',
-      field: '#cleared',
-      value: 'shoes',
-    });
-    assert.equal(exitCode, MISMATCH_EXIT, JSON.stringify(envelope));
-    assert.match(envelope.suggestion ?? '', /clears the field after an automatic submit/);
   });
 });

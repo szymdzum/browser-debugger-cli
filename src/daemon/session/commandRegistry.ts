@@ -49,8 +49,10 @@ import {
   fillElement,
   clickElement,
   pressKeyElement,
+  readBackLate,
   scrollPage,
   withActionStability,
+  withLateRevert,
 } from '@/runtime/dom/formFillHelpers/index.js';
 import { exceptionSummary } from '@/runtime/dom/formFillHelpers/shared.js';
 import { connectedNodes, formErrors, withFormIssues } from '@/runtime/dom/formIssues.js';
@@ -948,8 +950,9 @@ export function createCommandRegistry(
       interact(
         cdp,
         async () =>
-          onScriptTarget(cdp, params, (target) =>
-            fillElement(
+          onScriptTarget(cdp, params, async (target) => {
+            const wait = params.wait !== false;
+            const filling = fillElement(
               target.cdp,
               target.selector,
               params.value,
@@ -958,11 +961,14 @@ export function createCommandRegistry(
                 blur: params.blur,
                 cwd: params.cwd,
                 listIndex: params.listIndex,
-                lateReadBack: params.wait !== false,
-              }),
-              (fill) => withActionStability(cdp, fill, params.wait !== false)
-            )
-          ),
+              })
+            );
+            const [result, revert] = await Promise.all([
+              withActionStability(cdp, () => filling, wait),
+              wait ? readBackLate(target.cdp, target, filling) : undefined,
+            ]);
+            return withLateRevert(result, revert);
+          }),
         { reportFocusMove: true, dialogs: params }
       ),
 

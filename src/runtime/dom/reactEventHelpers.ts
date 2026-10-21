@@ -127,7 +127,7 @@ export const FILL_VALUE_MISMATCH_JS = `(field, expected, secret) => {
  * 2 s after filling is a revert (a mismatch, as {@link FILL_VALUE_MISMATCH_JS}
  * gives it) or the page formatting the value (undefined). Any change of a
  * field that is not text-like is a revert. A text-like field reverted when
- * it holds its value from before the fill (`check.old`), is blank, was
+ * it holds its value from before the fill (`check.before`), is blank, was
  * filled with "" and holds something, or lost some of the letters and
  * digits given (compared case-folded, NFKC, as a multiset); otherwise the
  * page formatted the value (a phone mask, upper-casing, an autocomplete).
@@ -141,7 +141,7 @@ export const LATE_REVERT_JS = `(field, check) => {
   if (!textLike) return mismatch;
   const late = (${FIELD_VALUE_JS})(field);
   const given = String(check.expected);
-  if (late === check.old || given === '' || late.trim() === '') return mismatch;
+  if (late === check.before.get(check.el) || given === '' || late.trim() === '') return mismatch;
   const chars = (text) => Array.from(text.normalize('NFKC').toLowerCase().replace(/[^\\p{L}\\p{N}]/gu, ''));
   const left = chars(late);
   const kept = chars(given).every((ch) => {
@@ -155,15 +155,18 @@ export const LATE_REVERT_JS = `(field, check) => {
 
 /**
  * Page-side list of the other text-like fields of a field's form (of the
- * document when it has none), with their values: taken before a fill, so
- * {@link MOVED_VALUE_JS} can tell which one the page changed.
+ * document when it has none), with their values, and the field itself with
+ * its value ({@link FIELD_VALUE_JS}): taken before a fill, so
+ * {@link MOVED_VALUE_JS} can tell which one the page changed and
+ * {@link LATE_REVERT_JS} whether the field went back to its old value.
  */
 export const FIELD_VALUES_JS = `(field) => {
   const fields = field.form ? Array.from(field.form.elements) : Array.from(field.ownerDocument.querySelectorAll('input, textarea'));
   return new Map(fields
     .filter((f) => f !== field && /^(input|textarea)$/.test(f.localName) &&
       !/^(checkbox|radio|password|hidden|submit|button|reset|file|image)$/i.test(f.type || ''))
-    .map((f) => [f, String(f.value)]));
+    .map((f) => [f, String(f.value)])
+    .concat([[field, (${FIELD_VALUE_JS})(field)]]));
 }`;
 
 /**
@@ -307,7 +310,7 @@ const FILL_DONE_JS = `(el, state) => {
   }
   const secret = (${FILL_SECRET_JS})(el);
   if (state.blur !== false) el.blur();
-  window.__bdgFillCheck = { el: el, expected: state.expected, old: state.old, before: state.before, secret: secret };
+  window.__bdgFillCheck = { el: el, expected: state.expected, before: state.before, secret: secret };
   const shown = el.localName === 'select' && el.multiple
     ? listOf(el.selectedOptions).map((o) => o.value).join(', ')
     : el.value;
@@ -436,6 +439,7 @@ const USER_EDIT_TYPES = ['text', 'search', 'url', 'tel', 'email', 'password'];
  */
 export const REACT_FILL_SCRIPT = `
 (function(selector, parts, value, options) {
+  delete window.__bdgFillCheck;
   const allMatches = (${FIND_ELEMENTS_JS})(selector, parts);
   const fire = ${FIRE_EVENT_JS};
   const fireInput = ${FIRE_INPUT_EVENT_JS};
@@ -552,7 +556,6 @@ export const REACT_FILL_SCRIPT = `
   }
 
   const fieldsBefore = (${FIELD_VALUES_JS})(el);
-  const old = (${FIELD_VALUE_JS})(el);
   // What Node words as the "Option not found" error: the value looked for
   // and the first options, unless the select holds a secret (then only how
   // many options there are)
@@ -697,7 +700,7 @@ export const REACT_FILL_SCRIPT = `
     if (userEdit) {
       if (previous !== '') setValue('');
       const pending = {
-        el: el, value: value, expected: expected, old: old, before: fieldsBefore, warnings: warnings,
+        el: el, value: value, expected: expected, before: fieldsBefore, warnings: warnings,
         blur: options.blur, multiple: multiple, sawBeforeinput: false, sawInput: false,
         documents: (${FIELD_DOCUMENTS_JS})(el), elsewhere: null
       };
@@ -743,7 +746,7 @@ export const REACT_FILL_SCRIPT = `
   }
 
   const done = (${FILL_DONE_JS})(el, {
-    expected: expected, old: old, before: fieldsBefore, warnings: warnings, blur: options.blur, multiple: multiple
+    expected: expected, before: fieldsBefore, warnings: warnings, blur: options.blur, multiple: multiple
   });
   return result({
     value: done.value,
@@ -825,7 +828,7 @@ export const FILL_INSERTED_FUNCTION = `(typed) => {
 export const MOVED_VALUE_JS = `(field, expected, before) => {
   const wanted = String(expected).trim();
   if (!before || wanted.length < 2 || (field.type || '').toLowerCase() === 'password') return undefined;
-  const other = Array.from(before.keys()).find((f) =>
+  const other = Array.from(before.keys()).find((f) => f !== field &&
     String(f.value).trim() === wanted && String(before.get(f)).trim() !== wanted);
   if (!other) return undefined;
   if (other.id) return other.localName + '#' + other.id;
@@ -833,19 +836,24 @@ export const MOVED_VALUE_JS = `(field, expected, before) => {
 }`;
 
 /**
- * Page-side read of a fill's check ({@link FILL_DONE_JS}) one macrotask
- * from now, so frameworks that render asynchronously have updated the
- * field. The macrotask comes from a `MessageChannel`, which fake timers and
- * page code rarely replace. Resolves to `read(check)`.
+ * Page-side read of the check the last fill left in `window.__bdgFillCheck`
+ * ({@link FILL_DONE_JS}): null when there is none (the page navigated, or the
+ * fill wrote none), else `read(check)` one macrotask from now, so frameworks
+ * that render asynchronously have updated the field. The macrotask comes
+ * from a `MessageChannel`, which fake timers and page code rarely replace.
  */
-const AFTER_MACROTASK_JS = `(read, check) => new Promise((resolve) => {
-  const channel = new MessageChannel();
-  channel.port1.onmessage = () => {
-    channel.port1.close();
-    resolve(read(check));
-  };
-  channel.port2.postMessage(null);
-})`;
+const FILL_CHECK_READ_JS = `(read) => {
+  const check = window.__bdgFillCheck;
+  if (!check) return null;
+  return new Promise((resolve) => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => {
+      channel.port1.close();
+      resolve(read(check));
+    };
+    channel.port2.postMessage(null);
+  });
+}`;
 
 /**
  * Page-side mismatch of a fill's check with `movedTo` when the value turned
@@ -857,38 +865,30 @@ const WITH_MOVED_TO_JS = `(mismatch, check) => {
 }`;
 
 /**
- * Page function reading back the field the last fill left in
- * `window.__bdgFillCheck`, after one macrotask ({@link AFTER_MACROTASK_JS}).
- * Evaluates to the mismatch ({@link FILL_VALUE_MISMATCH_JS}), with `movedTo`
- * when the value turned up in another field, `'kept'` when the value
- * matches, or null when nothing was left (the page navigated) or the field
- * left the page. With `keep`, the check stays for the late read
+ * Page script reading back the field the last fill left
+ * ({@link FILL_CHECK_READ_JS}). Evaluates to the mismatch
+ * ({@link FILL_VALUE_MISMATCH_JS}), with `movedTo` when the value turned up
+ * in another field, or null when the value matches, nothing was left or the
+ * field left the page. The check stays for the late read
  * ({@link FILL_LATE_READ_FUNCTION}).
  */
-export const FILL_READ_BACK_SCRIPT = `(keep) => {
-  const check = window.__bdgFillCheck;
-  if (!keep) delete window.__bdgFillCheck;
-  if (!check) return null;
-  return (${AFTER_MACROTASK_JS})((check) => {
-    if (!check.el.isConnected) return null;
-    const mismatch = (${FILL_VALUE_MISMATCH_JS})(check.el, check.expected, check.secret);
-    return mismatch ? (${WITH_MOVED_TO_JS})(mismatch, check) : 'kept';
-  }, check);
-}`;
+export const FILL_READ_BACK_SCRIPT = `(${FILL_CHECK_READ_JS})((check) => {
+  if (!check.el.isConnected) return null;
+  const mismatch = (${FILL_VALUE_MISMATCH_JS})(check.el, check.expected, check.secret);
+  return mismatch ? (${WITH_MOVED_TO_JS})(mismatch, check) : null;
+})`;
 
 /**
  * Page function of the late read of a fill (#892): the field the last fill
- * left in `window.__bdgFillCheck` (removing it), or, when that left the
- * page (a remount), the field the fill's selector and index find now; after
- * one macrotask, the revert ({@link LATE_REVERT_JS}) with `movedTo`, or
- * null (no revert, nothing left, no field). Every parameter is a
+ * left ({@link FILL_CHECK_READ_JS}, removing the check), or, when that left
+ * the page (a remount), the field the fill's selector and index find now;
+ * evaluates to the revert ({@link LATE_REVERT_JS}) with `movedTo`, or null
+ * (no revert, nothing left, no field). Every parameter is a
  * `Runtime.callFunctionOn` argument.
  */
 export const FILL_LATE_READ_FUNCTION = `function (selector, parts, index) {
-  const check = window.__bdgFillCheck;
-  delete window.__bdgFillCheck;
-  if (!check) return null;
-  return (${AFTER_MACROTASK_JS})((check) => {
+  return (${FILL_CHECK_READ_JS})((check) => {
+    if (window.__bdgFillCheck === check) delete window.__bdgFillCheck;
     const found = (${FIND_ELEMENTS_JS})(selector, parts)[index];
     const field = check.el.isConnected
       ? check.el
@@ -896,7 +896,7 @@ export const FILL_LATE_READ_FUNCTION = `function (selector, parts, index) {
     if (!field) return null;
     const mismatch = (${LATE_REVERT_JS})(field, check);
     return mismatch ? (${WITH_MOVED_TO_JS})(mismatch, check) : null;
-  }, check);
+  });
 }`;
 
 /**
@@ -1196,8 +1196,6 @@ export interface FillOptions {
   cwd?: string;
   /** Index the user gave for a listed element (named in suggestions instead of the bound-node placeholder) */
   listIndex?: number;
-  /** Read a value read back as given again 2 s after the fill (#892; not with --no-wait) */
-  lateReadBack?: boolean;
 }
 
 export type { FillResult, ClickResult } from '@/ipc/protocol/domTypes.js';

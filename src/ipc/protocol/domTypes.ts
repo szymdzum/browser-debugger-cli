@@ -278,8 +278,6 @@ export interface FillValueMismatch {
   masked?: true;
   /** Another field of the form that holds the value given, e.g. `input#first-name` */
   movedTo?: string;
-  /** Found by the late read, 2 s after the fill (#892); words the suggestion, not output */
-  late?: true;
 }
 
 /**
@@ -306,6 +304,8 @@ export interface FillResult extends ActionEffects {
    * (the page rejected, reformatted or moved it; secret fields masked)
    */
   valueMismatch?: FillValueMismatch;
+  /** The mismatch was found by the late read, 2 s after the fill (#892); words the suggestion, never output */
+  lateRevert?: true;
   suggestion?: string;
   /** Set when the target is a file input (filled through CDP instead) */
   fileInput?: boolean;
