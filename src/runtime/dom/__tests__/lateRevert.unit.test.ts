@@ -51,22 +51,27 @@ function reverted(late: string, expected: string, old = ''): boolean {
 }
 
 void describe('LATE_REVERT_JS', () => {
-  void it('takes formatting that keeps the letters and digits given', () => {
+  void it('takes any other value as the page formatting the one given', () => {
     assert.equal(reverted('(555) 123-4567', '5551234567'), false);
     assert.equal(reverted('London', 'Lon'), false);
     assert.equal(reverted('ABC', 'abc'), false);
     assert.equal(reverted('abc', ' abc '), false);
     assert.equal(reverted('01/05/2024', '2024-01-05'), false);
     assert.equal(reverted('new', 'new', 'o'), false);
+    assert.equal(reverted('Jan 5, 2024', '2024-01-05'), false);
+    assert.equal(reverted('5', '05'), false);
+    assert.equal(reverted('$1,234.57', '1234.567'), false);
+    assert.equal(reverted('xyz', 'new', 'o'), false);
+    assert.equal(reverted('ne', 'new', 'o'), false);
+    assert.equal(reverted('n/a', '', 'o'), false);
   });
 
-  void it('reports the old value, an emptied field and an unrelated value', () => {
+  void it('reports the old value, and a blank field when the value given was not', () => {
     assert.equal(reverted('o', 'new', 'o'), true);
     assert.equal(reverted('hello', 'he', 'hello'), true);
     assert.equal(reverted('', 'new', 'o'), true);
+    assert.equal(reverted('  ', 'new', 'o'), true);
     assert.equal(reverted('o', '', 'o'), true);
-    assert.equal(reverted('xyz', 'new', 'o'), true);
-    assert.equal(reverted('ne', 'new', 'o'), true);
   });
 
   void it('reports any change of a field that is not text-like', () => {

@@ -16,7 +16,10 @@
  * 400 ms after `blur`; `#trim` is trimmed 100 ms after `change`; `#auto` is
  * completed to `London` 200 ms after `input`; `#valid` only shows a message
  * 300 ms after `input`; `#remount-keep` is replaced 200 ms after `change`
- * by a new input holding the value filled; `#plain` changes another field
+ * by a new input holding the value filled; `#datefmt` is written out
+ * (`2024-01-05` as `Jan 5, 2024`) 300 ms after `change`; `#unrelated` is
+ * replaced by `N/A` 300 ms after `input` (a known limit: only the old value
+ * or a blank counts as a revert); `#plain` changes another field
  * (`#other`) 300 ms after `input`, while `#tick` ticks every 100 ms.
  */
 
@@ -38,6 +41,8 @@ const FILL_LATE_REVERT_HTML = `<!doctype html><title>fill late revert</title>
 <label>City <input id="auto"></label>
 <label>Email <input id="valid"></label><span id="valid-error"></span>
 <span id="remount-keep-slot"><label>Remount keep <input id="remount-keep" value="o"></label></span>
+<label>Date <input id="datefmt"></label>
+<label>Unrelated <input id="unrelated" value="o"></label>
 <label>Plain <input id="plain"></label>
 <label>Other <input id="other" value="x"></label>
 <div id="tick">0</div>
@@ -85,6 +90,12 @@ const FILL_LATE_REVERT_HTML = `<!doctype html><title>fill late revert</title>
   byId('valid').addEventListener('input', (event) => setTimeout(() => {
     byId('valid-error').textContent = event.target.value.includes('@') ? '' : 'Enter a valid email';
   }, 300));
+  byId('datefmt').addEventListener('change', (event) => setTimeout(() => {
+    const [y, m, d] = event.target.value.split('-').map(Number);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    event.target.value = months[m - 1] + ' ' + d + ', ' + y;
+  }, 300));
+  byId('unrelated').addEventListener('input', () => setTimeout(() => { byId('unrelated').value = 'N/A'; }, 300));
   byId('plain').addEventListener('input', () => setTimeout(() => { byId('other').value = 'changed'; }, 300));
 </script>`;
 

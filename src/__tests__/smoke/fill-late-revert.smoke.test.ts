@@ -8,7 +8,9 @@
  * (#867). Others reformat the value later (a phone mask, upper-casing,
  * trimming, an autocomplete), show only a validation message, remount
  * keeping the value, or change something else meanwhile (another field, a
- * ticker): the fill succeeds. A field emptied later (a search box that
+ * ticker), or write it out differently (a date as `Jan 5, 2024`; also
+ * unrelated text, a known limit: only the old value or a blank counts as a
+ * revert): the fill succeeds. A field emptied later (a search box that
  * submits by itself) fails too, its suggestion saying the fill may have
  * taken effect. `--no-wait` reads the value only right after
  * the fill, as before.
@@ -68,6 +70,8 @@ const CELLS: Cell[] = [
   { name: 'autocomplete', field: '#auto', value: 'Lon' },
   { name: 'validation message only', field: '#valid', value: 'foo' },
   { name: 'remount keeping the value', field: '#remount-keep', value: 'kept' },
+  { name: 'date written out after change', field: '#datefmt', value: '2024-01-05' },
+  { name: 'replaced by unrelated text (known limit)', field: '#unrelated', value: 'new' },
   { name: 'another field and a ticker changing', field: '#plain', value: 'hello' },
 ];
 

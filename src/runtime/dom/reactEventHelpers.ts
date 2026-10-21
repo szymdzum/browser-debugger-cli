@@ -127,10 +127,10 @@ export const FILL_VALUE_MISMATCH_JS = `(field, expected, secret) => {
  * 2 s after filling is a revert (a mismatch, as {@link FILL_VALUE_MISMATCH_JS}
  * gives it) or the page formatting the value (undefined). Any change of a
  * field that is not text-like is a revert. A text-like field reverted when
- * it holds its value from before the fill (`check.before`), is blank, was
- * filled with "" and holds something, or lost some of the letters and
- * digits given (compared case-folded, NFKC, as a multiset); otherwise the
- * page formatted the value (a phone mask, upper-casing, an autocomplete).
+ * it holds its value from before the fill (`check.before`), or is blank
+ * while the value given was not; any other value is the page formatting
+ * the one given (a phone mask, a date written out, upper-casing, an
+ * autocomplete), so a page replacing it with unrelated text is not seen.
  */
 export const LATE_REVERT_JS = `(field, check) => {
   const mismatch = (${FILL_VALUE_MISMATCH_JS})(field, check.expected, check.secret);
@@ -140,17 +140,8 @@ export const LATE_REVERT_JS = `(field, check) => {
     (field.localName === 'input' && /^(text|search|tel|url|email|password)$/.test(type));
   if (!textLike) return mismatch;
   const late = (${FIELD_VALUE_JS})(field);
-  const given = String(check.expected);
-  if (late === check.before.get(check.el) || given === '' || late.trim() === '') return mismatch;
-  const chars = (text) => Array.from(text.normalize('NFKC').toLowerCase().replace(/[^\\p{L}\\p{N}]/gu, ''));
-  const left = chars(late);
-  const kept = chars(given).every((ch) => {
-    const at = left.indexOf(ch);
-    if (at < 0) return false;
-    left.splice(at, 1);
-    return true;
-  });
-  return kept ? undefined : mismatch;
+  const blanked = late.trim() === '' && String(check.expected).trim() !== '';
+  return late === check.before.get(check.el) || blanked ? mismatch : undefined;
 }`;
 
 /**
