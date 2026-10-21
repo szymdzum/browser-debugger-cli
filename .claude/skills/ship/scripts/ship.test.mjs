@@ -9,8 +9,10 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
+import { renderPrompt, section, triggerBody } from '../cloud/render.mjs';
 
 import {
   appendSnapshotEntries,
@@ -42,6 +44,8 @@ import {
   testChromeOrphans,
   liveSessionChrome,
   foreignSession,
+  loadWarning,
+  findingsList,
   jobsLostWithoutResult,
   listEntries,
   mainGateVerdict,
@@ -1314,13 +1318,13 @@ test('liveSessionChrome covers a Chrome only while the session\'s daemon lives',
   rmSync(dir, { recursive: true });
 });
 
-test('foreignSession: only another thread\'s or PR\'s session, never this PR\'s agents or the verifier', () => {
+test('foreignSession: another thread\'s, PR\'s or the session verifier\'s session, never this PR\'s agents', () => {
   const scope = ['880', '873'];
   assert.equal(foreignSession('/tmp/fuzz-863-ab12/s3', scope), true);
   assert.equal(foreignSession('/tmp/bdg-t-861-a', scope), true);
   assert.equal(foreignSession('/tmp/bdg-t-873-a', scope), false);
   assert.equal(foreignSession('/tmp/rv-880-t/x', scope), false);
-  assert.equal(foreignSession('/tmp/verify-2026-10-20', scope), false);
+  assert.equal(foreignSession('/tmp/verify-2026-10-20', scope), true);
   assert.equal(foreignSession('/tmp/fuzz-863-ab12/s3', undefined), false);
   assert.equal(foreignSession('/tmp/bdg-t-529a-a', ['529a']), false);
 });
@@ -1335,3 +1339,41 @@ test('testChromeOrphans counts a bdg session\'s chrome.pid next to the profile a
   assert.deepEqual(testChromeOrphans(ps, where, new Set(), 0, (profile) => pids[profile] ?? null).map((p) => p.pid), [61100]);
   assert.deepEqual(testChromeOrphans(ps, where, new Set(), 0).map((p) => p.pid), [61000, 61100]);
 });
+
+test('loadWarning speaks only above the limit', () => {
+  assert.equal(loadWarning(12.4), null);
+  assert.match(loadWarning(97.2), /load average 97 is above 50/);
+});
+
+test('findingsList names the report files in the verifier brief, and refuses other roles or missing files', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ship-findings-'));
+  const a = join(dir, 'r1.md');
+  const b = join(dir, 'r2.md');
+  writeFileSync(a, '### F1: x');
+  writeFileSync(b, '### F1: y');
+  const verifier = renderBrief(BRIEFS, 'verifier', { N: '864', MAIN: '/m', HEAD: 'h', DATE: 's27' }).brief;
+  const { text } = findingsList(verifier, `${a}, ${b}`);
+  assert.ok(text.includes(`- \`${a}\`\n- \`${b}\``));
+  assert.doesNotMatch(text, /<finding as reported/);
+  assert.match(findingsList(verifier, join(dir, 'gone.md')).error, /no file .*gone\.md/);
+  const tester = renderBrief(BRIEFS, 'tester', { N: '1', MAIN: '/m', HEAD: 'h', AGENT: 'a', URLS: 'u' }).brief;
+  assert.match(findingsList(tester, a).error, /only fills the verifier brief/);
+  rmSync(dir, { recursive: true });
+});
+
+test('cloud render fills every placeholder of the real template and agents, and leaves the environment to the caller', () => {
+  const cloud = join(dirname(fileURLToPath(import.meta.url)), '..', 'cloud');
+  const template = readFileSync(join(cloud, 'routine-template.md'), 'utf8');
+  for (const agent of ['smoke', 'r1-nav', 'r2-verdicts', 'r3-forms', 'r4-network', 'r5-cli']) {
+    const spec = readFileSync(join(cloud, 'agents', `${agent}.md`), 'utf8');
+    const result = renderPrompt(template, spec, { round: 's28', agent, sha: 'abc1234' });
+    assert.ok('prompt' in result, agent);
+    assert.ok(result.prompt.includes(`cloud-round/s28-${agent}`), agent);
+    assert.ok(result.prompt.includes(section(spec, 'AREA')), agent);
+  }
+  assert.deepEqual(renderPrompt('{{AGENT}} {{EXTRA}}', '<!-- AREA -->\na\n<!-- TARGETS -->\nb\n<!-- COVERED -->\nc', { round: 's1', agent: 'x', sha: 'abc1234' }), { open: ['{{EXTRA}}'] });
+  const body = triggerBody('p', { round: 's28', agent: 'smoke', at: '2026-10-25T10:00:00Z', environment: 'env_test' });
+  assert.equal(body.job_config.ccr.environment_id, 'env_test');
+  assert.equal(body.job_config.ccr.events[0].data.message.content, 'p');
+});
+

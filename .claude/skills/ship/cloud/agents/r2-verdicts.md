@@ -1,0 +1,11 @@
+<!-- AREA -->
+**Action verdicts.** After `dom click`, `dom fill`, `dom submit`, `dom press-key`, `dom hover` and `dom scroll`, bdg tells the agent what the action changed: lines such as `Shown:`, `New text:`, `Opened:`, navigation, "still changing", "no visible effect", and checks that the press reached the element (covered, disabled, moved). Make a verdict false: report an effect that the action didn't cause, miss one it did cause, call a working click "no visible effect", say the element was covered when it wasn't (or the reverse), or name the wrong element.
+<!-- TARGETS -->
+- **Unrelated changes in the action window**: a ticker, a clock, a toast that appears on a timer, an aria-live region updating on its own, a carousel; bdg should not attribute them to the action.
+- **Real effects that are easy to miss**: a change only in a `::before` content, a CSS class that changes colour only, an attribute (`aria-expanded`), a value of an input, a change inside a shadow root or an iframe, a change that appears after 1.5 s, a result streamed in several chunks.
+- **Press checks**: an element covered by a transparent overlay, `pointer-events: none` on the target but not its child, an element that moves on `mousedown`, one that unmounts on press and is replaced by an identical clone, a disabled button styled as enabled, a button that is enabled only after hover.
+- **Wrong element**: duplicate ids, two elements with the same text where one is hidden, a selector that matches inside a template, an index from `dom query` after the list re-rendered.
+- **Self-cancelling effects**: a click that opens and closes a panel within 100 ms, a popup window that closes itself, a toast that removes itself before bdg looks.
+- **Effects outside the page**: `window.open`, a download, an `alert()`/`confirm()`, a clipboard write, a `history.pushState` without visible change.
+<!-- COVERED -->
+an element that unmounts on press, a label that changes on press, a sibling that slides under the mouse, a page-wide ticker, a toast during the action window, a "Load more" result in several chunks, a result next to a self-updating region in the same box (the false-positive matrix of the action-effect heuristic); JS dialogs on load and on click; a popup that opens and closes.
