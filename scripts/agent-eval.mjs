@@ -8,7 +8,7 @@
  * ```bash
  * npm run build
  * node scripts/agent-eval.mjs --dry-run --model=claude-haiku-5-5 --runs=10     # plan and worst case
- * node scripts/agent-eval.mjs --tasks=popup-token,download-name --runs=3 --budget=2
+ * node scripts/agent-eval.mjs --tasks=popup-code,download-name --runs=3 --budget=2
  * ```
  *
  * Flags: --tasks=a,b|all  --model=a,b (default claude-haiku-5-5)  --runs=N (1)  --parallel=N (4)

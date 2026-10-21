@@ -206,6 +206,8 @@ node scripts/agent-eval.mjs --model=claude-haiku-5-5 --runs=10 --budget=10      
 
 The agent gets a goal and `bdg` on `PATH` (a copy of the build, headless, `BDG_ATTACH_REQUIRE_WS_URL=1`, its own session directory) and nothing from `~/.claude`, the repo's CLAUDE.md or skills, so it learns bdg from `--help` like a new user. A run whose tool calls touch the repo path or `~/.claude` is graded `contaminated`. Triage every failure as a bdg problem (fix, file or record), a task or oracle problem (fix the task), or a model limit. To add a task: a fixture page, a row in `TASKS` with a fixed `ANSWER:` format and a checker, and cases in `scripts/agent-eval.test.mjs` (the truth, two plausible wrong answers, a missing and a hedged answer).
 
+Task wording: eval prompts avoid sign-in, token and credential framing (a model may decline to "harvest a token", #888): S01 is measured as `popup-code`, a delivery-slot popup that posts a confirmation code back to the opener.
+
 ## Exploratory sweep
 
 The scenarios keep rounds comparable; the sweep finds what they don't cover. Run it regularly: once per working session on `main`, or on a schedule through a cloud routine.
