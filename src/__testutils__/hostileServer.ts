@@ -18,7 +18,8 @@
  *   redirect to `chrome://version` and `about:blank`. `/redirect/<url>`
  *   (the URL percent-encoded, so a GET form keeps it): a 302 to `<url>`,
  *   whatever its scheme (#890: `myapp://`, `javascript:`). `/flip/<url>`: a
- *   page the first time, then the same redirect (a reload meets it).
+ *   page the first time, then the same redirect (a reload meets it). Both
+ *   answer after `?delay=<ms>`, when given.
  * - `/download`: a CSV sent as an attachment (no document).
  * - `/csp`: a page whose Content-Security-Policy blocks its own script.
  * - `/ok`: a plain page that loads.
@@ -77,10 +78,10 @@ export interface HostileServer {
   missingFileUrl: string;
   /** Page with a link and a form that lead to `target` */
   launchUrl: (target: string) => string;
-  /** A URL that redirects (302) to `target` */
-  redirectUrl: (target: string) => string;
-  /** A URL that loads a page the first time, then redirects (302) to `target` */
-  flipUrl: (target: string) => string;
+  /** A URL that redirects (302) to `target`, after `delayMs` */
+  redirectUrl: (target: string, delayMs?: number) => string;
+  /** A URL that loads a page the first time, then redirects (302) to `target` after `delayMs` */
+  flipUrl: (target: string, delayMs?: number) => string;
   /** Close the server and its connections */
   close: () => Promise<void>;
 }
@@ -170,8 +171,14 @@ function handle(req: http.IncomingMessage, res: http.ServerResponse): void {
     return;
   }
   if (route.startsWith(REDIRECT_PREFIX) || route.startsWith(FLIP_PREFIX)) {
-    res.writeHead(302, { Location: decodeURIComponent(route.slice(route.indexOf('/', 1) + 1)) });
-    res.end();
+    const location = decodeURIComponent(route.slice(route.indexOf('/', 1) + 1));
+    setTimeout(
+      () => {
+        res.writeHead(302, { Location: location });
+        res.end();
+      },
+      Number(url.searchParams.get('delay') ?? 0)
+    );
     return;
   }
   switch (route) {
@@ -265,8 +272,9 @@ export async function startHostileServer(): Promise<HostileServer> {
     fileUrl: `file://${file}`,
     missingFileUrl: `file://${path.join(dir, 'missing.html')}`,
     launchUrl: (target) => `${url}launch?to=${encodeURIComponent(target)}`,
-    redirectUrl: (target) => `${url}redirect/${encodeURIComponent(target)}`,
-    flipUrl: (target) => `${url}flip/${encodeURIComponent(target)}`,
+    redirectUrl: (target, delayMs = 0) =>
+      `${url}redirect/${encodeURIComponent(target)}?delay=${delayMs}`,
+    flipUrl: (target, delayMs = 0) => `${url}flip/${encodeURIComponent(target)}?delay=${delayMs}`,
     close: () =>
       new Promise<void>((resolve) => {
         server.close(() => resolve());

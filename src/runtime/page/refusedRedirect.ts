@@ -29,10 +29,12 @@ const LOADABLE_SCHEMES = new Set(['http', 'https']);
 export interface RefusedRedirectWatch {
   /**
    * The refused redirect of a main document request, once the verdict is in.
-   * `awaitOpen`: requests not answered yet are waited on too, up to the grace
-   * (after a `Page.navigate` that Chrome answered before the request failed).
+   * `openUntil` (epoch ms): requests not answered yet are waited on too, up
+   * to then (a `Page.navigate` Chrome answered before the request failed, a
+   * reload whose server is slow, or whose request is not sent yet); an abort
+   * then waits its own grace.
    */
-  refused: (options?: { awaitOpen?: boolean }) => Promise<FailedLoad | undefined>;
+  refused: (options?: { openUntil?: number }) => Promise<FailedLoad | undefined>;
   /** Stops following */
   stop: () => void;
 }
@@ -120,6 +122,7 @@ export function watchRefusedRedirects(
     }
   );
   const stops = [
+    cdp.on('Network.requestWillBeSent', changed),
     cdp.on<Protocol.Network.ResponseReceivedEvent>('Network.responseReceived', (params) => {
       if (documents.isDocument(params.requestId)) responded.add(params.requestId);
     }),
@@ -150,12 +153,11 @@ export function watchRefusedRedirects(
     const until = abortedAt === undefined ? openUntil : abortedAt + graceMs;
     return until > Date.now() ? until : undefined;
   };
-  const refused = async (
-    options: { awaitOpen?: boolean } = {}
-  ): Promise<FailedLoad | undefined> => {
-    const openUntil = options.awaitOpen === true ? Date.now() + graceMs : 0;
+  const refused = async (options: { openUntil?: number } = {}): Promise<FailedLoad | undefined> => {
+    const openUntil = options.openUntil ?? 0;
     await waitForDeadlines(() => {
       const ids = [...aborted.keys(), ...(openUntil > 0 ? documents.requestIds() : [])];
+      if (ids.length === 0 && openUntil > Date.now()) return openUntil;
       const deadlines = ids.flatMap((id) => deadline(id, openUntil) ?? []);
       return deadlines.length > 0 ? Math.max(...deadlines) : undefined;
     }, waiters);
@@ -181,5 +183,7 @@ export async function refusedAfterAbort(
   watch: RefusedRedirectWatch,
   navigation: { errorText?: string }
 ): Promise<FailedLoad | undefined> {
-  return navigation.errorText === ABORTED_ERROR ? watch.refused({ awaitOpen: true }) : undefined;
+  return navigation.errorText === ABORTED_ERROR
+    ? watch.refused({ openUntil: Date.now() + REDIRECT_HEADERS_GRACE_MS })
+    : undefined;
 }

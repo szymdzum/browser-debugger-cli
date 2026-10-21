@@ -2,6 +2,7 @@
  * Session, daemon and command lifecycle error messages.
  */
 
+import { ABORTED_ERROR } from '@/connection/navigationOutcome.js';
 import { getSessionName } from '@/session/paths.js';
 import { escapeControlChars, formatDuration, joinLines } from '@/ui/formatting.js';
 import {
@@ -502,6 +503,13 @@ const SCHEME_MISMATCH_ERRORS =
   /ERR_CONNECTION_REFUSED|ERR_SSL_|ERR_EMPTY_RESPONSE|ERR_CONNECTION_RESET/;
 
 /**
+ * A load that fails with `net::ERR_ABORTED` is a redirect the browser refused
+ * (#890): the server answered, the page stayed.
+ */
+const REFUSED_REDIRECT_SUGGESTION =
+  'The server redirected to a URL the browser does not open as a page (an app or script URL); the previous page is still loaded. See the redirect with: bdg network list';
+
+/**
  * The browser could not load the start URL at all.
  *
  * @param url - URL that failed, shown as {@link displayUrl} shows it (#757)
@@ -516,16 +524,32 @@ export function navigationFailedError(
   addedScheme = false,
   redirectedTo?: string
 ): ErrorWithSuggestion {
-  const check = 'Check the URL and that the server is running and reachable from this machine';
   const shown = displayUrl(url);
   const redirect = redirectedTo ? ` (redirected to ${displayUrl(redirectedTo)})` : '';
   return {
     message: `Could not load ${shown}${redirect}: ${errorText}`,
-    suggestion:
-      addedScheme && SCHEME_MISMATCH_ERRORS.test(errorText)
-        ? `bdg added http:// to what you typed. ${check}; for an HTTPS server use: bdg ${shown.replace(/^http:/, 'https:')}`
-        : check,
+    suggestion: navigationFailedSuggestion(shown, errorText, addedScheme),
   };
+}
+
+/**
+ * What to do about a load that failed.
+ *
+ * @param shown - URL that failed, as shown
+ * @param errorText - Chrome network error
+ * @param addedScheme - Whether bdg prepended `http://` to the URL as typed
+ * @returns The suggestion
+ */
+function navigationFailedSuggestion(
+  shown: string,
+  errorText: string,
+  addedScheme: boolean
+): string {
+  if (errorText === ABORTED_ERROR) return REFUSED_REDIRECT_SUGGESTION;
+  const check = 'Check the URL and that the server is running and reachable from this machine';
+  return addedScheme && SCHEME_MISMATCH_ERRORS.test(errorText)
+    ? `bdg added http:// to what you typed. ${check}; for an HTTPS server use: bdg ${shown.replace(/^http:/, 'https:')}`
+    : check;
 }
 
 /**

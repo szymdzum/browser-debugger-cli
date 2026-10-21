@@ -56,6 +56,9 @@ interface Target {
   names?: string;
 }
 
+/** The suggestion of a refused redirect: the server answered, the browser did not follow */
+const REFUSED_HINT = /does not open as a page.*bdg network list/s;
+
 /** A redirect to an app scheme */
 const MYAPP: Target = {
   id: 'myapp://',
@@ -86,6 +89,16 @@ const TARGETS: readonly Target[] = [
   { id: 'download', to: (s) => `${s.url}download`, expect: { kind: 'loads' } },
   { id: 'http 200', to: (s) => `${s.url}ok`, expect: { kind: 'loads', shows: /:\d+\/ok\b/ } },
 ];
+
+/** How long the slow link's redirect takes to answer */
+const SLOW_REDIRECT_MS = 1500;
+
+/**
+ * How long the slow reload's redirect takes to answer: past the 500 ms the
+ * redirect watch once gave a reload, within the 1000 ms page-ready limit the
+ * harness sets (`BDG_TEST_PAGE_READY_MS`)
+ */
+const SLOW_RELOAD_MS = 700;
 
 /** The target that also gets a `--json` run on each path */
 const JSON_TARGET = 'myapp://';
@@ -135,6 +148,10 @@ async function cell(
     problems.push(`does not name the refused URL ${target.names}`);
   if (json && target.names && !String(json.envelope.error).includes(target.names))
     problems.push(`--json: error does not name the refused URL ${target.names}`);
+  if (target.id === MYAPP.id && !REFUSED_HINT.test(human.output))
+    problems.push('does not say the browser refused the redirect');
+  if (json && target.id === MYAPP.id && !REFUSED_HINT.test(String(json.envelope['suggestion'])))
+    problems.push('--json: suggestion does not say the browser refused the redirect');
   assert.deepEqual(
     problems,
     [],
@@ -206,20 +223,31 @@ void describe('Refused redirects (#890)', () => {
     }
 
     let flips = 0;
-    void it('reload: myapp:// (#890 adjacent: the server now redirects)', () =>
-      cell(
-        MYAPP,
-        ABORTED,
-        async () => {
-          flips += 1;
-          const loaded = await bdg('page', [
-            'navigate',
-            hostileServer().flipUrl(`myapp://callback?${flips}`),
-          ]);
-          assert.equal(loaded.exitCode, 0, loaded.output);
-        },
-        ['page', ['reload']]
-      ));
+    for (const delayMs of [0, SLOW_RELOAD_MS]) {
+      void it(`reload: myapp:// after ${delayMs} ms (#890 adjacent: the server now redirects)`, () =>
+        cell(
+          MYAPP,
+          ABORTED,
+          async () => {
+            flips += 1;
+            const url = hostileServer().flipUrl(`myapp://callback?${flips}`, delayMs);
+            const loaded = await bdg('page', ['navigate', url]);
+            assert.equal(loaded.exitCode, 0, loaded.output);
+          },
+          ['page', ['reload']]
+        ));
+    }
+
+    const slowRow: Row = {
+      id: 'slow redirect to myapp://',
+      url: (server) => server.redirectUrl('myapp://callback', SLOW_REDIRECT_MS),
+      expect: ABORTED,
+    };
+    void it(`click: myapp:// after ${SLOW_REDIRECT_MS} ms`, () =>
+      cell(MYAPP, actionExpectation(slowRow, 'click'), () => inFreshTab(slowRow), [
+        'dom',
+        ['click', '#go'],
+      ]));
 
     for (const target of TARGETS) {
       const row = rowOf(target);

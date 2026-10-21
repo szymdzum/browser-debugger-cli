@@ -125,7 +125,7 @@ async function runNavigation(
     }
     loaderId = started.loaderId;
     const how = await raceTimeout(
-      action === 'reload' ? withRefusedReload(navigated.done, redirects) : navigated.done,
+      action === 'reload' ? withRefusedReload(navigated.done, redirects, deadline) : navigated.done,
       Math.max(0, deadline - Date.now())
     );
     if (typeof how === 'object') throw failedLoadError(how);
@@ -154,14 +154,16 @@ async function runNavigation(
  *
  * @param done - The wait for the reloaded page
  * @param redirects - Watch started before the reload
+ * @param deadline - The reload's time limit (epoch ms): a slow server's refused redirect still counts
  * @returns How the page moved, or the refused redirect
  */
 function withRefusedReload<T>(
   done: Promise<T>,
-  redirects: RefusedRedirectWatch
+  redirects: RefusedRedirectWatch,
+  deadline: number
 ): Promise<T | FailedLoad> {
   const refused = redirects
-    .refused({ awaitOpen: true })
+    .refused({ openUntil: deadline })
     .then((found) => found ?? new Promise<never>(() => undefined));
   return Promise.race([done, refused]);
 }
