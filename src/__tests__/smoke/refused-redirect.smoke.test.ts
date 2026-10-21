@@ -12,6 +12,7 @@
 
 import * as assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
+import { setImmediate as setImmediatePromise } from 'node:timers/promises';
 
 import type { HostileServer } from '@/__testutils__/hostileServer.js';
 import {
@@ -137,6 +138,40 @@ function redirectTo(target: Target): string {
   return server.redirectUrl(target.to(server));
 }
 
+/**
+ * The page tabs of the test's Chrome.
+ *
+ * @returns Their ids
+ */
+async function pageTabs(): Promise<string[]> {
+  const response = await fetch(`http://127.0.0.1:${chromePort()}/json/list`);
+  const targets = (await response.json()) as Array<{ id: string; type: string }>;
+  return targets.filter((target) => target.type === 'page').map((target) => target.id);
+}
+
+/**
+ * A new session, in a new tab (the others closed), on the page that leads to
+ * a row. On Linux Chrome hands `myapp://` to `xdg-open` and asks first: the
+ * prompt stays on its tab and takes the mouse, so a later action in that tab
+ * would not reach the page.
+ *
+ * @param row - The row
+ */
+async function inFreshTab(row: Row): Promise<void> {
+  await bdg('stop');
+  const base = `http://127.0.0.1:${chromePort()}`;
+  const old = await pageTabs();
+  const created = (await (
+    await fetch(`${base}/json/new?about:blank`, { method: 'PUT' })
+  ).json()) as {
+    id: string;
+  };
+  await Promise.all(old.map((id) => fetch(`${base}/json/close/${id}`)));
+  while ((await pageTabs()).some((id) => id !== created.id)) await setImmediatePromise();
+  await startSession();
+  await reachLaunch(row);
+}
+
 void describe('Refused redirects (#890)', () => {
   before(setUpMatrix);
 
@@ -186,7 +221,7 @@ void describe('Refused redirects (#890)', () => {
         cell(
           target,
           actionExpectation(row, 'click'),
-          () => reachLaunch(row),
+          () => inFreshTab(row),
           (json) => (json ? bdgJson('dom', ['click', '#go']) : bdg('dom', ['click', '#go']))
         ));
     }
@@ -197,7 +232,7 @@ void describe('Refused redirects (#890)', () => {
         cell(
           target,
           actionExpectation(row, 'submit'),
-          () => reachLaunch(row),
+          () => inFreshTab(row),
           (json) => {
             const args = ['submit', '#form', '--timeout', '1500'];
             return json ? bdgJson('dom', args) : bdg('dom', args);

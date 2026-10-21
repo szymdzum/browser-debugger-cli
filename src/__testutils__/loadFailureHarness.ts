@@ -6,6 +6,8 @@
  */
 
 import * as assert from 'node:assert/strict';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { it } from 'node:test';
 
 import { runCommand } from '@/__testutils__/commandRunner.js';
@@ -64,6 +66,26 @@ export function chromePort(): number {
 }
 
 /**
+ * A Chrome profile whose downloads go to a temporary directory: the test's
+ * Chrome is attached to, so bdg leaves its download behavior alone, and a
+ * download (`/download`, #890) would land in the user's `~/Downloads`.
+ *
+ * @returns User data directory
+ */
+function profileWithDownloadsDir(): string {
+  const userDataDir = makeTempDir('bdg-matrix-chrome-');
+  const preferences = {
+    download: {
+      default_directory: makeTempDir('bdg-matrix-downloads-'),
+      prompt_for_download: false,
+    },
+  };
+  fs.mkdirSync(path.join(userDataDir, 'Default'));
+  fs.writeFileSync(path.join(userDataDir, 'Default', 'Preferences'), JSON.stringify(preferences));
+  return userDataDir;
+}
+
+/**
  * Start the hostile server and a Chrome that bypasses any proxy of the environment.
  */
 export async function setUpMatrix(): Promise<void> {
@@ -72,7 +94,7 @@ export async function setUpMatrix(): Promise<void> {
   hostile = await startHostileServer();
   chrome = await launchChrome({
     port: await getFreePort(),
-    userDataDir: makeTempDir('bdg-matrix-chrome-'),
+    userDataDir: profileWithDownloadsDir(),
     headless: true,
     sessionDir: makeTempDir('bdg-matrix-session-'),
     chromeFlags: ['--no-proxy-server'],
