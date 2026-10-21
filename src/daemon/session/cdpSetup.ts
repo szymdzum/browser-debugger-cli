@@ -6,6 +6,7 @@
 
 import { CDPConnection } from '@/connection/cdp.js';
 import { CDPConnectionError } from '@/connection/errors.js';
+import { ABORTED_ERROR } from '@/connection/navigationOutcome.js';
 import { waitForPageReady } from '@/connection/pageReadiness.js';
 import { sendTyped, type Protocol } from '@/connection/typed-cdp.js';
 import { DEFAULT_PAGE_READINESS_TIMEOUT_MS } from '@/constants.js';
@@ -175,7 +176,7 @@ async function navigateOrFail(
     const navigation = await sendNavigate(cdp, url, log, signal);
     assertNavigated(navigation, url, failure.addedScheme, failure.redirectedTo());
     const refused =
-      navigation.errorText === 'net::ERR_ABORTED'
+      navigation.errorText === ABORTED_ERROR
         ? await redirects.refused(undefined, { awaitOpen: true })
         : undefined;
     if (refused) throw failedLoadError(refused, failure.addedScheme);

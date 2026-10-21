@@ -361,8 +361,7 @@ export function createInteractionRunner(
         });
         const { work, ...changes } = collected ?? {};
         const navigationFailed =
-          (await failedNavigation(cdp, changes.navigation)) ??
-          (await refusedNavigation(redirects));
+          (await failedNavigation(cdp, changes.navigation)) ?? (await refusedNavigation(redirects));
         const requests = collectRequests?.();
         const blocked = await blockedSubmit(options.readBlockedSubmit, collected, requests);
         if (effects) await tabs?.pageLost(cdp);

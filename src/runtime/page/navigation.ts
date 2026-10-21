@@ -3,6 +3,7 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import { ABORTED_ERROR } from '@/connection/navigationOutcome.js';
 import { waitForPageReady } from '@/connection/pageReadiness.js';
 import { sendTyped } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
@@ -429,9 +430,6 @@ function nextNavigation(
   return { done, stop: () => unsubscribes.forEach((unsubscribe) => unsubscribe()) };
 }
 
-/** Chrome's error for an aborted request */
-const ABORTED = 'net::ERR_ABORTED';
-
 /**
  * Load a URL in the page.
  *
@@ -446,7 +444,7 @@ async function navigateTo(cdp: CDPConnection, url: string): Promise<StartedActio
   return {
     notAPage: assertNavigated(navigation, url) === 'not-a-page',
     ...(loaderId && { loaderId }),
-    ...(navigation.errorText === ABORTED && { aborted: true }),
+    ...(navigation.errorText === ABORTED_ERROR && { aborted: true }),
   };
 }
 

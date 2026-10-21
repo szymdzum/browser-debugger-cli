@@ -11,6 +11,7 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import { ABORTED_ERROR } from '@/connection/navigationOutcome.js';
 import { sendTyped, type Protocol } from '@/connection/typed-cdp.js';
 import type { CDPSender } from '@/telemetry/objectExpander.js';
 import type { FailedLoad } from '@/types.js';
@@ -183,7 +184,7 @@ export function watchRefusedRedirects(
       const doc = followed.get(params.requestId);
       if (!doc) return;
       doc.done = true;
-      if (params.errorText !== 'net::ERR_ABORTED') return changed();
+      if (params.errorText !== ABORTED_ERROR) return changed();
       doc.aborted = params.errorText;
       setTimeout(() => {
         doc.settled = true;

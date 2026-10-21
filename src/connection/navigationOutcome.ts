@@ -20,6 +20,9 @@ export type NavigationOutcome = 'loaded' | 'not-a-page' | 'certificate' | 'faile
  */
 const PAGE_KEPT_ERRORS = /^net::(ERR_HTTP_RESPONSE_CODE_FAILURE|ERR_ABORTED)$/;
 
+/** Chrome's error for an aborted request: a download, a 204, or a redirect it refused (#890) */
+export const ABORTED_ERROR = 'net::ERR_ABORTED';
+
 /** Certificate errors (Chrome's -200 range): the page is Chrome's certificate warning */
 const CERTIFICATE_ERROR = /^net::ERR_CERT_[A-Z_]+$/;
 
@@ -33,7 +36,7 @@ const CERTIFICATE_ERROR = /^net::ERR_CERT_[A-Z_]+$/;
  */
 export function navigationOutcome(errorText?: string, loaderId?: string): NavigationOutcome {
   if (!errorText) return 'loaded';
-  if (errorText === 'net::ERR_ABORTED' && !loaderId) return 'not-a-page';
+  if (errorText === ABORTED_ERROR && !loaderId) return 'not-a-page';
   if (CERTIFICATE_ERROR.test(errorText)) return 'certificate';
   return PAGE_KEPT_ERRORS.test(errorText) ? 'loaded' : 'failed';
 }
