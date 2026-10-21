@@ -19,7 +19,6 @@ import {
   actionExpectation,
   judge,
   type Expectation,
-  type Observed,
   type ObservedJson,
   type Row,
 } from '@/__testutils__/loadFailureCells.js';
@@ -27,11 +26,15 @@ import {
   bdg,
   bdgJson,
   chromePort,
+  closeTab,
   hostileServer,
+  listTabs,
+  openTab,
   reachLaunch,
   setUpMatrix,
   startSession,
   tearDownMatrix,
+  urlOf,
 } from '@/__testutils__/loadFailureHarness.js';
 import { removeTempDirs } from '@/__testutils__/tempDirs.js';
 
@@ -93,6 +96,9 @@ function rowOf(target: Target): Row {
   };
 }
 
+/** A bdg command: what follows `bdg` */
+type Command = [command: string, args: string[]];
+
 /**
  * Run a cell: human output, and `--json` for the JSON target; judged by the
  * oracle, and a refused redirect's output must name the refused URL.
@@ -100,20 +106,21 @@ function rowOf(target: Target): Row {
  * @param target - Redirect target
  * @param expect - What bdg must report
  * @param prepare - Puts the session in the state the command starts from
- * @param run - The command, with `--json` or without
+ * @param run - The command and its arguments, run as is and with `--json`
  */
 async function cell(
   target: Target,
   expect: Expectation,
   prepare: () => Promise<void>,
-  run: (json: boolean) => Promise<Observed | ObservedJson>
+  run: Command
 ): Promise<void> {
+  const [command, args] = run;
   await prepare();
-  const human = (await run(false)) as Observed;
+  const human = await bdg(command, args);
   let json: ObservedJson | undefined;
   if (target.id === JSON_TARGET) {
     await prepare();
-    json = (await run(true)) as ObservedJson;
+    json = await bdgJson(command, args);
   }
   const problems = judge(expect, human, json);
   if (target.names && !human.output.includes(target.names))
@@ -134,19 +141,7 @@ async function cell(
  * @returns URL that redirects to it
  */
 function redirectTo(target: Target): string {
-  const server = hostileServer();
-  return server.redirectUrl(target.to(server));
-}
-
-/**
- * The page tabs of the test's Chrome.
- *
- * @returns Their ids
- */
-async function pageTabs(): Promise<string[]> {
-  const response = await fetch(`http://127.0.0.1:${chromePort()}/json/list`);
-  const targets = (await response.json()) as Array<{ id: string; type: string }>;
-  return targets.filter((target) => target.type === 'page').map((target) => target.id);
+  return urlOf(rowOf(target));
 }
 
 /**
@@ -159,15 +154,10 @@ async function pageTabs(): Promise<string[]> {
  */
 async function inFreshTab(row: Row): Promise<void> {
   await bdg('stop');
-  const base = `http://127.0.0.1:${chromePort()}`;
-  const old = await pageTabs();
-  const created = (await (
-    await fetch(`${base}/json/new?about:blank`, { method: 'PUT' })
-  ).json()) as {
-    id: string;
-  };
-  await Promise.all(old.map((id) => fetch(`${base}/json/close/${id}`)));
-  while ((await pageTabs()).some((id) => id !== created.id)) await setImmediatePromise();
+  const old = await listTabs();
+  const created = await openTab('about:blank');
+  await Promise.all(old.map(closeTab));
+  while ((await listTabs()).some((id) => id !== created.id)) await setImmediatePromise();
   await startSession();
   await reachLaunch(row);
 }
@@ -186,15 +176,10 @@ void describe('Refused redirects (#890)', () => {
   void describe('bdg URL', () => {
     for (const target of TARGETS) {
       void it(`start: ${target.id}`, () =>
-        cell(
-          target,
-          target.expect,
-          async () => void (await bdg('stop')),
-          (json) => {
-            const args = ['--chrome-ws-url', String(chromePort())];
-            return json ? bdgJson(redirectTo(target), args) : bdg(redirectTo(target), args);
-          }
-        ));
+        cell(target, target.expect, async () => void (await bdg('stop')), [
+          redirectTo(target),
+          ['--chrome-ws-url', String(chromePort())],
+        ]));
     }
     after(async () => void (await bdg('stop')));
   });
@@ -209,35 +194,25 @@ void describe('Refused redirects (#890)', () => {
 
     for (const target of TARGETS) {
       void it(`navigate: ${target.id}`, () =>
-        cell(target, target.expect, backToOk, (json) => {
-          const args = ['navigate', redirectTo(target)];
-          return json ? bdgJson('page', args) : bdg('page', args);
-        }));
+        cell(target, target.expect, backToOk, ['page', ['navigate', redirectTo(target)]]));
     }
 
     for (const target of TARGETS) {
       const row = rowOf(target);
       void it(`click: ${target.id}`, () =>
-        cell(
-          target,
-          actionExpectation(row, 'click'),
-          () => inFreshTab(row),
-          (json) => (json ? bdgJson('dom', ['click', '#go']) : bdg('dom', ['click', '#go']))
-        ));
+        cell(target, actionExpectation(row, 'click'), () => inFreshTab(row), [
+          'dom',
+          ['click', '#go'],
+        ]));
     }
 
     for (const target of TARGETS.filter((t) => t.expect === ABORTED)) {
       const row = rowOf(target);
       void it(`submit: ${target.id}`, () =>
-        cell(
-          target,
-          actionExpectation(row, 'submit'),
-          () => inFreshTab(row),
-          (json) => {
-            const args = ['submit', '#form', '--timeout', '1500'];
-            return json ? bdgJson('dom', args) : bdg('dom', args);
-          }
-        ));
+        cell(target, actionExpectation(row, 'submit'), () => inFreshTab(row), [
+          'dom',
+          ['submit', '#form', '--timeout', '1500'],
+        ]));
     }
   });
 });

@@ -24,8 +24,9 @@ import {
   type Row,
 } from '@/__testutils__/loadFailureCells.js';
 import { makeTempDir } from '@/__testutils__/tempDirs.js';
+import { CDPConnection } from '@/connection/cdp.js';
 import { launchChrome } from '@/connection/launcher.js';
-import type { LaunchedChrome } from '@/types.js';
+import type { CDPTarget, LaunchedChrome } from '@/types.js';
 
 /** Shortest navigation limit bdg accepts from the test environment (`page navigate`, `reload`) */
 const TEST_ENV = { BDG_TEST_PAGE_READY_MS: '1000' };
@@ -225,6 +226,54 @@ export function urlOf(row: Row): string {
  */
 export function failsLoad(row: Row): boolean {
   return row.full === true && row.expect.kind === 'failure';
+}
+
+/**
+ * The test Chrome's DevTools HTTP endpoint.
+ *
+ * @param path - Path, e.g. `/json/list`
+ * @returns URL
+ */
+function devtoolsUrl(path: string): string {
+  return `http://127.0.0.1:${chromePort()}${path}`;
+}
+
+/**
+ * The page tabs of the test's Chrome.
+ *
+ * @returns Their ids
+ */
+export async function listTabs(): Promise<string[]> {
+  const targets = (await (await fetch(devtoolsUrl('/json/list'))).json()) as CDPTarget[];
+  return targets.filter((target) => target.type === 'page').map((target) => target.id);
+}
+
+/**
+ * Open a tab on a URL (without waiting for a load event, a failed load fires none).
+ *
+ * @param url - URL
+ * @returns The tab
+ */
+export async function openTab(url: string): Promise<CDPTarget> {
+  const response = await fetch(devtoolsUrl('/json/new?about:blank'), { method: 'PUT' });
+  const tab = (await response.json()) as CDPTarget;
+  if (url === 'about:blank') return tab;
+  const cdp = await CDPConnection.create(tab.webSocketDebuggerUrl);
+  try {
+    await cdp.send('Page.navigate', { url });
+  } finally {
+    cdp.close();
+  }
+  return tab;
+}
+
+/**
+ * Close a tab of the test's Chrome.
+ *
+ * @param id - Tab id
+ */
+export async function closeTab(id: string): Promise<void> {
+  await fetch(devtoolsUrl(`/json/close/${id}`));
 }
 
 /**
