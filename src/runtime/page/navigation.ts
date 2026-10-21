@@ -15,6 +15,7 @@ import {
   watchMainDocuments,
 } from '@/runtime/page/failedLoad.js';
 import { readPageLoadingState } from '@/runtime/page/loadingState.js';
+import { watchRefusedRedirects } from '@/runtime/page/refusedRedirect.js';
 import type { PendingRequest } from '@/telemetry/network.js';
 import type { CDPSender } from '@/telemetry/objectExpander.js';
 import type { FailedLoad } from '@/types.js';
@@ -104,6 +105,7 @@ async function runNavigation(
   const mainFrameId = (await pageTarget(cdp)).targetId;
   const navigated = nextNavigation(cdp, mainFrameId);
   const document = documentResponse(cdp, mainFrameId);
+  const redirects = watchRefusedRedirects(cdp, mainFrameId);
   const readyTimeoutMs = pageReadyTimeoutMs();
   const deadline = Date.now() + readyTimeoutMs;
   let loaderId: string | undefined;
@@ -112,6 +114,10 @@ async function runNavigation(
     sent.catch(() => undefined);
     const started = await raceTimeout(sent, readyTimeoutMs);
     if (started === undefined) return await stillLoading(cdp, action, readyTimeoutMs);
+    const refused = started.aborted
+      ? await redirects.refused(undefined, { awaitOpen: true })
+      : undefined;
+    if (refused) throw failedLoadError(refused);
     if (started.notAPage) {
       return { action, ...(await currentLocation(cdp)), warning: notAPageWarning() };
     }
@@ -123,6 +129,7 @@ async function runNavigation(
   } finally {
     navigated.stop();
     document.stop();
+    redirects.stop();
   }
   const failed =
     action === 'navigate' || action === 'reload' ? document.failure(loaderId) : undefined;
@@ -197,6 +204,8 @@ interface StartedAction {
   notAPage: boolean;
   /** Loader of the new document, when the browser names it (navigate only) */
   loaderId?: string;
+  /** Chrome aborted the request (`net::ERR_ABORTED`: a 204, a download, or a refused redirect, #890) */
+  aborted?: true;
 }
 
 /**
@@ -420,6 +429,9 @@ function nextNavigation(
   return { done, stop: () => unsubscribes.forEach((unsubscribe) => unsubscribe()) };
 }
 
+/** Chrome's error for an aborted request */
+const ABORTED = 'net::ERR_ABORTED';
+
 /**
  * Load a URL in the page.
  *
@@ -434,6 +446,7 @@ async function navigateTo(cdp: CDPConnection, url: string): Promise<StartedActio
   return {
     notAPage: assertNavigated(navigation, url) === 'not-a-page',
     ...(loaderId && { loaderId }),
+    ...(navigation.errorText === ABORTED && { aborted: true }),
   };
 }
 

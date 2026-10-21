@@ -7,6 +7,7 @@
 import type { TelemetryStore } from './TelemetryStore.js';
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import type { LogpointActionHit } from '@/ipc/protocol/debugTypes.js';
 import type {
   ActionEffects,
   DialogChoice,
@@ -15,7 +16,6 @@ import type {
   PageNavigation,
   TriggeredRequest,
 } from '@/ipc/protocol/domTypes.js';
-import type { LogpointActionHit } from '@/ipc/protocol/debugTypes.js';
 import type { OpenedTab, TabClosedSwitch } from '@/ipc/protocol/tabTypes.js';
 import {
   pendingChanges,
@@ -25,6 +25,7 @@ import {
 import type { BoundedInvalidFields } from '@/runtime/dom/blockedSubmit.js';
 import { UNBIND_TARGET_SCRIPT } from '@/runtime/dom/targetNode.js';
 import { readFailedLoad } from '@/runtime/page/failedLoad.js';
+import { readMainFrameId, watchRefusedRedirects } from '@/runtime/page/refusedRedirect.js';
 import { toDownloadInfo } from '@/telemetry/downloads.js';
 import { mayCarrySubmit } from '@/telemetry/requestKinds.js';
 import { createLogger } from '@/ui/logging/index.js';
@@ -239,6 +240,27 @@ async function failedNavigation(
 }
 
 /**
+ * A redirect Chrome refused during the action (#890): the page stays, so no
+ * navigation is seen. The failure names the refused URL.
+ *
+ * @param redirects - The action's watch of the main frame's documents
+ * @returns The refused URL and Chrome's network error, or undefined
+ */
+async function refusedNavigation(
+  redirects: ReturnType<typeof watchRefusedRedirects> | undefined
+): Promise<ActionEffects['navigationFailed']> {
+  try {
+    const refused = await redirects?.refused();
+    return refused?.redirectedTo
+      ? { url: displayUrl(refused.redirectedTo), errorText: refused.errorText }
+      : undefined;
+  } catch (error) {
+    log.debug(`Refused redirect not read after the action: ${getErrorMessage(error)}`);
+    return undefined;
+  }
+}
+
+/**
  * The logpoints that logged during an action, as many as the report lists.
  *
  * @param hit - Every logpoint hit during the action
@@ -322,6 +344,7 @@ export function createInteractionRunner(
         options.reportRequests === false ? undefined : watchTriggeredRequests(store);
       const effects = options.reportEffects === false ? undefined : watchActionEffects(cdp);
       const collectErrors = effects && watchActionErrors(store);
+      const redirects = effects && watchRefusedRedirects(cdp, () => readMainFrameId(cdp));
       let result: T | undefined;
       try {
         store.dialogAnswers.setActionChoice(options.dialogs);
@@ -337,7 +360,9 @@ export function createInteractionRunner(
           detectUnsettled: options.detectUnsettled === true,
         });
         const { work, ...changes } = collected ?? {};
-        const navigationFailed = await failedNavigation(cdp, changes.navigation);
+        const navigationFailed =
+          (await failedNavigation(cdp, changes.navigation)) ??
+          (await refusedNavigation(redirects));
         const requests = collectRequests?.();
         const blocked = await blockedSubmit(options.readBlockedSubmit, collected, requests);
         if (effects) await tabs?.pageLost(cdp);
@@ -378,6 +403,7 @@ export function createInteractionRunner(
       } finally {
         store.dialogAnswers.setActionChoice(undefined);
         effects?.dispose();
+        redirects?.stop();
         void cdp
           .send('Runtime.evaluate', { expression: UNBIND_TARGET_SCRIPT })
           .catch((error: unknown) => log.debug(`Target not unbound: ${getErrorMessage(error)}`));
