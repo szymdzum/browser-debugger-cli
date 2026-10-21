@@ -12,6 +12,9 @@ import {
   contaminationPatterns,
   findContamination,
   fitsBudget,
+  forceCleanup,
+  LOG_BODY_LIMIT,
+  OVERSHOOT_MARGIN,
   gradeRun,
   parseArgs,
   parseStream,
@@ -198,24 +201,92 @@ test('cancel-confirm fails when the page shows the order was removed, whatever t
   assert.match(verdict.reason, /accepted/);
 });
 
-test('the checkers use the last thing logged and the last outcome per button', () => {
+test('any value the page logged in the run is accepted (an honest reload), buttons use the last outcome per button', () => {
   const again = contextWith({
     ...LOG,
     'popup-token': ['tk-111111', 'tk-a1b2c3'],
-    'breaking-buttons': ['Alpha=0', 'Alpha=1', 'Bravo=1', 'Bravo=0'],
+    'console-error-code': ['E-111111', 'E-a1b2c3'],
+    'failed-request-page-two': ['/eval-net-b-111111.json', '/eval-net-b-a1b2c3.json'],
+    'utility-classes': ['id-111111', 'id-a1b2c3'],
+    'breaking-buttons': [
+      'Alpha=0',
+      'Bravo=1',
+      'Charlie=0',
+      'Delta=0',
+      'Echo=0',
+      'Alpha=1',
+      'Bravo=0',
+    ],
   });
+  const check = (id, answer) => TASKS.find((t) => t.id === id).check(reply(answer), again).pass;
+  assert.equal(check('popup-token', 'tk-a1b2c3'), true);
+  assert.equal(check('popup-token', 'tk-111111'), true);
+  assert.equal(check('popup-token', 'tk-222222'), false);
+  assert.equal(check('console-error-code', 'E-111111'), true);
+  assert.equal(check('failed-request-page-two', '/eval-net-b-111111.json'), true);
+  assert.equal(check('utility-classes', CLASSES.replace('id-a1b2c3', 'id-111111')), true);
+  assert.equal(check('utility-classes', `${CLASSES} id-111111`), false);
+  assert.equal(check('breaking-buttons', 'Alpha'), true);
+  assert.equal(check('breaking-buttons', 'Alpha, Bravo'), false);
+});
+
+test('cancel-confirm accepts any kept status but fails when the last logged status is removed', () => {
+  const check = (log, answer) =>
+    TASKS.find((t) => t.id === 'cancel-confirm').check(
+      reply(answer),
+      contextWith({ 'cancel-confirm': log })
+    );
   assert.equal(
-    TASKS.find((t) => t.id === 'popup-token').check(reply('tk-a1b2c3'), again).pass,
+    check(['Order A-111111 kept', 'Order A-a1b2c3 kept'], 'Order A-111111 kept').pass,
     true
   );
   assert.equal(
-    TASKS.find((t) => t.id === 'popup-token').check(reply('tk-111111'), again).pass,
-    false
-  );
-  assert.equal(
-    TASKS.find((t) => t.id === 'breaking-buttons').check(reply('Alpha'), again).pass,
+    check(['Order A-111111 removed', 'Order A-a1b2c3 kept'], 'Order A-a1b2c3 kept').pass,
     true
   );
+  const finalRemoved = check(
+    ['Order A-111111 kept', 'Order A-a1b2c3 removed'],
+    'Order A-111111 kept'
+  );
+  assert.equal(finalRemoved.pass, false);
+  assert.match(finalRemoved.reason, /accepted/);
+});
+
+test('breaking-buttons fails unless all five buttons were clicked, even for a matching answer', () => {
+  const check = (log, answer) =>
+    TASKS.find((t) => t.id === 'breaking-buttons').check(
+      reply(answer),
+      contextWith({ 'breaking-buttons': log })
+    );
+  const only = check(['Alpha=1'], 'Alpha');
+  assert.equal(only.pass, false);
+  assert.match(only.reason, /not all buttons clicked/);
+  assert.equal(check(['Alpha=1', 'Bravo=0', 'Charlie=0', 'Delta=0'], 'Alpha').pass, false);
+  assert.equal(check(['Alpha=1', 'Bravo=0', 'Charlie=0', 'Delta=0', 'Echo=0'], 'Alpha').pass, true);
+});
+
+test('formatted answer lines pass (bold, backticks) and wrong ones still fail', () => {
+  const check = (text) => TASKS.find((t) => t.id === 'popup-token').check(text, CTX).pass;
+  for (const text of [
+    '**ANSWER: tk-a1b2c3**',
+    'ANSWER: `tk-a1b2c3`',
+    '`ANSWER: tk-a1b2c3`',
+    'ANSWER: **tk-a1b2c3**',
+    '**ANSWER:** tk-a1b2c3',
+    'ANSWER: `tk-a1b2c3` ',
+  ]) {
+    assert.equal(check(`Done.\n\n${text}`), true, text);
+  }
+  for (const text of [
+    '**ANSWER: tk-a1b2c4**',
+    'ANSWER: `tk-a1b2c3 or tk-a1b2c4`',
+    '**ANSWER: TK-A1B2C3**',
+    '**Answer:** tk-a1b2c3',
+    '**ANSWER: tk-a1b2c3** (maybe)',
+  ]) {
+    assert.equal(check(`Done.\n\n${text}`), false, text);
+  }
+  assert.deepEqual(extractAnswer('**ANSWER: x**'), { ok: true, value: 'x' });
 });
 
 test('extractAnswer takes the last line only', () => {
@@ -301,9 +372,13 @@ test('claude arguments turn the owner configuration off and cap the cost', () =>
   );
 });
 
-test('budget: a run starts only when spent + in flight + its cap fit the total', () => {
-  assert.equal(fitsBudget({ spent: 0.4, inFlight: 0.5, runBudget: 0.5, budget: 1.5 }), true);
-  assert.equal(fitsBudget({ spent: 0.6, inFlight: 0.5, runBudget: 0.5, budget: 1.5 }), false);
+test('budget: a run starts only when spent + 1.5 x (in flight + its cap) fit the total', () => {
+  assert.equal(OVERSHOOT_MARGIN, 1.5);
+  assert.equal(fitsBudget({ spent: 0.25, inFlight: 0.5, runBudget: 0.5, budget: 2 }), true);
+  assert.equal(fitsBudget({ spent: 0.6, inFlight: 0.5, runBudget: 0.5, budget: 2 }), false);
+  assert.equal(fitsBudget({ spent: 0, inFlight: 1.5, runBudget: 0.5, budget: 2.5 }), false);
+  assert.equal(fitsBudget({ spent: 0, inFlight: 0, runBudget: 0.5, budget: 0.75 }), true);
+  assert.equal(fitsBudget({ spent: 0, inFlight: 0, runBudget: 0.5, budget: 0.7 }), false);
 });
 
 test('redact removes the key and anything shaped like one', () => {
@@ -666,7 +741,7 @@ test('runPool stops before the total budget could be exceeded and counts the run
     parseArgs([
       '--tasks=popup-token',
       '--runs=10',
-      '--budget=1',
+      '--budget=2',
       '--run-budget=0.5',
       '--parallel=2',
     ])
@@ -683,8 +758,8 @@ test('runPool stops before the total budget could be exceeded and counts the run
   };
   const rows = [];
   const outcome = await runPool(ctx, planJobs(settings), (row) => rows.push(row));
-  assert.equal(started.length, 2, 'two runs fit: 2 x $0.5 in flight');
-  assert.equal(outcome.skipped, 8);
+  assert.equal(started.length, 3, 'with the 1.5 margin, three runs of $0.5 fit in $2');
+  assert.equal(outcome.skipped, 7);
   assert.match(outcome.stopReason, /budget/);
   assert.ok(outcome.spent <= settings.budget);
 });
@@ -1048,6 +1123,17 @@ test('findCheating: the encoded api parameter of the prompt URL is not counted, 
       command
     );
   }
+  for (const command of [
+    'tail -f /var/log/system.log',
+    'cat /tmp/app/log/output.txt',
+    'bdg console --log',
+  ]) {
+    assert.deepEqual(
+      findCheating({ toolInputs: [JSON.stringify({ command })] }, ctx, 0),
+      [],
+      command
+    );
+  }
   assert.equal(findCheating({ toolInputs: [] }, ctx, 2).length, 1);
 });
 
@@ -1108,3 +1194,114 @@ test('summary counts cheated runs in their own column and lists them as failures
   assert.match(text, /\| 0 \| 1 \| 0 \|\n/);
   assert.match(text, /\| t \| m \| 1 \| cheated \|/);
 });
+
+test('log server drops a body over the cap and keeps nothing of it', async () => {
+  const server = await startLogServer('http://127.0.0.1:9');
+  try {
+    const small = await fetch(`${server.url}/log?key=k&n=z`, {
+      method: 'POST',
+      body: 'x'.repeat(LOG_BODY_LIMIT),
+    });
+    assert.equal(small.status, 204);
+    let rejected = false;
+    try {
+      const big = await fetch(`${server.url}/log?key=k&n=y`, {
+        method: 'POST',
+        body: 'x'.repeat(LOG_BODY_LIMIT * 20),
+      });
+      rejected = big.status === 413;
+    } catch {
+      rejected = true;
+    }
+    assert.equal(rejected, true);
+    assert.deepEqual(server.entries('y', 'k'), []);
+    assert.equal(server.entries('z', 'k')[0].length, LOG_BODY_LIMIT);
+  } finally {
+    server.stop();
+  }
+});
+
+test('forceCleanup: kills run groups, ends sessions, removes sandboxes, stops servers and removes the build copy', () => {
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'ae-force-'));
+  const root = path.join(work, 'run');
+  fs.mkdirSync(root);
+  const bdg = path.join(work, 'bdg');
+  fs.writeFileSync(bdg, `#!/bin/sh\necho "$@" > '${path.join(work, 'bdg-args')}'\n`, {
+    mode: 0o755,
+  });
+  const build = path.join(work, 'build');
+  fs.mkdirSync(build);
+  const order = [];
+  const control = {
+    stops: new Set([(force) => order.push(`stop:${force}`)]),
+    roots: new Set([{ root, bdg, env: {} }]),
+    cleanups: [
+      () => order.push('server'),
+      () => fs.rmSync(build, { recursive: true, force: true }),
+    ],
+  };
+  forceCleanup(control);
+  assert.deepEqual(order, ['stop:true', 'server']);
+  assert.equal(fs.existsSync(root), false);
+  assert.equal(fs.existsSync(build), false);
+  assert.equal(fs.readFileSync(path.join(work, 'bdg-args'), 'utf8').trim(), 'cleanup --force');
+  assert.equal(control.roots.size, 0);
+});
+
+/**
+ * Wait until a file exists.
+ * @param {string} file path
+ * @returns {Promise<void>} resolves when it exists
+ */
+async function fileExists(file) {
+  for (let i = 0; i < 400 && !fs.existsSync(file); i++)
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(fs.existsSync(file), true, `${file} appears`);
+}
+
+test(
+  'double Ctrl-C: the second signal leaves no fixture server, sandbox or build copy behind',
+  { skip: !BUILT },
+  async () => {
+    const { spawn } = await import('node:child_process');
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), 'ae-sig-'));
+    const marker = path.join(work, 'started');
+    const fake = fakeClaude(
+      work,
+      `require('fs').writeFileSync(${JSON.stringify(marker)}, String(process.pid)); setInterval(() => {}, 1000);`
+    );
+    const keyFile = path.join(work, 'key');
+    fs.writeFileSync(keyFile, FAKE_KEY, { mode: 0o600 });
+    const child = spawn(
+      process.execPath,
+      [
+        'scripts/agent-eval.mjs',
+        '--tasks=console-error-code',
+        '--runs=1',
+        `--out=${path.join(work, 'out')}`,
+        `--claude-bin=${fake}`,
+        `--key-file=${keyFile}`,
+        '--run-timeout=120',
+      ],
+      { stdio: 'ignore', env: { ...process.env, ANTHROPIC_API_KEY: '' } }
+    );
+    const exited = new Promise((resolve) =>
+      child.once('exit', (code, signal) => resolve({ code, signal }))
+    );
+    await fileExists(marker);
+    const claudePid = Number(fs.readFileSync(marker, 'utf8'));
+    const buildDir = path.join(os.tmpdir(), `bdge-build-${child.pid}`);
+    assert.equal(fs.existsSync(buildDir), true, 'the build copy exists while the eval runs');
+    child.kill('SIGINT');
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    child.kill('SIGINT');
+    const result = await exited;
+    assert.equal(result.code, 130);
+    assert.equal(fs.existsSync(buildDir), false, 'the build copy is removed');
+    assert.equal(await processEnds(claudePid), true, 'the run group is killed');
+    const left = execFileSync('ps', ['-ax', '-o', 'command='], { encoding: 'utf8' })
+      .split('\n')
+      .filter((line) => line.includes(`bdge-build-${child.pid}`));
+    assert.deepEqual(left, [], 'no fixture server is left');
+  }
+);

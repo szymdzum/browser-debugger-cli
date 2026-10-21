@@ -14,8 +14,8 @@
  *   token, posts `tk-<value>` to the opener (which shows it) and logs it.
  * - `/eval-confirm` asks `confirm()` when `Remove order` is clicked, then shows
  *   and logs `Order A-<value> kept` (cancelled) or `... removed`.
- * - `/eval-buttons` has five buttons; the first click on a button decides
- *   (random) whether it breaks (by position: a throw, a rejected promise, a
+ * - `/eval-buttons` has five buttons; at load a random plan (at least one
+ *   breaker, at least one that only warns) decides which break (by position: a throw, a rejected promise, a
  *   throw from a timer) or only warns, and logs `Label=1` or `Label=0`.
  * - `/eval-shadow-login` has a sign-in form in an open shadow root; the
  *   credentials `ada@example.com` / `hunter22` show and log `R-<value>`.
@@ -100,14 +100,20 @@ const BUTTONS_HTML = `<!doctype html><title>Buttons</title>
     () => { Promise.reject(new Error('button rejected')); },
     () => { setTimeout(() => { throw new Error('button timer exploded'); }, 0); },
   ];
+  const plan = [...crypto.getRandomValues(new Uint8Array(5))].map((b) => b % 2 === 1);
+  const count = plan.filter(Boolean).length;
+  if (count === 0 || count === plan.length) {
+    const flip = crypto.getRandomValues(new Uint8Array(1))[0] % plan.length;
+    plan[flip] = !plan[flip];
+  }
   document.querySelectorAll('button').forEach((button, i) => {
-    let breaks;
+    let logged = false;
     button.addEventListener('click', () => {
-      if (breaks === undefined) {
-        breaks = crypto.getRandomValues(new Uint8Array(1))[0] % 2 === 1;
-        ${report('breaking-buttons', "button.textContent + '=' + (breaks ? 1 : 0)")}
+      if (!logged) {
+        logged = true;
+        ${report('breaking-buttons', "button.textContent + '=' + (plan[i] ? 1 : 0)")}
       }
-      if (breaks) breakers[i % 3]();
+      if (plan[i]) breakers[i % 3]();
       else console.warn('button is slow');
     });
   });

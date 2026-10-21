@@ -20,6 +20,16 @@
 const ANSWER_LINE = /^ANSWER:[ \t]*(.*)$/;
 
 /**
+ * Trim a line and the markdown emphasis or code ticks a model puts around an answer
+ * (`**ANSWER: x**`, `ANSWER: \`x\``).
+ * @param {string} text a line or a value
+ * @returns {string} the text without surrounding spaces, asterisks and backticks
+ */
+function stripEmphasis(text) {
+  return text.replace(/^[\s*`]+|[\s*`]+$/g, '');
+}
+
+/**
  * The agent's final answer: the value on the last non-empty line, which must be `ANSWER: <value>`.
  * @param {string} text the agent's final reply
  * @returns {{ok: true, value: string} | {ok: false, reason: string}} the value or why there is none
@@ -27,13 +37,13 @@ const ANSWER_LINE = /^ANSWER:[ \t]*(.*)$/;
 export function extractAnswer(text) {
   const lines = String(text ?? '')
     .split('\n')
-    .map((line) => line.trim())
+    .map(stripEmphasis)
     .filter(Boolean);
   const last = lines.at(-1);
   if (last === undefined) return { ok: false, reason: 'empty reply' };
   const match = ANSWER_LINE.exec(last);
   if (!match) return { ok: false, reason: 'the last line is not "ANSWER: <value>"' };
-  const value = match[1].trim();
+  const value = stripEmphasis(match[1]);
   if (value === '') return { ok: false, reason: 'the ANSWER line is empty' };
   return { ok: true, value };
 }
@@ -68,7 +78,7 @@ export function exactValue(accepted) {
 /**
  * Checker for an answer that is a set of items separated by commas or spaces; order is free,
  * items are compared exactly, and a missing, extra or repeated item fails.
- * @param {(ctx: TaskContext) => string[] | string} expected the truth for this run, or the reason it cannot be checked (a failure)
+ * @param {(ctx: TaskContext) => string[] | string[][] | string} expected the truth for this run (several arrays: any one matches), or the reason it cannot be checked (a failure)
  * @param {RegExp} separator what splits the items
  * @returns {(reply: string, ctx: TaskContext) => Verdict} checker taking the agent's final reply
  */
@@ -76,14 +86,23 @@ export function exactSet(expected, separator) {
   return (reply, ctx) => {
     const parsed = extractAnswer(reply);
     if (!parsed.ok) return { pass: false, reason: parsed.reason };
-    const wanted = expected(ctx);
-    if (typeof wanted === 'string') return { pass: false, reason: wanted };
+    const truth = expected(ctx);
+    if (typeof truth === 'string') return { pass: false, reason: truth };
+    const alternatives = Array.isArray(truth[0]) ? truth : [truth];
     const got = parsed.value.split(separator).map(normalise).filter(Boolean);
     const repeated = got.filter((item, i) => got.indexOf(item) !== i);
-    const missing = wanted.filter((item) => !got.includes(item));
-    const extra = [...new Set(got)].filter((item) => !wanted.includes(item));
-    if (missing.length === 0 && extra.length === 0 && repeated.length === 0)
+    const verdicts = alternatives.map((wanted) => {
+      const missing = wanted.filter((item) => !got.includes(item));
+      const extra = [...new Set(got)].filter((item) => !wanted.includes(item));
+      return { missing, extra };
+    });
+    if (
+      repeated.length === 0 &&
+      verdicts.some((v) => v.missing.length === 0 && v.extra.length === 0)
+    ) {
       return { pass: true, reason: 'matches the truth' };
+    }
+    const { missing, extra } = verdicts[verdicts.length - 1];
     return {
       pass: false,
       reason: `missing [${missing.join(', ')}], extra [${extra.join(', ')}], repeated [${repeated.join(', ')}]`,
@@ -92,34 +111,39 @@ export function exactSet(expected, separator) {
 }
 
 const ANSWER_RULE = 'End your reply with a last line `ANSWER: ';
+const BUTTON_LABELS = ['Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo'];
 const NEVER_HAPPENED = 'interaction never happened (the page logged no value in this run)';
 
 /**
- * What the page last logged for a task key in this run.
- * @param {TaskContext} ctx run context
+ * Truth for a task whose answer is a value the page made in this run. A page that makes its value
+ * at load logs a new one on every reload, and a repeated click makes another, so any value logged
+ * in the run is accepted: an honest reload must not fail the run.
  * @param {string} key task key
- * @returns {string | undefined} the last logged text, or undefined when nothing was logged
+ * @param {(logged: string[]) => string[] | string[][] | string} [derive] truth from the logged texts (default: each text is accepted)
+ * @returns {(ctx: TaskContext) => string[] | string[][] | string} truth function
  */
-function lastLogged(ctx, key) {
-  return ctx.logged(key).at(-1);
-}
-
-/**
- * Truth for a task whose answer is the text the page last logged.
- * @param {string} key task key
- * @param {(logged: string) => string[] | string} [derive] truth from the logged text (default: the text itself)
- * @returns {(ctx: TaskContext) => string[] | string} truth function
- */
-function loggedTruth(key, derive = (logged) => [logged]) {
+function loggedTruth(key, derive = (logged) => logged) {
   return (ctx) => {
-    const logged = lastLogged(ctx, key);
-    return logged === undefined ? NEVER_HAPPENED : derive(logged);
+    const logged = ctx.logged(key);
+    return logged.length === 0 ? NEVER_HAPPENED : derive(logged);
   };
 }
 
 /**
+ * Truth for cancel-confirm: any `kept` status the page logged, unless the last one logged says the
+ * order was removed (the confirmation ended up accepted), which fails whatever the answer is.
+ * @param {string[]} logged statuses the page logged
+ * @returns {string[] | string} accepted answers, or why the run fails
+ */
+function keptStatuses(logged) {
+  if (!logged.at(-1).endsWith(' kept')) return 'the confirmation was accepted, not cancelled';
+  return logged.filter((status) => status.endsWith(' kept'));
+}
+
+/**
  * Labels of the buttons that broke in this run: the page logs `Label=1` when a button's first
- * click threw and `Label=0` when it only warned.
+ * click threw and `Label=0` when it only warned. All five buttons must have been clicked, and the
+ * last outcome per button counts.
  * @param {TaskContext} ctx run context
  * @returns {string[] | string} the labels, or why they are unknown
  */
@@ -130,7 +154,8 @@ function brokenButtons(ctx) {
     outcomes.set(label, broke === '1');
   }
   if (outcomes.size === 0) return NEVER_HAPPENED;
-  return [...outcomes].filter(([, broke]) => broke).map(([label]) => label);
+  if (BUTTON_LABELS.some((label) => !outcomes.has(label))) return 'not all buttons clicked';
+  return BUTTON_LABELS.filter((label) => outcomes.get(label));
 }
 
 /**
@@ -167,11 +192,7 @@ export const TASKS = [
     title: 'Cancel a confirmation dialog',
     prompt: (ctx) =>
       `Open ${pageUrl(ctx, 'eval-confirm')} and click "Remove order", but cancel the confirmation question it asks (do not confirm it). ${ANSWER_RULE}<status>\` with the status line the page shows afterwards, word for word.`,
-    check: exactValue(
-      loggedTruth('cancel-confirm', (logged) =>
-        logged.endsWith(' kept') ? [logged] : 'the confirmation was accepted, not cancelled'
-      )
-    ),
+    check: exactValue(loggedTruth('cancel-confirm', keptStatuses)),
   },
   {
     id: 'breaking-buttons',
@@ -220,17 +241,19 @@ export const TASKS = [
     prompt: (ctx) =>
       `Open ${pageUrl(ctx, 'eval-classes')} and find the link that leads to account registration. ${ANSWER_RULE}<classes>\` with every CSS class on that link element, exactly as the page has them, separated by spaces.`,
     check: exactSet(
-      loggedTruth('utility-classes', (logged) => [
-        'px-4',
-        'py-2',
-        'rounded-lg',
-        'bg-blue-600',
-        'text-white',
-        'font-semibold',
-        'hover:bg-blue-700',
-        'focus:ring-2',
-        logged,
-      ]),
+      loggedTruth('utility-classes', (logged) =>
+        logged.map((extra) => [
+          'px-4',
+          'py-2',
+          'rounded-lg',
+          'bg-blue-600',
+          'text-white',
+          'font-semibold',
+          'hover:bg-blue-700',
+          'focus:ring-2',
+          extra,
+        ])
+      ),
       /[\s,]+/
     ),
   },

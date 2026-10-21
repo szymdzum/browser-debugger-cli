@@ -32,7 +32,7 @@
  * temp dir, and the harness's own command line (`ps`) shows how it was started (use a relative path).
  * `claude` has no turn-cap flag, so the harness counts assistant turns in the stream and stops the run.
  */
-import { execFile, spawn } from 'node:child_process';
+import { execFile, spawn, spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import http from 'node:http';
 import fs from 'node:fs';
@@ -60,6 +60,8 @@ const PASSTHROUGH_ENV = [
   'CHROME_PATH',
   'LANG',
 ];
+/** Largest request body the log server keeps */
+export const LOG_BODY_LIMIT = 4096;
 const BUILD_FILES = ['index.js', 'cli.js', 'daemon.js'];
 
 /**
@@ -184,7 +186,7 @@ export function renderPlan(settings) {
   ];
   if (worst > settings.budget) {
     lines.push(
-      `note:    the worst case exceeds the budget: the eval stops starting runs when spent + in flight + the per-run cap would pass $${settings.budget}`
+      `note:    the worst case exceeds the budget: the eval stops starting runs when spent + ${OVERSHOOT_MARGIN} x (in flight + the per-run cap) would pass $${settings.budget}`
     );
   }
   return lines.join('\n');
@@ -492,13 +494,18 @@ export function renderSummary({ rows, settings, spent, skipped, stopReason }) {
   return lines.join('\n') + '\n';
 }
 
+/** `--max-budget-usd` is checked between turns, so a run can end above its cap; every cap counts this many times */
+export const OVERSHOOT_MARGIN = 1.5;
+
 /**
- * Whether another run may start without the total budget being exceeded in the worst case.
- * @param {{spent: number, inFlight: number, runBudget: number, budget: number}} state money state
+ * Whether another run may start without the total budget being exceeded, counting the caps of
+ * the runs in flight and of the new run at `OVERSHOOT_MARGIN` times their size. Residual risk: a
+ * single turn can still cost more than the margin allows; the summary reports what was spent.
+ * @param {{spent: number, inFlight: number, runBudget: number, budget: number}} state money state (`inFlight` is the sum of the caps of the runs in flight)
  * @returns {boolean} true when a run fits
  */
 export function fitsBudget({ spent, inFlight, runBudget, budget }) {
-  return spent + inFlight + runBudget <= budget + 1e-9;
+  return spent + OVERSHOOT_MARGIN * (inFlight + runBudget) <= budget + 1e-9;
 }
 
 /**
@@ -523,8 +530,17 @@ export function startLogServer(pageOrigin) {
       return;
     }
     let body = '';
-    req.on('data', (chunk) => (body += chunk.toString()));
+    let tooBig = false;
+    req.on('data', (chunk) => {
+      body += chunk.toString();
+      if (body.length > LOG_BODY_LIMIT && !tooBig) {
+        tooBig = true;
+        res.writeHead(413).end();
+        req.destroy();
+      }
+    });
     req.on('end', () => {
+      if (tooBig) return;
       if (pageOrigin !== undefined && req.headers.origin !== pageOrigin)
         forgedByNonce.set(nonce, (forgedByNonce.get(nonce) ?? 0) + 1);
       const id = `${nonce}\u0000${key}`;
@@ -546,7 +562,7 @@ export function startLogServer(pageOrigin) {
 
 /**
  * The ways a run tampered with the log: the log server saw a POST without a page origin, or a tool
- * call names the log server (host and port, plain or URL-encoded, or the `/log` path) or reads the
+ * call names the log server (host and port, plain or URL-encoded, or `/log?key=`) or reads the
  * page's `api` parameter. The prompt URL carries the server as an encoded `api=` parameter; that
  * exact text is not counted. This is detection: a forged entry from a script that names nothing
  * of the above is not caught.
@@ -562,7 +578,7 @@ export function findCheating(stream, taskContext, forgedRequests) {
   const legit = `api=${encodeURIComponent(taskContext.logApi)}`;
   const hostPort = taskContext.logApi.replace(/^https?:\/\//, '');
   const escaped = hostPort.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(':', '(?::|%3A)');
-  const pattern = new RegExp(`${escaped}|/log(?:\\?|\\b)|get\\(\\s*['"\`]api['"\`]`, 'i');
+  const pattern = new RegExp(`${escaped}|/log\\?key=|get\\(\\s*['"\`]api['"\`]`, 'i');
   const named = stream.toolInputs.some((text) => pattern.test(text.split(legit).join('')));
   if (named) found.push('a tool call names the log server');
   return found;
@@ -855,6 +871,8 @@ export async function runJob(ctx, job) {
     nonce,
     logged: (logKey) => ctx.values.entries(nonce, logKey),
   };
+  const live = { root, bdg: path.join(dirs.binDir, 'bdg'), env };
+  ctx.control.roots?.add(live);
   try {
     for (const dir of [dirs.home, dirs.configDir, dirs.cwd, dirs.sessionDir])
       fs.mkdirSync(dir, { recursive: true });
@@ -896,6 +914,7 @@ export async function runJob(ctx, job) {
     await runQuietly(path.join(dirs.binDir, 'bdg'), ['stop'], env);
     await runQuietly(path.join(dirs.binDir, 'bdg'), ['cleanup', '--force'], env);
     fs.rmSync(root, { recursive: true, force: true });
+    ctx.control.roots?.delete(live);
   }
 }
 
@@ -1042,6 +1061,21 @@ function printProgress(row, key) {
 }
 
 /**
+ * What a second Ctrl-C does before the harness exits: kill every run's process group, end each
+ * run's bdg session and remove its sandbox, then stop the servers and remove the build copy.
+ * @param {{stops: Set<(force: boolean) => void>, roots: Set<{root: string, bdg: string, env: NodeJS.ProcessEnv}>, cleanups: (() => void)[]}} control eval control
+ */
+export function forceCleanup(control) {
+  for (const stop of [...control.stops]) stop(true);
+  for (const run of control.roots) {
+    spawnSync(run.bdg, ['cleanup', '--force'], { env: run.env, timeout: 15_000, stdio: 'ignore' });
+    fs.rmSync(run.root, { recursive: true, force: true });
+  }
+  control.roots.clear();
+  for (const cleanup of control.cleanups) cleanup();
+}
+
+/**
  * Run the eval described by the settings.
  * @param {object} settings eval settings
  * @returns {Promise<number>} exit code
@@ -1053,16 +1087,23 @@ export async function main(settings) {
   settings.claudeBin ??= resolveBin('claude', process.env.PATH ?? '');
   fs.mkdirSync(path.join(settings.out, 'transcripts'), { recursive: true });
   const build = path.join(os.tmpdir(), `bdge-build-${process.pid}`);
-  const control = { aborted: false, stops: new Set() };
+  const control = {
+    aborted: false,
+    stops: new Set(),
+    roots: new Set(),
+    cleanups: [() => fs.rmSync(build, { recursive: true, force: true })],
+  };
   const onSignal = () => {
     const force = control.aborted;
     control.aborted = true;
-    for (const stop of [...control.stops]) stop(force);
-    if (force) process.exit(130);
+    if (force) {
+      forceCleanup(control);
+      process.exit(130);
+    }
+    for (const stop of [...control.stops]) stop(false);
   };
   process.on('SIGINT', onSignal);
   process.on('SIGTERM', onSignal);
-  const stops = [];
   const rows = [];
   try {
     const entry = copyBuild(settings.build, build);
@@ -1072,9 +1113,9 @@ export async function main(settings) {
     const fixtures = fixtureScript
       ? await startFixtures(fixtureScript)
       : { url: settings.fixturesUrl.replace(/\/?$/, '/'), stop: () => {} };
-    stops.push(fixtures.stop);
+    control.cleanups.push(fixtures.stop);
     const values = await startLogServer(new URL(fixtures.url).origin);
-    stops.push(values.stop);
+    control.cleanups.push(values.stop);
     const taskContext = {
       fixtures: fixtures.url,
       refusedUrl: `http://127.0.0.1:${await freePort()}/`,
@@ -1107,8 +1148,7 @@ export async function main(settings) {
     process.stdout.write(`\n${summary}\nOutput: ${settings.out}\n`);
     return control.aborted ? 130 : 0;
   } finally {
-    for (const stop of stops) stop();
-    fs.rmSync(build, { recursive: true, force: true });
+    for (const cleanup of control.cleanups) cleanup();
   }
 }
 
