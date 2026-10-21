@@ -24,10 +24,15 @@
  * - `bdg` is a PATH script (BDG_SESSION_DIR, BDG_ATTACH_REQUIRE_WS_URL=1 and CI=1, so Chrome is
  *   headless) over a copy of the build in a temp dir, so the repo's path does not show;
  * - a scrubbed environment: only the API key, proxy settings and a minimal PATH reach the child.
- * A transcript that mentions the repo path or ~/.claude is graded `contaminated`, not pass.
+ * A transcript with a tool call that names the repo, ~/.claude, ~/.config/bdg-eval or the owner's home
+ * (or a result that names the repo or the real <home>/.claude) is graded `contaminated`, not pass.
+ * Known limits: Bash can still read any path the user can, the key file of the run sits in the run's
+ * temp dir, and the harness's own command line (`ps`) shows how it was started (use a relative path).
  * `claude` has no turn-cap flag, so the harness counts assistant turns in the stream and stops the run.
  */
 import { execFile, spawn } from 'node:child_process';
+import crypto from 'node:crypto';
+import http from 'node:http';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
@@ -241,7 +246,7 @@ function collectToolResults(message, summary) {
 
 /**
  * Patterns that show the agent reached for the repository or the owner's Claude configuration.
- * @param {{repoRoot: string, home: string}} paths repository root and the real home directory
+ * @param {{repoRoot: string, home: string}} paths repository root and the real home directory (the run's own dirs are under /tmp)
  * @returns {{label: string, pattern: RegExp, inputsOnly?: boolean}[]} patterns; `inputsOnly` ones are checked in tool calls only, since bdg's own help text names ~/.claude
  */
 export function contaminationPatterns(paths) {
@@ -256,6 +261,8 @@ export function contaminationPatterns(paths) {
     ...[...roots].map((root) => ({ label: `repository path ${root}`, pattern: new RegExp(escape(root)) })),
     { label: `${paths.home}/.claude`, pattern: new RegExp(escape(`${paths.home}/.claude`)) },
     { label: '~/.claude', pattern: /(?:~|\$HOME|\$\{HOME\})\/\.claude\b/, inputsOnly: true },
+    { label: '~/.config/bdg-eval', pattern: /\.config\/bdg-eval/, inputsOnly: true },
+    { label: `the owner's home ${paths.home}`, pattern: new RegExp(`${escape(paths.home)}(?![\\w-])`), inputsOnly: true },
   ];
 }
 
@@ -277,14 +284,15 @@ export function findContamination(stream, patterns) {
 /**
  * Turn a run's stream into its row: status, the checker's verdict, cost and counts.
  * @param {object} args run data
- * @param {{id: string, check: (reply: string) => {pass: boolean, reason: string}}} args.task the task
+ * @param {{id: string, check: (reply: string, ctx: object) => {pass: boolean, reason: string}}} args.task the task
  * @param {ReturnType<typeof parseStream>} args.stream parsed stream
  * @param {string[]} args.contamination what contaminated the run
  * @param {'turn-cap' | 'timeout' | 'aborted' | null} args.stoppedBy why the harness stopped the child, if it did
  * @param {number} args.runBudget per-run cap, charged when the cost is unknown
+ * @param {object} args.taskContext the run's context (nonce and values) for the checker
  * @returns {object} the graded fields of the run
  */
-export function gradeRun({ task, stream, contamination, stoppedBy, runBudget }) {
+export function gradeRun({ task, stream, contamination, stoppedBy, runBudget, taskContext }) {
   const result = stream.result;
   const costKnown = typeof result?.total_cost_usd === 'number';
   const reply = typeof result?.result === 'string' && result.result !== '' ? result.result : stream.lastText;
@@ -302,7 +310,7 @@ export function gradeRun({ task, stream, contamination, stoppedBy, runBudget }) 
   if (!result || result.is_error) {
     return { ...base, status: 'error', pass: false, reason: result ? `claude reported ${result.subtype ?? 'an error'}` : 'claude ended without a result' };
   }
-  const verdict = task.check(reply);
+  const verdict = task.check(reply, taskContext);
   if (verdict.pass && contamination.length > 0) {
     return { ...base, status: 'contaminated', pass: false, reason: `read outside the sandbox: ${contamination.join('; ')}` };
   }
@@ -380,6 +388,47 @@ export function fitsBudget({ spent, inFlight, runBudget, budget }) {
 }
 
 /**
+ * The per-run value of a task: an HMAC of the task key and the run's nonce, so it differs in every
+ * run and cannot be known from page source. `breaking-buttons` gets a 5-bit mask instead (at least
+ * one bit set); every other key gets 6 hex characters.
+ * @param {string} secret the eval's random secret
+ * @param {string} key task key
+ * @param {string} nonce the run's nonce
+ * @returns {string} value
+ */
+export function valueFor(secret, key, nonce) {
+  const digest = crypto.createHmac('sha256', secret).update(`${key}:${nonce}`).digest();
+  if (key !== 'breaking-buttons') return digest.toString('hex').slice(0, 6);
+  const bits = Array.from({ length: 5 }, (_, i) => String(digest[i] & 1));
+  if (!bits.includes('1')) bits[digest[5] % 5] = '1';
+  return bits.join('');
+}
+
+/**
+ * Start the value server the fixture pages ask for their per-run values (`/value?key=&n=`).
+ * @param {string} secret the eval's random secret
+ * @returns {Promise<{url: string, stop: () => void}>} server handle; `url` has no trailing slash
+ */
+export function startValueServer(secret) {
+  const server = http.createServer((req, res) => {
+    const url = new URL(req.url ?? '/', 'http://value');
+    const key = url.searchParams.get('key');
+    const nonce = url.searchParams.get('n');
+    if (url.pathname !== '/value' || !key || !nonce) {
+      res.writeHead(404).end();
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'text/plain', 'Access-Control-Allow-Origin': '*' });
+    res.end(valueFor(secret, key, nonce));
+  });
+  return new Promise((resolve) => {
+    server.listen(0, '127.0.0.1', () => {
+      resolve({ url: `http://127.0.0.1:${server.address().port}`, stop: () => server.close() });
+    });
+  });
+}
+
+/**
  * Find an executable on a PATH string.
  * @param {string} name command name
  * @param {string} searchPath PATH value
@@ -417,6 +466,24 @@ export function copyBuild(build, dest) {
 }
 
 /**
+ * Copy what the fixture server needs (the compiled `dist/__testutils__`, the fixture HTML and the
+ * `ws` package) into a temp directory, so no process the agent can see names the repo.
+ * @param {string} build the build directory (`dist/`)
+ * @param {string} dest directory to create
+ * @returns {string} path of the copied `serveFixtures.js`
+ */
+export function copyFixtureRuntime(build, dest) {
+  const server = path.join(build, '__testutils__/serveFixtures.js');
+  if (!fs.existsSync(server)) throw new Error(`No fixture server in ${build}: run npm run build first`);
+  fs.cpSync(build, path.join(dest, 'dist'), { recursive: true });
+  const root = path.dirname(build);
+  fs.cpSync(path.join(root, 'src/__tests__/fixtures'), path.join(dest, 'dist/__tests__/fixtures'), { recursive: true });
+  fs.cpSync(path.join(root, 'node_modules/ws'), path.join(dest, 'node_modules/ws'), { recursive: true });
+  fs.writeFileSync(path.join(dest, 'package.json'), '{"type":"module"}\n');
+  return path.join(dest, 'dist/__testutils__/serveFixtures.js');
+}
+
+/**
  * Write the `bdg` PATH script of one run.
  * @param {string} binDir directory for the script
  * @param {string} entry the copied `dist/index.js`
@@ -430,15 +497,14 @@ function writeBdgScript(binDir, entry, sessionDir) {
 
 /**
  * The scrubbed environment of one run's `claude` process.
- * @param {object} args run directories and key
+ * @param {object} args run directories
  * @returns {NodeJS.ProcessEnv} environment
  */
-function childEnv({ binDir, home, configDir, sessionDir, key }) {
+function childEnv({ binDir, home, configDir, sessionDir }) {
   const env = {
     PATH: [binDir, path.dirname(process.execPath), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'].join(path.delimiter),
     HOME: home,
     CLAUDE_CONFIG_DIR: configDir,
-    ANTHROPIC_API_KEY: key,
     BDG_SESSION_DIR: sessionDir,
     BDG_ATTACH_REQUIRE_WS_URL: '1',
     CI: '1',
@@ -446,7 +512,8 @@ function childEnv({ binDir, home, configDir, sessionDir, key }) {
   };
   for (const name of PASSTHROUGH_ENV) if (process.env[name]) env[name] = process.env[name];
   const bypass = '127.0.0.1,localhost';
-  env.NO_PROXY = process.env.NO_PROXY ? `${process.env.NO_PROXY},${bypass}` : bypass;
+  const existing = process.env.NO_PROXY ?? process.env.no_proxy;
+  env.NO_PROXY = env.no_proxy = existing ? `${existing},${bypass}` : bypass;
   return env;
 }
 
@@ -455,13 +522,15 @@ function childEnv({ binDir, home, configDir, sessionDir, key }) {
  * @param {object} settings eval settings
  * @param {string} model model
  * @param {string} prompt prompt
+ * @param {string} keyHelper path of the script that prints the API key (`apiKeyHelper`)
  * @returns {string[]} arguments
  */
-export function claudeArgs(settings, model, prompt) {
+export function claudeArgs(settings, model, prompt, keyHelper) {
   return [
     '-p', prompt,
     '--model', model,
     '--bare',
+    '--settings', JSON.stringify({ apiKeyHelper: keyHelper }),
     '--setting-sources', '',
     '--strict-mcp-config',
     '--disable-slash-commands',
@@ -503,23 +572,55 @@ function assistantTurnId(line) {
 }
 
 /**
+ * Signal a child's whole process group (the child leads it, see `runClaude`).
+ * @param {import('node:child_process').ChildProcess} child the child
+ * @param {NodeJS.Signals} signal signal
+ */
+function signalGroup(child, signal) {
+  try {
+    process.kill(-child.pid, signal);
+  } catch {
+    try {
+      child.kill(signal);
+    } catch {
+      return;
+    }
+  }
+}
+
+/**
  * Run `claude -p` and stream its output to a transcript, enforcing the turn cap and the timeout.
+ * The child leads its own process group and a stop signals the whole group, so a grandchild of the
+ * Bash tool (`sleep`, a bdg client) cannot keep the run alive; when `claude` exits, what it left in
+ * its group is killed too, and the run ends even if a stray still holds the stdout pipe.
  * @param {object} args spawn data
  * @returns {Promise<{streamText: string, stoppedBy: 'turn-cap' | 'timeout' | 'aborted' | null, code: number | null}>} what happened
  */
 function runClaude({ claudeBin, argv, env, cwd, maxTurns, timeoutMs, control, key }) {
   return new Promise((resolve) => {
-    const child = spawn(claudeBin, argv, { env, cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(claudeBin, argv, { env, cwd, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
     let streamText = '';
     let stoppedBy = null;
-    const stop = (reason) => {
-      if (stoppedBy || child.exitCode !== null) return;
-      stoppedBy = reason;
-      child.kill('SIGTERM');
-      setTimeout(() => child.kill('SIGKILL'), KILL_GRACE_MS).unref();
+    let finished = false;
+    const finish = (code) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      control.stops.delete(stopRun);
+      signalGroup(child, 'SIGKILL');
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+      resolve({ streamText, stoppedBy, code });
     };
+    const stop = (reason, force = false) => {
+      if (finished) return;
+      stoppedBy ??= reason;
+      signalGroup(child, force ? 'SIGKILL' : 'SIGTERM');
+      setTimeout(() => finish(child.exitCode), KILL_GRACE_MS).unref();
+    };
+    const stopRun = (force) => stop('aborted', force);
     const timer = setTimeout(() => stop('timeout'), timeoutMs);
-    control.stops.add(() => stop('aborted'));
+    control.stops.add(stopRun);
     const turnIds = new Set();
     let pending = '';
     child.stdout.on('data', (chunk) => {
@@ -536,14 +637,26 @@ function runClaude({ claudeBin, argv, env, cwd, maxTurns, timeoutMs, control, ke
       streamText += JSON.stringify({ type: 'stderr', text: redact(chunk.toString(), key) }) + '\n';
     });
     child.on('error', (error) => {
-      clearTimeout(timer);
-      resolve({ streamText: streamText + JSON.stringify({ type: 'spawn-error', text: error.message }) + '\n', stoppedBy, code: null });
+      streamText += JSON.stringify({ type: 'spawn-error', text: error.message }) + '\n';
+      finish(null);
     });
-    child.on('close', (code) => {
-      clearTimeout(timer);
-      resolve({ streamText, stoppedBy, code });
-    });
+    child.on('exit', (code) => setTimeout(() => finish(code), 200).unref());
+    child.on('close', (code) => finish(code));
   });
+}
+
+/**
+ * Write the key file and the `apiKeyHelper` script that prints it, in the run's directory.
+ * @param {string} root the run's directory
+ * @param {string} key the API key
+ * @returns {string} path of the helper script
+ */
+function writeKeyHelper(root, key) {
+  const keyFile = path.join(root, 'k');
+  const helper = path.join(root, 'kh');
+  fs.writeFileSync(keyFile, key, { mode: 0o600 });
+  fs.writeFileSync(helper, `#!/bin/sh\ncat '${keyFile}'\n`, { mode: 0o700 });
+  return helper;
 }
 
 /**
@@ -557,14 +670,17 @@ export async function runJob(ctx, job) {
   const root = fs.mkdtempSync(path.join('/tmp', 'bdge-'));
   const dirs = { home: path.join(root, 'h'), configDir: path.join(root, 'c'), cwd: path.join(root, 'w'), sessionDir: path.join(root, 's'), binDir: path.join(root, 'bin') };
   const started = Date.now();
-  const env = childEnv({ ...dirs, key });
+  const env = childEnv(dirs);
+  const nonce = crypto.randomBytes(4).toString('hex');
+  const taskContext = { ...ctx.taskContext, nonce, value: (valueKey) => valueFor(ctx.valueSecret, valueKey, nonce) };
   try {
     for (const dir of [dirs.home, dirs.configDir, dirs.cwd, dirs.sessionDir]) fs.mkdirSync(dir, { recursive: true });
     writeBdgScript(dirs.binDir, entry, dirs.sessionDir);
-    const prompt = buildPrompt(job.task, ctx.taskContext);
-    const run = await runClaude({ claudeBin: settings.claudeBin, argv: claudeArgs(settings, job.model, prompt), env, cwd: dirs.cwd, maxTurns: settings.maxTurns, timeoutMs: settings.runTimeoutMs, control: ctx.control, key });
+    const keyHelper = writeKeyHelper(root, key);
+    const prompt = buildPrompt(job.task, taskContext);
+    const run = await runClaude({ claudeBin: settings.claudeBin, argv: claudeArgs(settings, job.model, prompt, keyHelper), env, cwd: dirs.cwd, maxTurns: settings.maxTurns, timeoutMs: settings.runTimeoutMs, control: ctx.control, key });
     const stream = parseStream(run.streamText);
-    const graded = gradeRun({ task: job.task, stream, contamination: findContamination(stream, ctx.patterns), stoppedBy: run.stoppedBy, runBudget: settings.runBudget });
+    const graded = gradeRun({ task: job.task, stream, contamination: findContamination(stream, ctx.patterns), stoppedBy: run.stoppedBy, runBudget: settings.runBudget, taskContext });
     const name = `${job.task.id}-${job.model}-${job.run}.jsonl`;
     fs.writeFileSync(path.join(settings.out, 'transcripts', name), redact(run.streamText, key));
     return { task: job.task.id, model: job.model, run: job.run, ...graded, durationMs: Date.now() - started, transcript: path.join('transcripts', name), init: summariseInit(stream.init) };
@@ -586,7 +702,20 @@ function summariseInit(init) {
 }
 
 /**
- * Pull jobs through a pool, starting a run only when the budget allows it.
+ * The row of a job whose harness code threw: charged the per-run cap, since its cost is unknown.
+ * @param {{task: {id: string}, model: string, run: number}} job the job
+ * @param {unknown} error what was thrown
+ * @param {number} runBudget per-run cap
+ * @returns {object} row
+ */
+function failedRow(job, error, runBudget) {
+  const reason = `harness error: ${error instanceof Error ? error.message : String(error)}`;
+  return { task: job.task.id, model: job.model, run: job.run, status: 'error', pass: false, reason, turns: 0, toolCalls: 0, inputTokens: 0, outputTokens: 0, costUsd: runBudget, costEstimated: true, answer: null, durationMs: 0, transcript: '' };
+}
+
+/**
+ * Pull jobs through a pool, starting a run only when the budget allows it. A job that throws
+ * becomes an `error` row, so every worker keeps going and finishes its own cleanup.
  * @param {object} ctx run context
  * @param {object[]} jobs planned jobs
  * @param {(row: object) => void} onRow called with every finished row
@@ -605,7 +734,7 @@ export async function runPool(ctx, jobs, onRow) {
       const job = jobs[state.next++];
       state.inFlight += settings.runBudget;
       try {
-        const row = await ctx.runJob(ctx, job);
+        const row = await ctx.runJob(ctx, job).catch((error) => failedRow(job, error, settings.runBudget));
         state.spent += row.costUsd;
         onRow(row);
       } finally {
@@ -634,12 +763,13 @@ function freePort() {
 }
 
 /**
- * Start the shared fixture server from the repo and return its URL and a stop function.
+ * Start the shared fixture server from the copied runtime and return its URL and a stop function.
+ * @param {string} script path of the copied `serveFixtures.js`
  * @returns {Promise<{url: string, stop: () => void}>} server handle
  */
-function startFixtures() {
+function startFixtures(script) {
   return new Promise((resolve, reject) => {
-    const child = spawn(path.join(REPO_ROOT, 'node_modules/.bin/tsx'), ['src/__testutils__/serveFixtures.ts'], { cwd: REPO_ROOT, stdio: ['ignore', 'pipe', 'inherit'] });
+    const child = spawn(process.execPath, [script], { cwd: path.dirname(script), stdio: ['ignore', 'pipe', 'inherit'] });
     let output = '';
     child.once('error', reject);
     child.stdout.on('data', (chunk) => {
@@ -649,6 +779,16 @@ function startFixtures() {
     });
     child.once('close', () => reject(new Error('The fixture server ended before it printed its URL')));
   });
+}
+
+/**
+ * Print one finished run's progress line, without the key.
+ * @param {object} row finished run
+ * @param {string} key API key to redact
+ */
+function printProgress(row, key) {
+  const status = row.pass ? 'pass' : row.status.padEnd(4);
+  process.stdout.write(redact(`${status}  ${row.task} ${row.model} #${row.run}  $${row.costUsd.toFixed(4)}  ${row.reason}\n`, key));
 }
 
 /**
@@ -663,31 +803,39 @@ export async function main(settings) {
   settings.claudeBin ??= resolveBin('claude', process.env.PATH ?? '');
   fs.mkdirSync(path.join(settings.out, 'transcripts'), { recursive: true });
   const build = path.join(os.tmpdir(), `bdge-build-${process.pid}`);
-  const entry = copyBuild(settings.build, build);
-  const fixtures = settings.fixturesUrl ? { url: settings.fixturesUrl.replace(/\/?$/, '/'), stop: () => {} } : await startFixtures();
   const control = { aborted: false, stops: new Set() };
   const onSignal = () => {
+    const force = control.aborted;
     control.aborted = true;
-    for (const stop of control.stops) stop();
+    for (const stop of [...control.stops]) stop(force);
+    if (force) process.exit(130);
   };
   process.on('SIGINT', onSignal);
   process.on('SIGTERM', onSignal);
+  const stops = [];
   const rows = [];
   try {
-    const taskContext = { fixtures: fixtures.url, refusedUrl: `http://127.0.0.1:${await freePort()}/` };
-    const ctx = { settings, key, entry, taskContext, control, runJob, patterns: contaminationPatterns({ repoRoot: REPO_ROOT, home: os.homedir() }) };
+    const entry = copyBuild(settings.build, build);
+    const fixtureScript = settings.fixturesUrl ? null : copyFixtureRuntime(settings.build, path.join(build, 'fx'));
+    const fixtures = fixtureScript ? await startFixtures(fixtureScript) : { url: settings.fixturesUrl.replace(/\/?$/, '/'), stop: () => {} };
+    stops.push(fixtures.stop);
+    const valueSecret = crypto.randomBytes(16).toString('hex');
+    const values = await startValueServer(valueSecret);
+    stops.push(values.stop);
+    const taskContext = { fixtures: fixtures.url, refusedUrl: `http://127.0.0.1:${await freePort()}/`, valueApi: values.url };
+    const ctx = { settings, key, entry, taskContext, valueSecret, control, runJob, patterns: contaminationPatterns({ repoRoot: REPO_ROOT, home: os.homedir() }) };
     const jsonl = path.join(settings.out, 'runs.jsonl');
     const outcome = await runPool(ctx, planJobs(settings), (row) => {
       rows.push(row);
       fs.appendFileSync(jsonl, redact(JSON.stringify(row), key) + '\n');
-      process.stdout.write(`${row.pass ? 'pass' : row.status.padEnd(4)}  ${row.task} ${row.model} #${row.run}  $${row.costUsd.toFixed(4)}  ${row.reason}\n`);
+      printProgress(row, key);
     });
     const summary = renderSummary({ rows, settings, spent: outcome.spent, skipped: outcome.skipped, stopReason: outcome.stopReason });
     fs.writeFileSync(path.join(settings.out, 'SUMMARY.md'), redact(summary, key));
     process.stdout.write(`\n${summary}\nOutput: ${settings.out}\n`);
     return control.aborted ? 130 : 0;
   } finally {
-    fixtures.stop();
+    for (const stop of stops) stop();
     fs.rmSync(build, { recursive: true, force: true });
   }
 }

@@ -3,10 +3,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { execFileSync } from 'node:child_process';
 
 import {
   aggregate,
   claudeArgs,
+  copyFixtureRuntime,
   contaminationPatterns,
   findContamination,
   fitsBudget,
@@ -21,28 +23,40 @@ import {
   resolveSettings,
   runJob,
   runPool,
+  startValueServer,
+  valueFor,
 } from './agent-eval.mjs';
-import { TASKS, buildPrompt, extractAnswer, selectTasks } from './agent-eval-tasks.mjs';
+import { TASKS, buildPrompt, extractAnswer, pageUrl, selectTasks } from './agent-eval-tasks.mjs';
 
 const FAKE_KEY = 'sk-ant-api03-TESTKEYTESTKEYTESTKEY';
+
+/** Run context for the checkers: every value is `a1b2c3`, the button mask `10110` (Alpha, Charlie, Delta break) */
+const CTX = {
+  fixtures: 'http://127.0.0.1:1/',
+  refusedUrl: 'http://127.0.0.1:2/',
+  valueApi: 'http://127.0.0.1:3',
+  nonce: 'n0nce',
+  value: (key) => (key === 'breaking-buttons' ? '10110' : 'a1b2c3'),
+};
+const CLASSES = 'px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:ring-2 id-a1b2c3';
 
 /**
  * Right answers, plausible wrong ones and malformed ones per task, to prove every checker
  * passes the truth and nothing else.
  */
 const CASES = {
-  'popup-token': { right: ['tk-7f3a91'], wrong: ['tk-7f3a19', 'tk-7f3a91 and tk-123', 'token-123', 'tk-7f3a91 or tk-7f3a92'] },
-  'cancel-confirm': { right: ['Order A-4471 kept', 'order a-4471 kept.'], wrong: ['Order A-4471 removed', 'Order A-4471 is active', 'Order A-4471 kept or removed'] },
-  'breaking-buttons': { right: ['Bravo, Delta, Echo', 'echo,bravo,delta'], wrong: ['Bravo, Delta', 'Bravo, Charlie, Delta, Echo', 'Bravo, Delta, Echo (maybe Charlie)', 'Alpha, Bravo, Delta, Echo'] },
-  'shadow-login': { right: ['R-58213'], wrong: ['R-58231', 'Wrong credentials', 'R-58213 or R-12345'] },
-  'failed-request-page-two': { right: ['/eval-net-b-missing.json'], wrong: ['/eval-net-a-missing.json', '/favicon.ico', '/eval-net-b-missing.json and /eval-net-a-missing.json', '/eval-net-b-missing.js'] },
-  'download-name': { right: ['q3-report-8841.csv'], wrong: ['q3-report-8814.csv', 'report.csv', 'q3-report-8841.csv or q3-report-8841.txt'] },
-  'console-error-code': { right: ['E-5521'], wrong: ['W-1010', 'E-5512', 'E-5521, W-1010'] },
+  'popup-token': { right: ['tk-a1b2c3'], wrong: ['tk-a1b2c4', 'TK-A1B2C3', 'tk-a1b2c3 and tk-123', 'token-123', 'tk-a1b2c3 or tk-a1b2c4'] },
+  'cancel-confirm': { right: ['Order A-a1b2c3 kept', 'Order A-a1b2c3 kept.'], wrong: ['Order A-a1b2c3 removed', 'order a-a1b2c3 kept', 'The order is active', 'Order A-a1b2c3 kept or removed', 'Order A-a1b2c4 kept'] },
+  'breaking-buttons': { right: ['Alpha, Charlie, Delta', 'delta,Alpha,Charlie'.replace('delta', 'Delta')], wrong: ['Alpha, Charlie', 'Alpha, Bravo, Charlie, Delta', 'Alpha, Charlie, Delta (maybe Echo)', 'Alpha, Charlie, Delta, Delta', 'alpha, charlie, delta', 'Bravo, Echo'] },
+  'shadow-login': { right: ['R-a1b2c3'], wrong: ['R-a1b2c4', 'r-a1b2c3', 'Wrong credentials', 'R-a1b2c3 or R-12345'] },
+  'failed-request-page-two': { right: ['/eval-net-b-a1b2c3.json'], wrong: ['/eval-net-a-a1b2c3.json', '/favicon.ico', '/eval-net-b-a1b2c3.json and /eval-net-a-a1b2c3.json', '/eval-net-b-a1b2c3.js', '/EVAL-NET-B-A1B2C3.JSON'] },
+  'download-name': { right: ['q3-report-a1b2c3.csv'], wrong: ['q3-report-a1b2c4.csv', 'Q3-REPORT-A1B2C3.CSV', 'report.csv', 'q3-report-a1b2c3.csv or q3-report-a1b2c3.txt'] },
+  'console-error-code': { right: ['E-a1b2c3'], wrong: ['W-1010', 'E-a1b2c4', 'e-a1b2c3', 'E-a1b2c3, W-1010'] },
   'utility-classes': {
-    right: ['px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:ring-2 md:px-6', 'md:px-6, focus:ring-2, hover:bg-blue-700, font-semibold, text-white, bg-blue-600, rounded-lg, py-2, px-4'],
-    wrong: ['px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:ring-2', 'px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:ring-2 md:px-6 +8', 'px-4 py-2', 'px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:ring-2 md:px-4'],
+    right: [CLASSES, CLASSES.split(' ').reverse().join(', ')],
+    wrong: [CLASSES.replace(' id-a1b2c3', ''), `${CLASSES} +8`, 'px-4 py-2', CLASSES.replace('md:px-6', 'md:px-4').replace('id-a1b2c3', 'id-a1b2c4'), CLASSES.toUpperCase(), `${CLASSES} px-4`],
   },
-  'page-never-loads': { right: ['net::ERR_CONNECTION_REFUSED', 'ERR_CONNECTION_REFUSED'], wrong: ['net::ERR_NAME_NOT_RESOLVED', 'net::ERR_TOO_MANY_REDIRECTS', 'The page loaded', 'net::ERR_CONNECTION_REFUSED or net::ERR_BLOCKED_BY_CLIENT'] },
+  'page-never-loads': { right: ['net::ERR_CONNECTION_REFUSED', 'ERR_CONNECTION_REFUSED'], wrong: ['net::ERR_NAME_NOT_RESOLVED', 'net::ERR_TOO_MANY_REDIRECTS', 'The page loaded', 'net::ERR_CONNECTION_REFUSED or net::ERR_BLOCKED_BY_CLIENT', 'net::err_connection_refused'] },
 };
 
 const reply = (value) => `I did the task.\n\nANSWER: ${value}`;
@@ -55,21 +69,22 @@ test('the harness has at least eight tasks, each with its scenario and a case ta
 
 for (const task of TASKS) {
   test(`checker ${task.id}: passes the truth, fails wrong, missing and hedged answers`, () => {
-    for (const value of CASES[task.id].right) assert.equal(task.check(reply(value)).pass, true, `right: ${value}`);
-    for (const value of CASES[task.id].wrong) assert.equal(task.check(reply(value)).pass, false, `wrong: ${value}`);
-    const missing = task.check('I found it and it was fine.');
+    for (const value of CASES[task.id].right) assert.equal(task.check(reply(value), CTX).pass, true, `right: ${value}`);
+    for (const value of CASES[task.id].wrong) assert.equal(task.check(reply(value), CTX).pass, false, `wrong: ${value}`);
+    const missing = task.check('I found it and it was fine.', CTX);
     assert.equal(missing.pass, false);
     assert.match(missing.reason, /ANSWER/);
-    assert.equal(task.check('').pass, false);
-    assert.equal(task.check('ANSWER:').pass, false);
-    assert.equal(task.check(`ANSWER: ${CASES[task.id].right[0]}\nThat is my answer.`).pass, false, 'the ANSWER line must be last');
+    assert.equal(task.check('', CTX).pass, false);
+    assert.equal(task.check('ANSWER:', CTX).pass, false);
+    assert.equal(task.check(`ANSWER: ${CASES[task.id].right[0]}\nThat is my answer.`, CTX).pass, false, 'the ANSWER line must be last');
   });
 
   test(`prompt ${task.id}: states the goal and the format and holds no truth`, () => {
-    const prompt = buildPrompt(task, { fixtures: 'http://127.0.0.1:1/', refusedUrl: 'http://127.0.0.1:2/' });
+    const prompt = buildPrompt(task, CTX);
     assert.match(prompt, /ANSWER: /);
     assert.match(prompt, /bdg --help/);
     for (const value of CASES[task.id].right) assert.equal(prompt.includes(value), false, `the prompt leaks ${value}`);
+    assert.equal(prompt.includes(CTX.value(task.id)), false);
   });
 }
 
@@ -109,12 +124,14 @@ test('plan: run-major order and the worst case cost', () => {
 
 test('claude arguments turn the owner configuration off and cap the cost', () => {
   const settings = resolveSettings(parseArgs(['--run-budget=0.3']));
-  const args = claudeArgs(settings, 'claude-haiku-5-5', 'prompt');
+  const args = claudeArgs(settings, 'claude-haiku-5-5', 'prompt', '/tmp/helper');
   for (const flag of ['--bare', '--strict-mcp-config', '--disable-slash-commands', '--no-session-persistence']) assert.ok(args.includes(flag), flag);
   assert.equal(args[args.indexOf('--tools') + 1], 'Bash');
   assert.equal(args[args.indexOf('--setting-sources') + 1], '');
   assert.equal(args[args.indexOf('--max-budget-usd') + 1], '0.3');
   assert.equal(args[args.indexOf('--output-format') + 1], 'stream-json');
+  assert.deepEqual(JSON.parse(args[args.indexOf('--settings') + 1]), { apiKeyHelper: '/tmp/helper' });
+  assert.equal(args.some((a) => a.includes('sk-ant')), false);
 });
 
 test('budget: a run starts only when spent + in flight + its cap fit the total', () => {
@@ -154,38 +171,38 @@ test('parseStream counts turns and tool calls and collects the final result', ()
 
 test('a read of the repo or ~/.claude marks an otherwise correct run contaminated', () => {
   const patterns = contaminationPatterns({ repoRoot: '/work/browser-debugger-cli', home: '/Users/someone' });
-  const clean = parseStream([toolUse('m1', 'bdg --help'), finalMessage('ANSWER: E-5521')].join('\n'));
+  const clean = parseStream([toolUse('m1', 'bdg --help'), finalMessage('ANSWER: E-a1b2c3')].join('\n'));
   assert.deepEqual(findContamination(clean, patterns), []);
-  for (const command of ['cat /work/browser-debugger-cli/CLAUDE.md', 'ls ~/.claude/skills', 'cat $HOME/.claude/CLAUDE.md', 'ls /Users/someone/.claude']) {
-    const dirty = parseStream([toolUse('m1', command), finalMessage('ANSWER: E-5521')].join('\n'));
+  for (const command of ['cat /work/browser-debugger-cli/CLAUDE.md', 'ls ~/.claude/skills', 'cat $HOME/.claude/CLAUDE.md', 'ls /Users/someone/.claude', 'cat ~/.config/bdg-eval/anthropic-key', 'ls /Users/someone/Documents', 'cat /Users/someone/.zshrc']) {
+    const dirty = parseStream([toolUse('m1', command), finalMessage('ANSWER: E-a1b2c3')].join('\n'));
     const found = findContamination(dirty, patterns);
     assert.equal(found.length > 0, true, command);
     const task = TASKS.find((t) => t.id === 'console-error-code');
-    const graded = gradeRun({ task, stream: dirty, contamination: found, stoppedBy: null, runBudget: 0.5 });
+    const graded = gradeRun({ task, stream: dirty, contamination: found, stoppedBy: null, runBudget: 0.5, taskContext: CTX });
     assert.equal(graded.status, 'contaminated');
     assert.equal(graded.pass, false);
   }
-  const helpText = parseStream([toolUse('m1', 'bdg --help'), toolResult('install-skill  Install the skill (~/.claude/skills)'), finalMessage('ANSWER: E-5521')].join('\n'));
+  const helpText = parseStream([toolUse('m1', 'bdg --help'), toolResult('install-skill  Install the skill (~/.claude/skills)'), finalMessage('ANSWER: E-a1b2c3')].join('\n'));
   assert.deepEqual(findContamination(helpText, patterns), [], "bdg's own help names ~/.claude: not contamination");
-  const leaked = parseStream([toolUse('m1', 'bdg --version'), toolResult('at /work/browser-debugger-cli/dist/cli.js'), finalMessage('ANSWER: E-5521')].join('\n'));
+  const leaked = parseStream([toolUse('m1', 'bdg --version'), toolResult('at /work/browser-debugger-cli/dist/cli.js'), finalMessage('ANSWER: E-a1b2c3')].join('\n'));
   assert.match(findContamination(leaked, patterns)[0], /in a tool result/);
 });
 
 test('gradeRun: pass, fail, error, and a stopped run is charged its cap', () => {
   const task = TASKS.find((t) => t.id === 'console-error-code');
-  const good = gradeRun({ task, stream: parseStream(finalMessage('ANSWER: E-5521', 0.02)), contamination: [], stoppedBy: null, runBudget: 0.5 });
+  const good = gradeRun({ task, stream: parseStream(finalMessage('ANSWER: E-a1b2c3', 0.02)), contamination: [], stoppedBy: null, runBudget: 0.5, taskContext: CTX });
   assert.equal(good.status, 'pass');
   assert.equal(good.costUsd, 0.02);
   assert.equal(good.inputTokens, 20);
   assert.equal(good.outputTokens, 7);
-  const bad = gradeRun({ task, stream: parseStream(finalMessage('ANSWER: W-1010')), contamination: [], stoppedBy: null, runBudget: 0.5 });
+  const bad = gradeRun({ task, stream: parseStream(finalMessage('ANSWER: W-1010')), contamination: [], stoppedBy: null, runBudget: 0.5, taskContext: CTX });
   assert.equal(bad.status, 'fail');
   assert.match(bad.reason, /W-1010/);
-  const stopped = gradeRun({ task, stream: parseStream(toolUse('m1', 'bdg --help')), contamination: [], stoppedBy: 'turn-cap', runBudget: 0.5 });
+  const stopped = gradeRun({ task, stream: parseStream(toolUse('m1', 'bdg --help')), contamination: [], stoppedBy: 'turn-cap', runBudget: 0.5, taskContext: CTX });
   assert.equal(stopped.status, 'turn-cap');
   assert.equal(stopped.costUsd, 0.5);
   assert.equal(stopped.costEstimated, true);
-  const errored = gradeRun({ task, stream: parseStream(JSON.stringify({ type: 'result', subtype: 'error_max_budget_usd', is_error: true, total_cost_usd: 0.5 })), contamination: [], stoppedBy: null, runBudget: 0.5 });
+  const errored = gradeRun({ task, stream: parseStream(JSON.stringify({ type: 'result', subtype: 'error_max_budget_usd', is_error: true, total_cost_usd: 0.5 })), contamination: [], stoppedBy: null, runBudget: 0.5, taskContext: CTX });
   assert.equal(errored.status, 'error');
 });
 
@@ -204,6 +221,9 @@ test('summary: a table with success %, a failures list and the budget outcome', 
   assert.match(text, /## Failures/);
   assert.equal(text.includes('a | b'), false, 'a pipe in a reason must not break the table');
 });
+
+/** Code for a fake claude: the right answer for this run, from the nonce in the prompt and the test secret */
+const FAKE_ANSWER = `(() => { const n = /[?&]n=([0-9a-f]+)/.exec(process.argv.join(' '))[1]; return 'ANSWER: E-' + require('crypto').createHmac('sha256', 'test-secret').update('console-error-code:' + n).digest('hex').slice(0, 6); })()`;
 
 /**
  * Write a fake `claude` that emits a canned stream, to test the runner without spending money.
@@ -232,15 +252,16 @@ function fakeContext(claudeBody, extraArgs = []) {
   fs.mkdirSync(path.join(settings.out, 'transcripts'), { recursive: true });
   const entry = path.join(work, 'dist-copy.js');
   fs.writeFileSync(entry, 'process.exit(0);\n');
-  const ctx = { settings, key: FAKE_KEY, entry, taskContext: { fixtures: 'http://127.0.0.1:9/', refusedUrl: 'http://127.0.0.1:8/' }, control: { aborted: false, stops: new Set() }, patterns: contaminationPatterns({ repoRoot: '/nonexistent/repo', home: '/nonexistent' }) };
+  const ctx = { settings, key: FAKE_KEY, entry, taskContext: { fixtures: 'http://127.0.0.1:9/', refusedUrl: 'http://127.0.0.1:8/', valueApi: 'http://127.0.0.1:7' }, valueSecret: 'test-secret', control: { aborted: false, stops: new Set() }, patterns: contaminationPatterns({ repoRoot: '/nonexistent/repo', home: '/nonexistent' }) };
   return { ctx, work };
 }
 
 test('runJob: grades a fake run and keeps the key out of the transcript and the row', async () => {
   const body = `
+const key = require('child_process').execFileSync(JSON.parse(process.argv[process.argv.indexOf('--settings') + 1]).apiKeyHelper, { encoding: 'utf8' });
 console.log(JSON.stringify({ type: 'system', subtype: 'init', tools: ['Bash'], mcp_servers: [], skills: [], slash_commands: [], cwd: process.cwd() }));
-console.log(JSON.stringify({ type: 'assistant', message: { id: 'a1', content: [{ type: 'tool_use', name: 'Bash', input: { command: 'echo ' + process.env.ANTHROPIC_API_KEY } }] } }));
-console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: 'saw ' + process.env.ANTHROPIC_API_KEY + '\\nANSWER: E-5521', total_cost_usd: 0.03, usage: { input_tokens: 3, output_tokens: 4 } }));
+console.log(JSON.stringify({ type: 'assistant', message: { id: 'a1', content: [{ type: 'tool_use', name: 'Bash', input: { command: 'echo ' + key } }] } }));
+console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: 'saw ' + key + '\\n' + ${FAKE_ANSWER}, total_cost_usd: 0.03, usage: { input_tokens: 3, output_tokens: 4 } }));
 `;
   const { ctx } = fakeContext(body);
   const row = await runJob(ctx, { task: TASKS.find((t) => t.id === 'console-error-code'), model: 'claude-haiku-5-5', run: 1 });
@@ -258,7 +279,7 @@ test('runJob: the child gets an empty temp cwd, its own HOME and session dir, an
 const fs = require('fs');
 const out = [process.cwd(), process.env.HOME, process.env.CLAUDE_CONFIG_DIR, process.env.BDG_SESSION_DIR, process.env.BDG_ATTACH_REQUIRE_WS_URL, process.env.CI, String(fs.readdirSync(process.cwd()).length), process.env.PATH.split(':')[0], process.env.LEAK || 'unset'];
 fs.writeFileSync(${JSON.stringify('PLACEHOLDER')}, out.join('\\n'));
-console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: 'ANSWER: E-5521', total_cost_usd: 0.01, usage: {} }));
+console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: ${FAKE_ANSWER}, total_cost_usd: 0.01, usage: {} }));
 `;
   const { ctx, work } = fakeContext('');
   const traceFile = path.join(work, 'env.txt');
@@ -318,4 +339,163 @@ test('runPool stops before the total budget could be exceeded and counts the run
   assert.equal(outcome.skipped, 8);
   assert.match(outcome.stopReason, /budget/);
   assert.ok(outcome.spent <= settings.budget);
+});
+
+test('valueFor: differs per nonce and key, is stable, and the button mask has a breaking button', () => {
+  assert.equal(valueFor('s', 'popup-token', 'n1'), valueFor('s', 'popup-token', 'n1'));
+  assert.notEqual(valueFor('s', 'popup-token', 'n1'), valueFor('s', 'popup-token', 'n2'));
+  assert.notEqual(valueFor('s', 'popup-token', 'n1'), valueFor('s', 'download-name', 'n1'));
+  assert.notEqual(valueFor('s', 'popup-token', 'n1'), valueFor('t', 'popup-token', 'n1'));
+  assert.match(valueFor('s', 'popup-token', 'n1'), /^[0-9a-f]{6}$/);
+  for (let i = 0; i < 200; i++) assert.match(valueFor('s', 'breaking-buttons', `n${i}`), /^(?=.*1)[01]{5}$/);
+});
+
+test('value server answers /value with the run value and CORS, and nothing else', async () => {
+  const server = await startValueServer('secret');
+  try {
+    const ok = await fetch(`${server.url}/value?key=popup-token&n=abc`);
+    assert.equal(await ok.text(), valueFor('secret', 'popup-token', 'abc'));
+    assert.equal(ok.headers.get('access-control-allow-origin'), '*');
+    assert.equal((await fetch(`${server.url}/other`)).status, 404);
+    assert.equal((await fetch(`${server.url}/value?key=x`)).status, 404);
+  } finally {
+    server.stop();
+  }
+});
+
+test('task URLs carry the nonce and the value server, never a value', () => {
+  for (const task of TASKS.filter((t) => t.id !== 'page-never-loads')) {
+    const url = /(http:\/\/127\.0\.0\.1:1\/eval-[a-z-]+\?\S+)/.exec(task.prompt(CTX))[1];
+    assert.equal(url.startsWith(pageUrl(CTX, url.split('?')[0].split('/').pop())), true);
+    assert.match(url, /\?n=n0nce&api=http%3A%2F%2F127\.0\.0\.1%3A3/);
+  }
+});
+
+/**
+ * Wait for a process to be gone.
+ * @param {number} pid process id
+ * @returns {Promise<boolean>} true when it ended within 5 s
+ */
+async function processEnds(pid) {
+  for (let i = 0; i < 100; i++) {
+    try {
+      process.kill(pid, 0);
+    } catch {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return false;
+}
+
+const GRANDCHILD = (pidFile) => `
+const { spawn } = require('child_process');
+const fs = require('fs');
+spawn(process.execPath, ['-e', 'require("fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setInterval(() => {}, 1000)'], { stdio: 'inherit' }).unref();
+`;
+
+test('runJob: a timeout kills the whole process group, so a grandchild holding stdout cannot hang the run', async () => {
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'ae-gc-'));
+  const pidFile = path.join(work, 'gc.pid');
+  const { ctx } = fakeContext(`${GRANDCHILD(pidFile)}\nsetInterval(() => {}, 1000);`, ['--run-timeout=3']);
+  const started = Date.now();
+  const row = await runJob(ctx, { task: TASKS.find((t) => t.id === 'console-error-code'), model: 'm', run: 1 });
+  assert.equal(row.status, 'timeout');
+  assert.ok(Date.now() - started < 20_000);
+  assert.equal(await processEnds(Number(fs.readFileSync(pidFile, 'utf8'))), true, 'the grandchild was killed');
+});
+
+test('runJob: a claude that exits and leaves a stray holding stdout still ends the run and the stray', async () => {
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'ae-gc-'));
+  const pidFile = path.join(work, 'gc.pid');
+  const body = `${GRANDCHILD(pidFile)}
+const wait = setInterval(() => {
+  if (!fs.existsSync(${JSON.stringify(pidFile)})) return;
+  clearInterval(wait);
+  console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: ${FAKE_ANSWER}, total_cost_usd: 0.01, usage: {} }));
+}, 20);
+`;
+  const { ctx } = fakeContext(body);
+  const row = await runJob(ctx, { task: TASKS.find((t) => t.id === 'console-error-code'), model: 'm', run: 1 });
+  assert.equal(row.status, 'pass');
+  assert.equal(await processEnds(Number(fs.readFileSync(pidFile, 'utf8'))), true, 'the stray was killed');
+});
+
+test('abort: a first stop signal ends runs as aborted and a second one forces it', async () => {
+  const { ctx } = fakeContext('setInterval(() => {}, 1000);', ['--run-timeout=60']);
+  const pending = runJob(ctx, { task: TASKS.find((t) => t.id === 'console-error-code'), model: 'm', run: 1 });
+  while (ctx.control.stops.size === 0) await new Promise((resolve) => setTimeout(resolve, 20));
+  for (const stop of [...ctx.control.stops]) stop(false);
+  const row = await pending;
+  assert.equal(row.status, 'aborted');
+});
+
+test('runPool: a job that throws becomes an error row and the other workers finish', async () => {
+  const settings = resolveSettings(parseArgs(['--tasks=popup-token', '--runs=4', '--budget=10', '--run-budget=0.5', '--parallel=2']));
+  const ctx = {
+    settings,
+    control: { aborted: false, stops: new Set() },
+    runJob: async (_ctx, job) => {
+      if (job.run === 2) throw new Error('boom');
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return { task: 'popup-token', model: 'm', run: job.run, status: 'pass', pass: true, costUsd: 0.1 };
+    },
+  };
+  const rows = [];
+  const outcome = await runPool(ctx, planJobs(settings), (row) => rows.push(row));
+  assert.equal(rows.length, 4);
+  const failed = rows.find((r) => r.run === 2);
+  assert.equal(failed.status, 'error');
+  assert.match(failed.reason, /boom/);
+  assert.equal(failed.costUsd, 0.5);
+  assert.equal(outcome.skipped, 0);
+});
+
+test('the run environment: the key reaches claude only through apiKeyHelper, and no_proxy is set in both spellings', async () => {
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'ae-env-'));
+  const traceFile = path.join(work, 'env.json');
+  const body = `
+const fs = require('fs');
+const argv = process.argv;
+const helper = JSON.parse(argv[argv.indexOf('--settings') + 1]).apiKeyHelper;
+fs.writeFileSync(${JSON.stringify(traceFile)}, JSON.stringify({ env: Object.keys(process.env), helperOut: require('child_process').execFileSync(helper, { encoding: 'utf8' }), noProxy: process.env.NO_PROXY, noProxyLower: process.env.no_proxy }));
+console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: ${FAKE_ANSWER}, total_cost_usd: 0.01, usage: {} }));
+`;
+  const { ctx } = fakeContext(body);
+  const row = await runJob(ctx, { task: TASKS.find((t) => t.id === 'console-error-code'), model: 'm', run: 1 });
+  assert.equal(row.status, 'pass');
+  const trace = JSON.parse(fs.readFileSync(traceFile, 'utf8'));
+  assert.equal(trace.env.some((name) => name.includes('ANTHROPIC') || name.includes('API_KEY')), false);
+  assert.equal(trace.helperOut, FAKE_KEY);
+  assert.match(trace.noProxy, /127\.0\.0\.1/);
+  assert.equal(trace.noProxy, trace.noProxyLower);
+});
+
+const BUILT = fs.existsSync(path.resolve('dist/__testutils__/serveFixtures.js')) && fs.existsSync(path.resolve('node_modules/ws'));
+
+test('fixture runtime copy: serves the eval pages from a temp dir, no process names the repo, pages hold no value', { skip: !BUILT }, async () => {
+  const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'ae-fx-'));
+  const script = copyFixtureRuntime(path.resolve('dist'), dest);
+  const { spawn } = await import('node:child_process');
+  const child = spawn(process.execPath, [script], { cwd: path.dirname(script), stdio: ['ignore', 'pipe', 'inherit'] });
+  try {
+    const url = await new Promise((resolve, reject) => {
+      let out = '';
+      child.stdout.on('data', (chunk) => {
+        out += chunk;
+        const match = /fixtures:\s+(http:\/\/\S+)/.exec(out);
+        if (match) resolve(match[1]);
+      });
+      child.once('close', () => reject(new Error('fixture server ended')));
+    });
+    const command = execFileSync('ps', ['-o', 'command=', '-p', String(child.pid)], { encoding: 'utf8' });
+    assert.equal(command.includes(path.resolve('.')), false, `ps shows the repo: ${command}`);
+    for (const page of ['eval-signin-popup', 'eval-confirm', 'eval-buttons', 'eval-shadow-login', 'eval-net-a', 'eval-net-b', 'eval-download', 'eval-console', 'eval-classes']) {
+      const html = await (await fetch(`${url}${page}`)).text();
+      assert.match(html, /\/value\?key=|value\('/, `${page} asks the value server`);
+      assert.equal(/tk-[0-9a-f]{6}|E-\d{4}|R-\d{5}/.test(html), false, `${page} holds no answer`);
+    }
+  } finally {
+    child.kill('SIGTERM');
+  }
 });
