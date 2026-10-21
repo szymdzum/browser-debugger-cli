@@ -819,7 +819,9 @@ function failOnValueMismatch<T extends Omit<FillResult, 'success'> & { indexSour
 ): CommandResult<T> {
   const mismatch = result.data?.valueMismatch;
   if (!result.success || !result.data || !mismatch) return result;
-  const { warning, ...data } = result.data;
+  const { warning, ...filled } = result.data;
+  const { late: _late, ...shown } = mismatch;
+  const data = { ...filled, valueMismatch: shown };
   const err = valueMismatchError(
     {
       selector: data.selector ?? '',

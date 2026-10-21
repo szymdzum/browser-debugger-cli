@@ -278,6 +278,8 @@ export interface FillValueMismatch {
   masked?: true;
   /** Another field of the form that holds the value given, e.g. `input#first-name` */
   movedTo?: string;
+  /** Found by the late read, 2 s after the fill (#892); words the suggestion, not output */
+  late?: true;
 }
 
 /**

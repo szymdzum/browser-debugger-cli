@@ -949,21 +949,18 @@ export function createCommandRegistry(
         cdp,
         async () =>
           onScriptTarget(cdp, params, (target) =>
-            withActionStability(
-              cdp,
-              () =>
-                fillElement(
-                  target.cdp,
-                  target.selector,
-                  params.value,
-                  filterDefined({
-                    index: target.index,
-                    blur: params.blur,
-                    cwd: params.cwd,
-                    listIndex: params.listIndex,
-                  })
-                ),
-              params.wait !== false
+            fillElement(
+              target.cdp,
+              target.selector,
+              params.value,
+              filterDefined({
+                index: target.index,
+                blur: params.blur,
+                cwd: params.cwd,
+                listIndex: params.listIndex,
+                lateReadBack: params.wait !== false,
+              }),
+              (fill) => withActionStability(cdp, fill, params.wait !== false)
             )
           ),
         { reportFocusMove: true, dialogs: params }
