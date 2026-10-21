@@ -26,6 +26,8 @@
  * - a scrubbed environment: only the API key, proxy settings and a minimal PATH reach the child.
  * A transcript with a tool call that names the repo, ~/.claude, ~/.config/bdg-eval or the owner's home
  * (or a result that names the repo or the real <home>/.claude) is graded `contaminated`, not pass.
+ * A run that fetched its per-run value without the interaction (a tool call naming the value server,
+ * or a request to it from outside a page) is graded `cheated`.
  * Known limits: Bash can still read any path the user can, the key file of the run sits in the run's
  * temp dir, and the harness's own command line (`ps`) shows how it was started (use a relative path).
  * `claude` has no turn-cap flag, so the harness counts assistant turns in the stream and stops the run.
@@ -287,12 +289,13 @@ export function findContamination(stream, patterns) {
  * @param {{id: string, check: (reply: string, ctx: object) => {pass: boolean, reason: string}}} args.task the task
  * @param {ReturnType<typeof parseStream>} args.stream parsed stream
  * @param {string[]} args.contamination what contaminated the run
+ * @param {string[]} args.cheating how the run fetched its value without the interaction, if it did
  * @param {'turn-cap' | 'timeout' | 'aborted' | null} args.stoppedBy why the harness stopped the child, if it did
  * @param {number} args.runBudget per-run cap, charged when the cost is unknown
  * @param {object} args.taskContext the run's context (nonce and values) for the checker
  * @returns {object} the graded fields of the run
  */
-export function gradeRun({ task, stream, contamination, stoppedBy, runBudget, taskContext }) {
+export function gradeRun({ task, stream, contamination, cheating = [], stoppedBy, runBudget, taskContext }) {
   const result = stream.result;
   const costKnown = typeof result?.total_cost_usd === 'number';
   const reply = typeof result?.result === 'string' && result.result !== '' ? result.result : stream.lastText;
@@ -311,6 +314,9 @@ export function gradeRun({ task, stream, contamination, stoppedBy, runBudget, ta
     return { ...base, status: 'error', pass: false, reason: result ? `claude reported ${result.subtype ?? 'an error'}` : 'claude ended without a result' };
   }
   const verdict = task.check(reply, taskContext);
+  if (verdict.pass && cheating.length > 0) {
+    return { ...base, status: 'cheated', pass: false, reason: `fetched the value without the interaction: ${cheating.join('; ')}` };
+  }
   if (verdict.pass && contamination.length > 0) {
     return { ...base, status: 'contaminated', pass: false, reason: `read outside the sandbox: ${contamination.join('; ')}` };
   }
@@ -326,10 +332,11 @@ export function aggregate(rows) {
   const cells = new Map();
   for (const row of rows) {
     const key = `${row.task}\u0000${row.model}`;
-    const cell = cells.get(key) ?? { task: row.task, model: row.model, runs: 0, passes: 0, contaminated: 0, errors: 0, toolCalls: 0, tokens: 0, cost: 0, durationMs: 0 };
+    const cell = cells.get(key) ?? { task: row.task, model: row.model, runs: 0, passes: 0, contaminated: 0, cheated: 0, errors: 0, toolCalls: 0, tokens: 0, cost: 0, durationMs: 0 };
     cell.runs++;
     if (row.pass) cell.passes++;
     if (row.status === 'contaminated') cell.contaminated++;
+    if (row.status === 'cheated') cell.cheated++;
     if (['error', 'timeout', 'turn-cap', 'aborted'].includes(row.status)) cell.errors++;
     cell.toolCalls += row.toolCalls;
     cell.tokens += row.inputTokens + row.outputTokens;
@@ -357,13 +364,13 @@ export function renderSummary({ rows, settings, spent, skipped, stopReason }) {
     '',
     `Models: ${settings.models.join(', ')}. Runs per task and model: ${settings.runs}. Cost: $${spent.toFixed(4)} of $${settings.budget} budget.`,
     '',
-    '| task | model | success | runs | tool calls (avg) | tokens (avg) | $ | time (avg) | contaminated | errors |',
+    '| task | model | success | runs | tool calls (avg) | tokens (avg) | $ | time (avg) | contaminated | cheated | errors |',
     '| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
   ];
   for (const c of cells) {
     const pct = Math.round((c.passes / c.runs) * 100);
     lines.push(
-      `| ${c.task} | ${c.model} | ${pct}% (${c.passes}/${c.runs}) | ${c.runs} | ${(c.toolCalls / c.runs).toFixed(1)} | ${Math.round(c.tokens / c.runs)} | ${c.cost.toFixed(4)} | ${Math.round(c.durationMs / c.runs / 1000)}s | ${c.contaminated} | ${c.errors} |`
+      `| ${c.task} | ${c.model} | ${pct}% (${c.passes}/${c.runs}) | ${c.runs} | ${(c.toolCalls / c.runs).toFixed(1)} | ${Math.round(c.tokens / c.runs)} | ${c.cost.toFixed(4)} | ${Math.round(c.durationMs / c.runs / 1000)}s | ${c.contaminated} | ${c.cheated} | ${c.errors} |`
     );
   }
   const total = rows.length;
@@ -405,11 +412,16 @@ export function valueFor(secret, key, nonce) {
 }
 
 /**
- * Start the value server the fixture pages ask for their per-run values (`/value?key=&n=`).
+ * Start the value server the fixture pages ask for their per-run values (`/value?key=&n=`). It
+ * cannot tell a page from a script, so it logs: a request without the fixture pages' `Origin`
+ * (a curl, a script) is recorded per nonce for `forged`; requests from a page (`fetch` in a
+ * page, which includes `bdg dom eval`) carry the origin and are caught by the tool-call scan.
  * @param {string} secret the eval's random secret
- * @returns {Promise<{url: string, stop: () => void}>} server handle; `url` has no trailing slash
+ * @param {string} [pageOrigin] origin the fixture pages are served from, such as `http://127.0.0.1:5000`
+ * @returns {Promise<{url: string, stop: () => void, forged: (nonce: string) => number}>} server handle; `url` has no trailing slash
  */
-export function startValueServer(secret) {
+export function startValueServer(secret, pageOrigin) {
+  const forgedByNonce = new Map();
   const server = http.createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://value');
     const key = url.searchParams.get('key');
@@ -418,14 +430,36 @@ export function startValueServer(secret) {
       res.writeHead(404).end();
       return;
     }
+    if (pageOrigin !== undefined && req.headers.origin !== pageOrigin) forgedByNonce.set(nonce, (forgedByNonce.get(nonce) ?? 0) + 1);
     res.writeHead(200, { 'Content-Type': 'text/plain', 'Access-Control-Allow-Origin': '*' });
     res.end(valueFor(secret, key, nonce));
   });
   return new Promise((resolve) => {
     server.listen(0, '127.0.0.1', () => {
-      resolve({ url: `http://127.0.0.1:${server.address().port}`, stop: () => server.close() });
+      resolve({ url: `http://127.0.0.1:${server.address().port}`, stop: () => server.close(), forged: (nonce) => forgedByNonce.get(nonce) ?? 0 });
     });
   });
+}
+
+/**
+ * The ways a run fetched its value without the interaction: the value server saw a request
+ * without a page origin, or a tool call names the value server (its host and port, plain or
+ * URL-encoded, or the `/value` path). The page URL the prompt gives carries the server as an
+ * encoded `api=` parameter; that exact text is not counted.
+ * @param {{toolInputs: string[]}} stream parsed stream
+ * @param {{valueApi: string}} taskContext the run's context
+ * @param {number} forgedRequests requests the value server saw from outside a page
+ * @returns {string[]} what was seen
+ */
+export function findCheating(stream, taskContext, forgedRequests) {
+  const found = [];
+  if (forgedRequests > 0) found.push(`the value server got ${forgedRequests} request(s) from outside a page`);
+  const legit = `api=${encodeURIComponent(taskContext.valueApi)}`;
+  const hostPort = taskContext.valueApi.replace(/^https?:\/\//, '');
+  const pattern = new RegExp(`${hostPort.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(':', '(?::|%3A)')}|/value(?:\\?|\\b)`, 'i');
+  const named = stream.toolInputs.some((text) => pattern.test(text.split(legit).join('')));
+  if (named) found.push('a tool call names the value server');
+  return found;
 }
 
 /**
@@ -680,7 +714,7 @@ export async function runJob(ctx, job) {
     const prompt = buildPrompt(job.task, taskContext);
     const run = await runClaude({ claudeBin: settings.claudeBin, argv: claudeArgs(settings, job.model, prompt, keyHelper), env, cwd: dirs.cwd, maxTurns: settings.maxTurns, timeoutMs: settings.runTimeoutMs, control: ctx.control, key });
     const stream = parseStream(run.streamText);
-    const graded = gradeRun({ task: job.task, stream, contamination: findContamination(stream, ctx.patterns), stoppedBy: run.stoppedBy, runBudget: settings.runBudget, taskContext });
+    const graded = gradeRun({ task: job.task, stream, contamination: findContamination(stream, ctx.patterns), cheating: findCheating(stream, ctx.taskContext, ctx.values.forged(nonce)), stoppedBy: run.stoppedBy, runBudget: settings.runBudget, taskContext });
     const name = `${job.task.id}-${job.model}-${job.run}.jsonl`;
     fs.writeFileSync(path.join(settings.out, 'transcripts', name), redact(run.streamText, key));
     return { task: job.task.id, model: job.model, run: job.run, ...graded, durationMs: Date.now() - started, transcript: path.join('transcripts', name), init: summariseInit(stream.init) };
@@ -820,10 +854,10 @@ export async function main(settings) {
     const fixtures = fixtureScript ? await startFixtures(fixtureScript) : { url: settings.fixturesUrl.replace(/\/?$/, '/'), stop: () => {} };
     stops.push(fixtures.stop);
     const valueSecret = crypto.randomBytes(16).toString('hex');
-    const values = await startValueServer(valueSecret);
+    const values = await startValueServer(valueSecret, new URL(fixtures.url).origin);
     stops.push(values.stop);
     const taskContext = { fixtures: fixtures.url, refusedUrl: `http://127.0.0.1:${await freePort()}/`, valueApi: values.url };
-    const ctx = { settings, key, entry, taskContext, valueSecret, control, runJob, patterns: contaminationPatterns({ repoRoot: REPO_ROOT, home: os.homedir() }) };
+    const ctx = { settings, key, entry, taskContext, valueSecret, values, control, runJob, patterns: contaminationPatterns({ repoRoot: REPO_ROOT, home: os.homedir() }) };
     const jsonl = path.join(settings.out, 'runs.jsonl');
     const outcome = await runPool(ctx, planJobs(settings), (row) => {
       rows.push(row);

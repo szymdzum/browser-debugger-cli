@@ -23,6 +23,7 @@ import {
   resolveSettings,
   runJob,
   runPool,
+  findCheating,
   startValueServer,
   valueFor,
 } from './agent-eval.mjs';
@@ -215,7 +216,7 @@ test('summary: a table with success %, a failures list and the budget outcome', 
   assert.equal(cells[1].contaminated, 1);
   const settings = resolveSettings(parseArgs(['--budget=1']));
   const text = renderSummary({ rows, settings: { ...settings, models: ['m'], runs: 2 }, spent: 0.04, skipped: 3, stopReason: 'budget' });
-  assert.match(text, /\| popup-token \| m \| 50% \(1\/2\) \| 2 \| 4\.0 \| 120 \| 0\.0200 \| 8s \| 0 \| 0 \|/);
+  assert.match(text, /\| popup-token \| m \| 50% \(1\/2\) \| 2 \| 4\.0 \| 120 \| 0\.0200 \| 8s \| 0 \| 0 \| 0 \|/);
   assert.match(text, /Total: 2\/4 runs passed\./);
   assert.match(text, /Not started: 3 runs \(budget\)/);
   assert.match(text, /## Failures/);
@@ -252,7 +253,7 @@ function fakeContext(claudeBody, extraArgs = []) {
   fs.mkdirSync(path.join(settings.out, 'transcripts'), { recursive: true });
   const entry = path.join(work, 'dist-copy.js');
   fs.writeFileSync(entry, 'process.exit(0);\n');
-  const ctx = { settings, key: FAKE_KEY, entry, taskContext: { fixtures: 'http://127.0.0.1:9/', refusedUrl: 'http://127.0.0.1:8/', valueApi: 'http://127.0.0.1:7' }, valueSecret: 'test-secret', control: { aborted: false, stops: new Set() }, patterns: contaminationPatterns({ repoRoot: '/nonexistent/repo', home: '/nonexistent' }) };
+  const ctx = { settings, key: FAKE_KEY, entry, taskContext: { fixtures: 'http://127.0.0.1:9/', refusedUrl: 'http://127.0.0.1:8/', valueApi: 'http://127.0.0.1:7' }, valueSecret: 'test-secret', values: { forged: () => 0 }, control: { aborted: false, stops: new Set() }, patterns: contaminationPatterns({ repoRoot: '/nonexistent/repo', home: '/nonexistent' }) };
   return { ctx, work };
 }
 
@@ -498,4 +499,86 @@ test('fixture runtime copy: serves the eval pages from a temp dir, no process na
   } finally {
     child.kill('SIGTERM');
   }
+});
+
+/**
+ * A real value server wired into a fake-claude context, with pages served from `http://127.0.0.1:9`.
+ * @param {string} claudeBody JavaScript of the fake claude
+ * @returns {Promise<{ctx: object, server: {url: string, stop: () => void}}>} context and server
+ */
+async function cheatContext(claudeBody) {
+  const server = await startValueServer('test-secret', 'http://127.0.0.1:9');
+  const { ctx } = fakeContext(claudeBody.replaceAll('__API__', server.url));
+  ctx.taskContext.valueApi = server.url;
+  ctx.values = server;
+  return { ctx, server };
+}
+
+const NONCE_JS = "const nonce = /[?&]n=([0-9a-f]+)/.exec(process.argv.join(' '))[1];";
+const REQUEST_JS = (headers) => `require('http').get('__API__/value?key=console-error-code&n=' + nonce, { headers: ${headers} }, (res) => { res.resume(); res.on('end', done); });`;
+
+test('cheated: a fake claude that curls the value server is graded cheated even with the right answer', async () => {
+  const { ctx, server } = await cheatContext(`
+${NONCE_JS}
+const done = () => console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: ${FAKE_ANSWER}, total_cost_usd: 0.01, usage: {} }));
+${REQUEST_JS('{}')}
+`);
+  try {
+    const row = await runJob(ctx, { task: TASKS.find((t) => t.id === 'console-error-code'), model: 'm', run: 1 });
+    assert.equal(row.status, 'cheated');
+    assert.equal(row.pass, false);
+    assert.match(row.reason, /outside a page/);
+  } finally {
+    server.stop();
+  }
+});
+
+test('cheated: a tool call that fetches the value server through bdg dom eval is graded cheated', async () => {
+  const { ctx, server } = await cheatContext(`
+console.log(JSON.stringify({ type: 'assistant', message: { id: 'a1', content: [{ type: 'tool_use', name: 'Bash', input: { command: 'bdg dom eval "fetch(\\'__API__/value?key=console-error-code&n=1\\').then(r => r.text())"' } }] } }));
+console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: ${FAKE_ANSWER}, total_cost_usd: 0.01, usage: {} }));
+`);
+  try {
+    const row = await runJob(ctx, { task: TASKS.find((t) => t.id === 'console-error-code'), model: 'm', run: 1 });
+    assert.equal(row.status, 'cheated');
+    assert.match(row.reason, /names the value server/);
+  } finally {
+    server.stop();
+  }
+});
+
+test('not cheated: opening the page URL from the prompt and a request that carries the page origin pass', async () => {
+  const { ctx, server } = await cheatContext(`
+${NONCE_JS}
+const url = /(http:\\/\\/127\\.0\\.0\\.1:1\\/eval-console\\?\\S+)/.exec(process.argv.join(' '))[1];
+console.log(JSON.stringify({ type: 'assistant', message: { id: 'a1', content: [{ type: 'tool_use', name: 'Bash', input: { command: 'bdg ' + url } }] } }));
+const done = () => console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: ${FAKE_ANSWER}, total_cost_usd: 0.01, usage: {} }));
+${REQUEST_JS("{ Origin: 'http://127.0.0.1:9' }")}
+`);
+  try {
+    ctx.taskContext.fixtures = 'http://127.0.0.1:1/';
+    const row = await runJob(ctx, { task: TASKS.find((t) => t.id === 'console-error-code'), model: 'm', run: 1 });
+    assert.equal(row.reason, 'matches the truth');
+    assert.equal(row.status, 'pass');
+  } finally {
+    server.stop();
+  }
+});
+
+test('findCheating: the encoded api parameter of the prompt URL is not counted, other mentions are', () => {
+  const ctx = { valueApi: 'http://127.0.0.1:4455' };
+  const legit = `bdg http://127.0.0.1:1/eval-signin?n=ab&api=${encodeURIComponent(ctx.valueApi)}`;
+  assert.deepEqual(findCheating({ toolInputs: [JSON.stringify({ command: legit })] }, ctx, 0), []);
+  for (const command of ['curl http://127.0.0.1:4455/value?key=x&n=ab', 'curl 127.0.0.1%3A4455', 'bdg dom eval "fetch(\'/value?key=x\')"']) {
+    assert.equal(findCheating({ toolInputs: [JSON.stringify({ command })] }, ctx, 0).length, 1, command);
+  }
+  assert.equal(findCheating({ toolInputs: [] }, ctx, 2).length, 1);
+});
+
+test('summary counts cheated runs in their own column and lists them as failures', () => {
+  const row = { task: 't', model: 'm', run: 1, status: 'cheated', pass: false, reason: 'fetched', toolCalls: 1, inputTokens: 1, outputTokens: 1, costUsd: 0.01, durationMs: 1000, transcript: 'x' };
+  const text = renderSummary({ rows: [row], settings: { ...resolveSettings(parseArgs([])), models: ['m'], runs: 1 }, spent: 0.01, skipped: 0, stopReason: '' });
+  assert.match(text, /\| cheated \|/);
+  assert.match(text, /\| 0 \| 1 \| 0 \|\n/);
+  assert.match(text, /\| t \| m \| 1 \| cheated \|/);
 });
