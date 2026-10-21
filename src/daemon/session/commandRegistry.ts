@@ -52,7 +52,7 @@ import {
   readBackLate,
   scrollPage,
   withActionStability,
-  withLateRevert,
+  withLateRead,
 } from '@/runtime/dom/formFillHelpers/index.js';
 import { exceptionSummary } from '@/runtime/dom/formFillHelpers/shared.js';
 import { connectedNodes, formErrors, withFormIssues } from '@/runtime/dom/formIssues.js';
@@ -963,11 +963,11 @@ export function createCommandRegistry(
                 listIndex: params.listIndex,
               })
             );
-            const [result, revert] = await Promise.all([
+            const [result, late] = await Promise.all([
               withActionStability(cdp, () => filling, wait),
               wait ? readBackLate(target.cdp, target, filling) : undefined,
             ]);
-            return withLateRevert(result, revert);
+            return withLateRead(result, late);
           }),
         { reportFocusMove: true, dialogs: params }
       ),

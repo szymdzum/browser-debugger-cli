@@ -1,7 +1,7 @@
 /**
  * Form-fill helper barrel. Splits the former formFillHelpers.ts into:
  *
- * - `fill.ts`      — fillElement (readBackLate, withLateRevert), clickElement
+ * - `fill.ts`      — fillElement (readBackLate, withLateRead), clickElement
  * - `pressKey.ts`  — pressKeyElement + types
  * - `scroll.ts`    — scrollPage + types
  * - `stability.ts` — withActionStability
@@ -15,7 +15,7 @@ export {
   fillElement,
   clickElement,
   readBackLate,
-  withLateRevert,
+  withLateRead,
 } from '@/runtime/dom/formFillHelpers/fill.js';
 export {
   pressKeyElement,

@@ -306,6 +306,12 @@ export interface FillResult extends ActionEffects {
   valueMismatch?: FillValueMismatch;
   /** The mismatch was found by the late read, 2 s after the fill (#892); words the suggestion, never output */
   lateRevert?: true;
+  /**
+   * What the field shows when the page formatted the value given (a phone
+   * mask, a date written out, `$8.00` for `8`), read 2 s after the fill
+   * (#892) or right after it; never for a secret field
+   */
+  pageValue?: string;
   suggestion?: string;
   /** Set when the target is a file input (filled through CDP instead) */
   fileInput?: boolean;

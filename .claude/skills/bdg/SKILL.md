@@ -125,7 +125,7 @@ bdg dom form --brief                           # Fields: index, type, label, req
 bdg dom fill "input[name='user']" "myuser"     # By selector (React-compatible)
 bdg dom fill 0 "value"                         # By index from the last query/form
 bdg dom fill "#password" "short"               # Typed like a user: minlength applies (warning, submitBlocked); secret fields echo ••••; exit 90 if the page moved the text to another field
-bdg dom fill "#hours" "8"                      # Read back: exit 90 when the page kept another value (8 -> 24.00; JSON error has valueMismatch {expected, actual}); $8.00 or 5.20% for a number is a match; read again 2 s later (not with --no-wait): a late revert exits 90, a text field back to its old value or blank exits 90, other late formatting (phone mask, date written out) passes
+bdg dom fill "#hours" "8"                      # Read back: exit 90 when the page kept another value (8 -> 24.00; JSON error has valueMismatch {expected, actual}); $8.00 or 5.20% for a number is a match; read again 2 s later (not with --no-wait): a late revert exits 90, a text field back to its old value or blank exits 90, other late formatting (phone mask, date written out) passes with `Page shows: …` (JSON pageValue, never for secret fields)
 bdg dom click "button.submit" --index 1        # Second match
 bdg dom submit "form" --wait-navigation        # Traditional form post
 bdg dom press-key "input" Enter                # Also Tab, Escape, ArrowDown --times 3, Shift, NumpadEnter, characters (a, ., _, /); unknown names list the keys

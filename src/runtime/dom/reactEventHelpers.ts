@@ -127,8 +127,10 @@ export const FILL_VALUE_MISMATCH_JS = `(field, expected, secret) => {
  * 2 s after filling is a revert (a mismatch, as {@link FILL_VALUE_MISMATCH_JS}
  * gives it) or the page formatting the value (undefined). Any change of a
  * field that is not text-like is a revert. A text-like field reverted when
- * it holds its value from before the fill (`check.before`), or is blank
- * while the value given was not; any other value is the page formatting
+ * it holds its value from before the fill (`check.before`; compared
+ * trimmed, inner whitespace collapsed and case-folded, so a controlled input
+ * restoring its state `o` over a DOM value `o ` counts), or is blank while
+ * the value given was not; any other value is the page formatting
  * the one given (a phone mask, a date written out, upper-casing, an
  * autocomplete), so a page replacing it with unrelated text is not seen.
  */
@@ -141,7 +143,8 @@ export const LATE_REVERT_JS = `(field, check) => {
   if (!textLike) return mismatch;
   const late = (${FIELD_VALUE_JS})(field);
   const blanked = late.trim() === '' && String(check.expected).trim() !== '';
-  return late === check.before.get(check.el) || blanked ? mismatch : undefined;
+  const loose = (text) => String(text).trim().replace(/\\s+/g, ' ').toLowerCase();
+  return loose(late) === loose(check.before.get(check.el)) || blanked ? mismatch : undefined;
 }`;
 
 /**
@@ -856,25 +859,38 @@ const WITH_MOVED_TO_JS = `(mismatch, check) => {
 }`;
 
 /**
+ * Page-side value a field shows when it is not the one given but no
+ * mismatch (the page formatted it: `$8.00` for `8`, a phone mask),
+ * `{ pageValue }`, else null; never for a secret field or a password.
+ */
+const PAGE_VALUE_JS = `(field, check) => {
+  if (check.secret || (field.type || '').toLowerCase() === 'password') return null;
+  const shown = (${FIELD_VALUE_JS})(field);
+  return shown === String(check.expected) ? null : { pageValue: shown };
+}`;
+
+/**
  * Page script reading back the field the last fill left
  * ({@link FILL_CHECK_READ_JS}). Evaluates to the mismatch
  * ({@link FILL_VALUE_MISMATCH_JS}), with `movedTo` when the value turned up
- * in another field, or null when the value matches, nothing was left or the
- * field left the page. The check stays for the late read
+ * in another field, what the field shows when it matches formatted
+ * ({@link PAGE_VALUE_JS}), or null when it holds the value given, nothing
+ * was left or the field left the page. The check stays for the late read
  * ({@link FILL_LATE_READ_FUNCTION}).
  */
 export const FILL_READ_BACK_SCRIPT = `(${FILL_CHECK_READ_JS})((check) => {
   if (!check.el.isConnected) return null;
   const mismatch = (${FILL_VALUE_MISMATCH_JS})(check.el, check.expected, check.secret);
-  return mismatch ? (${WITH_MOVED_TO_JS})(mismatch, check) : null;
+  return mismatch ? (${WITH_MOVED_TO_JS})(mismatch, check) : (${PAGE_VALUE_JS})(check.el, check);
 })`;
 
 /**
  * Page function of the late read of a fill (#892): the field the last fill
  * left ({@link FILL_CHECK_READ_JS}, removing the check), or, when that left
  * the page (a remount), the field the fill's selector and index find now;
- * evaluates to the revert ({@link LATE_REVERT_JS}) with `movedTo`, or null
- * (no revert, nothing left, no field). Every parameter is a
+ * evaluates to the revert ({@link LATE_REVERT_JS}) with `movedTo`, what
+ * the field shows when the page formatted the value ({@link PAGE_VALUE_JS}),
+ * or null (the value given, nothing left, no field). Every parameter is a
  * `Runtime.callFunctionOn` argument.
  */
 export const FILL_LATE_READ_FUNCTION = `function (selector, parts, index) {
@@ -886,7 +902,7 @@ export const FILL_LATE_READ_FUNCTION = `function (selector, parts, index) {
       : found && ((${LABEL_CONTROL_JS})(found) || (${SHADOW_FIELD_JS})(found) || found);
     if (!field) return null;
     const mismatch = (${LATE_REVERT_JS})(field, check);
-    return mismatch ? (${WITH_MOVED_TO_JS})(mismatch, check) : null;
+    return mismatch ? (${WITH_MOVED_TO_JS})(mismatch, check) : (${PAGE_VALUE_JS})(field, check);
   });
 }`;
 

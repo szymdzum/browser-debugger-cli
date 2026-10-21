@@ -6,7 +6,8 @@
  * 50/300/1500 ms after `input`; the checkbox `#cb` is unchecked 100 ms
  * after `change`; the select `#sel` goes back to `a` 100 ms after `change`;
  * `#ctl` is a controlled input (state kept by the page, re-rendered a frame
- * plus 30 ms after `input`) that takes digits only; `#remount-old` is
+ * plus 30 ms after `input`) that takes digits only; `#ctl-space` shows
+ * `o ` while its state is `o`, which it restores 100 ms after `input`; `#remount-old` is
  * replaced 200 ms after `change` by a new `<input id="remount-old">`
  * holding `o` (a remount on a new key that resets the value); `#cleared`
  * is emptied 100 ms after `input` (a search box that submits by itself).
@@ -19,7 +20,8 @@
  * by a new input holding the value filled; `#datefmt` is written out
  * (`2024-01-05` as `Jan 5, 2024`) 300 ms after `change`; `#unrelated` is
  * replaced by `N/A` 300 ms after `input` (a known limit: only the old value
- * or a blank counts as a revert); `#plain` changes another field
+ * or a blank counts as a revert); the password `#pw` is upper-cased 300 ms
+ * after `change` (never shown); `#plain` changes another field
  * (`#other`) 300 ms after `input`, while `#tick` ticks every 100 ms.
  */
 
@@ -33,6 +35,7 @@ const FILL_LATE_REVERT_HTML = `<!doctype html><title>fill late revert</title>
 <label>Agree <input id="cb" type="checkbox"></label>
 <label>Size <select id="sel"><option value="a">a</option><option value="b">b</option></select></label>
 <label>Controlled <input id="ctl" value="o"></label>
+<label>Controlled space <input id="ctl-space" value="o "></label>
 <label>Search <input id="cleared"></label>
 <span id="remount-old-slot"><label>Remount old <input id="remount-old" value="o"></label></span>
 <label>Phone <input id="phone" type="tel"></label>
@@ -43,6 +46,7 @@ const FILL_LATE_REVERT_HTML = `<!doctype html><title>fill late revert</title>
 <span id="remount-keep-slot"><label>Remount keep <input id="remount-keep" value="o"></label></span>
 <label>Date <input id="datefmt"></label>
 <label>Unrelated <input id="unrelated" value="o"></label>
+<label>Password <input id="pw" type="password"></label>
 <label>Plain <input id="plain"></label>
 <label>Other <input id="other" value="x"></label>
 <div id="tick">0</div>
@@ -61,6 +65,7 @@ const FILL_LATE_REVERT_HTML = `<!doctype html><title>fill late revert</title>
     if (/^\\d*$/.test(event.target.value)) state = event.target.value;
     requestAnimationFrame(() => setTimeout(() => { byId('ctl').value = state; }, 30));
   });
+  byId('ctl-space').addEventListener('input', () => setTimeout(() => { byId('ctl-space').value = 'o'; }, 100));
   const remount = (id, value) => {
     byId(id).addEventListener('change', (event) => {
       const kept = value === undefined ? event.target.value : value;
@@ -96,6 +101,8 @@ const FILL_LATE_REVERT_HTML = `<!doctype html><title>fill late revert</title>
     event.target.value = months[m - 1] + ' ' + d + ', ' + y;
   }, 300));
   byId('unrelated').addEventListener('input', () => setTimeout(() => { byId('unrelated').value = 'N/A'; }, 300));
+  byId('pw').addEventListener('change', (event) =>
+    setTimeout(() => { event.target.value = event.target.value.toUpperCase(); }, 300));
   byId('plain').addEventListener('input', () => setTimeout(() => { byId('other').value = 'changed'; }, 300));
 </script>`;
 

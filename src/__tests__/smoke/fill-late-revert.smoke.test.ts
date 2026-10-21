@@ -41,6 +41,8 @@ interface Cell {
   expected?: string;
   /** What the suggestion of the failure says */
   suggestion?: RegExp;
+  /** What the field shows formatted by the page (`data.pageValue`), when not the value given */
+  pageValue?: string;
 }
 
 const CELLS: Cell[] = [
@@ -58,21 +60,38 @@ const CELLS: Cell[] = [
   { name: 'controlled input rejecting the value', field: '#ctl', value: 'abc', reverted: 'o' },
   { name: 'remount with the old value', field: '#remount-old', value: 'new', reverted: 'o' },
   {
+    name: 'controlled input restoring its state over a DOM value with a space',
+    field: '#ctl-space',
+    value: 'new',
+    reverted: 'o',
+  },
+  {
     name: 'search box emptied after submitting by itself',
     field: '#cleared',
     value: 'shoes',
     reverted: '',
     suggestion: /clears the field after an automatic submit/,
   },
-  { name: 'late phone mask', field: '#phone', value: '5551234567' },
-  { name: 'upper-cased after blur', field: '#upper', value: 'abc' },
-  { name: 'trimmed after change', field: '#trim', value: 'abc ' },
-  { name: 'autocomplete', field: '#auto', value: 'Lon' },
+  { name: 'late phone mask', field: '#phone', value: '5551234567', pageValue: '(555) 123-4567' },
+  { name: 'upper-cased after blur', field: '#upper', value: 'abc', pageValue: 'ABC' },
+  { name: 'trimmed after change', field: '#trim', value: 'abc ', pageValue: 'abc' },
+  { name: 'autocomplete', field: '#auto', value: 'Lon', pageValue: 'London' },
   { name: 'validation message only', field: '#valid', value: 'foo' },
   { name: 'remount keeping the value', field: '#remount-keep', value: 'kept' },
-  { name: 'date written out after change', field: '#datefmt', value: '2024-01-05' },
-  { name: 'replaced by unrelated text (known limit)', field: '#unrelated', value: 'new' },
+  {
+    name: 'date written out after change',
+    field: '#datefmt',
+    value: '2024-01-05',
+    pageValue: 'Jan 5, 2024',
+  },
+  {
+    name: 'replaced by unrelated text (known limit)',
+    field: '#unrelated',
+    value: 'new',
+    pageValue: 'N/A',
+  },
   { name: 'another field and a ticker changing', field: '#plain', value: 'hello' },
+  { name: 'password upper-cased after change', field: '#pw', value: 'hunter22' },
 ];
 
 /** What the tests read of the `--json` envelope of `dom fill` */
@@ -80,6 +99,7 @@ interface FillEnvelope {
   success: boolean;
   exitCode?: number;
   suggestion?: string;
+  data?: { value?: string; pageValue?: string };
   valueMismatch?: { expected: string; actual: string };
 }
 
@@ -138,6 +158,7 @@ void describe('dom fill reads the value again 2 s after filling (#892)', () => {
       if (cell.reverted === undefined) {
         assert.equal(exitCode, 0, JSON.stringify(envelope));
         assert.equal(envelope.valueMismatch, undefined);
+        assert.equal(envelope.data?.pageValue, cell.pageValue);
         return;
       }
       assert.equal(exitCode, MISMATCH_EXIT, JSON.stringify(envelope));
@@ -153,5 +174,23 @@ void describe('dom fill reads the value again 2 s after filling (#892)', () => {
     await reload();
     const { exitCode, envelope } = await fill('#r300', 'new', ['--no-wait']);
     assert.equal(exitCode, 0, JSON.stringify(envelope));
+  });
+
+  void it('human output keeps the value given and adds what the page shows', async () => {
+    await reload();
+    const result = await runCommand('dom', ['fill', '#phone', '5551234567'], { timeout: 60000 });
+    assert.equal(result.exitCode, 0, `${result.stdout}${result.stderr}`);
+    assert.match(result.stdout, /Value:\s+5551234567$/m);
+    assert.match(result.stdout, /Page shows:\s+\(555\) 123-4567$/m);
+  });
+
+  void it('never shows what a secret field holds after the page changed it', async () => {
+    await reload();
+    const human = await runCommand('dom', ['fill', '#pw', 'hunter22'], { timeout: 60000 });
+    await reload();
+    const { envelope } = await fill('#pw', 'hunter22');
+    const output = `${human.stdout}${human.stderr}${JSON.stringify(envelope)}`;
+    assert.equal(human.exitCode, 0, output);
+    assert.doesNotMatch(output, /hunter22|HUNTER22|Page shows|pageValue/i);
   });
 });

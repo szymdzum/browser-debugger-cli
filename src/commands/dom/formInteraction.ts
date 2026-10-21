@@ -854,6 +854,7 @@ function formatFillOutput(result: ActionOutput<FillResult>): string {
   } else if (result.value !== undefined) {
     details.push(['Value', result.value === '' ? '(empty)' : result.value]);
   }
+  if (result.pageValue !== undefined) details.push(['Page shows', result.pageValue]);
 
   return formatActionOutput('Element Filled', details, result).build();
 }

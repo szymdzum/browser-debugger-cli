@@ -72,6 +72,8 @@ void describe('LATE_REVERT_JS', () => {
     assert.equal(reverted('', 'new', 'o'), true);
     assert.equal(reverted('  ', 'new', 'o'), true);
     assert.equal(reverted('o', '', 'o'), true);
+    assert.equal(reverted('o', 'new', 'o '), true);
+    assert.equal(reverted('Old  Value', 'new', ' old value'), true);
   });
 
   void it('reports any change of a field that is not text-like', () => {
