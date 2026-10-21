@@ -162,7 +162,7 @@ function brokenButtons(ctx) {
  * The URL of a fixture page for this run: the nonce names the run in the log and the log server
  * address is where the page reports what it showed.
  * @param {TaskContext} ctx run context
- * @param {string} page page name, such as `eval-signin`
+ * @param {string} page page name, such as `eval-slot`
  * @returns {string} URL
  */
 export function pageUrl(ctx, page) {
@@ -179,12 +179,12 @@ export function pageUrl(ctx, page) {
  */
 export const TASKS = [
   {
-    id: 'popup-token',
+    id: 'popup-code',
     scenario: 'S01',
-    title: 'Sign-in popup posts a token back',
+    title: 'Slot popup posts a confirmation code back',
     prompt: (ctx) =>
-      `Open ${pageUrl(ctx, 'eval-signin')} and sign in. The sign-in window posts a token back to the page. ${ANSWER_RULE}<token>\` with the token the page shows.`,
-    check: exactValue(loggedTruth('popup-token')),
+      `Open ${pageUrl(ctx, 'eval-slot')} and choose a delivery slot: the button opens a small window where you confirm the slot, and that window sends a confirmation code back to the page. ${ANSWER_RULE}<code>\` with the confirmation code the page shows.`,
+    check: exactValue(loggedTruth('popup-code')),
   },
   {
     id: 'cancel-confirm',

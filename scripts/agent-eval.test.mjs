@@ -35,7 +35,7 @@ const FAKE_KEY = 'sk-ant-api03-TESTKEYTESTKEYTESTKEY';
 
 /** What the pages logged in the run the checkers grade: values `a1b2c3`; Alpha, Charlie and Delta broke */
 const LOG = {
-  'popup-token': ['tk-a1b2c3'],
+  'popup-code': ['cf-a1b2c3'],
   'cancel-confirm': ['Order A-a1b2c3 kept'],
   'breaking-buttons': ['Alpha=1', 'Bravo=0', 'Charlie=1', 'Delta=1', 'Echo=0'],
   'shadow-login': ['R-a1b2c3'],
@@ -60,14 +60,14 @@ const CLASSES =
  * passes the truth and nothing else.
  */
 const CASES = {
-  'popup-token': {
-    right: ['tk-a1b2c3'],
+  'popup-code': {
+    right: ['cf-a1b2c3'],
     wrong: [
-      'tk-a1b2c4',
-      'TK-A1B2C3',
-      'tk-a1b2c3 and tk-123',
-      'token-123',
-      'tk-a1b2c3 or tk-a1b2c4',
+      'cf-a1b2c4',
+      'CF-A1B2C3',
+      'cf-a1b2c3 and cf-123',
+      'code-123',
+      'cf-a1b2c3 or cf-a1b2c4',
     ],
   },
   'cancel-confirm': {
@@ -204,7 +204,7 @@ test('cancel-confirm fails when the page shows the order was removed, whatever t
 test('any value the page logged in the run is accepted (an honest reload), buttons use the last outcome per button', () => {
   const again = contextWith({
     ...LOG,
-    'popup-token': ['tk-111111', 'tk-a1b2c3'],
+    'popup-code': ['cf-111111', 'cf-a1b2c3'],
     'console-error-code': ['E-111111', 'E-a1b2c3'],
     'failed-request-page-two': ['/eval-net-b-111111.json', '/eval-net-b-a1b2c3.json'],
     'utility-classes': ['id-111111', 'id-a1b2c3'],
@@ -219,9 +219,9 @@ test('any value the page logged in the run is accepted (an honest reload), butto
     ],
   });
   const check = (id, answer) => TASKS.find((t) => t.id === id).check(reply(answer), again).pass;
-  assert.equal(check('popup-token', 'tk-a1b2c3'), true);
-  assert.equal(check('popup-token', 'tk-111111'), true);
-  assert.equal(check('popup-token', 'tk-222222'), false);
+  assert.equal(check('popup-code', 'cf-a1b2c3'), true);
+  assert.equal(check('popup-code', 'cf-111111'), true);
+  assert.equal(check('popup-code', 'cf-222222'), false);
   assert.equal(check('console-error-code', 'E-111111'), true);
   assert.equal(check('failed-request-page-two', '/eval-net-b-111111.json'), true);
   assert.equal(check('utility-classes', CLASSES.replace('id-a1b2c3', 'id-111111')), true);
@@ -266,23 +266,23 @@ test('breaking-buttons fails unless all five buttons were clicked, even for a ma
 });
 
 test('formatted answer lines pass (bold, backticks) and wrong ones still fail', () => {
-  const check = (text) => TASKS.find((t) => t.id === 'popup-token').check(text, CTX).pass;
+  const check = (text) => TASKS.find((t) => t.id === 'popup-code').check(text, CTX).pass;
   for (const text of [
-    '**ANSWER: tk-a1b2c3**',
-    'ANSWER: `tk-a1b2c3`',
-    '`ANSWER: tk-a1b2c3`',
-    'ANSWER: **tk-a1b2c3**',
-    '**ANSWER:** tk-a1b2c3',
-    'ANSWER: `tk-a1b2c3` ',
+    '**ANSWER: cf-a1b2c3**',
+    'ANSWER: `cf-a1b2c3`',
+    '`ANSWER: cf-a1b2c3`',
+    'ANSWER: **cf-a1b2c3**',
+    '**ANSWER:** cf-a1b2c3',
+    'ANSWER: `cf-a1b2c3` ',
   ]) {
     assert.equal(check(`Done.\n\n${text}`), true, text);
   }
   for (const text of [
-    '**ANSWER: tk-a1b2c4**',
-    'ANSWER: `tk-a1b2c3 or tk-a1b2c4`',
-    '**ANSWER: TK-A1B2C3**',
-    '**Answer:** tk-a1b2c3',
-    '**ANSWER: tk-a1b2c3** (maybe)',
+    '**ANSWER: cf-a1b2c4**',
+    'ANSWER: `cf-a1b2c3 or cf-a1b2c4`',
+    '**ANSWER: CF-A1B2C3**',
+    '**Answer:** cf-a1b2c3',
+    '**ANSWER: cf-a1b2c3** (maybe)',
   ]) {
     assert.equal(check(`Done.\n\n${text}`), false, text);
   }
@@ -298,8 +298,8 @@ test('extractAnswer takes the last line only', () => {
 test('selectTasks names unknown tasks', () => {
   assert.equal(selectTasks('all').length, TASKS.length);
   assert.deepEqual(
-    selectTasks('download-name,popup-token').map((t) => t.id),
-    ['popup-token', 'download-name']
+    selectTasks('download-name,popup-code').map((t) => t.id),
+    ['popup-code', 'download-name']
   );
   assert.throws(() => selectTasks('nope'), /Unknown task "nope"/);
 });
@@ -310,7 +310,7 @@ test('settings: defaults, flags and an output directory outside the repository',
       '--model=a,b',
       '--runs',
       '3',
-      '--tasks=popup-token',
+      '--tasks=popup-code',
       '--dry-run',
       '--out=/tmp/x-out',
     ])
@@ -331,7 +331,7 @@ test('settings: defaults, flags and an output directory outside the repository',
 test('plan: run-major order and the worst case cost', () => {
   const settings = resolveSettings(
     parseArgs([
-      '--tasks=popup-token,download-name',
+      '--tasks=popup-code,download-name',
       '--model=a,b',
       '--runs=2',
       '--run-budget=0.25',
@@ -342,7 +342,7 @@ test('plan: run-major order and the worst case cost', () => {
   assert.equal(jobs.length, 8);
   assert.deepEqual(
     jobs.slice(0, 4).map((j) => `${j.task.id}/${j.model}/${j.run}`),
-    ['popup-token/a/1', 'popup-token/b/1', 'download-name/a/1', 'download-name/b/1']
+    ['popup-code/a/1', 'popup-code/b/1', 'download-name/a/1', 'download-name/b/1']
   );
   const plan = renderPlan(settings);
   assert.match(plan, /worst case \$2\.00/);
@@ -565,8 +565,8 @@ test('summary: a table with success %, a failures list and the budget outcome', 
     transcript: `t${run}.jsonl`,
   });
   const rows = [
-    row('popup-token', 'm', 1, true),
-    row('popup-token', 'm', 2, false),
+    row('popup-code', 'm', 1, true),
+    row('popup-code', 'm', 2, false),
     row('download-name', 'm', 1, true),
     row('download-name', 'm', 2, false, 'contaminated'),
   ];
@@ -584,7 +584,7 @@ test('summary: a table with success %, a failures list and the budget outcome', 
   });
   assert.match(
     text,
-    /\| popup-token \| m \| 50% \(1\/2\) \| 2 \| 4\.0 \| 120 \| 0\.0200 \| 8s \| 0 \| 0 \| 0 \|/
+    /\| popup-code \| m \| 50% \(1\/2\) \| 2 \| 4\.0 \| 120 \| 0\.0200 \| 8s \| 0 \| 0 \| 0 \|/
   );
   assert.match(text, /Total: 2\/4 runs passed\./);
   assert.match(text, /Not started: 3 runs \(budget\)/);
@@ -739,7 +739,7 @@ test('runJob: a run past the timeout is stopped and graded timeout', async () =>
 test('runPool stops before the total budget could be exceeded and counts the runs it skipped', async () => {
   const settings = resolveSettings(
     parseArgs([
-      '--tasks=popup-token',
+      '--tasks=popup-code',
       '--runs=10',
       '--budget=2',
       '--run-budget=0.5',
@@ -767,15 +767,15 @@ test('runPool stops before the total budget could be exceeded and counts the run
 test('log server only records: POST /log is stored, every GET and other path is a 404 with no value', async () => {
   const server = await startLogServer('http://127.0.0.1:9');
   try {
-    const post = await fetch(`${server.url}/log?key=popup-token&n=abc`, {
+    const post = await fetch(`${server.url}/log?key=popup-code&n=abc`, {
       method: 'POST',
-      body: 'tk-1',
+      body: 'cf-1',
       headers: { Origin: 'http://127.0.0.1:9' },
     });
     assert.equal(post.status, 204);
-    assert.deepEqual(server.entries('abc', 'popup-token'), ['tk-1']);
+    assert.deepEqual(server.entries('abc', 'popup-code'), ['cf-1']);
     assert.equal(server.forged('abc'), 0);
-    for (const url of ['/log?key=popup-token&n=abc', '/value?key=popup-token&n=abc', '/', '/log']) {
+    for (const url of ['/log?key=popup-code&n=abc', '/value?key=popup-code&n=abc', '/', '/log']) {
       const res = await fetch(`${server.url}${url}`);
       assert.equal(res.status, 404, url);
       assert.equal(await res.text(), '');
@@ -896,7 +896,7 @@ test('abort: a first stop signal ends runs as aborted and a second one forces it
 test('runPool: a job that throws becomes an error row and the other workers finish', async () => {
   const settings = resolveSettings(
     parseArgs([
-      '--tasks=popup-token',
+      '--tasks=popup-code',
       '--runs=4',
       '--budget=10',
       '--run-budget=0.5',
@@ -910,7 +910,7 @@ test('runPool: a job that throws becomes an error row and the other workers fini
       if (job.run === 2) throw new Error('boom');
       await new Promise((resolve) => setTimeout(resolve, 20));
       return {
-        task: 'popup-token',
+        task: 'popup-code',
         model: 'm',
         run: job.run,
         status: 'pass',
@@ -986,7 +986,7 @@ test(
       });
       assert.equal(command.includes(path.resolve('.')), false, `ps shows the repo: ${command}`);
       for (const page of [
-        'eval-signin-popup',
+        'eval-slot-popup',
         'eval-confirm',
         'eval-buttons',
         'eval-shadow-login',
@@ -999,7 +999,7 @@ test(
         const html = await (await fetch(`${url}${page}`)).text();
         if (page !== 'eval-net-a')
           assert.match(html, /\/log\?key=/, `${page} reports to the log server`);
-        assert.equal(/tk-[0-9a-f]{6}|E-\d{4}|R-\d{5}/.test(html), false, `${page} holds no answer`);
+        assert.equal(/cf-[0-9a-f]{6}|E-\d{4}|R-\d{5}/.test(html), false, `${page} holds no answer`);
         assert.equal(
           /(?:function|const|let|var)\s+(?:value|report|log)\b/.test(html),
           false,
@@ -1109,7 +1109,7 @@ ${POST_JS("{ Origin: 'http://127.0.0.1:9' }", 'E-page42')}
 
 test('findCheating: the encoded api parameter of the prompt URL is not counted, other mentions are', () => {
   const ctx = { logApi: 'http://127.0.0.1:4455' };
-  const legit = `bdg http://127.0.0.1:1/eval-signin?n=ab&api=${encodeURIComponent(ctx.logApi)}`;
+  const legit = `bdg http://127.0.0.1:1/eval-slot?n=ab&api=${encodeURIComponent(ctx.logApi)}`;
   assert.deepEqual(findCheating({ toolInputs: [JSON.stringify({ command: legit })] }, ctx, 0), []);
   for (const command of [
     'curl -X POST http://127.0.0.1:4455/log?key=x&n=ab',

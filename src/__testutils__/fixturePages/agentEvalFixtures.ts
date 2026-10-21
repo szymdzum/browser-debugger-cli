@@ -3,15 +3,15 @@
  * by the fixture server. Each page backs one task. The task URL carries
  * `?n=<nonce>&api=<log server>`. A page generates its per-run value with
  * `crypto.getRandomValues` inside the handler of the interaction the task is
- * about (a click, a sign-in) or, where the task is about what a page does,
+ * about (a click, a login) or, where the task is about what a page does,
  * when it loads; it shows the value and POSTs what it showed to
  * `<api>/log?key=<task>&n=<nonce>`. The log server only records and never
  * answers a value, so no page source and no GET holds the answer: getting it
  * takes running the handler. There is no global helper; the code is inlined
  * in each handler.
  *
- * - `/eval-signin` opens `/eval-signin-popup`, whose Allow button generates a
- *   token, posts `tk-<value>` to the opener (which shows it) and logs it.
+ * - `/eval-slot` opens `/eval-slot-popup`, whose Confirm slot button generates a
+ *   confirmation code, posts `cf-<value>` to the opener (which shows it) and logs it.
  * - `/eval-confirm` asks `confirm()` when `Remove order` is clicked, then shows
  *   and logs `Order A-<value> kept` (cancelled) or `... removed`.
  * - `/eval-buttons` has five buttons; at load a random plan (at least one
@@ -44,29 +44,29 @@ function report(key: string, text: string): string {
   return `fetch(new URLSearchParams(location.search).get('api') + '/log?key=${key}&n=' + new URLSearchParams(location.search).get('n'), { method: 'POST', body: ${text}, keepalive: true }).catch(() => {});`;
 }
 
-/** Opener that shows the token its sign-in window posts back */
-const SIGNIN_HTML = `<!doctype html><title>Account</title>
-<h1>Account</h1>
-<button id="open">Sign in</button>
-<p id="status">Not signed in</p>
+/** Opener that shows the confirmation code its slot window posts back */
+const SLOT_HTML = `<!doctype html><title>Delivery</title>
+<h1>Delivery</h1>
+<button id="open">Choose a delivery slot</button>
+<p id="status">No slot chosen</p>
 <script>
   document.getElementById('open').addEventListener('click', () => {
-    window.open('/eval-signin-popup' + location.search, 'signin', 'width=420,height=520');
+    window.open('/eval-slot-popup' + location.search, 'slot', 'width=420,height=520');
   });
   addEventListener('message', (event) => {
-    document.getElementById('status').textContent = 'Signed in. Token: ' + event.data;
+    document.getElementById('status').textContent = 'Slot booked. Confirmation code: ' + event.data;
   });
 </script>`;
 
-/** Sign-in window that makes the token, reports it, posts it and closes */
-const SIGNIN_POPUP_HTML = `<!doctype html><title>Sign in</title>
-<h1>Authorize</h1>
-<button id="allow">Allow</button>
+/** Slot window that makes the confirmation code, reports it, posts it and closes */
+const SLOT_POPUP_HTML = `<!doctype html><title>Delivery slots</title>
+<h1>Pick a slot</h1>
+<button id="allow">Confirm slot</button>
 <script>
   document.getElementById('allow').addEventListener('click', () => {
-    const token = 'tk-' + ${RANDOM};
-    ${report('popup-token', 'token')}
-    window.opener.postMessage(token, '*');
+    const code = 'cf-' + ${RANDOM};
+    ${report('popup-code', 'code')}
+    window.opener.postMessage(code, '*');
     window.close();
   });
 </script>`;
@@ -215,8 +215,8 @@ const CLASSES_HTML = `<!doctype html><title>Welcome</title>
 
 /** Pages by path */
 export const ROUTES: FixtureRoutes = {
-  '/eval-signin': SIGNIN_HTML,
-  '/eval-signin-popup': SIGNIN_POPUP_HTML,
+  '/eval-slot': SLOT_HTML,
+  '/eval-slot-popup': SLOT_POPUP_HTML,
   '/eval-confirm': CONFIRM_HTML,
   '/eval-buttons': BUTTONS_HTML,
   '/eval-shadow-login': SHADOW_LOGIN_HTML,
