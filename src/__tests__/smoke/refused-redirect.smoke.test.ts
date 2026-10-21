@@ -56,9 +56,17 @@ interface Target {
   names?: string;
 }
 
+/** A redirect to an app scheme */
+const MYAPP: Target = {
+  id: 'myapp://',
+  to: () => 'myapp://callback',
+  expect: ABORTED,
+  names: 'myapp://callback',
+};
+
 /** The redirect targets */
 const TARGETS: readonly Target[] = [
-  { id: 'myapp://', to: () => 'myapp://callback', expect: ABORTED, names: 'myapp://callback' },
+  MYAPP,
   {
     id: 'javascript:',
     to: () => 'javascript:alert(1)',
@@ -196,6 +204,22 @@ void describe('Refused redirects (#890)', () => {
       void it(`navigate: ${target.id}`, () =>
         cell(target, target.expect, backToOk, ['page', ['navigate', redirectTo(target)]]));
     }
+
+    let flips = 0;
+    void it('reload: myapp:// (#890 adjacent: the server now redirects)', () =>
+      cell(
+        MYAPP,
+        ABORTED,
+        async () => {
+          flips += 1;
+          const loaded = await bdg('page', [
+            'navigate',
+            hostileServer().flipUrl(`myapp://callback?${flips}`),
+          ]);
+          assert.equal(loaded.exitCode, 0, loaded.output);
+        },
+        ['page', ['reload']]
+      ));
 
     for (const target of TARGETS) {
       const row = rowOf(target);

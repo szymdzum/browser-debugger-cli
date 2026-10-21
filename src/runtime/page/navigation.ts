@@ -15,7 +15,11 @@ import {
   watchMainDocuments,
 } from '@/runtime/page/failedLoad.js';
 import { readPageLoadingState } from '@/runtime/page/loadingState.js';
-import { refusedAfterAbort, watchRefusedRedirects } from '@/runtime/page/refusedRedirect.js';
+import {
+  refusedAfterAbort,
+  watchRefusedRedirects,
+  type RefusedRedirectWatch,
+} from '@/runtime/page/refusedRedirect.js';
 import type { PendingRequest } from '@/telemetry/network.js';
 import type { CDPSender } from '@/telemetry/objectExpander.js';
 import type { FailedLoad } from '@/types.js';
@@ -120,7 +124,11 @@ async function runNavigation(
       return { action, ...(await currentLocation(cdp)), warning: notAPageWarning() };
     }
     loaderId = started.loaderId;
-    const how = await raceTimeout(navigated.done, Math.max(0, deadline - Date.now()));
+    const how = await raceTimeout(
+      action === 'reload' ? withRefusedReload(navigated.done, redirects) : navigated.done,
+      Math.max(0, deadline - Date.now())
+    );
+    if (typeof how === 'object') throw failedLoadError(how);
     if (how === 'loaded') {
       await waitForPageReady(cdp, { maxWaitMs: Math.max(0, deadline - Date.now()) });
     }
@@ -138,6 +146,24 @@ async function runNavigation(
   );
   const loading = await readPageLoadingState(cdp, options.pendingRequests?.() ?? []);
   return loading ? { ...result, loading } : result;
+}
+
+/**
+ * A reload's wait, ended by a redirect Chrome refused (#890): the page stays,
+ * so no load event comes.
+ *
+ * @param done - The wait for the reloaded page
+ * @param redirects - Watch started before the reload
+ * @returns How the page moved, or the refused redirect
+ */
+function withRefusedReload<T>(
+  done: Promise<T>,
+  redirects: RefusedRedirectWatch
+): Promise<T | FailedLoad> {
+  const refused = redirects
+    .refused({ awaitOpen: true })
+    .then((found) => found ?? new Promise<never>(() => undefined));
+  return Promise.race([done, refused]);
 }
 
 /**
