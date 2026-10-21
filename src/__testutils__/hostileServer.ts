@@ -15,7 +15,10 @@
  * - `/truncated`: the headers promise 4096 bytes, the body
  *   ends after a few.
  * - `/redirect-loop`: redirects to itself. `/redirect-chrome`, `/redirect-about`:
- *   redirect to `chrome://version` and `about:blank`.
+ *   redirect to `chrome://version` and `about:blank`. `/redirect/<url>`
+ *   (the URL percent-encoded, so a GET form keeps it): a 302 to `<url>`,
+ *   whatever its scheme (#890: `myapp://`, `javascript:`).
+ * - `/download`: a CSV sent as an attachment (no document).
  * - `/csp`: a page whose Content-Security-Policy blocks its own script.
  * - `/ok`: a plain page that loads.
  * - `/launch-blob`: like `/launch`, leading to a `blob:` URL the page makes of
@@ -35,6 +38,9 @@ import { makeTempDir } from '@/__testutils__/tempDirs.js';
 
 /** Bytes the headers of `/truncated` and `/reset` promise */
 const PROMISED_BYTES = 4096;
+
+/** Path prefix of the redirects to any URL */
+const REDIRECT_PREFIX = '/redirect/';
 
 /** Title of the pages that load */
 const OK_TITLE = 'Hostile OK';
@@ -64,6 +70,8 @@ export interface HostileServer {
   missingFileUrl: string;
   /** Page with a link and a form that lead to `target` */
   launchUrl: (target: string) => string;
+  /** A URL that redirects (302) to `target` */
+  redirectUrl: (target: string) => string;
   /** Close the server and its connections */
   close: () => Promise<void>;
 }
@@ -146,6 +154,11 @@ function handle(req: http.IncomingMessage, res: http.ServerResponse): void {
   const route = url.pathname;
   const status = /^\/status\/(\d{3})(-body)?$/.exec(route);
   if (status) return sendStatus(res, Number(status[1]), status[2] !== undefined);
+  if (route.startsWith(REDIRECT_PREFIX)) {
+    res.writeHead(302, { Location: decodeURIComponent(route.slice(REDIRECT_PREFIX.length)) });
+    res.end();
+    return;
+  }
   switch (route) {
     case '/reset':
       sendPartial(res).resetAndDestroy();
@@ -169,6 +182,13 @@ function handle(req: http.IncomingMessage, res: http.ServerResponse): void {
     case '/redirect-chrome':
       res.writeHead(302, { Location: 'chrome://version' });
       res.end();
+      return;
+    case '/download':
+      res.writeHead(200, {
+        'Content-Type': 'text/csv',
+        'Content-Disposition': 'attachment; filename=hostile.csv',
+      });
+      res.end('a,b\n1,2\n');
       return;
     case '/redirect-about':
       res.writeHead(302, { Location: 'about:blank' });
@@ -230,6 +250,7 @@ export async function startHostileServer(): Promise<HostileServer> {
     fileUrl: `file://${file}`,
     missingFileUrl: `file://${path.join(dir, 'missing.html')}`,
     launchUrl: (target) => `${url}launch?to=${encodeURIComponent(target)}`,
+    redirectUrl: (target) => `${url}redirect/${encodeURIComponent(target)}`,
     close: () =>
       new Promise<void>((resolve) => {
         server.close(() => resolve());
