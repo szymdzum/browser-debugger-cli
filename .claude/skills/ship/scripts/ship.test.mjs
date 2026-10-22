@@ -46,6 +46,7 @@ import {
   foreignSession,
   loadWarning,
   osHandlerUrls,
+  noPullRequestRun,
   findingsList,
   jobsLostWithoutResult,
   listEntries,
@@ -1383,5 +1384,13 @@ test('osHandlerUrls finds URLs another app opens, not the scheme named as a word
   assert.deepEqual(osHandlerUrls(brief), ['mailto:help@example.test', 'tel:+48123']);
   assert.match(briefProblems(`${'x'.repeat(300)}\nopen facetime:someone`, new Set())[0], /operating system opens.*facetime:someone/);
   assert.deepEqual(briefProblems(`${'x'.repeat(300)}\nno handlers here`, new Set()), []);
+});
+
+test('noPullRequestRun gives up only when no poll has seen a CI run since the push', () => {
+  const pr = { number: 908 };
+  assert.equal(noPullRequestRun({ pr, sawCI: false, now: 200, deadline: 100 }), true);
+  assert.equal(noPullRequestRun({ pr, sawCI: true, now: 200, deadline: 100 }), false);
+  assert.equal(noPullRequestRun({ pr, sawCI: false, now: 50, deadline: 100 }), false);
+  assert.equal(noPullRequestRun({ pr: null, sawCI: false, now: 200, deadline: 100 }), false);
 });
 

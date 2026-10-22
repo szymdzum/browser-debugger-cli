@@ -144,6 +144,18 @@ export function timeoutMessage(state, thrown) {
 }
 
 /**
+ * Whether a PR waiter gives up for want of a pull_request CI run: only when no
+ * poll has seen one since the push. A poll that comes back empty after a run
+ * was seen is a gh hiccup, not a missing run (S28 #908: "CI queued 4 min",
+ * then a close-and-reopen advice).
+ *
+ * @param {{ pr: object | null, sawCI: boolean, now: number, deadline: number }} state
+ */
+export function noPullRequestRun({ pr, sawCI, now, deadline }) {
+  return Boolean(pr) && !sawCI && now > deadline;
+}
+
+/**
  * What to say when a PR has no pull_request CI run.
  *
  * @param {number} prNumber
@@ -520,6 +532,7 @@ async function ciWaitLoop(argv) {
   const event = push ? 'push' : 'pull_request';
   waiterState.subject = sha.slice(0, 10);
   const noRunDeadline = Date.now() + 3 * 60_000;
+  let sawCI = false;
   console.log(
     `waiting for ${workflows.join(' + ')} (${event}) on ${sha.slice(0, 10)}${pr ? ` (PR #${pr.number})` : ''}`
   );
@@ -534,6 +547,7 @@ async function ciWaitLoop(argv) {
       }
     }
     const runs = Object.fromEntries(workflows.map((wf) => [wf, latestRun(sha, wf, event)]));
+    sawCI ||= Boolean(runs.CI);
     waiterState.seen = Object.fromEntries(
       workflows.filter((wf) => runs[wf]).map((wf) => [wf, runs[wf].status])
     );
@@ -556,7 +570,7 @@ async function ciWaitLoop(argv) {
       console.log(summary);
       return code;
     }
-    if (pr && !runs.CI && Date.now() > noRunDeadline) {
+    if (noPullRequestRun({ pr, sawCI, now: Date.now(), deadline: noRunDeadline })) {
       console.log(noRunMessage(pr.number, prInfo(pr.number).mergeable));
       return EXIT.timeout;
     }
