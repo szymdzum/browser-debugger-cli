@@ -43,6 +43,12 @@ const LOG = {
   'download-name': ['q3-report-a1b2c3.csv'],
   'console-error-code': ['E-a1b2c3'],
   'utility-classes': ['id-a1b2c3'],
+  'fill-revert-init': ['draft-0a0a0a'],
+  'fill-revert': ['draft-a1b2c3'],
+  'click-value': ['msg-a1b2c3'],
+  'app-redirect': ['ref-a1b2c3'],
+  'app-redirect-code': ['cb-c0ffee'],
+  'iframe-result': ['st-a1b2c3'],
 };
 const contextWith = (log) => ({
   fixtures: 'http://127.0.0.1:1/',
@@ -129,6 +135,63 @@ const CASES = {
       `${CLASSES} px-4`,
     ],
   },
+  'fill-revert': {
+    right: ['draft-a1b2c3', 'draft-a1b2c3.', '`draft-a1b2c3`'],
+    wrong: [
+      'gift wrap, leave at door',
+      'draft-0a0a0a',
+      'DRAFT-A1B2C3',
+      'a1b2c3',
+      'draft-a1b2c3, gift wrap, leave at door',
+      'draft-a1b2c3 or draft-0a0a0a',
+      'UNKNOWN',
+      'draft-',
+      '',
+    ],
+  },
+  'click-value': {
+    right: ['msg-a1b2c3', 'msg-a1b2c3.', '`msg-a1b2c3`'],
+    wrong: [
+      'Happy birthday',
+      'Suggest a message',
+      'msg-',
+      'MSG-A1B2C3',
+      'msg-a1b2c3 checked',
+      'msg-a1b2c3 or Happy birthday',
+      'UNKNOWN',
+    ],
+  },
+  'app-redirect': {
+    right: ['NOT_REACHED ref-a1b2c3', 'NOT_REACHED: ref-a1b2c3', '`NOT_REACHED ref-a1b2c3`'],
+    wrong: [
+      'REACHED',
+      'REACHED ref-a1b2c3',
+      'REACHED cb-c0ffee',
+      'NOT_REACHED',
+      'NOT_REACHED cb-c0ffee',
+      'NOT_REACHED ref-111111',
+      'NOT_REACHED REF-A1B2C3',
+      'not_reached ref-a1b2c3',
+      'NOT_REACHED ref-a1b2c3 or REACHED',
+      'ref-a1b2c3',
+      'cb-c0ffee',
+      'myapp://callback?code=cb-c0ffee',
+      'NOT_REACHED myapp://callback/?code=cb-c0ffee',
+      'UNKNOWN',
+    ],
+  },
+  'iframe-result': {
+    right: ['st-a1b2c3', 'Reference: st-a1b2c3', '`st-a1b2c3`'],
+    wrong: [
+      'No result yet',
+      'Check stock',
+      'st-',
+      'ST-A1B2C3',
+      'st-a1b2c3 st-111111',
+      'Reference: st-111111',
+      'UNKNOWN',
+    ],
+  },
   'page-never-loads': {
     right: ['net::ERR_CONNECTION_REFUSED', 'ERR_CONNECTION_REFUSED'],
     wrong: [
@@ -146,7 +209,7 @@ const reply = (value) => `I did the task.\n\nANSWER: ${value}`;
 test('the harness has at least eight tasks, each with its scenario and a case table', () => {
   assert.ok(TASKS.length >= 8);
   assert.deepEqual(TASKS.map((t) => t.id).sort(), Object.keys(CASES).sort());
-  for (const task of TASKS) assert.match(task.scenario, /^S\d\d$/);
+  for (const task of TASKS) assert.match(task.scenario, /^(S\d\d|new)$/);
 });
 
 for (const task of TASKS) {
@@ -189,6 +252,34 @@ test('a run in which the page logged nothing fails every page task, even with a 
       .pass,
     true
   );
+});
+
+test('hard tasks: only the last value the page logged counts, and a missing second page value fails', () => {
+  const check = (id, log, answer) =>
+    TASKS.find((t) => t.id === id).check(reply(answer), contextWith(log));
+  assert.equal(
+    check('fill-revert', { 'fill-revert': ['draft-111111', 'draft-a1b2c3'] }, 'draft-a1b2c3').pass,
+    true
+  );
+  assert.equal(
+    check('fill-revert', { 'fill-revert': ['draft-111111', 'draft-a1b2c3'] }, 'draft-111111').pass,
+    false
+  );
+  assert.match(
+    check('fill-revert', { 'fill-revert-init': ['draft-0a0a0a'] }, 'draft-0a0a0a').reason,
+    /interaction never happened/
+  );
+  assert.equal(
+    check('click-value', { 'click-value': ['msg-111111', 'msg-a1b2c3'] }, 'msg-111111').pass,
+    false
+  );
+  assert.equal(
+    check('iframe-result', { 'iframe-result': ['st-111111', 'st-a1b2c3'] }, 'st-111111').pass,
+    false
+  );
+  const reloaded = { 'app-redirect': ['ref-111111', 'ref-a1b2c3'] };
+  assert.equal(check('app-redirect', reloaded, 'NOT_REACHED ref-a1b2c3').pass, true);
+  assert.equal(check('app-redirect', reloaded, 'NOT_REACHED ref-111111').pass, false);
 });
 
 test('cancel-confirm fails when the page shows the order was removed, whatever the answer', () => {
@@ -784,6 +875,22 @@ test('log server only records: POST /log is stored, every GET and other path is 
       (await fetch(`${server.url}/log?key=x`, { method: 'POST', body: 'y' })).status,
       404
     );
+  } finally {
+    server.stop();
+  }
+});
+
+test('log server /go answers 302 to the refused app address and records the code, only for a GET with a nonce', async () => {
+  const server = await startLogServer('http://127.0.0.1:9');
+  try {
+    const res = await fetch(`${server.url}/go?n=abc`, { redirect: 'manual' });
+    assert.equal(res.status, 302);
+    const location = res.headers.get('location');
+    assert.match(location, /^myapp:\/\/callback\/?\?code=cb-[0-9a-f]{6}$/);
+    assert.deepEqual(server.entries('abc', 'app-redirect-code'), [location.split('code=')[1]]);
+    assert.equal((await fetch(`${server.url}/go`, { redirect: 'manual' })).status, 404);
+    assert.equal((await fetch(`${server.url}/go?n=abc`, { method: 'POST' })).status, 404);
+    assert.equal(server.entries('abc', 'app-redirect-code').length, 1);
   } finally {
     server.stop();
   }

@@ -31,7 +31,7 @@
 import type { FixtureRoutes } from '@/__testutils__/fixtureRoutes.js';
 
 /** Code for a fresh random value of six hex characters */
-const RANDOM = `[...crypto.getRandomValues(new Uint8Array(3))].map((b) => b.toString(16).padStart(2, '0')).join('')`;
+export const RANDOM = `[...crypto.getRandomValues(new Uint8Array(3))].map((b) => b.toString(16).padStart(2, '0')).join('')`;
 
 /**
  * Code that reports what the page showed to the log server (inlined in a handler, never global).
@@ -40,7 +40,7 @@ const RANDOM = `[...crypto.getRandomValues(new Uint8Array(3))].map((b) => b.toSt
  * @param text - JavaScript expression for the shown text
  * @returns Statement
  */
-function report(key: string, text: string): string {
+export function report(key: string, text: string): string {
   return `fetch(new URLSearchParams(location.search).get('api') + '/log?key=${key}&n=' + new URLSearchParams(location.search).get('n'), { method: 'POST', body: ${text}, keepalive: true }).catch(() => {});`;
 }
 

@@ -62,6 +62,8 @@ const PASSTHROUGH_ENV = [
 ];
 /** Largest request body the log server keeps */
 export const LOG_BODY_LIMIT = 4096;
+/** Log key under which `GET /go` records the code of the refused redirect */
+const HANDOVER_KEY = 'app-redirect-code';
 const BUILD_FILES = ['index.js', 'cli.js', 'daemon.js'];
 
 /**
@@ -512,7 +514,11 @@ export function fitsBudget({ spent, inFlight, runBudget, budget }) {
  * Start the log server the fixture pages report to. A page generates its per-run value in the
  * handler of the interaction, shows it, and POSTs what it showed to `/log?key=<task>&n=<nonce>`;
  * the server only records. No request returns a value: a GET (or any other method) is a 404, so
- * the value exists only in a page that ran the handler. A POST without the fixture pages' `Origin`
+ * the value exists only in a page that ran the handler. One route is not a log: `GET /go?n=<nonce>`
+ * answers `302` to `myapp://callback?code=cb-<hex>` (the hand-over of `/eval-hard-app`, an address
+ * Chrome refuses) and records the code under `app-redirect-code`. It has no gate: a curl to it
+ * gets the code, which is not the answer of any task, and a tool call naming the log server is
+ * `cheated` (`findCheating`). A POST without the fixture pages' `Origin`
  * header (a curl or a script forging an entry) is counted for `forged`; a forged entry made from
  * a page (`bdg dom eval`) is caught by the tool-call scan in `findCheating`.
  * @param {string} [pageOrigin] origin the fixture pages are served from, such as `http://127.0.0.1:5000`
@@ -525,6 +531,13 @@ export function startLogServer(pageOrigin) {
     const url = new URL(req.url ?? '/', 'http://log');
     const key = url.searchParams.get('key');
     const nonce = url.searchParams.get('n');
+    if (req.method === 'GET' && url.pathname === '/go' && nonce) {
+      const code = `cb-${crypto.randomBytes(3).toString('hex')}`;
+      const id = `${nonce}\u0000${HANDOVER_KEY}`;
+      logged.set(id, [...(logged.get(id) ?? []), code]);
+      res.writeHead(302, { Location: `myapp://callback?code=${code}` }).end();
+      return;
+    }
     if (req.method !== 'POST' || url.pathname !== '/log' || !key || !nonce) {
       res.writeHead(404).end();
       return;

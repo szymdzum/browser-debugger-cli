@@ -11,6 +11,15 @@
  * the harness's log server; the checker compares the answer with what the page logged in that run,
  * and a run with nothing logged fails ("interaction never happened"). The page source and every
  * GET hold no value. The pages are `src/__testutils__/fixturePages/agentEvalFixtures.ts`.
+ *
+ * The four `new` tasks (`fill-revert`, `click-value`, `app-redirect`, `iframe-result`) are hard:
+ * bdg's own verdict on the action can be false (a green check for a fill the page reverts, "no
+ * visible effect" for a click that changed a value or an iframe, a navigation that Chrome refused),
+ * so an agent that trusts it answers wrong. Their truth is the state after the last interaction
+ * (`lastLogged`); the pages are `agentEvalHardFixtures.ts` and make their value at load, so the
+ * action sends no request that could give bdg something to report.
+ * `app-redirect` asks whether the browser reached the app: the answer is `NOT_REACHED <reference>`
+ * with the reference of the page the browser stays on, not the code in the refused address.
  */
 
 /** @typedef {{pass: boolean, reason: string}} Verdict */
@@ -126,6 +135,20 @@ function loggedTruth(key, derive = (logged) => logged) {
   return (ctx) => {
     const logged = ctx.logged(key);
     return logged.length === 0 ? NEVER_HAPPENED : derive(logged);
+  };
+}
+
+/**
+ * Truth for a task whose answer is the state after the last interaction: only the last value the
+ * page logged in the run counts (a reload or a second click makes a new one that replaces it).
+ * @param {string} key task key
+ * @param {(last: string) => string[]} [spellings] accepted spellings of the last value (default: the value)
+ * @returns {(ctx: TaskContext) => string[] | string} truth function
+ */
+function lastLogged(key, spellings = (last) => [last]) {
+  return (ctx) => {
+    const logged = ctx.logged(key);
+    return logged.length === 0 ? NEVER_HAPPENED : spellings(logged.at(-1));
   };
 }
 
@@ -256,6 +279,43 @@ export const TASKS = [
       ),
       /[\s,]+/
     ),
+  },
+  {
+    id: 'fill-revert',
+    scenario: 'new',
+    title: 'A field the page changes after it is filled',
+    prompt: (ctx) =>
+      `Open ${pageUrl(ctx, 'eval-hard-note')}. The page has a "Delivery note" field. Set it to "gift wrap, leave at door" and tell me what the field contains afterwards. ${ANSWER_RULE}<text>\` with the text in the field.`,
+    check: exactValue(lastLogged('fill-revert')),
+  },
+  {
+    id: 'click-value',
+    scenario: 'new',
+    title: 'A click that only changes a control value',
+    prompt: (ctx) =>
+      `Open ${pageUrl(ctx, 'eval-hard-gift')} and click "Suggest a message". Tell me what the "Gift message" field contains afterwards. ${ANSWER_RULE}<text>\` with the text in the field.`,
+    check: exactValue(lastLogged('click-value')),
+  },
+  {
+    id: 'app-redirect',
+    scenario: 'new',
+    title: 'A hand-over to an app address the browser refuses',
+    prompt: (ctx) =>
+      `Open ${pageUrl(ctx, 'eval-hard-app')} and click "Continue to the app": the page hands the browser over to the Reading app. Did the browser reach the app? End your reply with a last line \`ANSWER: REACHED\` if it did, or \`ANSWER: NOT_REACHED <reference>\` if it did not, where <reference> is the reference shown (like ref-1a2b3c) on the page the browser is on afterwards.`,
+    check: exactValue(
+      lastLogged('app-redirect', (reference) => [
+        `NOT_REACHED ${reference}`,
+        `NOT_REACHED: ${reference}`,
+      ])
+    ),
+  },
+  {
+    id: 'iframe-result',
+    scenario: 'new',
+    title: 'A click whose result appears in an iframe',
+    prompt: (ctx) =>
+      `Open ${pageUrl(ctx, 'eval-hard-stock')} and click "Check stock". Tell me the reference the page shows afterwards. ${ANSWER_RULE}<reference>\` (like st-1a2b3c).`,
+    check: exactValue(lastLogged('iframe-result', (last) => [last, `Reference: ${last}`])),
   },
   {
     id: 'page-never-loads',
