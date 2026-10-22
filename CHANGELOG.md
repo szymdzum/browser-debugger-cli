@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-10-22
+
+Three false verdicts from the red-team round (#864) fixed: a navigation Chrome refused, a fill the page undid a moment later and a click that only changed a control's value no longer report success or "no visible effect".
+
+### Changed behaviour
+
+- **A redirect to a scheme Chrome won't open exits 80** (#899, #890): when a server redirects to `myapp://…`, `javascript:` or `view-source:`, `bdg <url>`, `page navigate`, `page reload` and an action's navigation (`dom click` on a link, `dom submit`) print `Could not load <url> (redirected to <target>): net::ERR_ABORTED` with a suggestion that the browser doesn't open that URL as a page and the previous page is still loaded; exit 80. Before: `✓ Navigated` naming the page the session was already on, exit 0. Redirects to `data:`, `file:` and `chrome://` already exited 80; a 204, a download and ordinary redirects are unchanged.
+- **`dom fill` reads the field again 2 s after filling** (#900, #892): a value the page puts back by then (its old value, or a blank) exits 90 with the same `valueMismatch` as an immediate mismatch (#867). An ordinary fill now takes about 2.1 s instead of about 0.25 s; `--no-wait` skips the late read (and stays at about 0.15 s). The fill's reported effects and requests cover that window. A field the page re-renders (a React remount) is found again by its selector; a cleared search box adds a hint that an automatic submit may still have taken the value.
+- **A value the page formats after the fill passes with `Page shows:`** (#900, #892): `5551234567` → `(555) 123-4567` or `2024-01-05` → `Jan 5, 2024` later is ✓, with a `Page shows: <value>` line and `data.pageValue` in `--json` (never for secret fields). Formatting done synchronously still exits 90 (#901).
+- **New wording of the "nothing happened" verdict** (#903, #891): `⚠ Element Clicked (nothing observed within about half a second: no DOM change, requests or navigation; later results are not watched: look with bdg dom query, bdg peek or bdg dom screenshot)` replaces `(no visible effect observed: no DOM change, requests or navigation within 300 ms)` for `dom click` and `dom press-key`. `--json` `effect: "none"` is unchanged.
+
+### Fixed
+
+- **No "nothing observed" verdict after a click or key press that changed a form control or a same-origin iframe** (#903, #891): a changed `value`, `checked` or `selectedIndex` (document, open shadow roots, same-origin frames; up to 10000 controls) and content written into a same-origin iframe now count as an effect, also when the same button is pressed repeatedly. Known limit: a control the page itself moves (a clock input, a range slider every 100 ms) can hide the ⚠ of a real no-op click.
+
+### Known limits
+
+- A page that replaces a filled value with an unrelated one later (a fresh default or draft) is still reported as ✓ with `Page shows:` (#906).
+
+### Internal
+
+- Agent eval harness `scripts/agent-eval.mjs` (#889, #897, #904): 13 graded tasks through `claude -p`, including four hard ones on pages where bdg's verdict can be false; `--build` measures any release with the harness's own fixture pages.
+
 ## [0.21.0] - 2026-10-20
 
 Fewer false successes: a page that failed to load, an action whose navigation failed, a fill the page didn't keep and an eval on a paused page now say so, with an exit code a script can check. New: logpoints (`bdg debug`), an accessibility audit, and request timing phases.
