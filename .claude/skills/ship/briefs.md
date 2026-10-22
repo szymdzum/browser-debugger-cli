@@ -25,8 +25,10 @@ export PATH="$HOME/.nvm/versions/node/v22.15.0/bin:$PATH"
 <!-- block:forbidden -->
 **Rules.**
 - No `git stash` (the stash is shared across worktrees); no `--no-verify` or any other hook bypass.
-- No `pkill`, `killall` or `pkill -P`. A background process you start writes its PID at start (`cmd & echo $! > /tmp/bdg-<ROLE>-<N>-NAME.pid`); kill only PIDs read back from those files, and only when `ps -o lstart= -p <pid>` shows the process started before the file was written (a reused PID names an unrelated process). A stray bdg session is ended with `bdg stop` (or `bdg cleanup --force`) in its own `BDG_SESSION_DIR`, run by the build that started it (`node <worktree>/dist/index.js stop` where your brief creates no `bdg` script).
+- No `pkill`, `killall` or `pkill -P`. A background process you start writes its PID at start (`cmd & echo $! > /tmp/bdg-<ROLE>-<N>-NAME.pid`); kill only PIDs read back from those files, and only when `ps -o lstart= -p <pid>` shows the process started before the file was written (a reused PID names an unrelated process). A stray bdg session is ended with `bdg stop` (or `bdg cleanup --force`) in its own `BDG_SESSION_DIR`, run by the build that started it (`node …/dist/index.js stop` from the worktree that built it, where your brief creates no `bdg` script).
 - Never touch `~/.bdg`, other agents' worktrees, or the main checkout `<MAIN>` (its `.tmp/` included); the one exception is adding and removing your own worktrees with `git -C <MAIN> worktree …`. Nothing may land in `~/Downloads`.
+- No URL another app on this machine opens: no `mailto:`, `tel:`, `sms:`, `facetime:` or other OS-handler scheme in a page, a redirect, a link you click or a test matrix (S28: macOS Chrome, even headless, handed `mailto:` to the owner's mail app, again and again). For a non-http scheme use `myapp://` or `javascript:`. `ship brief --check` refuses a brief that contains one.
+- Run `ls -A ~/Downloads` before your first and after your last test or bdg run, and report anything new with the command that wrote it: gate 8 blocks the merge on it (S28: a reviewer's red-commit smoke run on the old test harness left files there).
 - Don't open GitHub issues. Report findings with the command and its output; the orchestrator verifies and files them.
 - `bdg attach` only with `--chrome-ws-url` to a Chrome you launched yourself: without it, attach reads the stable profile's `DevToolsActivePort`, which is the owner's everyday Chrome (S19: a reviewer attached to it; S25: an implementer made it ask "Allow remote debugging?"). `BDG_ATTACH_REQUIRE_WS_URL=1`, exported by every shell block below, makes bdg refuse that with exit 81; never unset it, and a test that needs it off sets it in the child's own env.
 <!-- /block -->
@@ -185,7 +187,7 @@ Learn bdg the way a new user would: `bdg --help`, `bdg --help --json`, `<MAIN>/.
 
 {{forbidden}}
 - No git commands and no edits to any repository.
-- Run `ls -A ~/Downloads` before and after; clean up at the end with `bdg stop`.
+- Clean up at the end with `bdg stop`.
 
 **Budget.** At most <CAP> tool calls.
 

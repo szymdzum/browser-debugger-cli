@@ -45,7 +45,8 @@ import {
   liveSessionChrome,
   foreignSession,
   loadWarning,
-  staleSnapshotWarning,
+  osHandlerUrls,
+  noPullRequestRun,
   findingsList,
   jobsLostWithoutResult,
   listEntries,
@@ -1378,10 +1379,18 @@ test('cloud render fills every placeholder of the real template and agents, and 
   assert.equal(body.job_config.ccr.events[0].data.message.content, 'p');
 });
 
-test('staleSnapshotWarning flags a snapshot older than 12 hours, not a fresh or missing one', () => {
-  const now = Date.parse('2026-10-22T10:00:00Z');
-  assert.equal(staleSnapshotWarning(`${now - 3_600_000}\n`, now), null);
-  assert.equal(staleSnapshotWarning('', now), null);
-  assert.match(staleSnapshotWarning(`${now - 30 * 3_600_000}\n`, now), /30 h old/);
+test('osHandlerUrls finds URLs another app opens, not the scheme named as a word', () => {
+  const brief = 'Never use `mailto:`, `tel:` or sms: links.\n| redirect | mailto:help@example.test | ✓ |\nLocation: tel:+48123 and myapp://x and javascript:void(0)';
+  assert.deepEqual(osHandlerUrls(brief), ['mailto:help@example.test', 'tel:+48123']);
+  assert.match(briefProblems(`${'x'.repeat(300)}\nopen facetime:someone`, new Set())[0], /operating system opens.*facetime:someone/);
+  assert.deepEqual(briefProblems(`${'x'.repeat(300)}\nno handlers here`, new Set()), []);
+});
+
+test('noPullRequestRun gives up only when no poll has seen a CI run since the push', () => {
+  const pr = { number: 908 };
+  assert.equal(noPullRequestRun({ pr, sawCI: false, now: 200, deadline: 100 }), true);
+  assert.equal(noPullRequestRun({ pr, sawCI: true, now: 200, deadline: 100 }), false);
+  assert.equal(noPullRequestRun({ pr, sawCI: false, now: 50, deadline: 100 }), false);
+  assert.equal(noPullRequestRun({ pr: null, sawCI: false, now: 200, deadline: 100 }), false);
 });
 

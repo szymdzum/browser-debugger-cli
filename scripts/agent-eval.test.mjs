@@ -10,6 +10,7 @@ import {
   aggregate,
   claudeArgs,
   copyFixtureRuntime,
+  evalExitCode,
   contaminationPatterns,
   findContamination,
   fitsBudget,
@@ -1512,3 +1513,18 @@ test(
     assert.deepEqual(left, [], 'no fixture server is left');
   }
 );
+
+test('evalExitCode fails an eval that started no run, so a budget below the caps is not a silent success', () => {
+  assert.equal(evalExitCode({ aborted: true, started: 0 }), 130);
+  assert.equal(evalExitCode({ aborted: false, started: 3 }), 0);
+  const write = process.stderr.write;
+  let said = '';
+  process.stderr.write = (text) => ((said += text), true);
+  try {
+    assert.equal(evalExitCode({ aborted: false, started: 0, stopReason: 'budget: $0.0000 spent' }), 1);
+  } finally {
+    process.stderr.write = write;
+  }
+  assert.match(said, /no run started \(budget: \$0\.0000 spent\): raise --budget above 1\.5 x --run-budget/);
+});
+

@@ -1096,6 +1096,23 @@ export function forceCleanup(control) {
 }
 
 /**
+ * The eval's exit code: 130 after an interrupt, 1 when no run started (S28:
+ * a --budget below the planned runs' caps exited 0 with an empty summary), 0
+ * otherwise. The reason a run didn't start goes to stderr.
+ *
+ * @param {{aborted: boolean, started: number, stopReason?: string}} outcome
+ * @returns {number}
+ */
+export function evalExitCode({ aborted, started, stopReason }) {
+  if (aborted) return 130;
+  if (started > 0) return 0;
+  process.stderr.write(
+    `no run started${stopReason ? ` (${stopReason})` : ''}: raise --budget above ${OVERSHOOT_MARGIN} x --run-budget\n`
+  );
+  return 1;
+}
+
+/**
  * Run the eval described by the settings.
  * @param {object} settings eval settings
  * @returns {Promise<number>} exit code
@@ -1166,7 +1183,7 @@ export async function main(settings) {
     });
     fs.writeFileSync(path.join(settings.out, 'SUMMARY.md'), redact(summary, key));
     process.stdout.write(`\n${summary}\nOutput: ${settings.out}\n`);
-    return control.aborted ? 130 : 0;
+    return evalExitCode({ aborted: control.aborted, started: rows.length, stopReason: outcome.stopReason });
   } finally {
     for (const cleanup of control.cleanups) cleanup();
   }
