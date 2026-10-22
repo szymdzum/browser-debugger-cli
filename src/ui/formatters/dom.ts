@@ -189,18 +189,26 @@ export function formatDomGet(
  * `undefined`, or valid JSON such as `42` or `[1,2]`): then it stays
  * JSON-quoted. Other values are formatted JSON, and values Chrome only
  * describes (functions, DOM nodes) their description. The iframe it ran in
- * (`--frame`) is reported on stderr, so stdout stays the bare value. `--json`
- * output is unchanged (the value in `data.result`). The text is cut to its
- * first {@link MAX_VALUE_LENGTH} characters with a pointer naming `--full`.
+ * (`--frame`) is reported on stderr, so stdout stays the bare value. `--raw`
+ * prints a string result as is even then (no quoting or escaping); other
+ * types are unchanged. `--json` output is unchanged (the value in
+ * `data.result`). The text is cut to its first {@link MAX_VALUE_LENGTH}
+ * characters with a pointer naming `--full`.
  *
  * @param data - DOM eval result containing the evaluated value
- * @param options - `full` to print the value whole
+ * @param options - `full` to print the value whole, `raw` to print a string as is
  * @returns The string, or formatted JSON
  *
  * @example
  * ```typescript
  * formatDomEval({ result: 'My Page Title', type: 'string' });
  * // Output: My Page Title
+ *
+ * formatDomEval({ result: '42', type: 'string' });
+ * // Output: "42"
+ *
+ * formatDomEval({ result: '42', type: 'string' }, { raw: true });
+ * // Output: 42
  *
  * formatDomEval({ result: { url: 'https://example.com', title: 'Example' }, type: 'object' });
  * // Output:
@@ -212,9 +220,9 @@ export function formatDomGet(
  */
 export function formatDomEval(
   data: { result: unknown; type?: string },
-  options: { full?: boolean | undefined } = {}
+  options: { full?: boolean | undefined; raw?: boolean | undefined } = {}
 ): string {
-  return capForDisplay(evalResultText(data), MAX_VALUE_LENGTH, options.full);
+  return capForDisplay(evalResultText(data, options.raw), MAX_VALUE_LENGTH, options.full);
 }
 
 /**
@@ -222,12 +230,16 @@ export function formatDomEval(
  * value, else formatted JSON.
  *
  * @param data - DOM eval result
+ * @param raw - Print a string result as is, even when it would read as another value
  * @returns Text of the value
  */
-function evalResultText(data: { result: unknown; type?: string }): string {
+function evalResultText(data: { result: unknown; type?: string }, raw = false): string {
   if (data.type === 'undefined') return 'undefined';
   const { result } = data;
-  if (typeof result === 'string' && (data.type !== 'string' || !looksLikeOtherValue(result))) {
+  if (
+    typeof result === 'string' &&
+    (raw || data.type !== 'string' || !looksLikeOtherValue(result))
+  ) {
     return result;
   }
   return JSON.stringify(result ?? null, null, 2);

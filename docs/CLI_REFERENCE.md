@@ -727,6 +727,7 @@ Execute JavaScript in the page context.
 ```bash
 bdg eval "document.title"                     # Evaluate expression
 bdg eval "document.querySelector('h1').textContent"
+bdg eval "document.querySelector('.price').textContent" --raw   # A string result as is, no JSON quotes
 bdg eval --json                               # JSON output with full Runtime.evaluate response
 ```
 
@@ -735,6 +736,9 @@ The script runs like the DevTools console (REPL mode: top-level `await` works, a
 Human output prints a string result as is (`My Page`, not `"My Page"`) unless that would read as
 another value: the empty string, `undefined` and strings that are valid JSON (`"42"`, `"[1,2]"`) stay
 JSON-quoted. Other values are printed as formatted JSON (`undefined` for no value). `--json` keeps the value in `data.result`.
+`--raw` drops that quoting: a string result prints as is even when it would read as another value
+(`40.00`, `42`, `undefined`, `{"a":1}`), so a script gets the value without stripping JSON quotes.
+Other types, and `--json`, are unchanged.
 
 Long values are cut: human output prints the first 20000 characters followed by `… N more chars (use --full)`. In `--json`:
 

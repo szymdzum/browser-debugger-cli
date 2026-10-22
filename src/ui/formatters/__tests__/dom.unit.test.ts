@@ -230,6 +230,33 @@ void describe('formatDomEval', () => {
     assert.equal(formatDomEval({ result: '-0', type: 'number' }), '-0');
     assert.equal(formatDomEval({ result: 'body', type: 'object' }), 'body');
   });
+
+  void it('prints a string as is with raw, even when it would read as another value', () => {
+    const cases: string[] = ['40.00', '42', 'undefined', '', 'a\nb', '{"a":1}', '[1,2]'];
+    for (const result of cases) {
+      assert.equal(formatDomEval({ result, type: 'string' }, { raw: true }), result, result);
+    }
+  });
+
+  void it('leaves other values and --json unchanged with raw', () => {
+    assert.equal(formatDomEval({ result: 42, type: 'number' }, { raw: true }), '42');
+    assert.equal(
+      formatDomEval({ result: [1, 2], type: 'object' }, { raw: true }),
+      '[\n  1,\n  2\n]'
+    );
+    assert.equal(formatDomEval({ result: null, type: 'object' }, { raw: true }), 'null');
+    assert.equal(
+      formatDomEval({ result: undefined, type: 'undefined' }, { raw: true }),
+      'undefined'
+    );
+  });
+
+  void it('still caps a raw string result without full', () => {
+    const long = `${'x'.repeat(20000)}y`;
+    const output = formatDomEval({ result: long, type: 'string' }, { raw: true });
+    assert.match(output, /1 more chars \(use --full\)$/);
+    assert.equal(formatDomEval({ result: long, type: 'string' }, { raw: true, full: true }), long);
+  });
 });
 
 void describe('formatDomQuery key attributes', () => {
