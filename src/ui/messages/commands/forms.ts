@@ -69,9 +69,15 @@ export function formReadinessMessage(summary: {
   return `READY to submit (no field is marked required; empty: ${fieldLabelList(summary.emptyFieldLabels)})`;
 }
 
-/** Why an action's status line is not a clean success when nothing changed */
+/**
+ * Why an action's status line is not a clean success when nothing changed:
+ * what bdg watched (the first read about 100 ms after the action and a second
+ * look 300 ms later), not a claim that the action did nothing (#891).
+ * "nothing observed" stays stable for agents that match it.
+ */
 export const NO_VISIBLE_EFFECT =
-  'no visible effect observed: no DOM change, requests or navigation within 300 ms';
+  'nothing observed within about half a second: no DOM change, requests or navigation; ' +
+  'later results are not watched: look with bdg dom query, bdg peek or bdg dom screenshot';
 
 /**
  * Status line of a DOM action: a check mark only for a clean success. A
@@ -87,7 +93,7 @@ export const NO_VISIBLE_EFFECT =
  *   "⚠ Element Clicked (navigation failed: net::ERR_CONNECTION_REFUSED)",
  *   "⚠ Element Clicked (submit blocked)",
  *   "⚠ Element Clicked (page still changing)" or
- *   "⚠ Element Clicked (no visible effect observed: no DOM change, requests or navigation within 300 ms)"
+ *   "⚠ Element Clicked (nothing observed within about half a second: …)"
  */
 export function actionStatusLine(
   done: string,

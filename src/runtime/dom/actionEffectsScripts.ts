@@ -93,6 +93,12 @@ const MAX_MESSAGE_TEXT = 300;
 /** How long a page keeps watching when no read or stop arrives (ms) */
 const MAX_WATCH_MS = 30000;
 
+/**
+ * Form controls whose properties a watch notes (value, checked, selected
+ * option); 10000 inputs take about 4 ms to note and 3 ms to compare
+ */
+const MAX_WATCHED_CONTROLS = 10000;
+
 /** Bursts of DOM changes a watch keeps (their times) */
 const MAX_BURSTS = 20;
 
@@ -565,6 +571,16 @@ const OUTCOMES_JS = `(state, focus) => {
  * {@link MAX_WATCH_MS}, so a snapshot that ran late (after a navigation,
  * with nobody reading it) leaves nothing behind. Evaluates to the URL and
  * the messages.
+ *
+ * Changes no MutationObserver of the page's document sees (#891) also count
+ * as changes, at the first read only ({@link SIDE_CHANGES_JS}): the
+ * properties of form controls (value, checked, selected option; at most
+ * {@link MAX_WATCHED_CONTROLS}, in the document, its open shadow roots and
+ * same-origin frames, noted here and never returned), and changes in
+ * same-origin frames (found when the watch starts, also in open shadow roots
+ * and nested frames; cross-origin frames are not readable), except those the
+ * frame's own action history marks as the frame changing itself, as for the
+ * document. They make no burst, add no nodes and no message.
  */
 export const EFFECTS_START_SCRIPT = `(() => {
   if (window.__bdgEffects) window.__bdgEffects.stop();
@@ -580,7 +596,8 @@ export const EFFECTS_START_SCRIPT = `(() => {
     pressScroll: null, copied: false, stopped: false, added: [], removed: [], bursts: [],
     keyTarget: null, loaders: new Set((${LOADERS_JS})()),
     pressTarget: null, submits: [], forms: [], control: null, keyClick: null, enterField: null,
-    nodes: 0, expandable: null, inputTarget: null, openedDialogs: [], dispatching: false, dispatchTimer: 0
+    nodes: 0, expandable: null, inputTarget: null, openedDialogs: [], dispatching: false, dispatchTimer: 0,
+    controls: [], frameChanges: 0, sideChanges: undefined
   };
   const dialogsSeen = new WeakSet();
   const listen = EventTarget.prototype.addEventListener;
@@ -618,12 +635,13 @@ export const EFFECTS_START_SCRIPT = `(() => {
   const elementCount = (nodes) => Array.from(nodes).filter((node) => node.nodeType === 1).length;
   const replaces = (record) => record.type === 'childList' && marked.has(record.target) &&
     Array.from(record.removedNodes).some((node) => churned.has(node));
-  const ticking = (record) => {
-    if (!marked.has(record.target)) return false;
+  const tickingIn = (record, marks) => {
+    if (!marks.marked.has(record.target)) return false;
     if (record.type === 'attributes') return true;
-    if (record.type === 'characterData') return churned.has(record.target);
-    return Array.from(record.addedNodes).concat(Array.from(record.removedNodes)).every((node) => churned.has(node));
+    if (record.type === 'characterData') return marks.churned.has(record.target);
+    return Array.from(record.addedNodes).concat(Array.from(record.removedNodes)).every((node) => marks.churned.has(node));
   };
+  const ticking = (record) => tickingIn(record, { marked: marked, churned: churned });
   const noteDialogOpen = (record) => {
     const dialog = record.target;
     if (record.attributeName !== 'open' || dialog.localName !== 'dialog' || dialogsSeen.has(dialog)) return;
@@ -655,13 +673,52 @@ export const EFFECTS_START_SCRIPT = `(() => {
     state.bursts.push(performance.now());
     if (state.bursts.length > ${MAX_BURSTS}) state.bursts.shift();
   };
-  const observer = new MutationObserver(count);
-  const options = { subtree: true, childList: true, characterData: true, attributes: true, attributeOldValue: true };
-  const observe = (root) => {
-    observer.observe(root, options);
-    for (const el of root.querySelectorAll('*')) if (el.shadowRoot) observe(el.shadowRoot);
+  const frameMarks = new Map();
+  const countFrame = (records) => {
+    const marksOf = (record) => frameMarks.get(record.target.ownerDocument || record.target);
+    for (const record of records) {
+      const marks = marksOf(record);
+      if (marks && record.type === 'childList' && marks.marked.has(record.target) &&
+        Array.from(record.removedNodes).some((node) => marks.churned.has(node))) {
+        record.addedNodes.forEach((node) => marks.churned.add(node));
+      }
+    }
+    for (const record of records) {
+      const marks = marksOf(record);
+      if (churnOnly(record, state.targets) || (marks && tickingIn(record, marks))) continue;
+      state.frameChanges++;
+    }
   };
-  observe(document);
+  const observer = new MutationObserver(count);
+  const frameObserver = new MutationObserver(countFrame);
+  const options = { subtree: true, childList: true, characterData: true, attributes: true, attributeOldValue: true };
+  const watchFrame = (frame) => {
+    let doc = null;
+    try {
+      doc = frame.contentDocument;
+    } catch (error) {
+      doc = null;
+    }
+    if (!doc || frameMarks.has(doc)) return;
+    const view = doc.defaultView;
+    const frameHistory = view ? view.__bdgHistory : undefined;
+    frameMarks.set(doc, {
+      marked: (${MARKED_REGIONS_JS})(frameHistory ? frameHistory.selfUpdating(view.performance.now()) : []),
+      churned: frameHistory ? frameHistory.churned : new WeakSet()
+    });
+    observe(doc, frameObserver);
+  };
+  const observe = (root, by) => {
+    by.observe(root, options);
+    for (const el of root.querySelectorAll('*')) {
+      if (el.shadowRoot) observe(el.shadowRoot, by);
+      const name = el.localName;
+      if ((name === 'input' || name === 'select' || name === 'textarea') && state.controls.length < ${MAX_WATCHED_CONTROLS}) {
+        state.controls.push([el, el.value, el.checked, el.selectedIndex]);
+      } else if (name === 'iframe' || name === 'frame') watchFrame(el);
+    }
+  };
+  observe(document, observer);
   const attachShadow = Element.prototype.attachShadow;
   const watchedAttach = function (init) {
     const root = attachShadow.call(this, init);
@@ -696,12 +753,18 @@ export const EFFECTS_START_SCRIPT = `(() => {
   };
   types.forEach((type) => window.addEventListener(type, record, true));
   state.flush = () => count(observer.takeRecords());
+  state.flushFrames = () => countFrame(frameObserver.takeRecords());
+  state.release = () => {
+    frameObserver.disconnect();
+    state.controls = [];
+  };
   state.stop = () => {
     if (state.stopped) return;
     state.stopped = true;
     clearTimeout(expiry);
     clearTimeout(state.dispatchTimer);
     observer.disconnect();
+    state.release();
     if (Element.prototype.attachShadow === watchedAttach) Element.prototype.attachShadow = attachShadow;
     types.forEach((type) => window.removeEventListener(type, record, true));
     state.forms.forEach((form) => unlisten.call(form, 'submit', onSubmit, true));
@@ -728,6 +791,24 @@ export const START_DUE_TIMERS_SCRIPT = `globalThis.__bdgDueTimers = (${DUE_TIMER
 export const AWAIT_DUE_TIMERS_SCRIPT = 'globalThis.__bdgDueTimers';
 
 /**
+ * Page-side count, at the first read after an action, of the changes the
+ * document's MutationObserver does not see (#891): changes in same-origin
+ * frames so far and form controls whose value, checked state or selected
+ * option differ from the watch's start; then stops noting both (a property a
+ * timer of the page writes later can't be told apart from the action's
+ * result, so a later read does not count more).
+ */
+const SIDE_CHANGES_JS = `(state) => {
+  if (!state.stopped) state.flushFrames();
+  let changed = 0;
+  for (const [el, value, checked, selectedIndex] of state.controls) {
+    if (el.value !== value || el.checked !== checked || el.selectedIndex !== selectedIndex) changed++;
+  }
+  state.release();
+  return state.frameChanges + changed;
+}`;
+
+/**
  * Read after an action, called with `(stop, shown, focus, budget)`: `stop` also stops
  * watching, `shown` lists the elements the action showed
  * ({@link SHOWN_ELEMENTS_JS}), `focus` says where focus moved to away from
@@ -745,6 +826,7 @@ export const EFFECTS_READ_SCRIPT = `((stop, shown, focus, budget) => {
   const state = window.__bdgEffects;
   if (!state) return { href: location.href, fresh: true, messages: (${MESSAGES_JS})({ map: new WeakMap(), next: 1 }, undefined, undefined, true, budget) };
   if (!state.stopped) state.flush();
+  if (state.sideChanges === undefined) state.sideChanges = (${SIDE_CHANGES_JS})(state);
   if (stop) {
     state.stop();
     delete window.__bdgEffects;
@@ -754,7 +836,7 @@ export const EFFECTS_READ_SCRIPT = `((stop, shown, focus, budget) => {
   return {
     href: location.href,
     fresh: false,
-    changes: state.changes + (scrolled ? 1 : 0),
+    changes: state.changes + state.sideChanges + (scrolled ? 1 : 0),
     uncertain: (${UNCERTAIN_JS})(state, document.activeElement),
     messages: (${MESSAGES_JS})(state.ids, state.marked, state.churned, false, budget),
     alsoChanging: Array.from(state.alsoChanging).filter((el) => el.isConnected).slice(0, ${MAX_ALSO_CHANGING})
