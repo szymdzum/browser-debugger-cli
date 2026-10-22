@@ -35,6 +35,7 @@ import {
 import {
   FILL_FOCUS_CHECK_SCRIPT,
   FILL_INSERTED_FUNCTION,
+  FILL_LATE_READ_FUNCTION,
   FILL_READ_BACK_SCRIPT,
   FIRE_EVENT_JS,
   REACT_FILL_SCRIPT,
@@ -62,7 +63,7 @@ import {
   fillTooShortWarning,
   type FillNotTypedReason,
 } from '@/ui/messages/commands.js';
-import { raceTimeout } from '@/utils/async.js';
+import { delay, raceTimeout } from '@/utils/async.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -282,31 +283,105 @@ async function typeText(cdp: CDPConnection, value: string): Promise<'unfocused' 
 const READ_BACK_TIMEOUT_MS = 1000;
 
 /**
+ * When a fill's value is read again (#892), after the fill: later than the
+ * reverts seen (50 ms to 1.5 s; a 1500 ms timer measured 42 ms late on a
+ * busy, CPU-throttled page), and the longest an action waits for the
+ * network, so the read runs within that wait
+ */
+const LATE_READ_BACK_MS = 2000;
+
+/** What a read-back found: the value not kept, or what the field shows formatted */
+type FieldRead = Pick<FillResult, 'valueMismatch' | 'pageValue'>;
+
+/**
  * Add the read-back of a successful fill ({@link FILL_READ_BACK_SCRIPT}):
  * `valueMismatch` when the field's value is not the one given (the CLI
- * fails the fill with exit 90 for it). The fill
- * stands without it when the read-back fails, takes longer than
- * {@link READ_BACK_TIMEOUT_MS} or finds nothing (a change handler navigated
- * or replaced the page).
+ * fails the fill with exit 90 for it), or `pageValue` when the page shows it
+ * formatted. The fill stands without them when the read-back fails or finds
+ * nothing ({@link readField}).
  *
  * @param cdp - CDP connection
  * @param result - Fill result
- * @returns The result, with `valueMismatch` when the value differs
+ * @returns The result, with what the read-back found
  */
 async function withReadBack(cdp: CDPConnection, result: FillResult): Promise<FillResult> {
   if (!result.success) return result;
-  const readBack = sendTyped(cdp, 'Runtime.evaluate', {
-    expression: FILL_READ_BACK_SCRIPT,
-    returnByValue: true,
-    awaitPromise: true,
-  })
+  const read = await readField(
+    sendTyped(cdp, 'Runtime.evaluate', {
+      expression: FILL_READ_BACK_SCRIPT,
+      returnByValue: true,
+      awaitPromise: true,
+    })
+  );
+  return { ...result, ...read };
+}
+
+/**
+ * Read the value of the field a fill filled again {@link LATE_READ_BACK_MS}
+ * after it ({@link FILL_LATE_READ_FUNCTION}), so a value the page reverted
+ * meanwhile fails the fill too (#892), and a value it formatted is shown.
+ * Started with the fill and run alongside the network-idle wait; nothing is
+ * read when the fill failed, its read-back already found a mismatch, or it
+ * filled a file input. A remounted field is found again by the fill's
+ * selector and index.
+ *
+ * @param cdp - CDP connection of the field's page
+ * @param target - Selector (or bound-node placeholder) and index the fill used
+ * @param filling - The fill
+ * @returns The revert or what the field shows, or nothing
+ */
+export async function readBackLate(
+  cdp: CDPConnection,
+  target: { selector: string; index?: number | undefined },
+  filling: Promise<FillResult>
+): Promise<FieldRead> {
+  const filled = await filling;
+  if (!filled.success || filled.valueMismatch || filled.inputType === 'file') return {};
+  await delay(LATE_READ_BACK_MS);
+  return readField(
+    callFunctionInMainWorld(cdp, {
+      functionDeclaration: FILL_LATE_READ_FUNCTION,
+      arguments: [...selectorArgs(target.selector), target.index ?? 0].map((value) => ({ value })),
+      returnByValue: true,
+      awaitPromise: true,
+    })
+  );
+}
+
+/**
+ * Add what the late read found ({@link readBackLate}) to a fill: a revert
+ * fails it (`valueMismatch`, and `lateRevert` for the suggestion); a value
+ * the page formatted is what the field shows (`pageValue`).
+ *
+ * @param result - Fill result
+ * @param late - What the late read found
+ * @returns The result, with it
+ */
+export function withLateRead(result: FillResult, late: FieldRead = {}): FillResult {
+  if (!result.success || result.valueMismatch) return result;
+  if (late.valueMismatch) return { ...result, valueMismatch: late.valueMismatch, lateRevert: true };
+  return late.pageValue === undefined ? result : { ...result, pageValue: late.pageValue };
+}
+
+/**
+ * What a read-back evaluates to; nothing when the read fails or takes
+ * longer than {@link READ_BACK_TIMEOUT_MS} (a change handler navigated or
+ * replaced the page, or the page is busy).
+ *
+ * @param read - The read-back call
+ * @returns The mismatch or what the field shows, or nothing
+ */
+async function readField(read: Promise<{ result?: { value?: unknown } }>): Promise<FieldRead> {
+  const value = read
     .then((response): unknown => response.result?.value)
     .catch((error: unknown) => {
       log.debug(`Filled value not read back: ${getErrorMessage(error)}`);
       return undefined;
     });
-  const mismatch = await raceTimeout(readBack, READ_BACK_TIMEOUT_MS);
-  return isValueMismatch(mismatch) ? { ...result, valueMismatch: mismatch } : result;
+  const found = await raceTimeout(value, READ_BACK_TIMEOUT_MS);
+  if (isValueMismatch(found)) return { valueMismatch: found };
+  const pageValue = (found as { pageValue?: unknown } | null | undefined)?.pageValue;
+  return typeof pageValue === 'string' ? { pageValue } : {};
 }
 
 /**

@@ -223,7 +223,10 @@ export function registerFormInteractionCommands(program: Command): void {
     )
     .option('--index <n>', 'Element index if selector matches multiple (0-based)', integerOption(0))
     .option('--no-blur', 'Do not blur after filling (keeps focus on element)')
-    .option('--no-wait', 'Skip waiting for network stability after fill')
+    .option(
+      '--no-wait',
+      'Skip waiting for network stability after fill, and the second read of the value 2 s later'
+    )
     .addOption(dialogOption())
     .addOption(promptTextOption())
     .addOption(jsonOption())
@@ -819,7 +822,7 @@ function failOnValueMismatch<T extends Omit<FillResult, 'success'> & { indexSour
 ): CommandResult<T> {
   const mismatch = result.data?.valueMismatch;
   if (!result.success || !result.data || !mismatch) return result;
-  const { warning, ...data } = result.data;
+  const { warning, lateRevert, ...data } = result.data;
   const err = valueMismatchError(
     {
       selector: data.selector ?? '',
@@ -827,7 +830,8 @@ function failOnValueMismatch<T extends Omit<FillResult, 'success'> & { indexSour
       listIndex: data.indexSource?.index,
       indexText: data.indexSource && indexSourceText(data.indexSource),
     },
-    mismatch
+    mismatch,
+    lateRevert === true
   );
   return {
     success: false,
@@ -850,6 +854,7 @@ function formatFillOutput(result: ActionOutput<FillResult>): string {
   } else if (result.value !== undefined) {
     details.push(['Value', result.value === '' ? '(empty)' : result.value]);
   }
+  if (result.pageValue !== undefined) details.push(['Page shows', result.pageValue]);
 
   return formatActionOutput('Element Filled', details, result).build();
 }

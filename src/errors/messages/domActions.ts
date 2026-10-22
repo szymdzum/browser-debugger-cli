@@ -479,20 +479,30 @@ export function textTypedElsewhereError(
 }
 
 /**
+ * Added to the suggestion of a field the page emptied after the fill (#892):
+ * a search box may submit by itself and then clear the field
+ */
+const LATE_CLEARED_HINT =
+  '; if the page clears the field after an automatic submit (a search box), the fill may still have taken effect';
+
+/**
  * A fill whose value the page did not keep (#867, exit 90): the read-back
  * differs from the value given. The message names the field (the index and
  * its list, or the selector, and the element) and gives the read-back
  * ({@link valueMismatchWarning}); the suggestion fits how it differs: cut to
  * maxlength, moved to another field, or changed (a secret field's values
- * never shown).
+ * never shown); a field emptied after the fill (`late`) may have been
+ * submitted by the page.
  *
  * @param target - Selector and element description of the filled field, the index the user gave for a listed element, and that index in words with its list (e.g. `index 0 of the last dom query "input"`)
  * @param mismatch - Value given and value found (masked for secret fields)
+ * @param late - Found by the late read, 2 s after the fill (#892)
  * @returns Error with a suggestion
  */
 export function valueMismatchError(
   target: ActedElement & { indexText?: string | undefined },
-  mismatch: FillValueMismatch
+  mismatch: FillValueMismatch,
+  late = false
 ): ErrorWithSuggestion {
   const element = elementArgument(target);
   const field = `${target.indexText ?? element}${target.element ? ` (${target.element})` : ''}`;
@@ -502,7 +512,7 @@ export function valueMismatchError(
       ? `Fill at most ${mismatch.truncatedTo} characters, the field's maxlength`
       : mismatch.movedTo !== undefined
         ? `Fill ${mismatch.movedTo} if the value belongs there; see what moves it with ${sessionCommand(`bdg dom listeners ${element}`)}`
-        : `Check the format the field accepts (${sessionCommand(`bdg dom get ${element}`)} shows the field${mismatch.masked ? ', its value masked' : ''}), then fill a value it keeps`;
+        : `Check the format the field accepts (${sessionCommand(`bdg dom get ${element}`)} shows the field${mismatch.masked ? ', its value masked' : ''}), then fill a value it keeps${late && mismatch.actual === '' ? LATE_CLEARED_HINT : ''}`;
   return {
     message: `Fill ${field}: ${readBack.charAt(0).toLowerCase()}${readBack.slice(1)}`,
     suggestion,

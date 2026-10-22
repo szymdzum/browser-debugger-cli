@@ -63,6 +63,20 @@ export const NUMERIC_TEXT_JS = `(text) => {
 }`;
 
 /**
+ * Page-side value of a field as a fill compares it: text for a
+ * contenteditable, `checked`/`unchecked` for a checkbox or radio, the
+ * selected values joined by ", " for a multiple select, else its value.
+ */
+const FIELD_VALUE_JS = `(field) => {
+  const type = (field.type || '').toLowerCase();
+  if (field.isContentEditable) return field.textContent || '';
+  if (type === 'checkbox' || type === 'radio') return field.checked ? 'checked' : 'unchecked';
+  return field.localName === 'select' && field.multiple
+    ? (${LIST_JS})(field.selectedOptions).map((o) => o.value).join(', ')
+    : String(field.value);
+}`;
+
+/**
  * Page-side read-back of a filled field: a mismatch when its value is not
  * what was asked for (the page rejected, reformatted or moved the input),
  * undefined when it is. Values are compared as the browser normalises them:
@@ -81,13 +95,7 @@ export const NUMERIC_TEXT_JS = `(text) => {
  */
 export const FILL_VALUE_MISMATCH_JS = `(field, expected, secret) => {
   const type = (field.type || '').toLowerCase();
-  const actual = field.isContentEditable
-    ? (field.textContent || '')
-    : type === 'checkbox' || type === 'radio'
-      ? (field.checked ? 'checked' : 'unchecked')
-      : field.localName === 'select' && field.multiple
-        ? (${LIST_JS})(field.selectedOptions).map((o) => o.value).join(', ')
-        : String(field.value);
+  const actual = (${FIELD_VALUE_JS})(field);
   const time = (text) => text.trim().replace(' ', 'T').replace(/(\\d\\d:\\d\\d):00(\\.0+)?$/, '$1');
   const normalize = (text) => {
     text = String(text);
@@ -115,16 +123,49 @@ export const FILL_VALUE_MISMATCH_JS = `(field, expected, secret) => {
 }`;
 
 /**
+ * Page-side rule of the late read of a fill (#892): whether the value read
+ * 2 s after filling is a revert (a mismatch, as {@link FILL_VALUE_MISMATCH_JS}
+ * gives it) or the page formatting the value (undefined). Any change of a
+ * field that is not text-like is a revert. A text-like field reverted when
+ * it holds its value from before the fill (`check.before`; compared
+ * trimmed, inner whitespace collapsed and case-folded, so a controlled input
+ * restoring its state `o` over a DOM value `o ` counts) and that value
+ * differs from the one given in its letters and digits (a re-fill of
+ * `5551234567` over `(555) 123-4567` formatted again is no revert), or is
+ * blank while the value given was not; any other value is the page formatting
+ * the one given (a phone mask, a date written out, upper-casing, an
+ * autocomplete), so a page replacing it with unrelated text is not seen.
+ */
+export const LATE_REVERT_JS = `(field, check) => {
+  const mismatch = (${FILL_VALUE_MISMATCH_JS})(field, check.expected, check.secret);
+  if (!mismatch) return undefined;
+  const type = (field.type || '').toLowerCase();
+  const textLike = field.localName === 'textarea' ||
+    (field.localName === 'input' && /^(text|search|tel|url|email|password)$/.test(type));
+  if (!textLike) return mismatch;
+  const late = (${FIELD_VALUE_JS})(field);
+  const blanked = late.trim() === '' && String(check.expected).trim() !== '';
+  const old = check.before.get(check.el);
+  const loose = (text) => String(text).trim().replace(/\\s+/g, ' ').toLowerCase();
+  const chars = (text) => String(text).normalize('NFKC').toLowerCase().replace(/[^\\p{L}\\p{N}]/gu, '');
+  const backToOld = loose(late) === loose(old) && chars(old) !== chars(check.expected);
+  return backToOld || blanked ? mismatch : undefined;
+}`;
+
+/**
  * Page-side list of the other text-like fields of a field's form (of the
- * document when it has none), with their values: taken before a fill, so
- * {@link MOVED_VALUE_JS} can tell which one the page changed.
+ * document when it has none), with their values, and the field itself with
+ * its value ({@link FIELD_VALUE_JS}): taken before a fill, so
+ * {@link MOVED_VALUE_JS} can tell which one the page changed and
+ * {@link LATE_REVERT_JS} whether the field went back to its old value.
  */
 export const FIELD_VALUES_JS = `(field) => {
   const fields = field.form ? Array.from(field.form.elements) : Array.from(field.ownerDocument.querySelectorAll('input, textarea'));
   return new Map(fields
     .filter((f) => f !== field && /^(input|textarea)$/.test(f.localName) &&
       !/^(checkbox|radio|password|hidden|submit|button|reset|file|image)$/i.test(f.type || ''))
-    .map((f) => [f, String(f.value)]));
+    .map((f) => [f, String(f.value)])
+    .concat([[field, (${FIELD_VALUE_JS})(field)]]));
 }`;
 
 /**
@@ -397,6 +438,7 @@ const USER_EDIT_TYPES = ['text', 'search', 'url', 'tel', 'email', 'password'];
  */
 export const REACT_FILL_SCRIPT = `
 (function(selector, parts, value, options) {
+  delete window.__bdgFillCheck;
   const allMatches = (${FIND_ELEMENTS_JS})(selector, parts);
   const fire = ${FIRE_EVENT_JS};
   const fireInput = ${FIRE_INPUT_EVENT_JS};
@@ -785,7 +827,7 @@ export const FILL_INSERTED_FUNCTION = `(typed) => {
 export const MOVED_VALUE_JS = `(field, expected, before) => {
   const wanted = String(expected).trim();
   if (!before || wanted.length < 2 || (field.type || '').toLowerCase() === 'password') return undefined;
-  const other = Array.from(before.keys()).find((f) =>
+  const other = Array.from(before.keys()).find((f) => f !== field &&
     String(f.value).trim() === wanted && String(before.get(f)).trim() !== wanted);
   if (!other) return undefined;
   if (other.id) return other.localName + '#' + other.id;
@@ -793,35 +835,81 @@ export const MOVED_VALUE_JS = `(field, expected, before) => {
 }`;
 
 /**
- * Page script reading back the field the last fill left in
- * `window.__bdgFillCheck`, after one macrotask (so frameworks that render
- * asynchronously have updated it). The macrotask comes from a
- * `MessageChannel`, which fake timers and page code rarely replace. Evaluates
- * to the mismatch ({@link FILL_VALUE_MISMATCH_JS}), with `movedTo` when the
- * value turned up in another field ({@link MOVED_VALUE_JS}), or null when the
- * value matches, nothing was left (the page navigated) or the field left the
- * page.
+ * Page-side read of the check the last fill left in `window.__bdgFillCheck`
+ * ({@link FILL_DONE_JS}): null when there is none (the page navigated, or the
+ * fill wrote none), else `read(check)` one macrotask from now, so frameworks
+ * that render asynchronously have updated the field. The macrotask comes
+ * from a `MessageChannel`, which fake timers and page code rarely replace.
  */
-export const FILL_READ_BACK_SCRIPT = `(() => {
+const FILL_CHECK_READ_JS = `(read) => {
   const check = window.__bdgFillCheck;
-  delete window.__bdgFillCheck;
   if (!check) return null;
-  const readBack = () => {
-    if (!check.el.isConnected) return null;
-    const mismatch = (${FILL_VALUE_MISMATCH_JS})(check.el, check.expected, check.secret);
-    if (!mismatch) return null;
-    const movedTo = (${MOVED_VALUE_JS})(check.el, check.expected, check.before);
-    return movedTo ? Object.assign(mismatch, { movedTo: movedTo }) : mismatch;
-  };
   return new Promise((resolve) => {
     const channel = new MessageChannel();
     channel.port1.onmessage = () => {
       channel.port1.close();
-      resolve(readBack());
+      resolve(read(check));
     };
     channel.port2.postMessage(null);
   });
-})()`;
+}`;
+
+/**
+ * Page-side mismatch of a fill's check with `movedTo` when the value turned
+ * up in another field ({@link MOVED_VALUE_JS}).
+ */
+const WITH_MOVED_TO_JS = `(mismatch, check) => {
+  const movedTo = (${MOVED_VALUE_JS})(check.el, check.expected, check.before);
+  return movedTo ? Object.assign(mismatch, { movedTo: movedTo }) : mismatch;
+}`;
+
+/**
+ * Page-side value a field shows when it is not the one given but no
+ * mismatch (the page formatted it: `$8.00` for `8`, a phone mask),
+ * `{ pageValue }`, else null; never for a secret field or a password.
+ */
+const PAGE_VALUE_JS = `(field, check) => {
+  if (check.secret || (field.type || '').toLowerCase() === 'password') return null;
+  const shown = (${FIELD_VALUE_JS})(field);
+  return shown === String(check.expected) ? null : { pageValue: shown };
+}`;
+
+/**
+ * Page script reading back the field the last fill left
+ * ({@link FILL_CHECK_READ_JS}). Evaluates to the mismatch
+ * ({@link FILL_VALUE_MISMATCH_JS}), with `movedTo` when the value turned up
+ * in another field, what the field shows when it matches formatted
+ * ({@link PAGE_VALUE_JS}), or null when it holds the value given, nothing
+ * was left or the field left the page. The check stays for the late read
+ * ({@link FILL_LATE_READ_FUNCTION}).
+ */
+export const FILL_READ_BACK_SCRIPT = `(${FILL_CHECK_READ_JS})((check) => {
+  if (!check.el.isConnected) return null;
+  const mismatch = (${FILL_VALUE_MISMATCH_JS})(check.el, check.expected, check.secret);
+  return mismatch ? (${WITH_MOVED_TO_JS})(mismatch, check) : (${PAGE_VALUE_JS})(check.el, check);
+})`;
+
+/**
+ * Page function of the late read of a fill (#892): the field the last fill
+ * left ({@link FILL_CHECK_READ_JS}, removing the check), or, when that left
+ * the page (a remount), the field the fill's selector and index find now;
+ * evaluates to the revert ({@link LATE_REVERT_JS}) with `movedTo`, what
+ * the field shows when the page formatted the value ({@link PAGE_VALUE_JS}),
+ * or null (the value given, nothing left, no field). Every parameter is a
+ * `Runtime.callFunctionOn` argument.
+ */
+export const FILL_LATE_READ_FUNCTION = `function (selector, parts, index) {
+  return (${FILL_CHECK_READ_JS})((check) => {
+    if (window.__bdgFillCheck === check) delete window.__bdgFillCheck;
+    const found = (${FIND_ELEMENTS_JS})(selector, parts)[index];
+    const field = check.el.isConnected
+      ? check.el
+      : found && ((${LABEL_CONTROL_JS})(found) || (${SHADOW_FIELD_JS})(found) || found);
+    if (!field) return null;
+    const mismatch = (${LATE_REVERT_JS})(field, check);
+    return mismatch ? (${WITH_MOVED_TO_JS})(mismatch, check) : (${PAGE_VALUE_JS})(field, check);
+  });
+}`;
 
 /**
  * JavaScript function to locate an element for clicking.
