@@ -12,6 +12,7 @@ import { DEFAULT_PAGE_READINESS_TIMEOUT_MS } from '@/constants.js';
 import type { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
 import type { SessionConfig } from '@/daemon/session/types.js';
 import { assertNavigated, failedLoadError, readFailedLoad } from '@/runtime/page/failedLoad.js';
+import { refusedAfterAbort, watchRefusedRedirects } from '@/runtime/page/refusedRedirect.js';
 import type { FailedLoad, LaunchedChrome } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
 import { displayUrl } from '@/utils/displayUrl.js';
@@ -112,11 +113,14 @@ export async function navigateToTarget(
   const normalizedUrl = normalizeUrl(config.url);
   const failedBefore = telemetryStore.failedLoad;
   log.info(`Navigating to ${displayUrl(normalizedUrl)}...`);
-  const navigation = await sendNavigate(cdp, normalizedUrl, log, signal);
   const addedScheme = normalizedUrl === `http://${config.url}`;
   const ownFailure = (): FailedLoad | undefined =>
     telemetryStore.failedLoad !== failedBefore ? telemetryStore.failedLoad : undefined;
-  assertNavigated(navigation, normalizedUrl, addedScheme, ownFailure()?.redirectedTo);
+  const navigation = await navigateOrFail(cdp, normalizedUrl, log, signal, {
+    addedScheme,
+    redirectedTo: () => ownFailure()?.redirectedTo,
+    mainFrameId: telemetryStore.targetInfo?.id,
+  });
   if (navigation.errorText) log.info(`Navigation reported ${navigation.errorText}`);
 
   await waitForPageReady(cdp, {
@@ -146,6 +150,44 @@ export async function navigateToTarget(
     }
   }
   return navigation.loaderId;
+}
+
+/**
+ * Navigate and throw when the load failed: Chrome's error page, or a
+ * redirect Chrome refused (#890), which it answers as it does a 204.
+ *
+ * @param cdp - Open CDP connection
+ * @param url - Normalized URL
+ * @param log - Logger
+ * @param signal - The session's stop signal
+ * @param failure - Whether bdg added `http://`, where a failed redirect led, and
+ *   the page's main frame (its target id; without one, refused redirects are not followed)
+ * @returns Chrome's answer
+ * @throws CommandError (80) when the load failed
+ */
+async function navigateOrFail(
+  cdp: CDPConnection,
+  url: string,
+  log: Logger,
+  signal: AbortSignal | undefined,
+  failure: {
+    addedScheme: boolean;
+    redirectedTo: () => string | undefined;
+    mainFrameId: string | undefined;
+  }
+): Promise<Protocol.Page.NavigateResponse> {
+  const redirects = failure.mainFrameId
+    ? watchRefusedRedirects(cdp, failure.mainFrameId)
+    : undefined;
+  try {
+    const navigation = await sendNavigate(cdp, url, log, signal);
+    assertNavigated(navigation, url, failure.addedScheme, failure.redirectedTo());
+    const refused = redirects && (await refusedAfterAbort(redirects, navigation));
+    if (refused) throw failedLoadError(refused, failure.addedScheme);
+    return navigation;
+  } finally {
+    redirects?.stop();
+  }
 }
 
 /**

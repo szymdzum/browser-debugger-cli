@@ -6,6 +6,8 @@
  */
 
 import * as assert from 'node:assert/strict';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { it } from 'node:test';
 
 import { runCommand } from '@/__testutils__/commandRunner.js';
@@ -22,8 +24,9 @@ import {
   type Row,
 } from '@/__testutils__/loadFailureCells.js';
 import { makeTempDir } from '@/__testutils__/tempDirs.js';
+import { CDPConnection } from '@/connection/cdp.js';
 import { launchChrome } from '@/connection/launcher.js';
-import type { LaunchedChrome } from '@/types.js';
+import type { CDPTarget, LaunchedChrome } from '@/types.js';
 
 /** Shortest navigation limit bdg accepts from the test environment (`page navigate`, `reload`) */
 const TEST_ENV = { BDG_TEST_PAGE_READY_MS: '1000' };
@@ -64,6 +67,26 @@ export function chromePort(): number {
 }
 
 /**
+ * A Chrome profile whose downloads go to a temporary directory: the test's
+ * Chrome is attached to, so bdg leaves its download behavior alone, and a
+ * download (`/download`, #890) would land in the user's `~/Downloads`.
+ *
+ * @returns User data directory
+ */
+function profileWithDownloadsDir(): string {
+  const userDataDir = makeTempDir('bdg-matrix-chrome-');
+  const preferences = {
+    download: {
+      default_directory: makeTempDir('bdg-matrix-downloads-'),
+      prompt_for_download: false,
+    },
+  };
+  fs.mkdirSync(path.join(userDataDir, 'Default'));
+  fs.writeFileSync(path.join(userDataDir, 'Default', 'Preferences'), JSON.stringify(preferences));
+  return userDataDir;
+}
+
+/**
  * Start the hostile server and a Chrome that bypasses any proxy of the environment.
  */
 export async function setUpMatrix(): Promise<void> {
@@ -72,7 +95,7 @@ export async function setUpMatrix(): Promise<void> {
   hostile = await startHostileServer();
   chrome = await launchChrome({
     port: await getFreePort(),
-    userDataDir: makeTempDir('bdg-matrix-chrome-'),
+    userDataDir: profileWithDownloadsDir(),
     headless: true,
     sessionDir: makeTempDir('bdg-matrix-session-'),
     chromeFlags: ['--no-proxy-server'],
@@ -203,6 +226,54 @@ export function urlOf(row: Row): string {
  */
 export function failsLoad(row: Row): boolean {
   return row.full === true && row.expect.kind === 'failure';
+}
+
+/**
+ * The test Chrome's DevTools HTTP endpoint.
+ *
+ * @param path - Path, e.g. `/json/list`
+ * @returns URL
+ */
+function devtoolsUrl(path: string): string {
+  return `http://127.0.0.1:${chromePort()}${path}`;
+}
+
+/**
+ * The page tabs of the test's Chrome.
+ *
+ * @returns Their ids
+ */
+export async function listTabs(): Promise<string[]> {
+  const targets = (await (await fetch(devtoolsUrl('/json/list'))).json()) as CDPTarget[];
+  return targets.filter((target) => target.type === 'page').map((target) => target.id);
+}
+
+/**
+ * Open a tab on a URL (without waiting for a load event, a failed load fires none).
+ *
+ * @param url - URL
+ * @returns The tab
+ */
+export async function openTab(url: string): Promise<CDPTarget> {
+  const response = await fetch(devtoolsUrl('/json/new?about:blank'), { method: 'PUT' });
+  const tab = (await response.json()) as CDPTarget;
+  if (url === 'about:blank') return tab;
+  const cdp = await CDPConnection.create(tab.webSocketDebuggerUrl);
+  try {
+    await cdp.send('Page.navigate', { url });
+  } finally {
+    cdp.close();
+  }
+  return tab;
+}
+
+/**
+ * Close a tab of the test's Chrome.
+ *
+ * @param id - Tab id
+ */
+export async function closeTab(id: string): Promise<void> {
+  await fetch(devtoolsUrl(`/json/close/${id}`));
 }
 
 /**

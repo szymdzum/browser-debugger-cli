@@ -4,7 +4,11 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import { navigationOutcome, type NavigationOutcome } from '@/connection/navigationOutcome.js';
+import {
+  ABORTED_ERROR,
+  navigationOutcome,
+  type NavigationOutcome,
+} from '@/connection/navigationOutcome.js';
 import { sendTyped, type Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import { navigationFailedError } from '@/errors/messages.js';
@@ -119,27 +123,37 @@ interface DocumentRequest {
   request?: { url: string };
 }
 
+/** A followed document request: its URL as first requested and its latest hop */
+export interface MainDocument {
+  url: string;
+  last: string;
+}
+
 /**
  * Follow the main frame's document requests and report those that fail
  * (a document's request id is its loader id, so `ERR_ABORTED` of a 204 or a
- * download is no failure).
+ * download is no failure; `onAborted` hears of it).
  *
  * @param cdp - CDP connection
  * @param mainFrameId - Main frame id
  * @param onFailed - Called with a failed document's request id and the failed load
  *   (its URL as requested, and where a redirect led when that request failed)
- * @returns Whether a request is a followed document, a function to forget one, and one to stop
+ * @param onAborted - Called with an aborted document's (`net::ERR_ABORTED`) request id and request
+ * @returns Whether a request is a followed document, the ids of those followed
+ *   (not failed nor forgotten), a function to forget one, and one to stop
  */
 export function watchMainDocuments(
   cdp: Pick<CDPConnection, 'on'>,
   mainFrameId: string,
-  onFailed: (requestId: string, failed: FailedLoad) => void
+  onFailed: (requestId: string, failed: FailedLoad) => void,
+  onAborted?: (requestId: string, document: MainDocument) => void
 ): {
   isDocument: (requestId: string) => boolean;
+  requestIds: () => string[];
   forget: (requestId: string) => void;
   stop: () => void;
 } {
-  const documents = new Map<string, { url: string; last: string }>();
+  const documents = new Map<string, MainDocument>();
   const stops = [
     cdp.on<DocumentRequest>('Network.requestWillBeSent', (params) => {
       if (params.type !== 'Document' || params.frameId !== mainFrameId) return;
@@ -150,6 +164,7 @@ export function watchMainDocuments(
       const document = documents.get(params.requestId);
       if (document === undefined) return;
       documents.delete(params.requestId);
+      if (params.errorText === ABORTED_ERROR) onAborted?.(params.requestId, document);
       if (navigationOutcome(params.errorText, params.requestId) !== 'failed') return;
       const { url, last } = document;
       onFailed(params.requestId, {
@@ -161,6 +176,7 @@ export function watchMainDocuments(
   ];
   return {
     isDocument: (requestId) => documents.has(requestId),
+    requestIds: () => [...documents.keys()],
     forget: (requestId) => void documents.delete(requestId),
     stop: () => stops.forEach((stop) => stop()),
   };

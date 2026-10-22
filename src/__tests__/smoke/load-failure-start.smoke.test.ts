@@ -30,9 +30,11 @@ import {
   cellsFor,
   checkCell,
   chromePort,
+  closeTab,
   expectationFor,
   failsLoad,
   hostileServer,
+  openTab,
   reachUrl,
   runOn,
   setUpMatrix,
@@ -41,33 +43,12 @@ import {
   urlOf,
 } from '@/__testutils__/loadFailureHarness.js';
 import { removeTempDirs } from '@/__testutils__/tempDirs.js';
-import { CDPConnection } from '@/connection/cdp.js';
 import type { CDPTarget } from '@/types.js';
 
 /** Why a row without an attach pattern has no attach cell */
 const NO_ATTACH = 'one attach cell per kind of outcome (refused, TLS, a page that loads)';
 
 after(removeTempDirs);
-
-/**
- * Open a tab on a URL (without waiting for a load event, a failed load fires none).
- *
- * @param url - URL
- * @returns The tab
- */
-async function openTab(url: string): Promise<CDPTarget> {
-  const response = await fetch(`http://127.0.0.1:${chromePort()}/json/new?about:blank`, {
-    method: 'PUT',
-  });
-  const tab = (await response.json()) as CDPTarget;
-  const cdp = await CDPConnection.create(tab.webSocketDebuggerUrl);
-  try {
-    await cdp.send('Page.navigate', { url });
-  } finally {
-    cdp.close();
-  }
-  return tab;
-}
 
 void describe('Load-failure matrix: loads', () => {
   before(setUpMatrix);
@@ -137,9 +118,9 @@ void describe('Load-failure matrix: loads', () => {
       const reason = row.attach ? row.na?.attach : NO_ATTACH;
       void it(`attach: ${row.id}`, { skip: reason, todo: row.todo?.attach }, async () => {
         let tab: CDPTarget | undefined;
-        const closeTab = async (): Promise<void> => {
+        const stopAndClose = async (): Promise<void> => {
           await bdg('stop');
-          if (tab) await fetch(`http://127.0.0.1:${chromePort()}/json/close/${tab.id}`);
+          if (tab) await closeTab(tab.id);
         };
         const attachTo = async (json: boolean): Promise<Observed | ObservedJson> => {
           tab = await openTab(urlOf(row));
@@ -154,9 +135,9 @@ void describe('Load-failure matrix: loads', () => {
           const expect = expectationFor(row, true);
           const attached =
             expect.kind === 'failure' ? { kind: 'warns' as const, cause: expect.cause } : expect;
-          await checkCell({ ...row, expect: attached }, attachTo, closeTab, true);
+          await checkCell({ ...row, expect: attached }, attachTo, stopAndClose, true);
         } finally {
-          await closeTab();
+          await stopAndClose();
         }
       });
     }

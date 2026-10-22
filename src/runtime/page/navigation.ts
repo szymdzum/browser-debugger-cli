@@ -15,6 +15,11 @@ import {
   watchMainDocuments,
 } from '@/runtime/page/failedLoad.js';
 import { readPageLoadingState } from '@/runtime/page/loadingState.js';
+import {
+  refusedAfterAbort,
+  watchRefusedRedirects,
+  type RefusedRedirectWatch,
+} from '@/runtime/page/refusedRedirect.js';
 import type { PendingRequest } from '@/telemetry/network.js';
 import type { CDPSender } from '@/telemetry/objectExpander.js';
 import type { FailedLoad } from '@/types.js';
@@ -101,9 +106,10 @@ async function runNavigation(
 ): Promise<PageNavigationResult> {
   const url = action === 'navigate' ? normalizeUrl(options.url ?? '') : undefined;
   if (options.wait === false) return startWithoutWaiting(cdp, action, url);
-  const mainFrameId = (await pageTarget(cdp)).targetId;
-  const navigated = nextNavigation(cdp, mainFrameId);
-  const document = documentResponse(cdp, mainFrameId);
+  const frameId = await mainFrameId(cdp);
+  const navigated = nextNavigation(cdp, frameId);
+  const document = documentResponse(cdp, frameId);
+  const redirects = watchRefusedRedirects(cdp, frameId);
   const readyTimeoutMs = pageReadyTimeoutMs();
   const deadline = Date.now() + readyTimeoutMs;
   let loaderId: string | undefined;
@@ -112,17 +118,24 @@ async function runNavigation(
     sent.catch(() => undefined);
     const started = await raceTimeout(sent, readyTimeoutMs);
     if (started === undefined) return await stillLoading(cdp, action, readyTimeoutMs);
+    const refused = await refusedAfterAbort(redirects, started);
+    if (refused) throw failedLoadError(refused);
     if (started.notAPage) {
       return { action, ...(await currentLocation(cdp)), warning: notAPageWarning() };
     }
     loaderId = started.loaderId;
-    const how = await raceTimeout(navigated.done, Math.max(0, deadline - Date.now()));
+    const how = await raceTimeout(
+      action === 'reload' ? withRefusedReload(navigated.done, redirects, deadline) : navigated.done,
+      Math.max(0, deadline - Date.now())
+    );
+    if (typeof how === 'object') throw failedLoadError(how);
     if (how === 'loaded') {
       await waitForPageReady(cdp, { maxWaitMs: Math.max(0, deadline - Date.now()) });
     }
   } finally {
     navigated.stop();
     document.stop();
+    redirects.stop();
   }
   const failed =
     action === 'navigate' || action === 'reload' ? document.failure(loaderId) : undefined;
@@ -133,6 +146,26 @@ async function runNavigation(
   );
   const loading = await readPageLoadingState(cdp, options.pendingRequests?.() ?? []);
   return loading ? { ...result, loading } : result;
+}
+
+/**
+ * A reload's wait, ended by a redirect Chrome refused (#890): the page stays,
+ * so no load event comes.
+ *
+ * @param done - The wait for the reloaded page
+ * @param redirects - Watch started before the reload
+ * @param deadline - The reload's time limit (epoch ms): a slow server's refused redirect still counts
+ * @returns How the page moved, or the refused redirect
+ */
+function withRefusedReload<T>(
+  done: Promise<T>,
+  redirects: RefusedRedirectWatch,
+  deadline: number
+): Promise<T | FailedLoad> {
+  const refused = redirects
+    .refused({ openUntil: deadline })
+    .then((found) => found ?? new Promise<never>(() => undefined));
+  return Promise.race([done, refused]);
 }
 
 /**
@@ -197,6 +230,8 @@ interface StartedAction {
   notAPage: boolean;
   /** Loader of the new document, when the browser names it (navigate only) */
   loaderId?: string;
+  /** Chrome's network error, when it answered with one (`net::ERR_ABORTED`: a 204, a download, or a refused redirect, #890) */
+  errorText?: string;
 }
 
 /**
@@ -231,6 +266,17 @@ async function startAction(
 async function pageTarget(cdp: CDPSender): Promise<{ targetId: string; url: string }> {
   const { targetInfo } = await sendTyped(cdp, 'Target.getTargetInfo', {});
   return targetInfo;
+}
+
+/**
+ * The page's main frame id (a page target's id is its main frame's); answers
+ * while a navigation waits for the server.
+ *
+ * @param cdp - CDP connection
+ * @returns Main frame id
+ */
+export async function mainFrameId(cdp: CDPSender): Promise<string> {
+  return (await pageTarget(cdp)).targetId;
 }
 
 /**
@@ -430,10 +476,11 @@ function nextNavigation(
  */
 async function navigateTo(cdp: CDPConnection, url: string): Promise<StartedAction> {
   const navigation = await sendTyped(cdp, 'Page.navigate', { url });
-  const { loaderId } = navigation;
+  const { loaderId, errorText } = navigation;
   return {
     notAPage: assertNavigated(navigation, url) === 'not-a-page',
     ...(loaderId && { loaderId }),
+    ...(errorText && { errorText }),
   };
 }
 

@@ -6,6 +6,7 @@
  * response keeps its HTTP status even if loading failed afterwards.
  */
 
+import { ABORTED_ERROR } from '@/connection/navigationOutcome.js';
 import type { NetworkRequest } from '@/types.js';
 
 /** Lifecycle state of a captured request. */
@@ -33,13 +34,7 @@ export function failureReason(
   request: Pick<NetworkRequest, 'status' | 'errorText'>
 ): string | undefined {
   if (!request.errorText) return undefined;
-  return getRequestState(request) === 'complete' && request.errorText === BODY_ABORTED
+  return getRequestState(request) === 'complete' && request.errorText === ABORTED_ERROR
     ? undefined
     : request.errorText;
 }
-
-/**
- * Error Chrome reports when it stops reading a response body nobody needs
- * (the response itself arrived; not a failure of the request).
- */
-export const BODY_ABORTED = 'net::ERR_ABORTED';
