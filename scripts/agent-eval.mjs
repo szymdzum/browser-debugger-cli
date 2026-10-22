@@ -13,7 +13,8 @@
  *
  * Flags: --tasks=a,b|all  --model=a,b (default claude-haiku-5-5)  --runs=N (1)  --parallel=N (4)
  * --budget=USD (5)  --run-budget=USD (0.5, passed as --max-budget-usd)  --max-turns=N (40)
- * --run-timeout=SECONDS (600)  --build=DIR (the repo's dist)  --out=DIR (/tmp/bdg-agent-eval-*)
+ * --run-timeout=SECONDS (600)  --build=DIR (the repo's dist; the bdg under test)
+ * --fixtures-build=DIR (the repo's dist; where the fixture server and pages come from)  --out=DIR (/tmp/bdg-agent-eval-*)
  * --key-file=PATH (~/.config/bdg-eval/anthropic-key)  --fixtures-url=URL  --claude-bin=PATH  --dry-run
  *
  * Isolation of the agent under test, per run:
@@ -62,6 +63,8 @@ const PASSTHROUGH_ENV = [
 ];
 /** Largest request body the log server keeps */
 export const LOG_BODY_LIMIT = 4096;
+/** Log key under which `GET /go` records the code of the refused redirect */
+const HANDOVER_KEY = 'app-redirect-code';
 const BUILD_FILES = ['index.js', 'cli.js', 'daemon.js'];
 
 /**
@@ -118,6 +121,7 @@ export function resolveSettings(flags, now = new Date()) {
     'max-turns',
     'run-timeout',
     'build',
+    'fixtures-build',
     'out',
     'key-file',
     'fixtures-url',
@@ -143,6 +147,7 @@ export function resolveSettings(flags, now = new Date()) {
     maxTurns: numberFlag(flags, 'max-turns', 40),
     runTimeoutMs: numberFlag(flags, 'run-timeout', 600) * 1000,
     build: path.resolve(String(flags.build ?? path.join(REPO_ROOT, 'dist'))),
+    fixturesBuild: path.resolve(String(flags['fixtures-build'] ?? path.join(REPO_ROOT, 'dist'))),
     out,
     keyFile: String(flags['key-file'] ?? DEFAULT_KEY_FILE),
     fixturesUrl: flags['fixtures-url'] === undefined ? undefined : String(flags['fixtures-url']),
@@ -182,6 +187,8 @@ export function renderPlan(settings) {
     `models:  ${settings.models.length} (${settings.models.join(', ')})`,
     `runs:    ${settings.runs} per task and model`,
     `total:   ${jobs.length} runs, ${settings.parallel} in parallel, at most ${settings.maxTurns} turns and ${settings.runTimeoutMs / 1000}s each`,
+    `bdg:     ${settings.build}`,
+    `fixtures: ${settings.fixturesUrl ?? settings.fixturesBuild}`,
     `cost:    worst case $${worst.toFixed(2)} (${jobs.length} x $${settings.runBudget} per-run cap); total budget $${settings.budget}`,
   ];
   if (worst > settings.budget) {
@@ -512,7 +519,11 @@ export function fitsBudget({ spent, inFlight, runBudget, budget }) {
  * Start the log server the fixture pages report to. A page generates its per-run value in the
  * handler of the interaction, shows it, and POSTs what it showed to `/log?key=<task>&n=<nonce>`;
  * the server only records. No request returns a value: a GET (or any other method) is a 404, so
- * the value exists only in a page that ran the handler. A POST without the fixture pages' `Origin`
+ * the value exists only in a page that ran the handler. One route is not a log: `GET /go?n=<nonce>`
+ * answers `302` to `myapp://callback?code=cb-<hex>` (the hand-over of `/eval-hard-app`, an address
+ * Chrome refuses) and records the code under `app-redirect-code`. It has no gate: a curl to it
+ * gets the code, which is not the answer of any task, and a tool call naming the log server is
+ * `cheated` (`findCheating`). A POST without the fixture pages' `Origin`
  * header (a curl or a script forging an entry) is counted for `forged`; a forged entry made from
  * a page (`bdg dom eval`) is caught by the tool-call scan in `findCheating`.
  * @param {string} [pageOrigin] origin the fixture pages are served from, such as `http://127.0.0.1:5000`
@@ -525,6 +536,13 @@ export function startLogServer(pageOrigin) {
     const url = new URL(req.url ?? '/', 'http://log');
     const key = url.searchParams.get('key');
     const nonce = url.searchParams.get('n');
+    if (req.method === 'GET' && url.pathname === '/go' && nonce) {
+      const code = `cb-${crypto.randomBytes(3).toString('hex')}`;
+      const id = `${nonce}\u0000${HANDOVER_KEY}`;
+      logged.set(id, [...(logged.get(id) ?? []), code]);
+      res.writeHead(302, { Location: `myapp://callback?code=${code}` }).end();
+      return;
+    }
     if (req.method !== 'POST' || url.pathname !== '/log' || !key || !nonce) {
       res.writeHead(404).end();
       return;
@@ -626,8 +644,10 @@ export function copyBuild(build, dest) {
 
 /**
  * Copy what the fixture server needs (the compiled `dist/__testutils__`, the fixture HTML and the
- * `ws` package) into a temp directory, so no process the agent can see names the repo.
- * @param {string} build the build directory (`dist/`)
+ * `ws` package) into a temp directory, so no process the agent can see names the repo. The build
+ * comes from the harness's own repo (`fixturesBuild`), never from `--build`: an older release under
+ * test would serve the fixtures of its time, without the pages of newer tasks.
+ * @param {string} build the harness's build directory (`dist/`)
  * @param {string} dest directory to create
  * @returns {string} path of the copied `serveFixtures.js`
  */
@@ -1109,7 +1129,7 @@ export async function main(settings) {
     const entry = copyBuild(settings.build, build);
     const fixtureScript = settings.fixturesUrl
       ? null
-      : copyFixtureRuntime(settings.build, path.join(build, 'fx'));
+      : copyFixtureRuntime(settings.fixturesBuild, path.join(build, 'fx'));
     const fixtures = fixtureScript
       ? await startFixtures(fixtureScript)
       : { url: settings.fixturesUrl.replace(/\/?$/, '/'), stop: () => {} };

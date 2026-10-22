@@ -11,7 +11,24 @@
  * the harness's log server; the checker compares the answer with what the page logged in that run,
  * and a run with nothing logged fails ("interaction never happened"). The page source and every
  * GET hold no value. The pages are `src/__testutils__/fixturePages/agentEvalFixtures.ts`.
+ *
+ * The four `new` tasks (`fill-revert`, `click-value`, `app-redirect`, `iframe-result`) are hard:
+ * bdg's own verdict on the action can be false (a green check for a fill the page reverts, "no
+ * visible effect" for a click that changed a value or an iframe, a navigation that Chrome refused),
+ * so an agent that trusts it answers wrong. Their truth is the state after the last interaction
+ * (the last value logged: a reload or a second click replaces it, and with two tabs open the last
+ * page that logged wins); the pages are `agentEvalHardFixtures.ts`. `click-value` and `iframe-result` make
+ * their value at load and log only its SHA-256, so the click sends no request that could give bdg
+ * something to report and the load-time request does not hold the answer: the checker hashes the
+ * agent's answer. (A 6-hex-digit value could be brute-forced from the hash; a prompt gives no reason
+ * to try it.) Answers are folded before comparing: surrounding quotes,
+ * uppercase hex digits after a `draft-`, `msg-`, `st-` or `ref-` prefix, a `Reference:` prefix in any
+ * case and a `-` or `:` after `NOT_REACHED`; a different case of the prefix itself stays wrong.
+ * `app-redirect` asks whether the browser reached the app: the answer is `NOT_REACHED <reference>`
+ * with the reference of the page the browser stays on, not the code in the refused address.
  */
+
+import crypto from 'node:crypto';
 
 /** @typedef {{pass: boolean, reason: string}} Verdict */
 /** @typedef {{fixtures: string, refusedUrl: string, logApi: string, nonce: string, logged: (key: string) => string[]}} TaskContext */
@@ -127,6 +144,93 @@ function loggedTruth(key, derive = (logged) => logged) {
     const logged = ctx.logged(key);
     return logged.length === 0 ? NEVER_HAPPENED : derive(logged);
   };
+}
+
+/**
+ * Fold the harmless variants of an answer: quotes around a word, uppercase hex digits after a value
+ * prefix, and a ` -` or `:` after `NOT_REACHED`. A different case of a prefix stays different.
+ * @param {string} value answer value
+ * @returns {string} comparable form
+ */
+function foldAnswer(value) {
+  return normalise(value)
+    .replace(/(^|\s)["'\u201c\u2018]+(?=\S)/g, '$1')
+    .replace(/(?<=\S)["'\u201d\u2019]+(?=\s|$)/g, '')
+    .replace(/\b(?:(?:draft|ref)-[0-9A-Fa-f]{6}|(?:msg|st)-[0-9A-Fa-f]{16})\b/g, (match) =>
+      match.toLowerCase()
+    )
+    .replace(/^NOT_REACHED(?::|\s+-)?\s+/, 'NOT_REACHED ');
+}
+
+/**
+ * Checker for the hard tasks: the answer is folded (`foldAnswer`) and must be one of the accepted
+ * spellings, or, for a hashed truth, must hash to the logged digest.
+ * @param {(ctx: TaskContext) => {spellings?: string[], digest?: string, optionalPrefix?: RegExp} | string} truth the truth for this run, or why it cannot be checked (a failure)
+ * @returns {(reply: string, ctx: TaskContext) => Verdict} checker taking the agent's final reply
+ */
+function hardChecker(truth) {
+  return (reply, ctx) => {
+    const parsed = extractAnswer(reply);
+    if (!parsed.ok) return { pass: false, reason: parsed.reason };
+    const wanted = truth(ctx);
+    if (typeof wanted === 'string') return { pass: false, reason: wanted };
+    const value = foldAnswer(parsed.value);
+    const matches =
+      wanted.digest === undefined
+        ? wanted.spellings.includes(value)
+        : [value, value.replace(wanted.optionalPrefix, '')].some(
+            (candidate) =>
+              crypto.createHash('sha256').update(candidate).digest('hex') === wanted.digest
+          );
+    if (matches) return { pass: true, reason: 'matches the truth' };
+    return {
+      pass: false,
+      reason:
+        wanted.digest === undefined
+          ? `answered "${parsed.value}", expected "${wanted.spellings[0]}"`
+          : `answered "${parsed.value}", which does not match what the page made`,
+    };
+  };
+}
+
+/**
+ * Truth for a task whose page logs only the SHA-256 of its value: the last digest logged.
+ * @param {string} key task key
+ * @param {RegExp} [optionalPrefix] prefix an answer may carry before the value
+ * @returns {(ctx: TaskContext) => {digest: string, optionalPrefix: RegExp} | string} truth function
+ */
+function hashedTruth(key, optionalPrefix = /^/) {
+  return (ctx) => {
+    const logged = ctx.logged(key);
+    return logged.length === 0 ? NEVER_HAPPENED : { digest: logged.at(-1), optionalPrefix };
+  };
+}
+
+/**
+ * Truth for app-redirect: the click must have reached the 302 (the log server recorded a code),
+ * and the answer is `NOT_REACHED` with the reference of the last page that logged one.
+ * @param {TaskContext} ctx run context
+ * @returns {{spellings: string[]} | string} accepted answers, or why the run fails
+ */
+function appRedirectTruth(ctx) {
+  const references = ctx.logged('app-redirect');
+  if (references.length === 0 || ctx.logged('app-redirect-code').length === 0)
+    return NEVER_HAPPENED;
+  return { spellings: [`NOT_REACHED ${references.at(-1)}`] };
+}
+
+/**
+ * Truth for fill-revert: the last kept value the page logged. Only the pre-fill logged means the
+ * run ended before the page restored the field, which the reason says.
+ * @param {TaskContext} ctx run context
+ * @returns {{spellings: string[]} | string} accepted answers, or why the run fails
+ */
+function fillRevertTruth(ctx) {
+  const kept = ctx.logged('fill-revert');
+  if (kept.length > 0) return { spellings: [kept.at(-1)] };
+  return ctx.logged('fill-revert-init').length > 0
+    ? 'the page never restored the field in this run (only the pre-fill was logged: nothing was typed, or the run ended before the restore)'
+    : NEVER_HAPPENED;
 }
 
 /**
@@ -256,6 +360,38 @@ export const TASKS = [
       ),
       /[\s,]+/
     ),
+  },
+  {
+    id: 'fill-revert',
+    scenario: 'new',
+    title: 'A field the page changes after it is filled',
+    prompt: (ctx) =>
+      `Open ${pageUrl(ctx, 'eval-hard-note')}. The page has a "Delivery note" field. Set it to "gift wrap, leave at door" and tell me what the field contains afterwards. ${ANSWER_RULE}<text>\` with the text in the field.`,
+    check: hardChecker(fillRevertTruth),
+  },
+  {
+    id: 'click-value',
+    scenario: 'new',
+    title: 'A click that only changes a control value',
+    prompt: (ctx) =>
+      `Open ${pageUrl(ctx, 'eval-hard-gift')} and click "Suggest a message". Tell me what the "Gift message" field contains afterwards. ${ANSWER_RULE}<text>\` with the text in the field.`,
+    check: hardChecker(hashedTruth('click-value')),
+  },
+  {
+    id: 'app-redirect',
+    scenario: 'new',
+    title: 'A hand-over to an app address the browser refuses',
+    prompt: (ctx) =>
+      `Open ${pageUrl(ctx, 'eval-hard-app')} and click "Continue to the app": the page hands the browser over to the Reading app. Did the browser reach the app? End your reply with a last line \`ANSWER: REACHED\` if it did, or \`ANSWER: NOT_REACHED <reference>\` if it did not, where <reference> is the reference shown (like ref-1a2b3c) on the page the browser is on afterwards.`,
+    check: hardChecker(appRedirectTruth),
+  },
+  {
+    id: 'iframe-result',
+    scenario: 'new',
+    title: 'A click whose result appears in an iframe',
+    prompt: (ctx) =>
+      `Open ${pageUrl(ctx, 'eval-hard-stock')} and click "Check stock". Tell me the reference the page shows afterwards. ${ANSWER_RULE}<reference>\` (like st-1a2b3c4d5e6f7a8b).`,
+    check: hardChecker(hashedTruth('iframe-result', /^reference:\s*/i)),
   },
   {
     id: 'page-never-loads',

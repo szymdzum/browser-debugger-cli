@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -34,6 +35,7 @@ import { TASKS, buildPrompt, extractAnswer, pageUrl, selectTasks } from './agent
 const FAKE_KEY = 'sk-ant-api03-TESTKEYTESTKEYTESTKEY';
 
 /** What the pages logged in the run the checkers grade: values `a1b2c3`; Alpha, Charlie and Delta broke */
+const sha = (value) => crypto.createHash('sha256').update(value).digest('hex');
 const LOG = {
   'popup-code': ['cf-a1b2c3'],
   'cancel-confirm': ['Order A-a1b2c3 kept'],
@@ -43,6 +45,12 @@ const LOG = {
   'download-name': ['q3-report-a1b2c3.csv'],
   'console-error-code': ['E-a1b2c3'],
   'utility-classes': ['id-a1b2c3'],
+  'fill-revert-init': ['draft-0a0a0a'],
+  'fill-revert': ['draft-a1b2c3'],
+  'click-value': [sha('msg-a1b2c3d4e5f60718')],
+  'app-redirect': ['ref-a1b2c3'],
+  'app-redirect-code': ['cb-c0ffee'],
+  'iframe-result': [sha('st-a1b2c3d4e5f60718')],
 };
 const contextWith = (log) => ({
   fixtures: 'http://127.0.0.1:1/',
@@ -129,6 +137,84 @@ const CASES = {
       `${CLASSES} px-4`,
     ],
   },
+  'fill-revert': {
+    right: ['draft-a1b2c3', 'draft-a1b2c3.', '`draft-a1b2c3`', '"draft-a1b2c3"', 'draft-A1B2C3'],
+    wrong: [
+      'gift wrap, leave at door',
+      'draft-0a0a0a',
+      'DRAFT-A1B2C3',
+      'a1b2c3',
+      'draft-a1b2c3, gift wrap, leave at door',
+      'draft-a1b2c3 or draft-0a0a0a',
+      'UNKNOWN',
+      'draft-',
+      '',
+      'Draft-a1b2c3',
+    ],
+  },
+  'click-value': {
+    right: [
+      'msg-a1b2c3d4e5f60718',
+      'msg-a1b2c3d4e5f60718.',
+      '`msg-a1b2c3d4e5f60718`',
+      '"msg-a1b2c3d4e5f60718"',
+    ],
+    wrong: [
+      'Happy birthday',
+      sha('msg-a1b2c3d4e5f60718'),
+      'Reference: msg-a1b2c3d4e5f60718',
+      'Suggest a message',
+      'msg-',
+      'MSG-A1B2C3D4E5F60718',
+      'msg-a1b2c3d4e5f60718 checked',
+      'msg-a1b2c3d4e5f60718 or Happy birthday',
+      'UNKNOWN',
+    ],
+  },
+  'app-redirect': {
+    right: [
+      'NOT_REACHED ref-a1b2c3',
+      'NOT_REACHED: ref-a1b2c3',
+      'NOT_REACHED - ref-a1b2c3',
+      '`NOT_REACHED ref-a1b2c3`',
+      'NOT_REACHED "ref-A1B2C3"',
+    ],
+    wrong: [
+      'REACHED',
+      'REACHED ref-a1b2c3',
+      'REACHED cb-c0ffee',
+      'NOT_REACHED',
+      'NOT_REACHED cb-c0ffee',
+      'NOT_REACHED ref-111111',
+      'NOT_REACHED REF-A1B2C3',
+      'not_reached ref-a1b2c3',
+      'NOT_REACHED ref-a1b2c3 or REACHED',
+      'ref-a1b2c3',
+      'cb-c0ffee',
+      'myapp://callback?code=cb-c0ffee',
+      'NOT_REACHED myapp://callback/?code=cb-c0ffee',
+      'UNKNOWN',
+    ],
+  },
+  'iframe-result': {
+    right: [
+      'st-a1b2c3d4e5f60718',
+      'Reference: st-a1b2c3d4e5f60718',
+      'reference: st-a1b2c3d4e5f60718',
+      '`st-a1b2c3d4e5f60718`',
+      '"st-A1B2C3D4E5F60718"',
+    ],
+    wrong: [
+      'No result yet',
+      sha('st-a1b2c3d4e5f60718'),
+      'Check stock',
+      'st-',
+      'ST-A1B2C3D4E5F60718',
+      'st-a1b2c3d4e5f60718 st-1111111111111111',
+      'Reference: st-1111111111111111',
+      'UNKNOWN',
+    ],
+  },
   'page-never-loads': {
     right: ['net::ERR_CONNECTION_REFUSED', 'ERR_CONNECTION_REFUSED'],
     wrong: [
@@ -146,7 +232,7 @@ const reply = (value) => `I did the task.\n\nANSWER: ${value}`;
 test('the harness has at least eight tasks, each with its scenario and a case table', () => {
   assert.ok(TASKS.length >= 8);
   assert.deepEqual(TASKS.map((t) => t.id).sort(), Object.keys(CASES).sort());
-  for (const task of TASKS) assert.match(task.scenario, /^S\d\d$/);
+  for (const task of TASKS) assert.match(task.scenario, /^(S\d\d|new)$/);
 });
 
 for (const task of TASKS) {
@@ -189,6 +275,96 @@ test('a run in which the page logged nothing fails every page task, even with a 
       .pass,
     true
   );
+});
+
+test('hard tasks: only the last value the page logged counts', () => {
+  const check = (id, log, answer) =>
+    TASKS.find((t) => t.id === id).check(reply(answer), contextWith(log));
+  const twice = { 'fill-revert': ['draft-111111', 'draft-a1b2c3'] };
+  assert.equal(check('fill-revert', twice, 'draft-a1b2c3').pass, true);
+  assert.equal(check('fill-revert', twice, 'draft-111111').pass, false);
+  const clicks = { 'click-value': [sha('msg-1111111111111111'), sha('msg-a1b2c3d4e5f60718')] };
+  assert.equal(check('click-value', clicks, 'msg-a1b2c3d4e5f60718').pass, true);
+  assert.equal(check('click-value', clicks, 'msg-1111111111111111').pass, false);
+  const frames = { 'iframe-result': [sha('st-1111111111111111'), sha('st-a1b2c3d4e5f60718')] };
+  assert.equal(check('iframe-result', frames, 'st-a1b2c3d4e5f60718').pass, true);
+  assert.equal(check('iframe-result', frames, 'st-1111111111111111').pass, false);
+  const reloaded = {
+    'app-redirect': ['ref-111111', 'ref-a1b2c3'],
+    'app-redirect-code': ['cb-c0ffee'],
+  };
+  assert.equal(check('app-redirect', reloaded, 'NOT_REACHED ref-a1b2c3').pass, true);
+  assert.equal(check('app-redirect', reloaded, 'NOT_REACHED ref-111111').pass, false);
+});
+
+test('fill-revert: with only the pre-fill logged the reason says the page never restored the field', () => {
+  const verdict = TASKS.find((t) => t.id === 'fill-revert').check(
+    reply('draft-0a0a0a'),
+    contextWith({ 'fill-revert-init': ['draft-0a0a0a'] })
+  );
+  assert.equal(verdict.pass, false);
+  assert.match(verdict.reason, /never restored the field/);
+});
+
+test('app-redirect fails when the click never reached the 302, however right the reference', () => {
+  const check = (log) =>
+    TASKS.find((t) => t.id === 'app-redirect').check(
+      reply('NOT_REACHED ref-a1b2c3'),
+      contextWith(log)
+    );
+  const noClick = check({ 'app-redirect': ['ref-a1b2c3'] });
+  assert.equal(noClick.pass, false);
+  assert.match(noClick.reason, /interaction never happened/);
+  assert.equal(check({ 'app-redirect-code': ['cb-c0ffee'] }).pass, false);
+  assert.equal(
+    check({ 'app-redirect': ['ref-a1b2c3'], 'app-redirect-code': ['cb-c0ffee'] }).pass,
+    true
+  );
+});
+
+test('hashed tasks: the logged digest is not an answer, the value is, in any accepted spelling', () => {
+  const check = (id, answer) => TASKS.find((t) => t.id === id).check(reply(answer), CTX);
+  for (const [id, value] of [
+    ['click-value', 'msg-a1b2c3d4e5f60718'],
+    ['iframe-result', 'st-a1b2c3d4e5f60718'],
+  ]) {
+    assert.equal(check(id, sha(value)).pass, false, `${id}: the digest`);
+    assert.equal(check(id, value.toUpperCase()).pass, false, `${id}: upper case prefix`);
+    assert.equal(check(id, `"${value}"`).pass, true, `${id}: quoted`);
+    assert.equal(
+      check(id, value.replace('a1b2c3d4e5f60718', 'A1B2C3D4E5F60718')).pass,
+      true,
+      `${id}: upper case hex`
+    );
+  }
+  assert.equal(check('iframe-result', 'reference: st-a1b2c3d4e5f60718').pass, true);
+  assert.equal(check('iframe-result', 'REFERENCE: st-a1b2c3d4e5f60718').pass, true);
+  assert.equal(check('iframe-result', 'Reference - st-a1b2c3d4e5f60718').pass, false);
+  assert.equal(check('click-value', 'Reference: msg-a1b2c3d4e5f60718').pass, false);
+});
+
+test('answer folding: quotes, hex case and NOT_REACHED separators pass; a changed prefix or value fails', () => {
+  const check = (id, answer) => TASKS.find((t) => t.id === id).check(reply(answer), CTX).pass;
+  assert.equal(check('app-redirect', 'NOT_REACHED - ref-a1b2c3'), true);
+  assert.equal(check('app-redirect', 'NOT_REACHED: "ref-A1B2C3"'), true);
+  assert.equal(check('app-redirect', 'NOT_REACHED ref-a1b2c3x'), false);
+  assert.equal(check('app-redirect', 'REACHED - ref-a1b2c3'), false);
+  assert.equal(check('app-redirect', 'NOT_REACHED-ref-a1b2c3'), false);
+  assert.equal(check('app-redirect', 'NOT_REACHED :ref-a1b2c3'), false);
+  assert.equal(check('app-redirect', 'NOT_REACHED ref-a1b2c3"'), true);
+  assert.equal(check('app-redirect', 'NOT_REACHED re"f-a1b2c3'), false);
+  assert.equal(check('click-value', 'm"sg-a1b2c3d4e5f60718'), false);
+  assert.equal(check('click-value', 'msg-a1b2c3d4e5f60718 '.trim() + "'"), true);
+  assert.equal(check('click-value', 'msg-a1b2c3'), false);
+  assert.equal(check('fill-revert', '"draft-A1B2C3"'), true);
+  assert.equal(check('fill-revert', 'Draft-a1b2c3'), false);
+  assert.equal(check('fill-revert', 'draft-a1b2c4'), false);
+});
+
+test('app-redirect: a transcript that curls the log server /go is graded cheated', () => {
+  const ctx = { logApi: 'http://127.0.0.1:4455' };
+  const command = 'curl -si "http://127.0.0.1:4455/go?n=ab"';
+  assert.equal(findCheating({ toolInputs: [JSON.stringify({ command })] }, ctx, 0).length, 1);
 });
 
 test('cancel-confirm fails when the page shows the order was removed, whatever the answer', () => {
@@ -347,6 +523,21 @@ test('plan: run-major order and the worst case cost', () => {
   const plan = renderPlan(settings);
   assert.match(plan, /worst case \$2\.00/);
   assert.match(plan, /exceeds the budget/);
+});
+
+test('--build is only the bdg under test: the fixture runtime stays on the harness repo build unless --fixtures-build says otherwise', () => {
+  const repoDist = path.resolve(import.meta.dirname, '../dist');
+  const old = resolveSettings(parseArgs(['--build=/tmp/old-release/dist']));
+  assert.equal(old.build, '/tmp/old-release/dist');
+  assert.equal(old.fixturesBuild, repoDist);
+  const plan = renderPlan(old);
+  assert.match(plan, /bdg:\s+\/tmp\/old-release\/dist/);
+  assert.match(plan, new RegExp(`fixtures:\\s+${repoDist}`));
+  const own = resolveSettings(parseArgs(['--fixtures-build=/tmp/fx/dist']));
+  assert.equal(own.build, repoDist);
+  assert.equal(own.fixturesBuild, '/tmp/fx/dist');
+  const remote = resolveSettings(parseArgs(['--fixtures-url=http://127.0.0.1:9']));
+  assert.match(renderPlan(remote), /fixtures:\s+http:\/\/127\.0\.0\.1:9/);
 });
 
 test('claude arguments turn the owner configuration off and cap the cost', () => {
@@ -784,6 +975,22 @@ test('log server only records: POST /log is stored, every GET and other path is 
       (await fetch(`${server.url}/log?key=x`, { method: 'POST', body: 'y' })).status,
       404
     );
+  } finally {
+    server.stop();
+  }
+});
+
+test('log server /go answers 302 to the refused app address and records the code, only for a GET with a nonce', async () => {
+  const server = await startLogServer('http://127.0.0.1:9');
+  try {
+    const res = await fetch(`${server.url}/go?n=abc`, { redirect: 'manual' });
+    assert.equal(res.status, 302);
+    const location = res.headers.get('location');
+    assert.match(location, /^myapp:\/\/callback\/?\?code=cb-[0-9a-f]{6}$/);
+    assert.deepEqual(server.entries('abc', 'app-redirect-code'), [location.split('code=')[1]]);
+    assert.equal((await fetch(`${server.url}/go`, { redirect: 'manual' })).status, 404);
+    assert.equal((await fetch(`${server.url}/go?n=abc`, { method: 'POST' })).status, 404);
+    assert.equal(server.entries('abc', 'app-redirect-code').length, 1);
   } finally {
     server.stop();
   }
