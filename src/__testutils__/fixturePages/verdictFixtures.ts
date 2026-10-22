@@ -9,7 +9,9 @@
  *   same-origin `iframe#f`, `#frame-val` the value of its `input#fi`; Enter
  *   in `input#q3` (the key handler cancels the submit) flips `#cb2.checked`;
  *   `#late` writes "Late result arrived" into `div#r` 1500 ms after the click; `#noop` has no handler and `#fb` only gets a
- *   `:focus` outline.
+ *   `:focus` outline; `#frame-again` and `#main-again` write a new number
+ *   into the same node on each click (the frame's `div#n`, the page's
+ *   `div#n`), so repeated clicks write the same element again and again.
  * - `/verdict-frame-ticker`: a same-origin `iframe#f` whose own script
  *   replaces the text of its `div#o` every 250 ms (counting in the top
  *   window's `ticks`); `#noop` has no handler, `#frame-text` writes a result
@@ -25,10 +27,11 @@ const VERDICT_PROPS_HTML = `<!doctype html><title>verdict props</title>
 <p><input id="i1" value="a" aria-label="Value"> <button id="val">Set value</button></p>
 <p><input type="checkbox" id="cb" aria-label="Check"> <button id="chk">Toggle</button></p>
 <p><select id="s1" aria-label="Pick"><option>a</option><option>b</option></select> <button id="sel">Select b</button></p>
-<iframe id="f" srcdoc="<div id=o>x</div><input id=fi value=a aria-label=Inner>"></iframe>
+<iframe id="f" srcdoc="<div id=o>x</div><div id=n>0</div><input id=fi value=a aria-label=Inner>"></iframe>
 <p><button id="frame-text">Frame text</button> <button id="frame-val">Frame value</button></p>
 <form id="search" onsubmit="return false"><input id="q3" aria-label="Query"> <input id="q4" aria-label="Other"></form>
 <input type="checkbox" id="cb2" aria-label="Found">
+<p><button id="frame-again">Frame again</button> <button id="main-again">Main again</button></p><div id="n">0</div>
 <p><button id="late">Late</button></p><div id="r"></div>
 <script>
   const byId = (id) => document.getElementById(id);
@@ -46,6 +49,10 @@ const VERDICT_PROPS_HTML = `<!doctype html><title>verdict props</title>
   byId('q3').addEventListener('keydown', (event) => {
     if (event.key === 'Enter') { event.preventDefault(); byId('cb2').checked = !byId('cb2').checked; }
   });
+  byId('frame-again').addEventListener('click', () => {
+    byId('f').contentDocument.getElementById('n').textContent = String(Math.random());
+  });
+  byId('main-again').addEventListener('click', () => { byId('n').textContent = String(Math.random()); });
   byId('late').addEventListener('click', () => {
     setTimeout(() => { byId('r').textContent = 'Late result arrived'; }, 1500);
   });

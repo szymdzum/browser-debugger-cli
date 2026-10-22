@@ -9,7 +9,9 @@
  * a same-origin frame that updates itself.
  *
  * Timing: the handlers on `/verdict-props` run synchronously in the event,
- * so their change is there at the first read; `#late` writes 1500 ms after
+ * so their change is there at the first read (also when a button writes the
+ * same node on every click, which bdg's history must not learn as the page
+ * changing itself); `#late` writes 1500 ms after
  * the click, past the watch, and runs last. `/verdict-frame-ticker` is
  * clicked once its frame has ticked 4 times (`window.ticks`), so bdg's
  * history in the frame has seen it update itself.
@@ -91,6 +93,14 @@ void describe('Action verdicts (#891)', () => {
     void it('does not say nothing was observed after Enter that checked a checkbox', async () => {
       await assertEffect(['press-key', '#q3', 'Enter']);
     });
+
+    for (const selector of ['#frame-again', '#main-again']) {
+      void it(`counts each of 5 clicks on ${selector} writing the same node again`, async () => {
+        const effects = [];
+        for (let click = 0; click < 5; click++) effects.push(await effectOf(['click', selector]));
+        assert.deepEqual(effects, [undefined, undefined, undefined, undefined, undefined]);
+      });
+    }
 
     for (const selector of ['#noop', '#fb']) {
       void it(`keeps the verdict for a click on ${selector} that changed nothing`, async () => {

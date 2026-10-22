@@ -580,7 +580,9 @@ const OUTCOMES_JS = `(state, focus) => {
  * same-origin frames (found when the watch starts, also in open shadow roots
  * and nested frames; cross-origin frames are not readable), except those the
  * frame's own action history marks as the frame changing itself, as for the
- * document. They make no burst, add no nodes and no message.
+ * document. Each watched frame's `__bdgEffects` points to this watch until it
+ * stops, so the frame's history, like the document's, does not learn the
+ * action's own writes as the frame changing itself. They make no burst, add no nodes and no message.
  */
 export const EFFECTS_START_SCRIPT = `(() => {
   if (window.__bdgEffects) window.__bdgEffects.stop();
@@ -597,7 +599,7 @@ export const EFFECTS_START_SCRIPT = `(() => {
     keyTarget: null, loaders: new Set((${LOADERS_JS})()),
     pressTarget: null, submits: [], forms: [], control: null, keyClick: null, enterField: null,
     nodes: 0, expandable: null, inputTarget: null, openedDialogs: [], dispatching: false, dispatchTimer: 0,
-    controls: [], frameChanges: 0, sideChanges: undefined
+    controls: [], frameChanges: 0, sideChanges: undefined, frameViews: []
   };
   const dialogsSeen = new WeakSet();
   const listen = EventTarget.prototype.addEventListener;
@@ -701,6 +703,10 @@ export const EFFECTS_START_SCRIPT = `(() => {
     if (!doc || frameMarks.has(doc)) return;
     const view = doc.defaultView;
     const frameHistory = view ? view.__bdgHistory : undefined;
+    if (view && !view.__bdgEffects) {
+      view.__bdgEffects = state;
+      state.frameViews.push(view);
+    }
     frameMarks.set(doc, {
       marked: (${MARKED_REGIONS_JS})(frameHistory ? frameHistory.selfUpdating(view.performance.now()) : []),
       churned: frameHistory ? frameHistory.churned : new WeakSet()
@@ -764,6 +770,9 @@ export const EFFECTS_START_SCRIPT = `(() => {
     clearTimeout(state.dispatchTimer);
     observer.disconnect();
     state.release();
+    state.frameViews.forEach((view) => {
+      if (view.__bdgEffects === state) delete view.__bdgEffects;
+    });
     if (Element.prototype.attachShadow === watchedAttach) Element.prototype.attachShadow = attachShadow;
     types.forEach((type) => window.removeEventListener(type, record, true));
     state.forms.forEach((form) => unlisten.call(form, 'submit', onSubmit, true));
