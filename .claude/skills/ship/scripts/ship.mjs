@@ -573,12 +573,12 @@ async function ciWaitLoop(argv) {
 /**
  * Waits for one workflow run (a repeat dispatch) and prints its jobs.
  *
- * @param {string[]} argv `<run id>`, optional `--timeout=<minutes>` (default 60)
+ * @param {string[]} argv `<run id>`, optional `--timeout=<minutes>` (default 90: S28's ×10 repeat of a 2 s-per-fill change outlived 60)
  */
 async function runWait(argv) {
   const { positional, keys } = parseArgs(argv);
   if (!positional[0]) return usage('run-wait <run id> [--timeout=<minutes>]');
-  return withWaiterDeadline(keys.timeout ?? 60, () => runWaitLoop(positional[0]));
+  return withWaiterDeadline(keys.timeout ?? 90, () => runWaitLoop(positional[0]));
 }
 
 /**
@@ -779,22 +779,6 @@ export function staleDependencies(lock, installed) {
 export function loadWarning(load) {
   return load > LOAD_LIMIT
     ? `warning: load average ${load.toFixed(0)} is above ${LOAD_LIMIT}: find what is running (ps -axo pcpu,command -r | head) before starting agents or Chromes`
-    : null;
-}
-
-/**
- * The warning gate 8 and `ship leftovers` print when the snapshot is from an
- * earlier session, or null. Since it lives in ~/.cache/ship it survives a
- * reboot, and a days-old one counts every Chrome and file since then.
- *
- * @param {string} timeText contents of the snapshot's time file
- * @param {number} nowMs
- */
-export function staleSnapshotWarning(timeText, nowMs) {
-  const taken = Number(timeText.trim());
-  const hours = taken ? (nowMs - taken) / 3_600_000 : 0;
-  return hours > 12
-    ? `warning: the snapshot is ${Math.round(hours)} h old, probably from an earlier session: run ship snapshot at session start`
     : null;
 }
 
@@ -1886,8 +1870,6 @@ export function tempWorktrees(porcelain) {
  */
 function leftoverLines(scope) {
   const lines = [];
-  const stale = staleSnapshotWarning(existsSync(SNAPSHOT.time) ? readFileSync(SNAPSHOT.time, 'utf8') : '', Date.now());
-  if (stale) console.error(stale);
   for (const [key, dir] of [
     ['bdg', '.bdg'],
     ['downloads', 'Downloads'],
@@ -2583,7 +2565,26 @@ export function unfilledPlaceholders(text, placeholders) {
 export function briefProblems(text, placeholders) {
   if (text.trim().length < 200) return [`the brief is empty or too short (${text.trim().length} characters)`];
   const open = unfilledPlaceholders(text, placeholders);
-  return open.length ? [`placeholders still open: ${open.join(' ')}`] : [];
+  const problems = open.length ? [`placeholders still open: ${open.join(' ')}`] : [];
+  const handled = osHandlerUrls(text);
+  if (handled.length)
+    problems.push(`URLs the operating system opens in another app (S28: mailto: kept opening the owner's mail): ${handled.join(' ')}; use myapp:// or javascript: for a non-http scheme`);
+  return problems;
+}
+
+/** Schemes macOS hands to another app, even from headless Chrome */
+const OS_HANDLER_SCHEMES = ['mailto', 'tel', 'sms', 'facetime', 'facetime-audio', 'callto', 'skype', 'zoommtg', 'slack', 'msteams', 'itms-apps', 'maps'];
+
+/**
+ * URLs in a brief whose scheme another app on the machine handles. A scheme
+ * named as a word (`mailto:` in backticks, the ban itself) doesn't count:
+ * only one followed by an address does.
+ *
+ * @param {string} text
+ */
+export function osHandlerUrls(text) {
+  const pattern = new RegExp(`\\b(?:${OS_HANDLER_SCHEMES.join('|')}):(?![\\s\`'")\\],.]|$)[^\\s\`'")<>]*`, 'gi');
+  return [...new Set(text.match(pattern) ?? [])];
 }
 
 /** What a tier 1 implementer brief says instead of the red-commit rules */
