@@ -633,15 +633,17 @@ export const EFFECTS_START_SCRIPT = `(() => {
     for (const node of nodes) if (node.nodeType === 1 && list.length < ${MAX_TRACKED_NODES}) list.push(node);
   };
   const elementCount = (nodes) => Array.from(nodes).filter((node) => node.nodeType === 1).length;
-  const replaces = (record) => record.type === 'childList' && marked.has(record.target) &&
-    Array.from(record.removedNodes).some((node) => churned.has(node));
+  const ownMarks = { marked: marked, churned: churned };
+  const replacesIn = (record, marks) => record.type === 'childList' && marks.marked.has(record.target) &&
+    Array.from(record.removedNodes).some((node) => marks.churned.has(node));
+  const replaces = (record) => replacesIn(record, ownMarks);
   const tickingIn = (record, marks) => {
     if (!marks.marked.has(record.target)) return false;
     if (record.type === 'attributes') return true;
     if (record.type === 'characterData') return marks.churned.has(record.target);
     return Array.from(record.addedNodes).concat(Array.from(record.removedNodes)).every((node) => marks.churned.has(node));
   };
-  const ticking = (record) => tickingIn(record, { marked: marked, churned: churned });
+  const ticking = (record) => tickingIn(record, ownMarks);
   const noteDialogOpen = (record) => {
     const dialog = record.target;
     if (record.attributeName !== 'open' || dialog.localName !== 'dialog' || dialogsSeen.has(dialog)) return;
@@ -678,10 +680,7 @@ export const EFFECTS_START_SCRIPT = `(() => {
     const marksOf = (record) => frameMarks.get(record.target.ownerDocument || record.target);
     for (const record of records) {
       const marks = marksOf(record);
-      if (marks && record.type === 'childList' && marks.marked.has(record.target) &&
-        Array.from(record.removedNodes).some((node) => marks.churned.has(node))) {
-        record.addedNodes.forEach((node) => marks.churned.add(node));
-      }
+      if (marks && replacesIn(record, marks)) record.addedNodes.forEach((node) => marks.churned.add(node));
     }
     for (const record of records) {
       const marks = marksOf(record);
