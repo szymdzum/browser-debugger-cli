@@ -525,6 +525,21 @@ test('plan: run-major order and the worst case cost', () => {
   assert.match(plan, /exceeds the budget/);
 });
 
+test('--build is only the bdg under test: the fixture runtime stays on the harness repo build unless --fixtures-build says otherwise', () => {
+  const repoDist = path.resolve(import.meta.dirname, '../dist');
+  const old = resolveSettings(parseArgs(['--build=/tmp/old-release/dist']));
+  assert.equal(old.build, '/tmp/old-release/dist');
+  assert.equal(old.fixturesBuild, repoDist);
+  const plan = renderPlan(old);
+  assert.match(plan, /bdg:\s+\/tmp\/old-release\/dist/);
+  assert.match(plan, new RegExp(`fixtures:\\s+${repoDist}`));
+  const own = resolveSettings(parseArgs(['--fixtures-build=/tmp/fx/dist']));
+  assert.equal(own.build, repoDist);
+  assert.equal(own.fixturesBuild, '/tmp/fx/dist');
+  const remote = resolveSettings(parseArgs(['--fixtures-url=http://127.0.0.1:9']));
+  assert.match(renderPlan(remote), /fixtures:\s+http:\/\/127\.0\.0\.1:9/);
+});
+
 test('claude arguments turn the owner configuration off and cap the cost', () => {
   const settings = resolveSettings(parseArgs(['--run-budget=0.3']));
   const args = claudeArgs(settings, 'claude-haiku-5-5', 'prompt', '/tmp/helper');
