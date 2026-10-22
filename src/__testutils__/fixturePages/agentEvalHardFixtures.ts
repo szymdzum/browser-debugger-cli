@@ -5,8 +5,9 @@
  *
  * A page that must show what an action did makes its per-run value at load and logs it then,
  * before any action: the action itself sends no request, so bdg has no request to report for it.
- * `network details` on that load-time log shows the value; this is the page's own traffic and
- * harmless for grading.
+ * Where the value is the answer (`click-value`, `iframe-result`) the load-time log holds only its
+ * SHA-256, so `network details` on that request does not show the answer; the checker hashes the
+ * agent's answer.
  *
  * - `/eval-hard-note` has a "Delivery note" field holding `draft-<A>` (logged as `fill-revert-init`).
  *   1200 ms after the last `input` or `change` event on it, the page sets `draft-<B>` and logs it
@@ -24,6 +25,21 @@
 
 import type { FixtureRoutes } from '@/__testutils__/fixtureRoutes.js';
 import { RANDOM, report } from '@/__testutils__/fixturePages/agentEvalFixtures.js';
+
+/**
+ * Code that reports only the SHA-256 (hex) of a value, so the request holds no answer. The value
+ * stays in the page's closure for the click to apply.
+ *
+ * @param key - Task key
+ * @param value - JavaScript expression for the value
+ * @returns Statement
+ */
+function digestAndReport(key: string, value: string): string {
+  return `crypto.subtle.digest('SHA-256', new TextEncoder().encode(${value})).then((buffer) => {
+      const digest = [...new Uint8Array(buffer)].map((b) => b.toString(16).padStart(2, '0')).join('');
+      ${report(key, 'digest')}
+    });`;
+}
 
 /** Field the page puts a fresh value into 1200 ms after the last edit */
 const NOTE_HTML = `<!doctype html><title>Checkout</title>
@@ -59,7 +75,7 @@ const GIFT_HTML = `<!doctype html><title>Gift</title>
 <script>
   (() => {
     const suggestion = 'msg-' + ${RANDOM};
-    ${report('click-value', 'suggestion')}
+    ${digestAndReport('click-value', 'suggestion')}
     document.getElementById('suggest').addEventListener('click', () => {
       document.getElementById('message').value = suggestion;
       document.getElementById('card').checked = true;
@@ -75,7 +91,7 @@ const STOCK_HTML = `<!doctype html><title>Stock</title>
 <script>
   (() => {
     const reference = 'st-' + ${RANDOM};
-    ${report('iframe-result', 'reference')}
+    ${digestAndReport('iframe-result', 'reference')}
     document.getElementById('check').addEventListener('click', () => {
       const frame = document.getElementById('panel');
       frame.contentDocument.getElementById('out').textContent = 'Reference: ' + reference;
