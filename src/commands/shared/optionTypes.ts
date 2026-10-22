@@ -209,6 +209,8 @@ export interface DomEvalCommandOptions extends BaseOptions {
   frame?: string;
   /** The whole value instead of its first 20000 characters */
   full?: boolean;
+  /** Print a string result as is (no JSON quoting); other types are unchanged */
+  raw?: boolean;
 }
 
 /** Options for DOM frames command */

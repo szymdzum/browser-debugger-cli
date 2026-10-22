@@ -85,6 +85,12 @@ export const DOM_READ_BEHAVIORS: BehaviorTable = {
     tokenImpact:
       'eval document.documentElement.outerHTML on Wikipedia is about 3.6 MB with --full; on a page with 20000 elements, [...document.querySelectorAll("*")].map(e => e.outerHTML) --json is 3 MB with --full and 23 KB without; select what you need in the expression instead',
   },
+  'eval:--raw': {
+    default:
+      'A string result prints as is unless it would read as another value: the empty string, "undefined" and valid JSON such as "42" or "[1,2]" stay JSON-quoted',
+    whenEnabled:
+      'Prints a string result as is, with no JSON quoting or escaping, so "40.00" prints as 40.00; other types print as before, and --json is unchanged',
+  },
   'listeners:--type': {
     default:
       'Lists listeners of every event type on the element, its ancestors (through open shadow roots), its document and window',
