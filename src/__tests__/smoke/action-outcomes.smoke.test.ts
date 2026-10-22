@@ -5,7 +5,7 @@
  * for "nothing happened": a form submit the action fired is reported
  * (`submitted`, `Form:` row; cancelled or not), also for a submit that
  * changed nothing visible; a click whose handler prevents the submit, and
- * Enter in a form field that submits nothing, keep "no visible effect";
+ * Enter in a form field that submits nothing, keep "nothing observed";
  * plain text a handler adds near the clicked control is reported as shown
  * (never a field's value); the clicked button's own change (disabled, new
  * label) is reported; a key that activated the button it was pressed on says
@@ -113,7 +113,7 @@ void describe('Action outcomes', () => {
       assert.equal(data.effect, undefined);
       const output = await bdg(['dom', 'click', '#loose-go']);
       assert.match(output, /Form submitted \(cancelled by the page\)/);
-      assert.doesNotMatch(output, /no visible effect/);
+      assert.doesNotMatch(output, /nothing observed/);
     });
 
     void it('reports the submit whose handler cleared the field', async () => {
@@ -123,19 +123,19 @@ void describe('Action outcomes', () => {
       assert.equal(data.effect, undefined);
     });
 
-    void it('keeps "no visible effect" for a click whose handler prevents the submit', async () => {
+    void it('keeps "nothing observed" for a click whose handler prevents the submit', async () => {
       const data = await act(['click', '#guarded-go']);
       assert.equal(data.submitted, undefined);
       assert.equal(data.effect, 'none');
     });
 
-    void it('warns "no visible effect" when Enter in a form field submits nothing', async () => {
+    void it('warns "nothing observed" when Enter in a form field submits nothing', async () => {
       await bdg(['dom', 'fill', '#guarded [name=nick]', 'ada']);
       const data = await act(['press-key', '#guarded [name=nick]', 'Enter']);
       assert.equal(data.submitted, undefined);
       assert.equal(data.effect, 'none');
       const output = await bdg(['dom', 'press-key', '#guarded [name=nick]', 'Enter']);
-      assert.match(output, /no visible effect/);
+      assert.match(output, /nothing observed/);
     });
   });
 

@@ -225,7 +225,11 @@ export interface ActionEffects {
    * effect, request, dialog, new window or console error (absent otherwise)
    */
   domChanges?: number;
-  /** "none" when the action had no visible effect: no DOM change, request or navigation */
+  /**
+   * "none" when nothing was observed within about half a second of the action:
+   * no DOM change (also no form control property or same-origin frame change),
+   * request or navigation; a later result is not watched
+   */
   effect?: 'none';
   /** False when the page was still changing as the action returned (absent otherwise) */
   settled?: false;

@@ -576,7 +576,7 @@ interface ActionNotices extends ActionEffects {
  * Build an action's output: the status line ("✓ Element Clicked",
  * "⚠ Element Clicked (with warnings)" with the warning right below it,
  * "⚠ Element Clicked (page still changing)" with what it was still working
- * on, "⚠ Element Clicked (submit blocked)" with the fields that blocked it, or "⚠ Element Clicked (no visible effect: …)"), the details, what
+ * on, "⚠ Element Clicked (submit blocked)" with the fields that blocked it, or "⚠ Element Clicked (nothing observed within about half a second: …)"), the details, what
  * changed on the page (`Page:` navigation, a `Form submitted` line,
  * a `Button changed:` line for the pressed button's own change, `Activated:` for an
  * element a key clicked, `New text:` messages, `Shown:` elements), the

@@ -66,7 +66,7 @@ export interface InteractionOptions {
    */
   reportEffects?: boolean;
   /**
-   * Say when it had no visible effect (`effect: "none"`): only for actions
+   * Say when nothing was observed after it (`effect: "none"`): only for actions
    * whose effect shows in the DOM (click, submit) and that waited for it
    */
   detectNoEffect?: boolean;

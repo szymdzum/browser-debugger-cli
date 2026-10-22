@@ -122,7 +122,7 @@ void describe('dom click on a submit button blocked by validation', () => {
     assert.deepEqual(await evaluate('window.submitted'), []);
   });
 
-  void it('says so again on the next click, instead of "no visible effect"', async () => {
+  void it('says so again on the next click, instead of "nothing observed"', async () => {
     await bdg(['dom', 'fill', 'input[type=email]', 'ada']);
     await bdg(['dom', 'click', 'button:has-text("Go")']);
     const output = await bdg(['dom', 'click', 'button:has-text("Go")']);

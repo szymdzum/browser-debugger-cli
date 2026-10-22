@@ -352,10 +352,11 @@ void describe('reportedDomChanges', () => {
 });
 
 void describe('effect output', () => {
-  void it('says when an action had no visible effect', () => {
+  void it('says when nothing was observed after an action', () => {
     assert.equal(
       actionStatusLine('Element Clicked', { warned: false, noEffect: true }),
-      '⚠ Element Clicked (no visible effect observed: no DOM change, requests or navigation within 300 ms)'
+      '⚠ Element Clicked (nothing observed within about half a second: no DOM change, requests or navigation; ' +
+        'later results are not watched: look with bdg dom query, bdg peek or bdg dom screenshot)'
     );
     assert.equal(
       actionStatusLine('Element Clicked', { warned: true }),
@@ -378,7 +379,7 @@ void describe('effect output', () => {
     );
   });
 
-  void it('says a blocked submit instead of no visible effect, naming every field', () => {
+  void it('says a blocked submit instead of nothing observed, naming every field', () => {
     assert.equal(
       actionStatusLine('Element Clicked', { warned: false, noEffect: true, submitBlocked: true }),
       '⚠ Element Clicked (submit blocked)'

@@ -14,7 +14,7 @@
  * the page's own tasks run up to about 150 ms late after a click (#528),
  * because time the page could not run is not quiet time (#531).
  * Elsewhere:
- * - "no visible effect" (`effect: 'none'`) is claimed only for handlers that
+ * - "nothing observed" (`effect: 'none'`) is claimed only for handlers that
  *   change nothing at all; the effects other clicks, hovers and key presses
  *   report come from synchronous handlers, so they hold at any speed.
  * - The controlled checkbox re-renders in a 0 ms timer; it is read by a new
@@ -823,7 +823,7 @@ void describe('DOM interactions', () => {
     assert.match(first, /Element: +input\.toggle in li \("Write report"\)/);
     assert.match(
       await bdg(['dom', 'click', '#behind']),
-      /^⚠ Element Clicked \(no visible effect observed: no DOM change, requests or navigation within 300 ms\)\n⚠ Warning: Element is under transparent div \(clicks land on it\)/
+      /^⚠ Element Clicked \(nothing observed within about half a second: no DOM change, requests or navigation; later results are not watched: look with bdg dom query, bdg peek or bdg dom screenshot\)\n⚠ Warning: Element is under transparent div \(clicks land on it\)/
     );
     assert.match(
       await bdg(['dom', 'click', '#cancel']),
@@ -898,7 +898,7 @@ void describe('DOM interactions', () => {
     assert.match(String(await evaluate('location.href')), /\/forms-jumped\?to=b$/);
   });
 
-  void it('says when a click had no visible effect, and what a click changed', async () => {
+  void it('says when nothing was observed after a click, and what a click changed', async () => {
     await bdg(['page', 'navigate', `${fixture.url}forms`]);
     type Effects = {
       data: {
@@ -912,7 +912,7 @@ void describe('DOM interactions', () => {
 
     assert.match(
       await bdg(['dom', 'click', '#broken']),
-      /^⚠ Element Clicked \(no visible effect observed: no DOM change, requests or navigation within 300 ms\)\n/
+      /^⚠ Element Clicked \(nothing observed within about half a second: no DOM change, requests or navigation; later results are not watched: look with bdg dom query, bdg peek or bdg dom screenshot\)\n/
     );
     assert.equal((await click('#broken')).effect, 'none');
     assert.equal(
