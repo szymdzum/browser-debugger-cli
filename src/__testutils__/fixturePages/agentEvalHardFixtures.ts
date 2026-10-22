@@ -13,9 +13,9 @@
  *   1200 ms after the last `input` or `change` event on it, the page sets `draft-<B>` and logs it
  *   as `fill-revert`; a fill reads back the typed text, but the field ends up holding B.
  * - `/eval-hard-gift` has a "Gift message" field with `Happy birthday`; the "Suggest a message"
- *   button sets its value to `msg-<hex>` (made and logged at load as `click-value`) and checks
+ *   button sets its value to `msg-<16 hex>` (made and logged at load as `click-value`) and checks
  *   "Add a card", by property only: no DOM mutation, no request.
- * - `/eval-hard-stock` has a "Check stock" button that writes `Reference: st-<hex>` (made and
+ * - `/eval-hard-stock` has a "Check stock" button that writes `Reference: st-<16 hex>` (made and
  *   logged at load as `iframe-result`) into a same-origin `srcdoc` iframe showing `No result yet`.
  * - `/eval-hard-app` shows `Reference: ref-<hex>` (made and logged at load as `app-redirect`) and a
  *   "Continue to the app" form that sends a GET to the harness's log server `/go`, which answers
@@ -25,6 +25,9 @@
 
 import type { FixtureRoutes } from '@/__testutils__/fixtureRoutes.js';
 import { RANDOM, report } from '@/__testutils__/fixturePages/agentEvalFixtures.js';
+
+/** Code for a fresh random value of sixteen hex characters, for values that are only logged as a digest */
+const RANDOM_LONG = `[...crypto.getRandomValues(new Uint8Array(8))].map((b) => b.toString(16).padStart(2, '0')).join('')`;
 
 /**
  * Code that reports only the SHA-256 (hex) of a value, so the request holds no answer. The value
@@ -74,7 +77,7 @@ const GIFT_HTML = `<!doctype html><title>Gift</title>
 <label><input type="checkbox" id="card"> Add a card</label>
 <script>
   (() => {
-    const suggestion = 'msg-' + ${RANDOM};
+    const suggestion = 'msg-' + ${RANDOM_LONG};
     ${digestAndReport('click-value', 'suggestion')}
     document.getElementById('suggest').addEventListener('click', () => {
       document.getElementById('message').value = suggestion;
@@ -90,7 +93,7 @@ const STOCK_HTML = `<!doctype html><title>Stock</title>
 <iframe id="panel" srcdoc="<p id='out'>No result yet</p>"></iframe>
 <script>
   (() => {
-    const reference = 'st-' + ${RANDOM};
+    const reference = 'st-' + ${RANDOM_LONG};
     ${digestAndReport('iframe-result', 'reference')}
     document.getElementById('check').addEventListener('click', () => {
       const frame = document.getElementById('panel');

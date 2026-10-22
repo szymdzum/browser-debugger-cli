@@ -47,10 +47,10 @@ const LOG = {
   'utility-classes': ['id-a1b2c3'],
   'fill-revert-init': ['draft-0a0a0a'],
   'fill-revert': ['draft-a1b2c3'],
-  'click-value': [sha('msg-a1b2c3')],
+  'click-value': [sha('msg-a1b2c3d4e5f60718')],
   'app-redirect': ['ref-a1b2c3'],
   'app-redirect-code': ['cb-c0ffee'],
-  'iframe-result': [sha('st-a1b2c3')],
+  'iframe-result': [sha('st-a1b2c3d4e5f60718')],
 };
 const contextWith = (log) => ({
   fixtures: 'http://127.0.0.1:1/',
@@ -153,16 +153,21 @@ const CASES = {
     ],
   },
   'click-value': {
-    right: ['msg-a1b2c3', 'msg-a1b2c3.', '`msg-a1b2c3`', '"msg-a1b2c3"'],
+    right: [
+      'msg-a1b2c3d4e5f60718',
+      'msg-a1b2c3d4e5f60718.',
+      '`msg-a1b2c3d4e5f60718`',
+      '"msg-a1b2c3d4e5f60718"',
+    ],
     wrong: [
       'Happy birthday',
-      sha('msg-a1b2c3'),
-      'Reference: msg-a1b2c3',
+      sha('msg-a1b2c3d4e5f60718'),
+      'Reference: msg-a1b2c3d4e5f60718',
       'Suggest a message',
       'msg-',
-      'MSG-A1B2C3',
-      'msg-a1b2c3 checked',
-      'msg-a1b2c3 or Happy birthday',
+      'MSG-A1B2C3D4E5F60718',
+      'msg-a1b2c3d4e5f60718 checked',
+      'msg-a1b2c3d4e5f60718 or Happy birthday',
       'UNKNOWN',
     ],
   },
@@ -192,15 +197,21 @@ const CASES = {
     ],
   },
   'iframe-result': {
-    right: ['st-a1b2c3', 'Reference: st-a1b2c3', 'reference: st-a1b2c3', '`st-a1b2c3`', '"st-A1B2C3"'],
+    right: [
+      'st-a1b2c3d4e5f60718',
+      'Reference: st-a1b2c3d4e5f60718',
+      'reference: st-a1b2c3d4e5f60718',
+      '`st-a1b2c3d4e5f60718`',
+      '"st-A1B2C3D4E5F60718"',
+    ],
     wrong: [
       'No result yet',
-      sha('st-a1b2c3'),
+      sha('st-a1b2c3d4e5f60718'),
       'Check stock',
       'st-',
-      'ST-A1B2C3',
-      'st-a1b2c3 st-111111',
-      'Reference: st-111111',
+      'ST-A1B2C3D4E5F60718',
+      'st-a1b2c3d4e5f60718 st-1111111111111111',
+      'Reference: st-1111111111111111',
       'UNKNOWN',
     ],
   },
@@ -272,12 +283,12 @@ test('hard tasks: only the last value the page logged counts', () => {
   const twice = { 'fill-revert': ['draft-111111', 'draft-a1b2c3'] };
   assert.equal(check('fill-revert', twice, 'draft-a1b2c3').pass, true);
   assert.equal(check('fill-revert', twice, 'draft-111111').pass, false);
-  const clicks = { 'click-value': [sha('msg-111111'), sha('msg-a1b2c3')] };
-  assert.equal(check('click-value', clicks, 'msg-a1b2c3').pass, true);
-  assert.equal(check('click-value', clicks, 'msg-111111').pass, false);
-  const frames = { 'iframe-result': [sha('st-111111'), sha('st-a1b2c3')] };
-  assert.equal(check('iframe-result', frames, 'st-a1b2c3').pass, true);
-  assert.equal(check('iframe-result', frames, 'st-111111').pass, false);
+  const clicks = { 'click-value': [sha('msg-1111111111111111'), sha('msg-a1b2c3d4e5f60718')] };
+  assert.equal(check('click-value', clicks, 'msg-a1b2c3d4e5f60718').pass, true);
+  assert.equal(check('click-value', clicks, 'msg-1111111111111111').pass, false);
+  const frames = { 'iframe-result': [sha('st-1111111111111111'), sha('st-a1b2c3d4e5f60718')] };
+  assert.equal(check('iframe-result', frames, 'st-a1b2c3d4e5f60718').pass, true);
+  assert.equal(check('iframe-result', frames, 'st-1111111111111111').pass, false);
   const reloaded = {
     'app-redirect': ['ref-111111', 'ref-a1b2c3'],
     'app-redirect-code': ['cb-c0ffee'],
@@ -305,24 +316,31 @@ test('app-redirect fails when the click never reached the 302, however right the
   assert.equal(noClick.pass, false);
   assert.match(noClick.reason, /interaction never happened/);
   assert.equal(check({ 'app-redirect-code': ['cb-c0ffee'] }).pass, false);
-  assert.equal(check({ 'app-redirect': ['ref-a1b2c3'], 'app-redirect-code': ['cb-c0ffee'] }).pass, true);
+  assert.equal(
+    check({ 'app-redirect': ['ref-a1b2c3'], 'app-redirect-code': ['cb-c0ffee'] }).pass,
+    true
+  );
 });
 
 test('hashed tasks: the logged digest is not an answer, the value is, in any accepted spelling', () => {
   const check = (id, answer) => TASKS.find((t) => t.id === id).check(reply(answer), CTX);
   for (const [id, value] of [
-    ['click-value', 'msg-a1b2c3'],
-    ['iframe-result', 'st-a1b2c3'],
+    ['click-value', 'msg-a1b2c3d4e5f60718'],
+    ['iframe-result', 'st-a1b2c3d4e5f60718'],
   ]) {
     assert.equal(check(id, sha(value)).pass, false, `${id}: the digest`);
     assert.equal(check(id, value.toUpperCase()).pass, false, `${id}: upper case prefix`);
     assert.equal(check(id, `"${value}"`).pass, true, `${id}: quoted`);
-    assert.equal(check(id, value.replace('a1b2c3', 'A1B2C3')).pass, true, `${id}: upper case hex`);
+    assert.equal(
+      check(id, value.replace('a1b2c3d4e5f60718', 'A1B2C3D4E5F60718')).pass,
+      true,
+      `${id}: upper case hex`
+    );
   }
-  assert.equal(check('iframe-result', 'reference: st-a1b2c3').pass, true);
-  assert.equal(check('iframe-result', 'REFERENCE: st-a1b2c3').pass, true);
-  assert.equal(check('iframe-result', 'Reference - st-a1b2c3').pass, false);
-  assert.equal(check('click-value', 'Reference: msg-a1b2c3').pass, false);
+  assert.equal(check('iframe-result', 'reference: st-a1b2c3d4e5f60718').pass, true);
+  assert.equal(check('iframe-result', 'REFERENCE: st-a1b2c3d4e5f60718').pass, true);
+  assert.equal(check('iframe-result', 'Reference - st-a1b2c3d4e5f60718').pass, false);
+  assert.equal(check('click-value', 'Reference: msg-a1b2c3d4e5f60718').pass, false);
 });
 
 test('answer folding: quotes, hex case and NOT_REACHED separators pass; a changed prefix or value fails', () => {
@@ -331,6 +349,13 @@ test('answer folding: quotes, hex case and NOT_REACHED separators pass; a change
   assert.equal(check('app-redirect', 'NOT_REACHED: "ref-A1B2C3"'), true);
   assert.equal(check('app-redirect', 'NOT_REACHED ref-a1b2c3x'), false);
   assert.equal(check('app-redirect', 'REACHED - ref-a1b2c3'), false);
+  assert.equal(check('app-redirect', 'NOT_REACHED-ref-a1b2c3'), false);
+  assert.equal(check('app-redirect', 'NOT_REACHED :ref-a1b2c3'), false);
+  assert.equal(check('app-redirect', 'NOT_REACHED ref-a1b2c3"'), true);
+  assert.equal(check('app-redirect', 'NOT_REACHED re"f-a1b2c3'), false);
+  assert.equal(check('click-value', 'm"sg-a1b2c3d4e5f60718'), false);
+  assert.equal(check('click-value', 'msg-a1b2c3d4e5f60718 '.trim() + "'"), true);
+  assert.equal(check('click-value', 'msg-a1b2c3'), false);
   assert.equal(check('fill-revert', '"draft-A1B2C3"'), true);
   assert.equal(check('fill-revert', 'Draft-a1b2c3'), false);
   assert.equal(check('fill-revert', 'draft-a1b2c4'), false);

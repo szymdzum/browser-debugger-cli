@@ -147,18 +147,19 @@ function loggedTruth(key, derive = (logged) => logged) {
 }
 
 /**
- * Fold the harmless variants of an answer: quotes, uppercase hex digits after a value
- * prefix, and a `-` or `:` after `NOT_REACHED`. A different case of a prefix stays different.
+ * Fold the harmless variants of an answer: quotes around a word, uppercase hex digits after a value
+ * prefix, and a ` -` or `:` after `NOT_REACHED`. A different case of a prefix stays different.
  * @param {string} value answer value
  * @returns {string} comparable form
  */
 function foldAnswer(value) {
-  return normalise(value.replace(/["'\u201c\u201d\u2018\u2019]/g, ''))
-    .replace(
-      /\b(draft|msg|st|ref)-([0-9A-Fa-f]{6})\b/g,
-      (_, prefix, hex) => `${prefix}-${hex.toLowerCase()}`
+  return normalise(value)
+    .replace(/(^|\s)["'\u201c\u2018]+(?=\S)/g, '$1')
+    .replace(/(?<=\S)["'\u201d\u2019]+(?=\s|$)/g, '')
+    .replace(/\b(?:(?:draft|ref)-[0-9A-Fa-f]{6}|(?:msg|st)-[0-9A-Fa-f]{16})\b/g, (match) =>
+      match.toLowerCase()
     )
-    .replace(/^NOT_REACHED\s*[:-]\s*/, 'NOT_REACHED ');
+    .replace(/^NOT_REACHED(?::|\s+-)?\s+/, 'NOT_REACHED ');
 }
 
 /**
@@ -389,7 +390,7 @@ export const TASKS = [
     scenario: 'new',
     title: 'A click whose result appears in an iframe',
     prompt: (ctx) =>
-      `Open ${pageUrl(ctx, 'eval-hard-stock')} and click "Check stock". Tell me the reference the page shows afterwards. ${ANSWER_RULE}<reference>\` (like st-1a2b3c).`,
+      `Open ${pageUrl(ctx, 'eval-hard-stock')} and click "Check stock". Tell me the reference the page shows afterwards. ${ANSWER_RULE}<reference>\` (like st-1a2b3c4d5e6f7a8b).`,
     check: hardChecker(hashedTruth('iframe-result', /^reference:\s*/i)),
   },
   {
