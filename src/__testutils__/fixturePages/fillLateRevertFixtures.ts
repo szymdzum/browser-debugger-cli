@@ -13,7 +13,8 @@
  * is emptied 100 ms after `input` (a search box that submits by itself).
  *
  * Formatting and noise (the fill must succeed): `#phone` is masked
- * (`(555) 123-4567`) 300 ms after the last `input`; `#upper` is upper-cased
+ * (`(555) 123-4567`) 300 ms after the last `input`, as is `#phone-filled`,
+ * which holds `(555) 123-4567` already; `#upper` is upper-cased
  * 400 ms after `blur`; `#trim` is trimmed 100 ms after `change`; `#auto` is
  * completed to `London` 200 ms after `input`; `#valid` only shows a message
  * 300 ms after `input`; `#remount-keep` is replaced 200 ms after `change`
@@ -39,6 +40,7 @@ const FILL_LATE_REVERT_HTML = `<!doctype html><title>fill late revert</title>
 <label>Search <input id="cleared"></label>
 <span id="remount-old-slot"><label>Remount old <input id="remount-old" value="o"></label></span>
 <label>Phone <input id="phone" type="tel"></label>
+<label>Phone filled <input id="phone-filled" type="tel" value="(555) 123-4567"></label>
 <label>Upper <input id="upper"></label>
 <label>Trim <input id="trim"></label>
 <label>City <input id="auto"></label>
@@ -77,14 +79,16 @@ const FILL_LATE_REVERT_HTML = `<!doctype html><title>fill late revert</title>
   };
   remount('remount-old', 'o');
   remount('remount-keep');
-  let phoneTimer;
-  byId('phone').addEventListener('input', (event) => {
-    clearTimeout(phoneTimer);
-    phoneTimer = setTimeout(() => {
-      const d = event.target.value.replace(/\\D/g, '');
-      if (d.length === 10) event.target.value = '(' + d.slice(0, 3) + ') ' + d.slice(3, 6) + '-' + d.slice(6);
-    }, 300);
-  });
+  for (const id of ['phone', 'phone-filled']) {
+    let phoneTimer;
+    byId(id).addEventListener('input', (event) => {
+      clearTimeout(phoneTimer);
+      phoneTimer = setTimeout(() => {
+        const d = event.target.value.replace(/\\D/g, '');
+        if (d.length === 10) event.target.value = '(' + d.slice(0, 3) + ') ' + d.slice(3, 6) + '-' + d.slice(6);
+      }, 300);
+    });
+  }
   byId('upper').addEventListener('blur', (event) =>
     setTimeout(() => { event.target.value = event.target.value.toUpperCase(); }, 400));
   byId('trim').addEventListener('change', (event) =>

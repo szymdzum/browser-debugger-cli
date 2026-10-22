@@ -129,8 +129,10 @@ export const FILL_VALUE_MISMATCH_JS = `(field, expected, secret) => {
  * field that is not text-like is a revert. A text-like field reverted when
  * it holds its value from before the fill (`check.before`; compared
  * trimmed, inner whitespace collapsed and case-folded, so a controlled input
- * restoring its state `o` over a DOM value `o ` counts), or is blank while
- * the value given was not; any other value is the page formatting
+ * restoring its state `o` over a DOM value `o ` counts) and that value
+ * differs from the one given in its letters and digits (a re-fill of
+ * `5551234567` over `(555) 123-4567` formatted again is no revert), or is
+ * blank while the value given was not; any other value is the page formatting
  * the one given (a phone mask, a date written out, upper-casing, an
  * autocomplete), so a page replacing it with unrelated text is not seen.
  */
@@ -143,8 +145,11 @@ export const LATE_REVERT_JS = `(field, check) => {
   if (!textLike) return mismatch;
   const late = (${FIELD_VALUE_JS})(field);
   const blanked = late.trim() === '' && String(check.expected).trim() !== '';
+  const old = check.before.get(check.el);
   const loose = (text) => String(text).trim().replace(/\\s+/g, ' ').toLowerCase();
-  return loose(late) === loose(check.before.get(check.el)) || blanked ? mismatch : undefined;
+  const chars = (text) => String(text).normalize('NFKC').toLowerCase().replace(/[^\\p{L}\\p{N}]/gu, '');
+  const backToOld = loose(late) === loose(old) && chars(old) !== chars(check.expected);
+  return backToOld || blanked ? mismatch : undefined;
 }`;
 
 /**

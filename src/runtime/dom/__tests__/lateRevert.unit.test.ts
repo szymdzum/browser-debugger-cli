@@ -64,6 +64,8 @@ void describe('LATE_REVERT_JS', () => {
     assert.equal(reverted('xyz', 'new', 'o'), false);
     assert.equal(reverted('ne', 'new', 'o'), false);
     assert.equal(reverted('n/a', '', 'o'), false);
+    assert.equal(reverted('(555) 123-4567', '5551234567', '(555) 123-4567'), false);
+    assert.equal(reverted('(555) 987-6543', '5559876543', '(555) 123-4567'), false);
   });
 
   void it('reports the old value, and a blank field when the value given was not', () => {
@@ -74,6 +76,7 @@ void describe('LATE_REVERT_JS', () => {
     assert.equal(reverted('o', '', 'o'), true);
     assert.equal(reverted('o', 'new', 'o '), true);
     assert.equal(reverted('Old  Value', 'new', ' old value'), true);
+    assert.equal(reverted('(555) 123-4567', '5559876543', '(555) 123-4567'), true);
   });
 
   void it('reports any change of a field that is not text-like', () => {

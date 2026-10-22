@@ -12,7 +12,10 @@
  * unrelated text, a known limit: only the old value or a blank counts as a
  * revert): the fill succeeds. A field emptied later (a search box that
  * submits by itself) fails too, its suggestion saying the fill may have
- * taken effect. `--no-wait` reads the value only right after
+ * taken effect. A re-fill of the number a field already shows formatted is
+ * no revert either. Each cell gets a fresh document in one session (a page
+ * navigation, not `page reload`, which waits for the ticker to settle).
+ * `--no-wait` reads the value only right after
  * the fill, as before.
  */
 
@@ -21,11 +24,8 @@ import { after, before, describe, it } from 'node:test';
 
 import { runCommand } from '@/__testutils__/commandRunner.js';
 import { cleanupAllSessions } from '@/__testutils__/daemonHelpers.js';
-import {
-  getFreePort,
-  startFixtureServer,
-  type FixtureServer,
-} from '@/__testutils__/fixtureServer.js';
+import { startFixtureServer, type FixtureServer } from '@/__testutils__/fixtureServer.js';
+import { createSharedSession } from '@/__testutils__/sharedSession.js';
 
 /** Exit code of a fill whose value the page did not keep (RESOURCE_CONFLICT) */
 const MISMATCH_EXIT = 90;
@@ -92,6 +92,18 @@ const CELLS: Cell[] = [
   },
   { name: 'another field and a ticker changing', field: '#plain', value: 'hello' },
   { name: 'password upper-cased after change', field: '#pw', value: 'hunter22' },
+  {
+    name: 're-fill of the number the field shows formatted',
+    field: '#phone-filled',
+    value: '5551234567',
+    pageValue: '(555) 123-4567',
+  },
+  {
+    name: 're-fill of another number',
+    field: '#phone-filled',
+    value: '5559876543',
+    pageValue: '(555) 987-6543',
+  },
 ];
 
 /** What the tests read of the `--json` envelope of `dom fill` */
@@ -105,12 +117,14 @@ interface FillEnvelope {
 
 let fixture: FixtureServer;
 
+/** Opens the page in the file's one session: a fresh document per cell, without waiting for the ticker to settle */
+const open = createSharedSession();
+
 /**
  * Load the fixture page afresh, so each cell starts from the page's values.
  */
 async function reload(): Promise<void> {
-  const result = await runCommand('page', ['reload', '--json'], { timeout: 60000 });
-  assert.equal(result.exitCode, 0, `${result.stdout}${result.stderr}`);
+  await open(`${fixture.url}fill-late-revert`);
 }
 
 /**
@@ -135,13 +149,6 @@ async function fill(
 before(async () => {
   await cleanupAllSessions();
   fixture = await startFixtureServer();
-  const port = await getFreePort();
-  const start = await runCommand(
-    `${fixture.url}fill-late-revert`,
-    ['--port', String(port), '--headless'],
-    { timeout: 60000 }
-  );
-  assert.equal(start.exitCode, 0, `${start.stdout}${start.stderr}`);
 });
 
 after(async () => {
