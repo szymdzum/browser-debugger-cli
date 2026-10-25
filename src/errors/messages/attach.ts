@@ -25,6 +25,33 @@ export function externalChromeUnreachableError(
   };
 }
 
+/** How to reach a Chrome endpoint given directly with `--chrome-ws-url` */
+export const CHROME_ENDPOINT_SUGGESTION =
+  "Check that the URL is right and that Chrome runs with --remote-debugging-port; the browser's WebSocket URL is listed at http://<host>:<port>/json/version";
+
+/** Failures that mean the endpoint itself could not be reached */
+const CHROME_CONNECTION_FAILURE =
+  /Failed to connect|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|getaddrinfo|WebSocket|socket hang up/i;
+
+/**
+ * Whether an error message is a connection failure at a Chrome endpoint.
+ *
+ * @param message - Error message
+ */
+export function isChromeConnectionFailure(message: string): boolean {
+  return CHROME_CONNECTION_FAILURE.test(message);
+}
+
+/**
+ * A direct `--chrome-ws-url` connection failed (DNS, refused, or a closed
+ * handshake): the URL is the only thing that names the browser.
+ *
+ * @param message - The connection error
+ */
+export function chromeConnectionFailedError(message: string): ErrorWithSuggestion {
+  return { message, suggestion: CHROME_ENDPOINT_SUGGESTION };
+}
+
 /**
  * Something answers on the `--chrome-ws-url` endpoint, but it is not Chrome's
  * DevTools HTTP endpoint (e.g. a web server on that port).

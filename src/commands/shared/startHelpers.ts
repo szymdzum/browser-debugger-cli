@@ -21,6 +21,9 @@ import {
   sessionAlreadyRunningError,
   alreadyRunningSuggestion,
   sessionTargetMismatchError,
+  sessionTargetMismatchSuggestion,
+  CHROME_ENDPOINT_SUGGESTION,
+  isChromeConnectionFailure,
   daemonNotRunningError,
   invalidResponseError,
   genericError,
@@ -530,8 +533,14 @@ function runningFor(existing: NonNullable<StartSessionResponse['existingSession'
 /**
  * Describe an error response to `start_session_request`.
  *
+ * A start that failed at the endpoint has no line of its own explaining how to
+ * check it, so it gets the endpoint suggestion — but only when the start named
+ * the browser with `--chrome-ws-url`: a launched browser is not named that way,
+ * and naming a flag the user never passed sends readers after the wrong one.
+ *
  * @param response - Error response from the daemon
- * @param options - Session options (for target-mismatch wording)
+ * @param options - Session options (target-mismatch wording, and whether a
+ *   browser was named with `--chrome-ws-url`)
  * @returns Failed start outcome
  */
 function describeStartFailure(
@@ -568,20 +577,29 @@ function describeStartFailure(
       human: sessionTargetMismatchError(current, requested),
       exitCode,
       errorCode: response.errorCode,
-      details,
+      details: { ...details, suggestion: sessionTargetMismatchSuggestion() },
     };
   }
   const message = response.message ?? 'Unknown error';
   const [error = message, ...hint] = message.split('\n');
+  const hintText = hint.join('\n').trim();
+  const fallback =
+    options.chromeWsUrl !== undefined &&
+    response.errorCode === IPCErrorCode.SESSION_START_FAILED &&
+    isChromeConnectionFailure(message)
+      ? CHROME_ENDPOINT_SUGGESTION
+      : undefined;
+  const suggestion = hintText || fallback;
   return {
     ok: false,
     error,
-    human: genericError(message),
+    human:
+      !hintText && fallback ? joinLines(genericError(message), fallback) : genericError(message),
     exitCode,
     errorCode: response.errorCode,
     details: {
       ...details,
-      ...(hint.join('\n').trim() && { suggestion: hint.join('\n').trim() }),
+      ...(suggestion && { suggestion }),
     },
   };
 }
