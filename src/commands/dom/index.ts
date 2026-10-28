@@ -68,6 +68,10 @@ function addEvalCommand(parent: Command): void {
       'Evaluate in an iframe, cross-origin ones included: index (from dom frames; 87 when stale), name/id attribute, or part of the name, id or URL'
     )
     .option('--full', EVAL_FULL_HELP)
+    .option(
+      '--raw',
+      'Print a string result as is, with no JSON quoting or escaping (other types are unchanged; --json output is unchanged)'
+    )
     .addOption(jsonOption())
     .addHelpText('after', EVAL_SCOPE_HELP)
     .action(async (script: string, options: DomEvalCommandOptions) => {

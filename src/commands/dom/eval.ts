@@ -64,7 +64,7 @@ export async function handleDomEval(script: string, options: DomEvalCommandOptio
       };
     },
     options,
-    (data) => formatDomEval(data, { full: options.full }),
+    (data) => formatDomEval(data, { full: options.full, raw: options.raw }),
     { stopped: 'script' }
   );
 }
