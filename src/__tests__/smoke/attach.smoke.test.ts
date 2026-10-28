@@ -215,6 +215,23 @@ async function until(condition: () => boolean): Promise<void> {
 }
 
 /**
+ * Wait until the Chrome on `port` has loaded `/attach-a`: its target is listed
+ * as soon as the navigation starts, before the page script sets
+ * `window.__marker`.
+ *
+ * @param port - Chrome's remote debugging port
+ */
+async function untilAttachALoaded(port: number): Promise<void> {
+  const deadline = Date.now() + 20000;
+  for (;;) {
+    const tab = (await chromePages(port)).find((page) => page.url.endsWith('/attach-a'));
+    if (tab && (await evaluateInTab(tab, 'window.__marker')) === 'kept') return;
+    assert.ok(Date.now() < deadline, '/attach-a not loaded within 20 s');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
+/**
  * Whether a process group still has a member.
  *
  * @param pgid - Process group id
@@ -357,6 +374,7 @@ void describe('bdg attach', () => {
       await until(
         () => fs.existsSync(portFile) && fs.readFileSync(portFile, 'utf8').includes('\n/')
       );
+      await untilAttachALoaded(Number(fs.readFileSync(portFile, 'utf8').split('\n')[0]));
       const list = await runJson<TabsData>('attach', ['--user-data-dir', dir]);
       assert.equal(list.exitCode, 0, JSON.stringify(list.envelope));
       assert.ok(list.envelope.data?.tabs.some((tab) => tab.url.endsWith('/attach-a')));
