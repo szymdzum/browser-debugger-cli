@@ -12,9 +12,19 @@ updates:
       # typescript-eslint does not support TypeScript 7 yet (peer typescript <6.1)
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
+    groups:
+      # Parser and plugin are released together and must match
+      typescript-eslint:
+        patterns:
+          - "@typescript-eslint/*"
 
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    groups:
+      # Every codeql-action step in a workflow must run the same version
+      codeql-action:
+        patterns:
+          - "github/codeql-action*"
