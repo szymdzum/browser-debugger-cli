@@ -342,16 +342,23 @@ function reportSequenceError(error: unknown, captured: number, json: boolean): n
  */
 function assertScreenshotOptions(outputPath: string, options: DomScreenshotCommandOptions): void {
   let message: string | undefined;
+  let suggestion: string | undefined;
   if (options.padding !== undefined && !hasElementTarget(options)) {
     message = '--padding applies to element captures; name an element (selector or index)';
+    suggestion =
+      'Name the element to capture: bdg dom screenshot <path> <selector> --padding <px> (or --index <n>)';
   } else if (
     options.quality !== undefined &&
     !options.follow &&
     resolveImageFormat(outputPath, options.format) === 'png'
   ) {
     message = '--quality applies to JPEG only; this screenshot is a PNG';
+    suggestion =
+      'Use --format jpeg (or a .jpg/.jpeg path) to set --quality, or drop --quality for a PNG';
   }
-  if (message) throw new CommandError(message, {}, EXIT_CODES.INVALID_ARGUMENTS);
+  if (message) {
+    throw new CommandError(message, suggestion ? { suggestion } : {}, EXIT_CODES.INVALID_ARGUMENTS);
+  }
 }
 
 /**
