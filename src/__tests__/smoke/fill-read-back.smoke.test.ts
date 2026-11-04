@@ -113,6 +113,20 @@ function cellName(cell: Cell): string {
 }
 
 /**
+ * Empty a cell's field, so each fill starts from no value: a field still
+ * showing the page's format of an earlier fill (`8,00`) holds its old value
+ * after a re-fill, which the read-back takes as a revert.
+ *
+ * @param cell - Matrix cell
+ */
+async function clearField(cell: Cell): Promise<void> {
+  const result = await runCommand('eval', [
+    `document.querySelector(${JSON.stringify(cell.field)}).value = ''`,
+  ]);
+  assert.equal(result.exitCode, 0, `${result.stdout}${result.stderr}`);
+}
+
+/**
  * The human error line of a mismatch.
  *
  * @param cell - Matrix cell
@@ -130,6 +144,7 @@ function errorLine(cell: Cell): RegExp {
 void describe('dom fill read-back: numbers in formatted text fields, exit 90 on a mismatch (#867)', () => {
   for (const cell of CELLS) {
     void it(`human: ${cellName(cell)} ${cell.mismatch ? 'fails with 90' : 'succeeds'}`, async () => {
+      await clearField(cell);
       const result = await runCommand(
         'dom',
         ['fill', cell.field, cell.value, ...(cell.flags ?? [])],
@@ -147,6 +162,7 @@ void describe('dom fill read-back: numbers in formatted text fields, exit 90 on 
     });
 
     void it(`--json: ${cellName(cell)} ${cell.mismatch ? 'is an error envelope with valueMismatch' : 'has no valueMismatch'}`, async () => {
+      await clearField(cell);
       const result = await runCommand(
         'dom',
         ['fill', cell.field, cell.value, ...(cell.flags ?? []), '--json'],
