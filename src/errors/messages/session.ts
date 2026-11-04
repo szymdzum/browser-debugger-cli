@@ -84,10 +84,14 @@ function stopAndRestartCommand(): string {
  * How to open a URL in the selected session instead of starting one.
  *
  * @param url - URL as given to `bdg <url>`
- * @returns e.g. `Open it in this session: bdg page navigate 'http://a.test/?q=1'`
+ * @returns e.g. `Open it in this session: bdg page navigate 'http://a.test/?q=1'`; a URL
+ *   with secrets (shown redacted) gets a placeholder, since the redacted form is not the page
  */
 function openInSessionHint(url: string): string {
-  return `Open it in this session: ${sessionCommand(`bdg page navigate ${shellWord(displayUrl(url))}`)}`;
+  const shown = displayUrl(url);
+  const target =
+    shown === url ? shellWord(url) : '<the URL you gave> (secrets in it are not shown here)';
+  return `Open it in this session: ${sessionCommand(`bdg page navigate ${target}`)}`;
 }
 
 /**

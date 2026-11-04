@@ -61,7 +61,10 @@ void describe('already running hint', () => {
   void it('names bdg page navigate with the URL given for bdg <url>', async () => {
     const { suggestion, human } = await refused('http://user:pw@b.test/p?token=s3cret', OPTIONS);
     for (const text of [suggestion, human]) {
-      assert.match(text, /Open it in this session: bdg page navigate 'http:\/\/b\.test\/p\?token=/);
+      assert.match(
+        text,
+        /bdg page navigate <the URL you gave> \(secrets in it are not shown here\)/
+      );
       assert.doesNotMatch(text, /pw@|s3cret/);
     }
   });

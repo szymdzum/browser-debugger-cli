@@ -155,18 +155,29 @@ void describe('already running: open the URL in the running session (#902)', () 
     assert.match(lines[first + 1] ?? '', /View session/);
   });
 
-  void it('shows the URL redacted and quoted for the shell', () => {
-    const url = 'http://user:pass@localhost:3000/b?token=abc123&x=1#id_token=zzz';
-    for (const text of [
-      alreadyRunningSuggestion(url),
-      sessionAlreadyRunningError(1, 1000, 'http://a/', url),
+  void it('does not print a pasteable command when the URL has secrets', () => {
+    for (const url of [
+      'http://user:pass@localhost:3000/b?x=1',
+      'http://localhost:3000/b?token=abc123&x=1#id_token=zzz',
     ]) {
-      assert.match(
-        text,
-        /bdg page navigate 'http:\/\/localhost:3000\/b\?token=[^']*&x=1#id_token=[^']*'/
-      );
-      assert.doesNotMatch(text, /pass|abc123|zzz/);
+      for (const text of [
+        alreadyRunningSuggestion(url),
+        sessionAlreadyRunningError(1, 1000, 'http://a/', url),
+      ]) {
+        assert.match(
+          text,
+          /Open it in this session: bdg page navigate <the URL you gave> \(secrets in it are not shown here\)/
+        );
+        assert.doesNotMatch(text, /pass|abc123|zzz|••/);
+      }
     }
+  });
+
+  void it('quotes a plain URL with shell metacharacters', () => {
+    assert.match(
+      alreadyRunningSuggestion('http://a.test/p?x=1&y=2'),
+      /navigate 'http:\/\/a\.test\/p\?x=1&y=2'/
+    );
   });
 
   void it('names the session of a named session', () => {
