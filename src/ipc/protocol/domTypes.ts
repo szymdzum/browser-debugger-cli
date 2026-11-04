@@ -309,9 +309,10 @@ export interface FillResult extends ActionEffects {
    */
   valueMismatch?: FillValueMismatch;
   /**
-   * The mismatch was found by the late read, 2 s after the fill (#892): the
-   * page restored the old value or a blank, or replaced the value with
-   * unrelated text (#906); words the message and suggestion, never output
+   * How the page reverted the value, for the message and suggestion, never
+   * output: `replaced` with unrelated text, found by either read (#906,
+   * #901), or `restored` (the old value or a blank) by the late read, 2 s
+   * after the fill (#892)
    */
   lateRevert?: 'restored' | 'replaced';
   /**

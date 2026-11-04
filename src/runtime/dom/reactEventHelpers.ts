@@ -123,6 +123,12 @@ export const FILL_VALUE_MISMATCH_JS = `(field, expected, secret) => {
 }`;
 
 /**
+ * Longest value, given or read, {@link KEEPS_INPUT_JS} judges; the immediate
+ * read-back compares a longer one strictly ({@link FILL_READ_BACK_SCRIPT})
+ */
+const JUDGED_LENGTH = 10000;
+
+/**
  * Page-side spans of a value's digit groups (runs of letters and of digits,
  * as {@link KEEPS_INPUT_JS} cuts them) that may be read as one number: groups
  * next to each other with only separators between them (`(555) 123-4567`),
@@ -203,11 +209,11 @@ const DIGITS_KEPT_JS = `(digits, shown, spans, short) => {
  * of the late value's last decimal: `3.14159` as `3.14`), a late value with
  * a run of three mask characters (`•`, `*`, `●`: a card number shown as
  * `•••• 1111`), an input without letters or digits (nothing to judge), and
- * either value over 10,000 characters (not judged, so the read stays within
- * its time budget).
+ * either value over {@link JUDGED_LENGTH} characters (not judged, so the
+ * read stays within its time budget).
  */
 export const KEEPS_INPUT_JS = `(expected, late) => {
-  if (String(expected).length > 10000 || String(late).length > 10000) return true;
+  if (String(expected).length > ${JUDGED_LENGTH} || String(late).length > ${JUDGED_LENGTH}) return true;
   const fold = (text) => String(text).normalize('NFKD').replace(/\\p{M}/gu, '').toLowerCase()
     .replace(/ł/g, 'l').replace(/ß/g, 'ss');
   const runs = (text) => fold(text).match(/\\p{L}+|\\p{N}+/gu) || [];
@@ -234,22 +240,22 @@ export const KEEPS_INPUT_JS = `(expected, late) => {
 }`;
 
 /**
- * Page-side rule of the late read of a fill (#892): whether the value read
- * 2 s after filling is a revert (a mismatch, as {@link FILL_VALUE_MISMATCH_JS}
- * gives it) or the page formatting the value (undefined). Any change of a
- * field that is not text-like is a revert. A text-like field reverted when
- * it holds its value from before the fill (`check.before`; compared
- * trimmed, inner whitespace collapsed and case-folded, so a controlled input
- * restoring its state `o` over a DOM value `o ` counts) and that value
- * differs from the one given in its letters and digits (a re-fill of
- * `5551234567` over `(555) 123-4567` formatted again is no revert), or is
- * blank while the value given was not. Any other value is the page
- * formatting the one given when it keeps the input ({@link KEEPS_INPUT_JS}: a
- * phone mask, a date written out, upper-casing, an autocomplete), else the
- * page replaced it with unrelated text (#906): a revert marked
- * `replaced: true`.
+ * Page-side rule of both reads of a fill, right after it (#901) and 2 s
+ * later (#892): whether the field's value is a revert (a mismatch, as
+ * {@link FILL_VALUE_MISMATCH_JS} gives it) or the page formatting the value
+ * (undefined). Any change of a field that is not text-like is a revert. A
+ * text-like field reverted when it holds its value from before the fill
+ * (`check.before`; compared trimmed, inner whitespace collapsed and
+ * case-folded, so a controlled input restoring its state `o` over a DOM
+ * value `o ` counts) and that value differs from the one given in its
+ * letters and digits (a re-fill of `5551234567` over `(555) 123-4567`
+ * formatted again is no revert), or is blank while the value given was not.
+ * Any other value is the page formatting the one given when it keeps the
+ * input ({@link KEEPS_INPUT_JS}: a phone mask, a date written out,
+ * upper-casing, an autocomplete), else the page replaced it with unrelated
+ * text (#906): a revert marked `replaced: true`.
  */
-export const LATE_REVERT_JS = `(field, check) => {
+export const FILL_REVERT_JS = `(field, check) => {
   const mismatch = (${FILL_VALUE_MISMATCH_JS})(field, check.expected, check.secret);
   if (!mismatch) return undefined;
   const type = (field.type || '').toLowerCase();
@@ -271,7 +277,7 @@ export const LATE_REVERT_JS = `(field, check) => {
  * document when it has none), with their values, and the field itself with
  * its value ({@link FIELD_VALUE_JS}): taken before a fill, so
  * {@link MOVED_VALUE_JS} can tell which one the page changed and
- * {@link LATE_REVERT_JS} whether the field went back to its old value.
+ * {@link FILL_REVERT_JS} whether the field went back to its old value.
  */
 export const FIELD_VALUES_JS = `(field) => {
   const fields = field.form ? Array.from(field.form.elements) : Array.from(field.ownerDocument.querySelectorAll('input, textarea'));
@@ -990,24 +996,30 @@ const PAGE_VALUE_JS = `(field, check) => {
 
 /**
  * Page script reading back the field the last fill left
- * ({@link FILL_CHECK_READ_JS}). Evaluates to the mismatch
- * ({@link FILL_VALUE_MISMATCH_JS}), with `movedTo` when the value turned up
- * in another field, what the field shows when it matches formatted
- * ({@link PAGE_VALUE_JS}), or null when it holds the value given, nothing
- * was left or the field left the page. The check stays for the late read
- * ({@link FILL_LATE_READ_FUNCTION}).
+ * ({@link FILL_CHECK_READ_JS}). Evaluates to the mismatch as the late read
+ * judges it ({@link FILL_REVERT_JS}, #901: formatting is no mismatch), with
+ * `movedTo` when the value turned up in another field, what the field shows
+ * when the page formatted the value ({@link PAGE_VALUE_JS}), or null when it
+ * holds the value given, nothing was left or the field left the page. As
+ * before #901, a value cut to the field's maxlength (`truncatedTo`) is a
+ * mismatch, and a value given or read of over {@link JUDGED_LENGTH}
+ * characters is compared strictly ({@link FILL_VALUE_MISMATCH_JS}). The
+ * check stays for the late read ({@link FILL_LATE_READ_FUNCTION}).
  */
 export const FILL_READ_BACK_SCRIPT = `(${FILL_CHECK_READ_JS})((check) => {
-  if (!check.el.isConnected) return null;
-  const mismatch = (${FILL_VALUE_MISMATCH_JS})(check.el, check.expected, check.secret);
-  return mismatch ? (${WITH_MOVED_TO_JS})(mismatch, check) : (${PAGE_VALUE_JS})(check.el, check);
+  const field = check.el;
+  if (!field.isConnected) return null;
+  const strict = (${FILL_VALUE_MISMATCH_JS})(field, check.expected, check.secret);
+  const long = String(check.expected).length > ${JUDGED_LENGTH} || (${FIELD_VALUE_JS})(field).length > ${JUDGED_LENGTH};
+  const mismatch = !strict || long || strict.truncatedTo !== undefined ? strict : (${FILL_REVERT_JS})(field, check);
+  return mismatch ? (${WITH_MOVED_TO_JS})(mismatch, check) : (${PAGE_VALUE_JS})(field, check);
 })`;
 
 /**
  * Page function of the late read of a fill (#892): the field the last fill
  * left ({@link FILL_CHECK_READ_JS}, removing the check), or, when that left
  * the page (a remount), the field the fill's selector and index find now;
- * evaluates to the revert ({@link LATE_REVERT_JS}) with `movedTo`, what
+ * evaluates to the revert ({@link FILL_REVERT_JS}) with `movedTo`, what
  * the field shows when the page formatted the value ({@link PAGE_VALUE_JS}),
  * or null (the value given, nothing left, no field). A value judged
  * replaced is judged again `rereadMs` later, as the field reads then
@@ -1025,7 +1037,7 @@ export const FILL_LATE_READ_FUNCTION = `function (selector, parts, index, reread
     const judge = () => {
       const field = locate();
       if (!field) return null;
-      const mismatch = (${LATE_REVERT_JS})(field, check);
+      const mismatch = (${FILL_REVERT_JS})(field, check);
       return mismatch ? (${WITH_MOVED_TO_JS})(mismatch, check) : (${PAGE_VALUE_JS})(field, check);
     };
     const first = judge();

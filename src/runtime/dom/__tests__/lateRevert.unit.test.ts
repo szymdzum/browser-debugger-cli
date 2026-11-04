@@ -10,9 +10,9 @@ import { describe, it } from 'node:test';
 import * as vm from 'node:vm';
 
 import type { FillValueMismatch } from '@/ipc/protocol/domTypes.js';
-import { LATE_REVERT_JS } from '@/runtime/dom/reactEventHelpers.js';
+import { FILL_REVERT_JS } from '@/runtime/dom/reactEventHelpers.js';
 
-const pageRule = vm.runInNewContext(`(${LATE_REVERT_JS})`) as (
+const pageRule = vm.runInNewContext(`(${FILL_REVERT_JS})`) as (
   field: Record<string, unknown>,
   check: { el: unknown; expected: string; before: Map<unknown, string>; secret?: boolean }
 ) => FillValueMismatch | undefined;
@@ -158,7 +158,7 @@ const MATRIX: [late: string, expected: string, old: string, verdict: Verdict][] 
   ['', 'new', 'o', 'restored'],
 ];
 
-void describe('LATE_REVERT_JS: formatted or replaced (#906)', () => {
+void describe('FILL_REVERT_JS: formatted or replaced (#906)', () => {
   for (const [late, expected, old, want] of MATRIX) {
     void it(`${JSON.stringify(expected)} read late as ${JSON.stringify(late)}: ${want}`, () => {
       assert.equal(verdict(late, expected, old), want);
@@ -190,7 +190,7 @@ void describe('LATE_REVERT_JS: formatted or replaced (#906)', () => {
   });
 });
 
-void describe('LATE_REVERT_JS', () => {
+void describe('FILL_REVERT_JS', () => {
   void it('takes any other value as the page formatting the one given', () => {
     assert.equal(reverted('(555) 123-4567', '5551234567'), false);
     assert.equal(reverted('London', 'Lon'), false);

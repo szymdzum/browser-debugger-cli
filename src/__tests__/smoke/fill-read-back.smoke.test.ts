@@ -4,9 +4,11 @@
  * On `/fill-read-back` each field keeps, reformats or changes the value
  * filled. A plain number given to a text field is compared as the number the
  * field shows: `$8.00`, `5.20%` and `$1,234.50` are the numbers filled, so
- * the fill succeeds (exit 0, no `valueMismatch`). A value the page changed
- * (`8` raised to `24.00`, text emptied, a decimal comma `8,00`, a password
- * emptied) fails the fill with exit 90: the human error names both values,
+ * the fill succeeds (exit 0, no `valueMismatch`); so does `8` shown as
+ * `8,00`, which keeps the input (#901). A value the page changed (`8` raised
+ * to `24.00`, text emptied, a password emptied) fails the fill with exit 90:
+ * the human error names both values (a value replaced with unrelated text
+ * says so, #901),
  * and the `--json` error envelope carries `valueMismatch` with the fill's
  * other fields (`selector`, `element`). `--no-blur` reads the value before
  * the field reformats it on blur, so it succeeds too.
@@ -48,8 +50,15 @@ const CELLS: Cell[] = [
   { field: '#money', value: '8', flags: ['--no-blur'], kept: '8', mismatch: false },
   { field: '#money', value: 'abc', kept: '', mismatch: true },
   { field: '#pct', value: '5.2', kept: '5.20%', mismatch: false },
-  { field: '#clamp', value: '8', kept: '24.00', mismatch: true },
-  { field: '#eu', value: '8', kept: '8,00', mismatch: true },
+  {
+    field: '#clamp',
+    value: '8',
+    kept: '24.00',
+    mismatch: true,
+    error:
+      /^(Error: )?Fill '#clamp' \(input#clamp "Hours"\): the page replaced the value within 2 s of filling: the field's value is "24\.00" \(expected "8"\); it did not keep the input/m,
+  },
+  { field: '#eu', value: '8', kept: '8,00', mismatch: false },
   { field: '#plain', value: '8', kept: '8', mismatch: false },
   { field: '#plain', value: 'abc', kept: 'abc', mismatch: false },
   {
@@ -104,6 +113,20 @@ function cellName(cell: Cell): string {
 }
 
 /**
+ * Empty a cell's field, so each fill starts from no value: a field still
+ * showing the page's format of an earlier fill (`8,00`) holds its old value
+ * after a re-fill, which the read-back takes as a revert.
+ *
+ * @param cell - Matrix cell
+ */
+async function clearField(cell: Cell): Promise<void> {
+  const result = await runCommand('eval', [
+    `document.querySelector(${JSON.stringify(cell.field)}).value = ''`,
+  ]);
+  assert.equal(result.exitCode, 0, `${result.stdout}${result.stderr}`);
+}
+
+/**
  * The human error line of a mismatch.
  *
  * @param cell - Matrix cell
@@ -121,6 +144,7 @@ function errorLine(cell: Cell): RegExp {
 void describe('dom fill read-back: numbers in formatted text fields, exit 90 on a mismatch (#867)', () => {
   for (const cell of CELLS) {
     void it(`human: ${cellName(cell)} ${cell.mismatch ? 'fails with 90' : 'succeeds'}`, async () => {
+      await clearField(cell);
       const result = await runCommand(
         'dom',
         ['fill', cell.field, cell.value, ...(cell.flags ?? [])],
@@ -138,6 +162,7 @@ void describe('dom fill read-back: numbers in formatted text fields, exit 90 on 
     });
 
     void it(`--json: ${cellName(cell)} ${cell.mismatch ? 'is an error envelope with valueMismatch' : 'has no valueMismatch'}`, async () => {
+      await clearField(cell);
       const result = await runCommand(
         'dom',
         ['fill', cell.field, cell.value, ...(cell.flags ?? []), '--json'],
@@ -174,7 +199,7 @@ void describe('dom fill read-back: numbers in formatted text fields, exit 90 on 
     assert.equal(result.exitCode, MISMATCH_EXIT, result.stderr);
     assert.match(
       result.stderr,
-      /^Error: Fill '#quote' \(textarea#quote "Quote"\): the field's value is "line 1\\nsaid \\"hi\\"" after filling \(expected "hello"\);/m
+      /^Error: Fill '#quote' \(textarea#quote "Quote"\): the page replaced the value within 2 s of filling: the field's value is "line 1\\nsaid \\"hi\\"" \(expected "hello"\);/m
     );
   });
 

@@ -298,15 +298,15 @@ const LATE_READ_BACK_MS = 2000;
  */
 const LATE_REREAD_MS = 500;
 
-/** What a read-back found: the value not kept (`replaced` when the late read found unrelated text, #906), or what the field shows formatted */
+/** What a read-back found: the value not kept (`replaced` when the page wrote unrelated text, #906), or what the field shows formatted */
 type FieldRead = { valueMismatch?: FillValueMismatch & { replaced?: true }; pageValue?: string };
 
 /**
- * Add the read-back of a successful fill ({@link FILL_READ_BACK_SCRIPT}):
- * `valueMismatch` when the field's value is not the one given (the CLI
- * fails the fill with exit 90 for it), or `pageValue` when the page shows it
- * formatted. The fill stands without them when the read-back fails or finds
- * nothing ({@link readField}).
+ * Add the read-back of a successful fill ({@link FILL_READ_BACK_SCRIPT}),
+ * judged as the late read judges (#901): `valueMismatch` when the page did
+ * not keep the value given (the CLI fails the fill with exit 90 for it), or
+ * `pageValue` when the page shows it formatted. The fill stands without them
+ * when the read-back fails or finds nothing ({@link readField}).
  *
  * @param cdp - CDP connection
  * @param result - Fill result
@@ -321,7 +321,7 @@ async function withReadBack(cdp: CDPConnection, result: FillResult): Promise<Fil
       awaitPromise: true,
     })
   );
-  return { ...result, ...read };
+  return withFieldRead(result, read, false);
 }
 
 /**
@@ -360,10 +360,9 @@ export async function readBackLate(
 }
 
 /**
- * Add what the late read found ({@link readBackLate}) to a fill: a revert
- * fails it (`valueMismatch`, and `lateRevert` saying whether the page
- * restored or replaced the value, for the message); a value the page
- * formatted is what the field shows (`pageValue`).
+ * Add what the late read found ({@link readBackLate}) to a fill
+ * ({@link withFieldRead}): a revert fails it, a value the page formatted is
+ * what the field shows.
  *
  * @param result - Fill result
  * @param late - What the late read found
@@ -371,11 +370,29 @@ export async function readBackLate(
  */
 export function withLateRead(result: FillResult, late: FieldRead = {}): FillResult {
   if (!result.success || result.valueMismatch) return result;
-  if (late.valueMismatch) {
-    const { replaced, ...valueMismatch } = late.valueMismatch;
-    return { ...result, valueMismatch, lateRevert: replaced ? 'replaced' : 'restored' };
+  return withFieldRead(result, late, true);
+}
+
+/**
+ * Add what a read of a fill found: a revert fails it (`valueMismatch`, and
+ * `lateRevert` for the message: `replaced` when the page wrote unrelated
+ * text, #906, `restored` for any other revert the late read found), dropping
+ * the `pageValue` an earlier read found; a value the page formatted is what
+ * the field shows (`pageValue`, the latest read's).
+ *
+ * @param result - Fill result
+ * @param read - What the read found
+ * @param late - Whether it is the late read
+ * @returns The result, with it
+ */
+function withFieldRead(result: FillResult, read: FieldRead, late: boolean): FillResult {
+  if (read.valueMismatch) {
+    const { replaced, ...valueMismatch } = read.valueMismatch;
+    const { pageValue: _shown, ...filled } = result;
+    const lateRevert = replaced ? 'replaced' : late ? 'restored' : undefined;
+    return { ...filled, valueMismatch, ...(lateRevert && { lateRevert }) };
   }
-  return late.pageValue === undefined ? result : { ...result, pageValue: late.pageValue };
+  return read.pageValue === undefined ? result : { ...result, pageValue: read.pageValue };
 }
 
 /**
