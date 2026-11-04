@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-11-04
+
+`dom fill` judges what the page did with the value the same way right after the fill and 2 s later: formatting passes with `Page shows:`, a value the page throws away (restored, blanked or replaced with unrelated text) exits 90. Also: `eval --raw`, a hint to open another page in the running session, and suggestions on attach and screenshot errors.
+
+### Changed behaviour
+
+- **A value the page formats while filling passes** (#929, #901): a postcode upper-cased on blur, a phone mask on `input`, card or IBAN grouping, a date written out, currency, trimming, a typeahead completion or a locale number form (`8` → `8,00`) now ends ✓ with `Page shows: <value>` and `data.pageValue` (never for secret fields), exit 0. Before: exit 90 when the page formatted synchronously (#867's strict check), ✓ only when it formatted later. A value cut to `maxlength`, values over 10,000 characters and checkbox, radio, select, number and range fields keep the strict comparison.
+- **A value the page replaces with unrelated text exits 90** (#927, #906): right after the fill or 2 s later, a value that keeps little of the input (a fresh `draft-<hex>`, a placeholder, a server id, `N/A`) is a rejection: `the page replaced the value within 2 s of filling: the field's value is "…" (expected "…"); it did not keep the input`, with the existing `valueMismatch` in `--json`. The suggestion says to report the rejection: forcing the value with `bdg eval` or by removing the field's listeners bypasses the page. Before: ✓ with `Page shows:` for the late case. The value kept counts as formatting when its letters and digits keep more than half of the input's (digit groups, leading zeros and masks such as `•••• 1111` handled; see the known limits in `docs/CLI_REFERENCE.md`); a value judged replaced is read again 500 ms later, so a value still streaming in passes. A password field replaced later now exits 90 (masked), and a code mapped to a label (`pl` → `Poland`) exits 90.
+
+### Added
+
+- **`bdg eval --raw`** (#909, #870): prints a string result as is, without JSON quotes or escaping (`40.00`, multi-line text). Without `--raw` nothing changes. Thanks @Omarinho12345.
+- **"Session already running" suggests `bdg page navigate <url>`** (#928, #902): the first suggestion opens the page in the running session (`--session <name>` for a named one), in human output and the `--json` `suggestion`. A URL with credentials or secret parameters gets a placeholder (`bdg page navigate <the URL you gave> (secrets in it are not shown here)`) instead of a command with masked values. `bdg attach <tab>` doesn't get the hint.
+- **Suggestions on attach and screenshot errors** (#918, #883): a `--chrome-ws-url` connection failure (exit 101/106) says to check the URL, that Chrome runs with `--remote-debugging-port`, and where its WebSocket URL is listed; a target mismatch with a running session (exit 90) says to stop it or start a named session; `dom screenshot --padding` without an element and `--quality` on a PNG (exit 81) say what to pass instead. Thanks @Omarinho12345.
+
+### Fixed
+
+- **`--follow --json` docs** (#931, #896): in `console`, `network list`, `peek` and `dom screenshot --follow --json` each line is a snapshot envelope whose `success` describes that snapshot; Ctrl-C/SIGTERM ends the stream with exit 130/143 and no final envelope, as decided in #704.
+
+### Known limits
+
+- Re-filling a field that already shows the page's format of the same value (`0612345678` shown as `+33 6 12 34 56 78`) reports a revert, exit 90 (#930).
+
+### Internal
+
+- npm audit fixes (zod, fast-uri) and a steadier attach smoke test (#919); dependency updates (devtools-protocol, typescript-eslint, eslint, knip, CodeQL action) with Dependabot groups for CodeQL and typescript-eslint (#921).
+
 ## [0.22.0] - 2026-10-22
 
 Three false verdicts from the red-team round (#864) fixed: a navigation Chrome refused, a fill the page undid a moment later and a click that only changed a control's value no longer report success or "no visible effect".
