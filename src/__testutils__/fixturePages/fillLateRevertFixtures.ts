@@ -7,7 +7,9 @@
  * after `change`; the select `#sel` goes back to `a` 100 ms after `change`;
  * `#ctl` is a controlled input (state kept by the page, re-rendered a frame
  * plus 30 ms after `input`) that takes digits only; `#ctl-space` shows
- * `o ` while its state is `o`, which it restores 100 ms after `input`; `#remount-old` is
+ * `o ` while its state is `o`, which it restores 100 ms after `input`;
+ * `#unrelated` is replaced by `N/A` 300 ms after `input` (unrelated text,
+ * #906); `#remount-old` is
  * replaced 200 ms after `change` by a new `<input id="remount-old">`
  * holding `o` (a remount on a new key that resets the value); `#cleared`
  * is emptied 100 ms after `input` (a search box that submits by itself).
@@ -19,9 +21,7 @@
  * completed to `London` 200 ms after `input`; `#valid` only shows a message
  * 300 ms after `input`; `#remount-keep` is replaced 200 ms after `change`
  * by a new input holding the value filled; `#datefmt` is written out
- * (`2024-01-05` as `Jan 5, 2024`) 300 ms after `change`; `#unrelated` is
- * replaced by `N/A` 300 ms after `input` (a known limit: only the old value
- * or a blank counts as a revert); the password `#pw` is upper-cased 300 ms
+ * (`2024-01-05` as `Jan 5, 2024`) 300 ms after `change`; the password `#pw` is upper-cased 300 ms
  * after `change` (never shown); `#plain` changes another field
  * (`#other`) 300 ms after `input`, while `#tick` ticks every 100 ms.
  */

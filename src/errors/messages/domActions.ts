@@ -520,6 +520,21 @@ export function valueMismatchError(
 }
 
 /**
+ * A fill whose value the page replaced with an unrelated one within the
+ * late read (#906, exit 90): the field's value keeps little of the input.
+ *
+ * @param target - As for {@link valueMismatchError}
+ * @param mismatch - Value given and value found (masked for secret fields)
+ * @returns Error with a suggestion
+ */
+export function lateReplacedError(
+  _target: ActedElement & { indexText?: string | undefined },
+  _mismatch: FillValueMismatch
+): ErrorWithSuggestion {
+  throw new Error('not implemented');
+}
+
+/**
  * Key press failed (not in the page's script: sending the key events, or the
  * connection).
  *
