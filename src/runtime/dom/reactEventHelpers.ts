@@ -126,27 +126,41 @@ export const FILL_VALUE_MISMATCH_JS = `(field, expected, secret) => {
  * Page-side test of whether a value the page wrote later keeps the value
  * given (#906), so it formatted it rather than replaced it. Both are folded
  * (accents dropped, `ł` as `l`, `ß` as `ss`, lowercase) and cut into runs of
- * letters and runs of digits (digit runs without leading zeros: `05` is
- * `5`). It keeps the input when the runs of the input found in the late
- * value's runs joined (separators gone) hold more than half of the input's
- * letters and digits: masks, dates reordered or written out, currency,
- * autocomplete and normalised addresses keep whole runs, unrelated text
- * matches single letters by chance at most. Also kept: a plain decimal
- * rounded ({@link NUMERIC_TEXT_JS} within half a unit of the late value's
- * last decimal: `3.14159` as `3.14`), a late value with a run of three mask
- * characters (`•`, `*`, `●`: a card number shown as `•••• 1111`), and an
- * input without letters or digits (nothing to judge).
+ * letters and runs of digits. It keeps the input when the runs of the input
+ * found in the late value's runs joined (separators gone) hold more than
+ * half of the input's letters and digits: masks, dates reordered or written
+ * out, currency, autocomplete and normalised addresses keep whole runs,
+ * unrelated text matches single letters by chance at most. A digit run is
+ * found as it is (`20240105` in `2024-01-05`, `0004` in `4111 1111 1111 0004`)
+ * or with the leading zeros of every digit run dropped (`05` as the `5` of
+ * `Jan 5, 2024`); the input's digits also count as kept as far as the late
+ * value's digit runs are pieces of them (`20240105` as `05/01/2024`). Also kept: a plain decimal rounded ({@link NUMERIC_TEXT_JS}
+ * within half a unit of the late value's last decimal: `3.14159` as `3.14`),
+ * a late value with a run of three mask characters (`•`, `*`, `●`: a card
+ * number shown as `•••• 1111`), an input without letters or digits (nothing
+ * to judge), and either value over 10,000 characters (not judged, so the
+ * read stays within its time budget).
  */
 export const KEEPS_INPUT_JS = `(expected, late) => {
+  if (String(expected).length > 10000 || String(late).length > 10000) return true;
   const fold = (text) => String(text).normalize('NFKD').replace(/\\p{M}/gu, '').toLowerCase()
     .replace(/ł/g, 'l').replace(/ß/g, 'ss');
-  const runs = (text) => (fold(text).match(/\\p{L}+|\\p{N}+/gu) || [])
-    .map((run) => (/^\\p{N}/u.test(run) ? run.replace(/^0+(?=.)/, '') : run));
+  const runs = (text) => fold(text).match(/\\p{L}+|\\p{N}+/gu) || [];
+  const unpadded = (run) => run.replace(/^0+(?=\\d)/, '');
   const wanted = runs(expected);
   const total = wanted.reduce((sum, run) => sum + run.length, 0);
   if (total === 0 || /[•*●]{3}/.test(late)) return true;
-  const shown = runs(late).join('');
-  const kept = wanted.filter((run) => shown.includes(run)).reduce((sum, run) => sum + run.length, 0);
+  const shown = runs(late);
+  const joined = shown.join('');
+  const joinedUnpadded = shown.map(unpadded).join('');
+  const length = (list) => list.reduce((sum, run) => sum + run.length, 0);
+  const found = (run) => joined.includes(run) || joinedUnpadded.includes(unpadded(run));
+  const isDigits = (run) => /^\\p{N}/u.test(run);
+  const digits = wanted.filter(isDigits);
+  const typedDigits = digits.join('');
+  const regrouped = length(shown.filter((run) => isDigits(run) && typedDigits.includes(run)));
+  const kept = length(wanted.filter((run) => !isDigits(run) && found(run))) +
+    Math.max(length(digits.filter(found)), Math.min(length(digits), regrouped));
   if (2 * kept > total) return true;
   const typed = String(expected).trim();
   const number = (${NUMERIC_TEXT_JS})(late);

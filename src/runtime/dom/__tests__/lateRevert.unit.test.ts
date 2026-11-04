@@ -114,6 +114,17 @@ const MATRIX: [late: string, expected: string, old: string, verdict: Verdict][] 
   ['Enter a note', 'note', '', 'kept'],
   ['draft-2061c1', '1', '', 'kept'],
   ['draft-2024ab', '2024', '', 'kept'],
+  ['2024-01-05', '20240105', '', 'kept'],
+  ['05/01/2024', '20240105', '', 'kept'],
+  ['2024-11-25', '20241125', '', 'kept'],
+  ['4111 1111 1111 0004', '4111111111110004', '', 'kept'],
+  ['4111 1111 1111 1234', '4111111111111234', '', 'kept'],
+  ['(555) 001-2345', '5550012345', '', 'kept'],
+  ['(555) 321-2345', '5553212345', '', 'kept'],
+  ['PL61 1090 1014 0000 0712 1981 2874', 'PL61109010140000071219812874', '', 'kept'],
+  ['PL61 1090 1014 1234 5712 1981 2874', 'PL61109010141234571219812874', '', 'kept'],
+  ['2:05 PM', '14:05', '', 'replaced'],
+  ['five', '5', '', 'replaced'],
   ['DRAFT SAVED', 'my draft', 'Draft saved', 'restored'],
   ['o', 'new', 'o', 'restored'],
   ['', 'new', 'o', 'restored'],
@@ -136,6 +147,13 @@ void describe('LATE_REVERT_JS: formatted or replaced (#906)', () => {
     });
     const rewritten = { localName: 'input', type: 'password', value: '•••••••' };
     assert.equal(lateRevert(rewritten, 'hunter22', '', true), undefined);
+  });
+
+  void it('does not judge values over 10,000 characters, so the read stays fast', () => {
+    const started = Date.now();
+    assert.equal(verdict('z'.repeat(200000), 'ab '.repeat(2000)), 'kept');
+    assert.equal(verdict('draft-1', 'a'.repeat(10001)), 'kept');
+    assert.ok(Date.now() - started < 500);
   });
 
   void it('keeps the rule for number fields: any later change, rounding too, is a revert', () => {
