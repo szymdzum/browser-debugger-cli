@@ -8,9 +8,11 @@
  * (#867). Others reformat the value later (a phone mask, upper-casing,
  * trimming, an autocomplete), show only a validation message, remount
  * keeping the value, or change something else meanwhile (another field, a
- * ticker), or write it out differently (a date as `Jan 5, 2024`; also
- * unrelated text, a known limit: only the old value or a blank counts as a
- * revert): the fill succeeds. A field emptied later (a search box that
+ * ticker), or write it out differently (a date as `Jan 5, 2024`): the fill
+ * succeeds. Unrelated text the page writes instead (`N/A`, a fresh
+ * `draft-<hex>` on `/fill-late-replaced`) fails with exit 90 (#906), while a
+ * server-normalised address and a suggestion still streaming at the 2 s read
+ * succeed with what the page shows. A field emptied later (a search box that
  * submits by itself) fails too, its suggestion saying the fill may have
  * taken effect. A re-fill of the number a field already shows formatted is
  * no revert either. Each cell gets a fresh document in one session (a page
@@ -84,12 +86,7 @@ const CELLS: Cell[] = [
     value: '2024-01-05',
     pageValue: 'Jan 5, 2024',
   },
-  {
-    name: 'replaced by unrelated text (known limit)',
-    field: '#unrelated',
-    value: 'new',
-    pageValue: 'N/A',
-  },
+  { name: 'replaced by unrelated text (#906)', field: '#unrelated', value: 'new', reverted: 'N/A' },
   { name: 'another field and a ticker changing', field: '#plain', value: 'hello' },
   { name: 'password upper-cased after change', field: '#pw', value: 'hunter22' },
   {
@@ -199,5 +196,32 @@ void describe('dom fill reads the value again 2 s after filling (#892)', () => {
     const output = `${human.stdout}${human.stderr}${JSON.stringify(envelope)}`;
     assert.equal(human.exitCode, 0, output);
     assert.doesNotMatch(output, /hunter22|HUNTER22|Page shows|pageValue/i);
+  });
+
+  void it('a draft the page writes instead of the note fails with 90, saying it replaced the value (#906)', async () => {
+    await open(`${fixture.url}fill-late-replaced`);
+    const result = await runCommand('dom', ['fill', '#note', 'gift wrap, leave at door'], {
+      timeout: 60000,
+    });
+    const output = `${result.stdout}${result.stderr}`;
+    assert.equal(result.exitCode, MISMATCH_EXIT, output);
+    assert.match(
+      output,
+      /the page replaced the value within 2 s of filling: the field's value is "draft-[0-9a-f]{6}"/
+    );
+  });
+
+  void it('a server-normalised address succeeds with what the page shows (#906)', async () => {
+    await open(`${fixture.url}fill-late-replaced`);
+    const { exitCode, envelope } = await fill('#address', '1 main st');
+    assert.equal(exitCode, 0, JSON.stringify(envelope));
+    assert.equal(envelope.data?.pageValue, '1 Main Street, Springfield, IL 62701');
+  });
+
+  void it('a suggestion still streaming at the 2 s read is judged when read again (#906)', async () => {
+    await open(`${fixture.url}fill-late-replaced`);
+    const { exitCode, envelope } = await fill('#station', 'warsaw central');
+    assert.equal(exitCode, 0, JSON.stringify(envelope));
+    assert.equal(envelope.data?.pageValue, 'Warsaw Central Station');
   });
 });

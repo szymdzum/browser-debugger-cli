@@ -32,6 +32,7 @@ import {
   navigationFailedError,
   internalError,
   scrollOptionsError,
+  lateReplacedError,
   valueMismatchError,
 } from '@/errors/messages.js';
 import { callCDP, domClick, domFill, domPressKey, domScroll, domSubmit } from '@/ipc/client.js';
@@ -808,7 +809,8 @@ function selectorRows(result: ActionTarget): Array<[string, string]> {
 /**
  * Fail a fill whose value the page did not keep (#867): the read-back
  * found a `valueMismatch`, so the fill exits 90 (RESOURCE_CONFLICT) instead
- * of reporting success. The `--json` error envelope carries the fill's data
+ * of reporting success; a late value the page replaced with unrelated text
+ * (#906) says so. The `--json` error envelope carries the fill's data
  * as top-level fields (`valueMismatch`, `selector`, `element`, `value`…);
  * the fill's other warnings stay warnings.
  *
@@ -823,16 +825,16 @@ function failOnValueMismatch<T extends Omit<FillResult, 'success'> & { indexSour
   const mismatch = result.data?.valueMismatch;
   if (!result.success || !result.data || !mismatch) return result;
   const { warning, lateRevert, ...data } = result.data;
-  const err = valueMismatchError(
-    {
-      selector: data.selector ?? '',
-      element: data.element,
-      listIndex: data.indexSource?.index,
-      indexText: data.indexSource && indexSourceText(data.indexSource),
-    },
-    mismatch,
-    lateRevert === true
-  );
+  const target = {
+    selector: data.selector ?? '',
+    element: data.element,
+    listIndex: data.indexSource?.index,
+    indexText: data.indexSource && indexSourceText(data.indexSource),
+  };
+  const err =
+    lateRevert === 'replaced'
+      ? lateReplacedError(target, mismatch)
+      : valueMismatchError(target, mismatch, lateRevert === 'restored');
   return {
     success: false,
     error: err.message,

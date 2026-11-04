@@ -290,8 +290,16 @@ const READ_BACK_TIMEOUT_MS = 1000;
  */
 const LATE_READ_BACK_MS = 2000;
 
-/** What a read-back found: the value not kept, or what the field shows formatted */
-type FieldRead = Pick<FillResult, 'valueMismatch' | 'pageValue'>;
+/**
+ * When a late value judged replaced is read once more, after the late read
+ * (#906): a suggestion the page still streams in (`Warsaw Ce`, then
+ * `Warsaw Central Station`) is judged as it reads then. Within
+ * {@link READ_BACK_TIMEOUT_MS}.
+ */
+const LATE_REREAD_MS = 500;
+
+/** What a read-back found: the value not kept (`replaced` when the late read found unrelated text, #906), or what the field shows formatted */
+type FieldRead = { valueMismatch?: FillValueMismatch & { replaced?: true }; pageValue?: string };
 
 /**
  * Add the read-back of a successful fill ({@link FILL_READ_BACK_SCRIPT}):
@@ -323,7 +331,8 @@ async function withReadBack(cdp: CDPConnection, result: FillResult): Promise<Fil
  * Started with the fill and run alongside the network-idle wait; nothing is
  * read when the fill failed, its read-back already found a mismatch, or it
  * filled a file input. A remounted field is found again by the fill's
- * selector and index.
+ * selector and index. A value judged replaced is read once more
+ * {@link LATE_REREAD_MS} later (#906).
  *
  * @param cdp - CDP connection of the field's page
  * @param target - Selector (or bound-node placeholder) and index the fill used
@@ -341,7 +350,9 @@ export async function readBackLate(
   return readField(
     callFunctionInMainWorld(cdp, {
       functionDeclaration: FILL_LATE_READ_FUNCTION,
-      arguments: [...selectorArgs(target.selector), target.index ?? 0].map((value) => ({ value })),
+      arguments: [...selectorArgs(target.selector), target.index ?? 0, LATE_REREAD_MS].map(
+        (value) => ({ value })
+      ),
       returnByValue: true,
       awaitPromise: true,
     })
@@ -350,8 +361,9 @@ export async function readBackLate(
 
 /**
  * Add what the late read found ({@link readBackLate}) to a fill: a revert
- * fails it (`valueMismatch`, and `lateRevert` for the suggestion); a value
- * the page formatted is what the field shows (`pageValue`).
+ * fails it (`valueMismatch`, and `lateRevert` saying whether the page
+ * restored or replaced the value, for the message); a value the page
+ * formatted is what the field shows (`pageValue`).
  *
  * @param result - Fill result
  * @param late - What the late read found
@@ -359,7 +371,10 @@ export async function readBackLate(
  */
 export function withLateRead(result: FillResult, late: FieldRead = {}): FillResult {
   if (!result.success || result.valueMismatch) return result;
-  if (late.valueMismatch) return { ...result, valueMismatch: late.valueMismatch, lateRevert: true };
+  if (late.valueMismatch) {
+    const { replaced, ...valueMismatch } = late.valueMismatch;
+    return { ...result, valueMismatch, lateRevert: replaced ? 'replaced' : 'restored' };
+  }
   return late.pageValue === undefined ? result : { ...result, pageValue: late.pageValue };
 }
 

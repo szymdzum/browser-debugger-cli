@@ -4,7 +4,11 @@
 
 import type { FillValueMismatch } from '@/ipc/protocol/domTypes.js';
 import { joinLines } from '@/ui/formatting.js';
-import { closedShadowRootMessage, valueMismatchWarning } from '@/ui/messages/commands.js';
+import {
+  closedShadowRootMessage,
+  valueMismatchWarning,
+  valueReplacedText,
+} from '@/ui/messages/commands.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { detectSelectorQuoteDamage } from '@/utils/shellDetection.js';
 
@@ -486,6 +490,17 @@ const LATE_CLEARED_HINT =
   '; if the page clears the field after an automatic submit (a search box), the fill may still have taken effect';
 
 /**
+ * A filled field as a read-back error names it: the index and its list, or
+ * the selector, and the element.
+ *
+ * @param target - As for {@link valueMismatchError}
+ * @returns e.g. `'#note' (input#note "Delivery note")`
+ */
+function filledField(target: ActedElement & { indexText?: string | undefined }): string {
+  return `${target.indexText ?? elementArgument(target)}${target.element ? ` (${target.element})` : ''}`;
+}
+
+/**
  * A fill whose value the page did not keep (#867, exit 90): the read-back
  * differs from the value given. The message names the field (the index and
  * its list, or the selector, and the element) and gives the read-back
@@ -505,7 +520,7 @@ export function valueMismatchError(
   late = false
 ): ErrorWithSuggestion {
   const element = elementArgument(target);
-  const field = `${target.indexText ?? element}${target.element ? ` (${target.element})` : ''}`;
+  const field = filledField(target);
   const readBack = valueMismatchWarning(mismatch);
   const suggestion =
     mismatch.truncatedTo !== undefined
@@ -516,6 +531,32 @@ export function valueMismatchError(
   return {
     message: `Fill ${field}: ${readBack.charAt(0).toLowerCase()}${readBack.slice(1)}`,
     suggestion,
+  };
+}
+
+/**
+ * Suggestion of a fill whose value the page replaced (#906): report the
+ * rejection rather than force the value (agents in the eval forced it with
+ * `bdg eval` or by cloning the field without its listeners)
+ */
+const LATE_REPLACED_SUGGESTION =
+  "The page did not accept the value and the field now shows the page's own value: report that the fill was rejected; forcing the value by script (bdg eval) or by removing the field's listeners bypasses the page, which will not use it";
+
+/**
+ * A fill whose value the page replaced with an unrelated one within the
+ * late read (#906, exit 90): the field's value keeps little of the input.
+ *
+ * @param target - As for {@link valueMismatchError}
+ * @param mismatch - Value given and value found (masked for secret fields)
+ * @returns Error with a suggestion
+ */
+export function lateReplacedError(
+  target: ActedElement & { indexText?: string | undefined },
+  mismatch: FillValueMismatch
+): ErrorWithSuggestion {
+  return {
+    message: `Fill ${filledField(target)}: ${valueReplacedText(mismatch)}`,
+    suggestion: LATE_REPLACED_SUGGESTION,
   };
 }
 

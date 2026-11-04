@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import * as vm from 'node:vm';
 
-import { valueMismatchError } from '@/errors/messages.js';
+import { lateReplacedError, valueMismatchError } from '@/errors/messages.js';
 import type { FillValueMismatch } from '@/ipc/protocol/domTypes.js';
 import { FILL_VALUE_MISMATCH_JS } from '@/runtime/dom/reactEventHelpers.js';
 import { valueMismatchWarning } from '@/ui/messages/commands.js';
@@ -211,5 +211,30 @@ void describe('valueMismatchError', () => {
       /value is "x{200}…" \(100000 characters\) after filling \(expected "y{200}…" \(300 characters\)\)/
     );
     assert.ok(long.message.length < 600);
+  });
+});
+
+void describe('lateReplacedError (#906)', () => {
+  const target = { selector: '#note', element: 'input#note "Delivery note"' };
+
+  void it('says the page replaced the value, and to report the rejection rather than force the value', () => {
+    const err = lateReplacedError(target, {
+      expected: 'gift wrap, leave at door',
+      actual: 'draft-a43d62',
+    });
+    assert.equal(
+      err.message,
+      'Fill \'#note\' (input#note "Delivery note"): the page replaced the value within 2 s of filling: the field\'s value is "draft-a43d62" (expected "gift wrap, leave at door"); it did not keep the input'
+    );
+    assert.equal(
+      err.suggestion,
+      "The page did not accept the value and the field now shows the page's own value: report that the fill was rejected; forcing the value by script (bdg eval) or by removing the field's listeners bypasses the page, which will not use it"
+    );
+  });
+
+  void it('gives no value or length of a secret field', () => {
+    const err = lateReplacedError(target, { expected: '••••', actual: '••••', masked: true });
+    assert.match(err.message, /the page replaced the value .*secret field, value not shown/);
+    assert.doesNotMatch(`${err.message} ${err.suggestion}`, /\d|••••/);
   });
 });

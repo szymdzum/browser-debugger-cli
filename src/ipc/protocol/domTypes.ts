@@ -308,8 +308,12 @@ export interface FillResult extends ActionEffects {
    * (the page rejected, reformatted or moved it; secret fields masked)
    */
   valueMismatch?: FillValueMismatch;
-  /** The mismatch was found by the late read, 2 s after the fill (#892); words the suggestion, never output */
-  lateRevert?: true;
+  /**
+   * The mismatch was found by the late read, 2 s after the fill (#892): the
+   * page restored the old value or a blank, or replaced the value with
+   * unrelated text (#906); words the message and suggestion, never output
+   */
+  lateRevert?: 'restored' | 'replaced';
   /**
    * What the field shows when the page formatted the value given (a phone
    * mask, a date written out, `$8.00` for `8`), read 2 s after the fill
