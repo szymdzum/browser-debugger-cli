@@ -32,7 +32,8 @@ import { type ErrorWithSuggestion } from './shared.js';
 export function sessionAlreadyRunningError(
   pid: number,
   duration: number,
-  targetUrl?: string
+  targetUrl?: string,
+  _openUrl?: string
 ): string {
   return joinLines(
     '',
@@ -83,7 +84,7 @@ function stopAndRestartCommand(): string {
  *
  * @returns Suggestion
  */
-export function alreadyRunningSuggestion(): string {
+export function alreadyRunningSuggestion(_openUrl?: string): string {
   return `Use the running session (${sessionCommand('bdg status')}), or stop it first: ${stopAndRestartCommand()}`;
 }
 
