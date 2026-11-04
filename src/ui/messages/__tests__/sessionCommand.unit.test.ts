@@ -138,3 +138,58 @@ void describe('chromeInUseBySessionError', () => {
     assert.match(err.suggestion, /BDG_SESSION_DIR=\/tmp\/elsewhere bdg stop\)/);
   });
 });
+
+void describe('already running: open the URL in the running session (#902)', () => {
+  const navigate = 'Open it in this session: bdg page navigate http://localhost:3000/b';
+
+  void it('names bdg page navigate with the URL given, first', () => {
+    const suggestion = alreadyRunningSuggestion('http://localhost:3000/b');
+    assert.ok(suggestion.startsWith(navigate), suggestion);
+    assert.match(suggestion, /bdg status/);
+    assert.match(suggestion, /bdg stop && bdg <url>/);
+    const human = sessionAlreadyRunningError(1, 1000, 'http://a/', 'http://localhost:3000/b');
+    const lines = human.split('\n');
+    const first = lines.findIndex((line) => line.includes('Open it in this session'));
+    assert.ok(first > lines.indexOf('Suggestions:'), human);
+    assert.ok(lines[first]?.includes(navigate), human);
+    assert.match(lines[first + 1] ?? '', /View session/);
+  });
+
+  void it('does not print a pasteable command when the URL has secrets', () => {
+    for (const url of [
+      'http://user:pass@localhost:3000/b?x=1',
+      'http://localhost:3000/b?token=abc123&x=1#id_token=zzz',
+    ]) {
+      for (const text of [
+        alreadyRunningSuggestion(url),
+        sessionAlreadyRunningError(1, 1000, 'http://a/', url),
+      ]) {
+        assert.match(
+          text,
+          /Open it in this session: bdg page navigate <the URL you gave> \(secrets in it are not shown here\)/
+        );
+        assert.doesNotMatch(text, /pass|abc123|zzz|••/);
+      }
+    }
+  });
+
+  void it('quotes a plain URL with shell metacharacters', () => {
+    assert.match(
+      alreadyRunningSuggestion('http://a.test/p?x=1&y=2'),
+      /navigate 'http:\/\/a\.test\/p\?x=1&y=2'/
+    );
+  });
+
+  void it('names the session of a named session', () => {
+    process.env['BDG_SESSION'] = 'alpha';
+    assert.match(
+      alreadyRunningSuggestion('http://localhost:3000/b'),
+      /bdg page navigate http:\/\/localhost:3000\/b --session alpha/
+    );
+  });
+
+  void it('stays as before without a URL (attach opens none)', () => {
+    assert.doesNotMatch(alreadyRunningSuggestion(), /page navigate/);
+    assert.doesNotMatch(sessionAlreadyRunningError(1, 1000, 'http://a/'), /page navigate/);
+  });
+});

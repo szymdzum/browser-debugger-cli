@@ -178,6 +178,15 @@ void describe('named sessions', () => {
       again.suggestion ?? '',
       /bdg stop --session smoke-a && bdg <url> --session smoke-a/
     );
+    const navigate = `Open it in this session: bdg page navigate ${fixture.url}deep --session smoke-a`;
+    assert.ok(again.suggestion?.startsWith(navigate), again.suggestion);
+
+    const human = await runCommand(`${fixture.url}deep`, ['--session', 'smoke-a', '--headless'], {
+      timeout: 60000,
+      env: sessionEnv,
+    });
+    assert.equal(human.exitCode, 84);
+    assert.ok(human.stderr.includes(`  ${navigate}`), human.stderr);
 
     const status = await runCommand('status', ['--session', 'smoke-b'], {
       timeout: 30000,

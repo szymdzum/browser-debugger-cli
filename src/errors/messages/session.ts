@@ -12,7 +12,7 @@ import {
 } from '@/ui/messages/sessionCommand.js';
 import { displayUrl } from '@/utils/displayUrl.js';
 
-import { type ErrorWithSuggestion } from './shared.js';
+import { type ErrorWithSuggestion, shellWord } from './shared.js';
 
 /**
  * Generate "session already running" error message (commands carry
@@ -32,7 +32,8 @@ import { type ErrorWithSuggestion } from './shared.js';
 export function sessionAlreadyRunningError(
   pid: number,
   duration: number,
-  targetUrl?: string
+  targetUrl?: string,
+  openUrl?: string
 ): string {
   return joinLines(
     '',
@@ -43,6 +44,7 @@ export function sessionAlreadyRunningError(
     `  Duration: ${formatDuration(duration)}`,
     '',
     'Suggestions:',
+    openUrl !== undefined && `  ${openInSessionHint(openUrl)}`,
     `  View session:     ${sessionCommand('bdg status')}`,
     `  Stop and restart: ${stopAndRestartCommand()}`,
     ''
@@ -79,12 +81,30 @@ function stopAndRestartCommand(): string {
 }
 
 /**
+ * How to open a URL in the selected session instead of starting one.
+ *
+ * @param url - URL as given to `bdg <url>`
+ * @returns e.g. `Open it in this session: bdg page navigate 'http://a.test/?q=1'`; a URL
+ *   with secrets (shown redacted) gets a placeholder, since the redacted form is not the page
+ */
+function openInSessionHint(url: string): string {
+  const shown = displayUrl(url);
+  const target =
+    shown === url ? shellWord(url) : '<the URL you gave> (secrets in it are not shown here)';
+  return `Open it in this session: ${sessionCommand(`bdg page navigate ${target}`)}`;
+}
+
+/**
  * What to do when `bdg <url>` finds the selected session already running.
  *
+ * @param openUrl - URL the caller gave (leave out for `bdg attach`, which opens none)
  * @returns Suggestion
  */
-export function alreadyRunningSuggestion(): string {
-  return `Use the running session (${sessionCommand('bdg status')}), or stop it first: ${stopAndRestartCommand()}`;
+export function alreadyRunningSuggestion(openUrl?: string): string {
+  const reuse = `${sessionCommand('bdg status')}), or stop it first: ${stopAndRestartCommand()}`;
+  return openUrl === undefined
+    ? `Use the running session (${reuse}`
+    : `${openInSessionHint(openUrl)}; or use the running session (${reuse}`;
 }
 
 /**
