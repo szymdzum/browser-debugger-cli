@@ -573,7 +573,9 @@ export function parseJsonOutput(stdout, lines) {
 }
 
 /**
- * Invariant 3: with `--json`, stdout is one valid BdgResponse envelope.
+ * Invariant 3: with `--json`, stdout is one valid BdgResponse envelope, and `success` matches the exit code.
+ * Exception: in `--follow --json` each line is a snapshot envelope whose `success` describes that snapshot, and a
+ * signal ends the stream with 130/143 and no final envelope (#704, #896), so this check is skipped for NDJSON and signalled runs (exception E2).
  * @param {{code: number | null, stdout: string}} run finished run
  * @param {{json: boolean, ndjson: boolean, help: boolean, interrupted: boolean}} flags what the argv asked for
  * @returns {string | undefined} violation detail
