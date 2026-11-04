@@ -4,9 +4,11 @@
  * On `/fill-read-back` each field keeps, reformats or changes the value
  * filled. A plain number given to a text field is compared as the number the
  * field shows: `$8.00`, `5.20%` and `$1,234.50` are the numbers filled, so
- * the fill succeeds (exit 0, no `valueMismatch`). A value the page changed
- * (`8` raised to `24.00`, text emptied, a decimal comma `8,00`, a password
- * emptied) fails the fill with exit 90: the human error names both values,
+ * the fill succeeds (exit 0, no `valueMismatch`); so does `8` shown as
+ * `8,00`, which keeps the input (#901). A value the page changed (`8` raised
+ * to `24.00`, text emptied, a password emptied) fails the fill with exit 90:
+ * the human error names both values (a value replaced with unrelated text
+ * says so, #901),
  * and the `--json` error envelope carries `valueMismatch` with the fill's
  * other fields (`selector`, `element`). `--no-blur` reads the value before
  * the field reformats it on blur, so it succeeds too.
@@ -48,8 +50,15 @@ const CELLS: Cell[] = [
   { field: '#money', value: '8', flags: ['--no-blur'], kept: '8', mismatch: false },
   { field: '#money', value: 'abc', kept: '', mismatch: true },
   { field: '#pct', value: '5.2', kept: '5.20%', mismatch: false },
-  { field: '#clamp', value: '8', kept: '24.00', mismatch: true },
-  { field: '#eu', value: '8', kept: '8,00', mismatch: true },
+  {
+    field: '#clamp',
+    value: '8',
+    kept: '24.00',
+    mismatch: true,
+    error:
+      /^(Error: )?Fill '#clamp' \(input#clamp "Hours"\): the page replaced the value within 2 s of filling: the field's value is "24\.00" \(expected "8"\); it did not keep the input/m,
+  },
+  { field: '#eu', value: '8', kept: '8,00', mismatch: false },
   { field: '#plain', value: '8', kept: '8', mismatch: false },
   { field: '#plain', value: 'abc', kept: 'abc', mismatch: false },
   {
@@ -174,7 +183,7 @@ void describe('dom fill read-back: numbers in formatted text fields, exit 90 on 
     assert.equal(result.exitCode, MISMATCH_EXIT, result.stderr);
     assert.match(
       result.stderr,
-      /^Error: Fill '#quote' \(textarea#quote "Quote"\): the field's value is "line 1\\nsaid \\"hi\\"" after filling \(expected "hello"\);/m
+      /^Error: Fill '#quote' \(textarea#quote "Quote"\): the page replaced the value within 2 s of filling: the field's value is "line 1\\nsaid \\"hi\\"" \(expected "hello"\);/m
     );
   });
 
