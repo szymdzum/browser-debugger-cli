@@ -460,7 +460,7 @@ async function sendStart(
       interrupt
     );
     if (response.status === 'error') {
-      return { ...describeStartFailure(response, options), daemonExiting: true };
+      return { ...describeStartFailure(response, options, url), daemonExiting: true };
     }
     if (!response.data) {
       const message = 'Invalid response from daemon: missing data';
@@ -541,11 +541,14 @@ function runningFor(existing: NonNullable<StartSessionResponse['existingSession'
  * @param response - Error response from the daemon
  * @param options - Session options (target-mismatch wording, and whether a
  *   browser was named with `--chrome-ws-url`)
+ * @param url - URL as given (an already-running session hints at navigating
+ *   to it, except for `bdg attach`, which opens none)
  * @returns Failed start outcome
  */
 function describeStartFailure(
   response: StartSessionResponse,
-  options: SessionStartOptions
+  options: SessionStartOptions,
+  url: string
 ): Extract<StartOutcome, { ok: false }> {
   const exitCode = response.exitCode ?? getExitCodeForIPCError(response.errorCode);
   const existing = response.existingSession;
@@ -557,13 +560,14 @@ function describeStartFailure(
   });
   if (response.errorCode === IPCErrorCode.SESSION_ALREADY_RUNNING && existing) {
     const { pid, targetUrl } = existing;
+    const openUrl = options.attachTab === undefined ? url : undefined;
     return {
       ok: false,
       error: response.message ?? 'Session already running',
-      human: sessionAlreadyRunningError(pid, runningFor(existing), targetUrl),
+      human: sessionAlreadyRunningError(pid, runningFor(existing), targetUrl, openUrl),
       exitCode,
       errorCode: response.errorCode,
-      details: { ...details, suggestion: alreadyRunningSuggestion() },
+      details: { ...details, suggestion: alreadyRunningSuggestion(openUrl) },
     };
   }
   if (response.errorCode === IPCErrorCode.SESSION_TARGET_MISMATCH) {
