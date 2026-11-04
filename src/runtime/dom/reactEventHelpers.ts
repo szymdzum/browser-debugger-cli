@@ -161,10 +161,14 @@ const DIGIT_SPANS_JS = `(runs) => {
  * letters by chance at most. A letter run is found in the late value's runs
  * joined (separators gone). A digit run is found in a span of the late
  * value's digit groups ({@link DIGIT_SPANS_JS}: `20240105` in `2024-01-05`,
- * `0004` in `4111 1111 1111 0004`, never `2024` in `id-2-0-2-4`), as it is or
- * with the leading zeros of every group dropped (`05` as the `5` of
- * `Jan 5, 2024`). All the input's digits count as kept when the late value's
- * digits are them regrouped: the same digits, in groups of at least two that
+ * `0004` in `4111 1111 1111 0004`, never `2024` in `id-2-0-2-4`), or as
+ * whole groups of a span with the leading zeros of every group dropped
+ * (`05` as the `5` of `Jan 5, 2024`, never the `1` of `11`). An input of
+ * at most three letters and digits, which would match by chance, needs whole
+ * runs: a digit run as whole groups, a letter run as the start of a late run
+ * (`war` in `Warsaw`, never `ok` in `Broken`). All the input's digits count
+ * as kept when the late value's digits are them regrouped: the same digits,
+ * in groups of at least two that
  * are pieces of them (`20240105` as `05/01/2024`). Also kept: a plain decimal
  * rounded ({@link NUMERIC_TEXT_JS}
  * within half a unit of the late value's last decimal: `3.14159` as `3.14`),
@@ -187,17 +191,24 @@ export const KEEPS_INPUT_JS = `(expected, late) => {
   const length = (list) => list.reduce((sum, run) => sum + run.length, 0);
   const isDigits = (run) => /^\\p{N}/u.test(run);
   const spans = (${DIGIT_SPANS_JS})(shown);
-  const spansUnpadded = spans.map((span) => span.map(unpadded).join(''));
-  const spansJoined = spans.map((span) => span.join(''));
-  const found = (run) => spansJoined.some((span) => span.includes(run)) ||
-    spansUnpadded.some((span) => span.includes(unpadded(run)));
+  const short = total <= 3;
+  const slice = (run, groups) => groups.some((_, start) => {
+    let text = '';
+    for (let i = start; i < groups.length && text.length < run.length; i++) text += groups[i];
+    return text === run;
+  });
+  const whole = (run) => spans.some((span) => slice(run, span) || slice(unpadded(run), span.map(unpadded)));
+  const found = (run) => whole(run) || (!short && spans.some((span) => span.join('').includes(run)));
+  const foundLetters = (run) => (short
+    ? shown.some((lateRun) => !isDigits(lateRun) && lateRun.startsWith(run))
+    : joined.includes(run));
   const digits = wanted.filter(isDigits);
   const typedDigits = digits.join('');
   const lateDigits = shown.filter(isDigits);
   const sorted = (text) => Array.from(text).sort().join('');
   const regrouped = lateDigits.length > 0 && sorted(lateDigits.join('')) === sorted(typedDigits) &&
     lateDigits.every((run) => run.length >= 2 && typedDigits.includes(run));
-  const kept = length(wanted.filter((run) => !isDigits(run) && joined.includes(run))) +
+  const kept = length(wanted.filter((run) => !isDigits(run) && foundLetters(run))) +
     (regrouped ? length(digits) : length(digits.filter(found)));
   if (2 * kept > total) return true;
   const typed = String(expected).trim();
@@ -985,18 +996,20 @@ export const FILL_READ_BACK_SCRIPT = `(${FILL_CHECK_READ_JS})((check) => {
  * the field shows when the page formatted the value ({@link PAGE_VALUE_JS}),
  * or null (the value given, nothing left, no field). A value judged
  * replaced is judged again `rereadMs` later, as the field reads then
- * (#906: a suggestion still streaming in). Every parameter is a
+ * (#906: a suggestion still streaming in), found again the same way. Every parameter is a
  * `Runtime.callFunctionOn` argument.
  */
 export const FILL_LATE_READ_FUNCTION = `function (selector, parts, index, rereadMs) {
   return (${FILL_CHECK_READ_JS})((check) => {
     if (window.__bdgFillCheck === check) delete window.__bdgFillCheck;
-    const found = (${FIND_ELEMENTS_JS})(selector, parts)[index];
-    const field = check.el.isConnected
-      ? check.el
-      : found && ((${LABEL_CONTROL_JS})(found) || (${SHADOW_FIELD_JS})(found) || found);
-    if (!field) return null;
+    const locate = () => {
+      if (check.el.isConnected) return check.el;
+      const found = (${FIND_ELEMENTS_JS})(selector, parts)[index];
+      return found && ((${LABEL_CONTROL_JS})(found) || (${SHADOW_FIELD_JS})(found) || found);
+    };
     const judge = () => {
+      const field = locate();
+      if (!field) return null;
       const mismatch = (${LATE_REVERT_JS})(field, check);
       return mismatch ? (${WITH_MOVED_TO_JS})(mismatch, check) : (${PAGE_VALUE_JS})(field, check);
     };
