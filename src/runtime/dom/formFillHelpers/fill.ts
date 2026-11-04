@@ -298,8 +298,8 @@ const LATE_READ_BACK_MS = 2000;
  */
 const LATE_REREAD_MS = 500;
 
-/** What a read-back found: the value not kept, or what the field shows formatted */
-type FieldRead = Pick<FillResult, 'valueMismatch' | 'pageValue'>;
+/** What a read-back found: the value not kept (`replaced` when the late read found unrelated text, #906), or what the field shows formatted */
+type FieldRead = { valueMismatch?: FillValueMismatch & { replaced?: true }; pageValue?: string };
 
 /**
  * Add the read-back of a successful fill ({@link FILL_READ_BACK_SCRIPT}):
@@ -359,9 +359,6 @@ export async function readBackLate(
   );
 }
 
-/** A late read's mismatch: `replaced` when the page wrote unrelated text (#906), moved to `lateRevert` */
-type LateMismatch = FillValueMismatch & { replaced?: true };
-
 /**
  * Add what the late read found ({@link readBackLate}) to a fill: a revert
  * fails it (`valueMismatch`, and `lateRevert` saying whether the page
@@ -375,7 +372,7 @@ type LateMismatch = FillValueMismatch & { replaced?: true };
 export function withLateRead(result: FillResult, late: FieldRead = {}): FillResult {
   if (!result.success || result.valueMismatch) return result;
   if (late.valueMismatch) {
-    const { replaced, ...valueMismatch } = late.valueMismatch as LateMismatch;
+    const { replaced, ...valueMismatch } = late.valueMismatch;
     return { ...result, valueMismatch, lateRevert: replaced ? 'replaced' : 'restored' };
   }
   return late.pageValue === undefined ? result : { ...result, pageValue: late.pageValue };

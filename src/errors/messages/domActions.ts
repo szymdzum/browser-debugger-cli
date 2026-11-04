@@ -494,14 +494,10 @@ const LATE_CLEARED_HINT =
  * the selector, and the element.
  *
  * @param target - As for {@link valueMismatchError}
- * @param element - The selector or index as a command argument
  * @returns e.g. `'#note' (input#note "Delivery note")`
  */
-function filledField(
-  target: ActedElement & { indexText?: string | undefined },
-  element: string
-): string {
-  return `${target.indexText ?? element}${target.element ? ` (${target.element})` : ''}`;
+function filledField(target: ActedElement & { indexText?: string | undefined }): string {
+  return `${target.indexText ?? elementArgument(target)}${target.element ? ` (${target.element})` : ''}`;
 }
 
 /**
@@ -524,7 +520,7 @@ export function valueMismatchError(
   late = false
 ): ErrorWithSuggestion {
   const element = elementArgument(target);
-  const field = filledField(target, element);
+  const field = filledField(target);
   const readBack = valueMismatchWarning(mismatch);
   const suggestion =
     mismatch.truncatedTo !== undefined
@@ -559,7 +555,7 @@ export function lateReplacedError(
   mismatch: FillValueMismatch
 ): ErrorWithSuggestion {
   return {
-    message: `Fill ${filledField(target, elementArgument(target))}: ${valueReplacedText(mismatch)}`,
+    message: `Fill ${filledField(target)}: ${valueReplacedText(mismatch)}`,
     suggestion: LATE_REPLACED_SUGGESTION,
   };
 }
