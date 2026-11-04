@@ -123,18 +123,50 @@ export const FILL_VALUE_MISMATCH_JS = `(field, expected, secret) => {
 }`;
 
 /**
+ * Page-side spans of a value's digit groups (runs of letters and of digits,
+ * as {@link KEEPS_INPUT_JS} cuts them) that may be read as one number: groups
+ * next to each other with only separators between them (`(555) 123-4567`),
+ * where a single-digit group can only start or end a span, so a page writing
+ * digits one by one (`id-2-0-2-4`, `draft-1-0-0`) spells no number. Each span
+ * is an array of groups.
+ */
+const DIGIT_SPANS_JS = `(runs) => {
+  const spans = [];
+  let span = [];
+  const close = () => { if (span.length > 0) spans.push(span); };
+  for (const run of runs) {
+    if (!/^\\p{N}/u.test(run)) {
+      close();
+      span = [];
+    } else {
+      span.push(run);
+      if (run.length === 1) {
+        close();
+        span = [run];
+      }
+    }
+  }
+  close();
+  return spans;
+}`;
+
+/**
  * Page-side test of whether a value the page wrote later keeps the value
  * given (#906), so it formatted it rather than replaced it. Both are folded
  * (accents dropped, `ł` as `l`, `ß` as `ss`, lowercase) and cut into runs of
  * letters and runs of digits. It keeps the input when the runs of the input
- * found in the late value's runs joined (separators gone) hold more than
- * half of the input's letters and digits: masks, dates reordered or written
- * out, currency, autocomplete and normalised addresses keep whole runs,
- * unrelated text matches single letters by chance at most. A digit run is
- * found as it is (`20240105` in `2024-01-05`, `0004` in `4111 1111 1111 0004`)
- * or with the leading zeros of every digit run dropped (`05` as the `5` of
- * `Jan 5, 2024`); the input's digits also count as kept as far as the late
- * value's digit runs are pieces of them (`20240105` as `05/01/2024`). Also kept: a plain decimal rounded ({@link NUMERIC_TEXT_JS}
+ * found in the late value hold more than half of the input's letters and
+ * digits: masks, dates reordered or written out, currency, autocomplete and
+ * normalised addresses keep whole runs, unrelated text matches single
+ * letters by chance at most. A letter run is found in the late value's runs
+ * joined (separators gone). A digit run is found in a span of the late
+ * value's digit groups ({@link DIGIT_SPANS_JS}: `20240105` in `2024-01-05`,
+ * `0004` in `4111 1111 1111 0004`, never `2024` in `id-2-0-2-4`), as it is or
+ * with the leading zeros of every group dropped (`05` as the `5` of
+ * `Jan 5, 2024`). All the input's digits count as kept when the late value's
+ * digits are them regrouped: the same digits, in groups of at least two that
+ * are pieces of them (`20240105` as `05/01/2024`). Also kept: a plain decimal
+ * rounded ({@link NUMERIC_TEXT_JS}
  * within half a unit of the late value's last decimal: `3.14159` as `3.14`),
  * a late value with a run of three mask characters (`•`, `*`, `●`: a card
  * number shown as `•••• 1111`), an input without letters or digits (nothing
@@ -152,15 +184,21 @@ export const KEEPS_INPUT_JS = `(expected, late) => {
   if (total === 0 || /[•*●]{3}/.test(late)) return true;
   const shown = runs(late);
   const joined = shown.join('');
-  const joinedUnpadded = shown.map(unpadded).join('');
   const length = (list) => list.reduce((sum, run) => sum + run.length, 0);
-  const found = (run) => joined.includes(run) || joinedUnpadded.includes(unpadded(run));
   const isDigits = (run) => /^\\p{N}/u.test(run);
+  const spans = (${DIGIT_SPANS_JS})(shown);
+  const spansUnpadded = spans.map((span) => span.map(unpadded).join(''));
+  const spansJoined = spans.map((span) => span.join(''));
+  const found = (run) => spansJoined.some((span) => span.includes(run)) ||
+    spansUnpadded.some((span) => span.includes(unpadded(run)));
   const digits = wanted.filter(isDigits);
   const typedDigits = digits.join('');
-  const regrouped = length(shown.filter((run) => isDigits(run) && typedDigits.includes(run)));
-  const kept = length(wanted.filter((run) => !isDigits(run) && found(run))) +
-    Math.max(length(digits.filter(found)), Math.min(length(digits), regrouped));
+  const lateDigits = shown.filter(isDigits);
+  const sorted = (text) => Array.from(text).sort().join('');
+  const regrouped = lateDigits.length > 0 && sorted(lateDigits.join('')) === sorted(typedDigits) &&
+    lateDigits.every((run) => run.length >= 2 && typedDigits.includes(run));
+  const kept = length(wanted.filter((run) => !isDigits(run) && joined.includes(run))) +
+    (regrouped ? length(digits) : length(digits.filter(found)));
   if (2 * kept > total) return true;
   const typed = String(expected).trim();
   const number = (${NUMERIC_TEXT_JS})(late);
