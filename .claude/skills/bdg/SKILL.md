@@ -294,7 +294,7 @@ If a command is interrupted, Ctrl-C (exit 130, once Node has started: tens of mi
 | 80 | Invalid URL, or a load that failed (`Could not load <url>: net::…`: start, `page navigate`/`reload`, `dom wait --load`, and a `dom click`/`submit`/`press-key`/other action whose navigation ended on Chrome's error page: `⚠ … (navigation failed: net::…)`, JSON error envelope with `navigationFailed { url, errorText }` and the action's fields; a redirect to a scheme Chrome refuses (`myapp://`, `javascript:`, `view-source:`) is exit 80 with `net::ERR_ABORTED` on all these paths, not a download; `attach` to such a tab only warns; Chrome's certificate warning, `ERR_CERT_*`, is exit 0 with `⚠ Chrome shows a certificate warning for …`, JSON `certificateWarning`) | Check the URL / dev server |
 | 81 | Invalid arguments (incl. blocked CDP methods; an index after a query that matched nothing, or before any query) | Read the suggestion |
 | 83 | Not found (element, session, file) | Fix the selector, or start a session |
-| 84 | Session already running | `bdg page navigate <url>` to reuse it, `bdg stop`, or `--session <name>` |
+| 84 | Session already running | `bdg page navigate <url>` to reuse it (the error's first suggestion names it with your URL), `bdg stop`, or `--session <name>` |
 | 85 | Session busy (starting/stopping) | Retry shortly |
 | 87 | Index out of range, or stale (page changed since the query) | Re-run the query |
 | 90 | The page's state blocks the request: a `dom fill` value the page did not keep (`valueMismatch` in the JSON error), text typed into another field, a `--strict` click the mouse cannot reach | Read the suggestion; for a fill, check the format the field accepts (`bdg dom get`) |
