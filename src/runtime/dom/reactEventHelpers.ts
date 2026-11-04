@@ -163,7 +163,9 @@ const DIGIT_SPANS_JS = `(runs) => {
  * value's digit groups ({@link DIGIT_SPANS_JS}: `20240105` in `2024-01-05`,
  * `0004` in `4111 1111 1111 0004`, never `2024` in `id-2-0-2-4`), or as
  * whole groups of a span with the leading zeros of every group dropped
- * (`05` as the `5` of `Jan 5, 2024`, never the `1` of `11`). An input of
+ * (`05` as the `5` of `Jan 5, 2024`, never the `1` of `11`), or, for a run
+ * of at least three digits after its leading zeros, without them anywhere
+ * in a span (a trunk prefix: `0612345678` in `+33612345678`). An input of
  * at most three letters and digits, which would match by chance, needs whole
  * runs: a digit run as whole groups, a letter run as the start of a late run
  * (`war` in `Warsaw`, never `ok` in `Broken`). All the input's digits count
@@ -198,7 +200,9 @@ export const KEEPS_INPUT_JS = `(expected, late) => {
     return text === run;
   });
   const whole = (run) => spans.some((span) => slice(run, span) || slice(unpadded(run), span.map(unpadded)));
-  const found = (run) => whole(run) || (!short && spans.some((span) => span.join('').includes(run)));
+  const trunk = (run) => unpadded(run) !== run && unpadded(run).length >= 3;
+  const found = (run) => whole(run) || (!short && spans.some((span) => span.join('').includes(run) ||
+    (trunk(run) && span.join('').includes(unpadded(run)))));
   const foundLetters = (run) => (short
     ? shown.some((lateRun) => !isDigits(lateRun) && lateRun.startsWith(run))
     : joined.includes(run));

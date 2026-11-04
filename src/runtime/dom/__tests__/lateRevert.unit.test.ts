@@ -151,6 +151,8 @@ const MATRIX: [late: string, expected: string, old: string, verdict: Verdict][] 
   ['Enter address', 'my address', '', 'kept'],
   ['order 9876', 'order 1234', '', 'kept'],
   ['+48 600 999 200', '+48 600 100 200', '', 'kept'],
+  ['+33612345678', '0612345678', '', 'kept'],
+  ['+33 6 12 34 56 78', '0612345678', '', 'kept'],
   ['DRAFT SAVED', 'my draft', 'Draft saved', 'restored'],
   ['o', 'new', 'o', 'restored'],
   ['', 'new', 'o', 'restored'],

@@ -217,7 +217,7 @@ void describe('valueMismatchError', () => {
 void describe('lateReplacedError (#906)', () => {
   const target = { selector: '#note', element: 'input#note "Delivery note"' };
 
-  void it('says the page replaced the value and did not keep the input, not to force it by script', () => {
+  void it('says the page replaced the value, and to report the rejection rather than force the value', () => {
     const err = lateReplacedError(target, {
       expected: 'gift wrap, leave at door',
       actual: 'draft-a43d62',
@@ -226,9 +226,10 @@ void describe('lateReplacedError (#906)', () => {
       err.message,
       'Fill \'#note\' (input#note "Delivery note"): the page replaced the value within 2 s of filling: the field\'s value is "draft-a43d62" (expected "gift wrap, leave at door"); it did not keep the input'
     );
-    assert.match(err.suggestion, /bdg dom get '#note'/);
-    assert.match(err.suggestion, /bdg dom listeners '#note'/);
-    assert.match(err.suggestion, /setting the value by script \(bdg eval\) bypasses the page/);
+    assert.equal(
+      err.suggestion,
+      "The page did not accept the value and the field now shows the page's own value: report that the fill was rejected; forcing the value by script (bdg eval) or by removing the field's listeners bypasses the page, which will not use it"
+    );
   });
 
   void it('gives no value or length of a secret field', () => {

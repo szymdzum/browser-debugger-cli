@@ -539,6 +539,14 @@ export function valueMismatchError(
 }
 
 /**
+ * Suggestion of a fill whose value the page replaced (#906): report the
+ * rejection rather than force the value (agents in the eval forced it with
+ * `bdg eval` or by cloning the field without its listeners)
+ */
+const LATE_REPLACED_SUGGESTION =
+  "The page did not accept the value and the field now shows the page's own value: report that the fill was rejected; forcing the value by script (bdg eval) or by removing the field's listeners bypasses the page, which will not use it";
+
+/**
  * A fill whose value the page replaced with an unrelated one within the
  * late read (#906, exit 90): the field's value keeps little of the input.
  *
@@ -550,11 +558,9 @@ export function lateReplacedError(
   target: ActedElement & { indexText?: string | undefined },
   mismatch: FillValueMismatch
 ): ErrorWithSuggestion {
-  const element = elementArgument(target);
-  const field = filledField(target, element);
   return {
-    message: `Fill ${field}: ${valueReplacedText(mismatch)}`,
-    suggestion: `Check the format the field accepts (${sessionCommand(`bdg dom get ${element}`)} shows the field${mismatch.masked ? ', its value masked' : ''}) and what rewrites it (${sessionCommand(`bdg dom listeners ${element}`)}), then fill a value it keeps; setting the value by script (bdg eval) bypasses the page, which still does not keep it`,
+    message: `Fill ${filledField(target, elementArgument(target))}: ${valueReplacedText(mismatch)}`,
+    suggestion: LATE_REPLACED_SUGGESTION,
   };
 }
 
