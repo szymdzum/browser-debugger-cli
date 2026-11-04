@@ -123,6 +123,39 @@ export const FILL_VALUE_MISMATCH_JS = `(field, expected, secret) => {
 }`;
 
 /**
+ * Page-side test of whether a value the page wrote later keeps the value
+ * given (#906), so it formatted it rather than replaced it. Both are folded
+ * (accents dropped, `ł` as `l`, `ß` as `ss`, lowercase) and cut into runs of
+ * letters and runs of digits (digit runs without leading zeros: `05` is
+ * `5`). It keeps the input when the runs of the input found in the late
+ * value's runs joined (separators gone) hold more than half of the input's
+ * letters and digits: masks, dates reordered or written out, currency,
+ * autocomplete and normalised addresses keep whole runs, unrelated text
+ * matches single letters by chance at most. Also kept: a plain decimal
+ * rounded ({@link NUMERIC_TEXT_JS} within half a unit of the late value's
+ * last decimal: `3.14159` as `3.14`), a late value with a run of three mask
+ * characters (`•`, `*`, `●`: a card number shown as `•••• 1111`), and an
+ * input without letters or digits (nothing to judge).
+ */
+export const KEEPS_INPUT_JS = `(expected, late) => {
+  const fold = (text) => String(text).normalize('NFKD').replace(/\\p{M}/gu, '').toLowerCase()
+    .replace(/ł/g, 'l').replace(/ß/g, 'ss');
+  const runs = (text) => (fold(text).match(/\\p{L}+|\\p{N}+/gu) || [])
+    .map((run) => (/^\\p{N}/u.test(run) ? run.replace(/^0+(?=.)/, '') : run));
+  const wanted = runs(expected);
+  const total = wanted.reduce((sum, run) => sum + run.length, 0);
+  if (total === 0 || /[•*●]{3}/.test(late)) return true;
+  const shown = runs(late).join('');
+  const kept = wanted.filter((run) => shown.includes(run)).reduce((sum, run) => sum + run.length, 0);
+  if (2 * kept > total) return true;
+  const typed = String(expected).trim();
+  const number = (${NUMERIC_TEXT_JS})(late);
+  if (number === null || !/^[+-]?(\\d+(\\.\\d*)?|\\.\\d+)$/.test(typed)) return false;
+  const decimals = (/\\.(\\d+)\\D*$/.exec(String(late).trim()) || ['', ''])[1].length;
+  return Math.abs(number - Number(typed)) <= 0.5 * Math.pow(10, -decimals) + 1e-9;
+}`;
+
+/**
  * Page-side rule of the late read of a fill (#892): whether the value read
  * 2 s after filling is a revert (a mismatch, as {@link FILL_VALUE_MISMATCH_JS}
  * gives it) or the page formatting the value (undefined). Any change of a
@@ -132,9 +165,11 @@ export const FILL_VALUE_MISMATCH_JS = `(field, expected, secret) => {
  * restoring its state `o` over a DOM value `o ` counts) and that value
  * differs from the one given in its letters and digits (a re-fill of
  * `5551234567` over `(555) 123-4567` formatted again is no revert), or is
- * blank while the value given was not; any other value is the page formatting
- * the one given (a phone mask, a date written out, upper-casing, an
- * autocomplete), so a page replacing it with unrelated text is not seen.
+ * blank while the value given was not. Any other value is the page
+ * formatting the one given when it keeps the input ({@link KEEPS_INPUT_JS}: a
+ * phone mask, a date written out, upper-casing, an autocomplete), else the
+ * page replaced it with unrelated text (#906): a revert marked
+ * `replaced: true`.
  */
 export const LATE_REVERT_JS = `(field, check) => {
   const mismatch = (${FILL_VALUE_MISMATCH_JS})(field, check.expected, check.secret);
@@ -149,7 +184,8 @@ export const LATE_REVERT_JS = `(field, check) => {
   const loose = (text) => String(text).trim().replace(/\\s+/g, ' ').toLowerCase();
   const chars = (text) => String(text).normalize('NFKC').toLowerCase().replace(/[^\\p{L}\\p{N}]/gu, '');
   const backToOld = loose(late) === loose(old) && chars(old) !== chars(check.expected);
-  return backToOld || blanked ? mismatch : undefined;
+  if (backToOld || blanked) return mismatch;
+  return (${KEEPS_INPUT_JS})(check.expected, late) ? undefined : Object.assign(mismatch, { replaced: true });
 }`;
 
 /**
@@ -895,10 +931,12 @@ export const FILL_READ_BACK_SCRIPT = `(${FILL_CHECK_READ_JS})((check) => {
  * the page (a remount), the field the fill's selector and index find now;
  * evaluates to the revert ({@link LATE_REVERT_JS}) with `movedTo`, what
  * the field shows when the page formatted the value ({@link PAGE_VALUE_JS}),
- * or null (the value given, nothing left, no field). Every parameter is a
+ * or null (the value given, nothing left, no field). A value judged
+ * replaced is judged again `rereadMs` later, as the field reads then
+ * (#906: a suggestion still streaming in). Every parameter is a
  * `Runtime.callFunctionOn` argument.
  */
-export const FILL_LATE_READ_FUNCTION = `function (selector, parts, index) {
+export const FILL_LATE_READ_FUNCTION = `function (selector, parts, index, rereadMs) {
   return (${FILL_CHECK_READ_JS})((check) => {
     if (window.__bdgFillCheck === check) delete window.__bdgFillCheck;
     const found = (${FIND_ELEMENTS_JS})(selector, parts)[index];
@@ -906,8 +944,13 @@ export const FILL_LATE_READ_FUNCTION = `function (selector, parts, index) {
       ? check.el
       : found && ((${LABEL_CONTROL_JS})(found) || (${SHADOW_FIELD_JS})(found) || found);
     if (!field) return null;
-    const mismatch = (${LATE_REVERT_JS})(field, check);
-    return mismatch ? (${WITH_MOVED_TO_JS})(mismatch, check) : (${PAGE_VALUE_JS})(field, check);
+    const judge = () => {
+      const mismatch = (${LATE_REVERT_JS})(field, check);
+      return mismatch ? (${WITH_MOVED_TO_JS})(mismatch, check) : (${PAGE_VALUE_JS})(field, check);
+    };
+    const first = judge();
+    if (!first || !first.replaced) return first;
+    return new Promise((resolve) => setTimeout(() => resolve(judge()), rereadMs));
   });
 }`;
 

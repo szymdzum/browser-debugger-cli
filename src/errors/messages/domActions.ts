@@ -4,7 +4,11 @@
 
 import type { FillValueMismatch } from '@/ipc/protocol/domTypes.js';
 import { joinLines } from '@/ui/formatting.js';
-import { closedShadowRootMessage, valueMismatchWarning } from '@/ui/messages/commands.js';
+import {
+  closedShadowRootMessage,
+  valueMismatchWarning,
+  valueReplacedText,
+} from '@/ui/messages/commands.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { detectSelectorQuoteDamage } from '@/utils/shellDetection.js';
 
@@ -486,6 +490,21 @@ const LATE_CLEARED_HINT =
   '; if the page clears the field after an automatic submit (a search box), the fill may still have taken effect';
 
 /**
+ * A filled field as a read-back error names it: the index and its list, or
+ * the selector, and the element.
+ *
+ * @param target - As for {@link valueMismatchError}
+ * @param element - The selector or index as a command argument
+ * @returns e.g. `'#note' (input#note "Delivery note")`
+ */
+function filledField(
+  target: ActedElement & { indexText?: string | undefined },
+  element: string
+): string {
+  return `${target.indexText ?? element}${target.element ? ` (${target.element})` : ''}`;
+}
+
+/**
  * A fill whose value the page did not keep (#867, exit 90): the read-back
  * differs from the value given. The message names the field (the index and
  * its list, or the selector, and the element) and gives the read-back
@@ -505,7 +524,7 @@ export function valueMismatchError(
   late = false
 ): ErrorWithSuggestion {
   const element = elementArgument(target);
-  const field = `${target.indexText ?? element}${target.element ? ` (${target.element})` : ''}`;
+  const field = filledField(target, element);
   const readBack = valueMismatchWarning(mismatch);
   const suggestion =
     mismatch.truncatedTo !== undefined
@@ -528,10 +547,15 @@ export function valueMismatchError(
  * @returns Error with a suggestion
  */
 export function lateReplacedError(
-  _target: ActedElement & { indexText?: string | undefined },
-  _mismatch: FillValueMismatch
+  target: ActedElement & { indexText?: string | undefined },
+  mismatch: FillValueMismatch
 ): ErrorWithSuggestion {
-  throw new Error('not implemented');
+  const element = elementArgument(target);
+  const field = filledField(target, element);
+  return {
+    message: `Fill ${field}: ${valueReplacedText(mismatch)}`,
+    suggestion: `Check the format the field accepts (${sessionCommand(`bdg dom get ${element}`)} shows the field${mismatch.masked ? ', its value masked' : ''}) and what rewrites it (${sessionCommand(`bdg dom listeners ${element}`)}), then fill a value it keeps; setting the value by script (bdg eval) bypasses the page, which still does not keep it`,
+  };
 }
 
 /**

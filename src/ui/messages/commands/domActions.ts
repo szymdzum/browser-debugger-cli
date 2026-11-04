@@ -343,6 +343,22 @@ export function valueMismatchWarning(mismatch: FillValueMismatch): string {
   return `The field's value is ${quotedValue(mismatch.actual)} after filling (expected ${quotedValue(mismatch.expected)}); ${outcome}`;
 }
 
+/**
+ * Read-back of a fill whose value the page replaced with unrelated text
+ * within the late read (#906), the message of the exit 90 error
+ * (`lateReplacedError`): what the field holds and the value given, never a
+ * secret field's.
+ *
+ * @param mismatch - Value given and value found (masked for secret fields)
+ * @returns e.g. `the page replaced the value within 2 s of filling: the field's value is "draft-a43d62" (expected "gift wrap"); it did not keep the input`
+ */
+export function valueReplacedText(mismatch: FillValueMismatch): string {
+  if (mismatch.masked) {
+    return 'the page replaced the value after filling with another one (secret field, value not shown); it did not keep the input';
+  }
+  return `the page replaced the value within 2 s of filling: the field's value is ${quotedValue(mismatch.actual)} (expected ${quotedValue(mismatch.expected)}); it did not keep the input`;
+}
+
 /** Characters of a value quoted in the read-back message */
 const QUOTED_VALUE_LENGTH = 200;
 
