@@ -123,6 +123,15 @@ export function sessionTargetMismatchError(
 }
 
 /**
+ * What to do when a start names a different target than the active session.
+ *
+ * @returns Suggestion
+ */
+export function sessionTargetMismatchSuggestion(): string {
+  return `Stop the active session first (${sessionCommand('bdg stop')}), or start the other target as a named session (bdg <url> --session <name>)`;
+}
+
+/**
  * Context for daemon error messages.
  */
 export interface DaemonErrorContext {

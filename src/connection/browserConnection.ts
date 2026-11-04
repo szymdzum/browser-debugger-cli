@@ -10,11 +10,13 @@ import { CDPConnection } from '@/connection/cdp.js';
 import { CDPTimeoutError } from '@/connection/errors.js';
 import { CommandError } from '@/errors/index.js';
 import {
+  chromeConnectionFailedError,
   remoteDebuggingDeclinedError,
   remoteDebuggingUnansweredError,
   staleDevToolsActivePortError,
 } from '@/errors/messages.js';
 import type { Logger } from '@/ui/logging/index.js';
+import { getErrorExitCode, getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -79,6 +81,10 @@ export async function connectToBrowser(
 /**
  * The CommandError a failed browser connection means, if it means one.
  *
+ * A connection error for a URL given directly is the only thing that names
+ * that browser, so it is reported with the endpoint suggestion. An error that
+ * is already a CommandError keeps its own message and suggestion.
+ *
  * @param error - The connection error
  * @param wsUrl - Browser WebSocket URL
  * @param timeoutMs - How long it waited
@@ -105,7 +111,11 @@ function describeFailure(
     const err = staleDevToolsActivePortError(activePortFile, new URL(wsUrl).host);
     return commandError(err, EXIT_CODES.RESOURCE_NOT_FOUND);
   }
-  return undefined;
+  if (error instanceof CommandError) return undefined;
+  return commandError(
+    chromeConnectionFailedError(getErrorMessage(error)),
+    getErrorExitCode(error, EXIT_CODES.CDP_CONNECTION_FAILURE)
+  );
 }
 
 /**

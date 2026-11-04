@@ -10,10 +10,11 @@
 
 import assert from 'node:assert/strict';
 import * as http from 'node:http';
-import type * as net from 'node:net';
 import { describe, it } from 'node:test';
 
 import { WebSocketServer } from 'ws';
+
+import type * as net from 'node:net';
 
 import { connectToBrowser } from '@/connection/browserConnection.js';
 import { CommandError } from '@/errors/index.js';
@@ -187,4 +188,17 @@ void describe('connectToBrowser', () => {
       }
     });
   }
+
+  void it('exits 101 with how to find the right URL when a direct --chrome-ws-url fails', async () => {
+    const browser = await fakeBrowser('never');
+    await browser.close();
+    await assert.rejects(
+      connectToBrowser(browser.wsUrl),
+      commandError(101, (error) => {
+        assert.match(error.message, /Failed to connect/);
+        assert.match(String(error.metadata.suggestion), /--remote-debugging-port/);
+        assert.match(String(error.metadata.suggestion), /\/json\/version/);
+      })
+    );
+  });
 });
