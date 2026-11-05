@@ -11,6 +11,7 @@ import { emptyOutputPathError, outputFileError } from '@/errors/messages.js';
 import { AtomicFileWriter } from '@/utils/atomicFile.js';
 import { makeDirectory } from '@/utils/directories.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { resolveWriteTarget } from '@/utils/safeFile.js';
 
 /** What went wrong with a path, by error code */
 const PATH_PROBLEMS: Record<string, { reason: string; exitCode: number }> = {
@@ -18,6 +19,15 @@ const PATH_PROBLEMS: Record<string, { reason: string; exitCode: number }> = {
   EPERM: { reason: 'operation not permitted', exitCode: EXIT_CODES.PERMISSION_DENIED },
   EROFS: { reason: 'read-only file system', exitCode: EXIT_CODES.PERMISSION_DENIED },
   EISDIR: { reason: 'it is a directory', exitCode: EXIT_CODES.INVALID_ARGUMENTS },
+  ENOTREGULAR: {
+    reason: 'it is not a regular file (a FIFO, device or socket)',
+    exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+  },
+  EDANGLING: {
+    reason: 'it is a symlink to a missing file',
+    exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+  },
+  ELOOP: { reason: 'it is a symlink loop', exitCode: EXIT_CODES.INVALID_ARGUMENTS },
   ENOTDIR: { reason: 'a part of the path is a file', exitCode: EXIT_CODES.INVALID_ARGUMENTS },
   EEXIST: { reason: 'a part of the path is a file', exitCode: EXIT_CODES.INVALID_ARGUMENTS },
   ENAMETOOLONG: { reason: 'the name is too long', exitCode: EXIT_CODES.INVALID_ARGUMENTS },
@@ -79,14 +89,17 @@ export function assertFilePath(filePath: string, extension?: string): void {
 }
 
 /**
- * Write a file atomically, creating its directory if needed.
+ * Write a file atomically, creating its directory if needed. A symlink to a
+ * regular file is written through (the link stays); a FIFO, device, socket
+ * or dangling symlink is refused, never replaced (#895).
  *
  * @param filePath - Path the user gave
  * @param data - File contents
  * @param extension - Extension of the file kind, for examples in errors
  * @param mode - File permissions of a text file (default: 0666 less the umask)
  * @returns Absolute path written
- * @throws CommandError naming the path when it cannot be written
+ * @throws CommandError naming the path when it cannot be written (81 when it
+ *   is not a regular file)
  */
 export async function writeOutputFile(
   filePath: string,
@@ -98,10 +111,11 @@ export async function writeOutputFile(
   const absolutePath = path.resolve(filePath);
   try {
     makeDirectory(path.dirname(absolutePath));
+    const target = await resolveWriteTarget(absolutePath);
     if (typeof data === 'string') {
-      await AtomicFileWriter.writeAsync(absolutePath, data, mode === undefined ? {} : { mode });
+      await AtomicFileWriter.writeAsync(target, data, mode === undefined ? {} : { mode });
     } else {
-      await AtomicFileWriter.writeBufferAsync(absolutePath, data);
+      await AtomicFileWriter.writeBufferAsync(target, data);
     }
   } catch (error) {
     throw outputPathError(filePath, error, extension);

@@ -98,8 +98,9 @@ export function readStateFile(file: string): AuthStateContent {
 }
 
 /**
- * Write a state file, 0600 also over an existing file (#624); never through
- * a symlink or a partly written file.
+ * Write a state file, 0600 also over an existing file (#624); never a partly
+ * written file. A symlink to a regular file is written through (the link
+ * stays); a FIFO, device, socket or dangling symlink is refused (#895).
  *
  * @param file - Path given
  * @param content - Cookies and origins
