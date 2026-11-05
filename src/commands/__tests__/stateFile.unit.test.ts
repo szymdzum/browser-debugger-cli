@@ -1,8 +1,9 @@
 /**
  * State files on disk (#454, #624): the file is readable by its owner only,
- * also when it replaces an existing one of another mode; a symlink at the
- * path is replaced (its destination untouched), and a missing or unreadable
- * file exits 81.
+ * also when it replaces an existing one of another mode; a symlink to a
+ * regular file is written through (the link stays), a FIFO or dangling
+ * symlink is refused with exit 81 (#895), and a missing or unreadable file
+ * exits 81.
  */
 
 import assert from 'node:assert/strict';
@@ -73,17 +74,44 @@ void describe('state files', { skip: process.platform === 'win32' }, () => {
     });
   }
 
-  it('replaces a symlink instead of writing through it', async () => {
+  it('writes through a symlink to a regular file, keeping the link (#895)', async () => {
     const dir = makeTempDir('bdg-state-');
-    const victim = path.join(dir, 'victim.txt');
-    fs.writeFileSync(victim, 'untouched');
+    const real = path.join(dir, 'real.json');
+    fs.writeFileSync(real, 'old');
+    fs.chmodSync(real, 0o644);
     const file = path.join(dir, 's.json');
-    fs.symlinkSync(victim, file);
-    await writeStateFile(file, STATE);
-    assert.equal(fs.readFileSync(victim, 'utf8'), 'untouched');
-    assert.ok(fs.lstatSync(file).isFile());
-    assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+    fs.symlinkSync(real, file);
+    assert.equal(await writeStateFile(file, STATE), file);
+    assert.ok(fs.lstatSync(file).isSymbolicLink());
+    assert.deepEqual(readStateFile(real), STATE);
+    assert.equal(fs.statSync(real).mode & 0o777, 0o600);
+    assert.deepEqual(fs.readdirSync(dir).sort(), ['real.json', 's.json'], 'no temp file left');
   });
+
+  for (const [kind, reason, make] of [
+    ['a FIFO', /not a regular file/, (file: string) => execFileSync('mkfifo', [file])],
+    [
+      'a dangling symlink',
+      /symlink to a missing file/,
+      (file: string) => fs.symlinkSync(`${file}.missing`, file),
+    ],
+  ] as const) {
+    it(`refuses ${kind} as the file and leaves it in place (81, #895)`, async () => {
+      const dir = makeTempDir('bdg-state-');
+      const file = path.join(dir, 's.json');
+      make(file);
+      const before = fs.lstatSync(file);
+      await assert.rejects(writeStateFile(file, STATE), (error: unknown) => {
+        assert.ok(error instanceof CommandError);
+        assert.equal(error.exitCode, EXIT_CODES.INVALID_ARGUMENTS);
+        assert.match(error.message, reason);
+        assert.ok(error.metadata.suggestion);
+        return true;
+      });
+      assert.equal(fs.lstatSync(file).ino, before.ino);
+      assert.deepEqual(fs.readdirSync(dir), ['s.json'], 'no temp file left');
+    });
+  }
 
   it('refuses a directory as the file (81)', async () => {
     const dir = makeTempDir('bdg-state-');

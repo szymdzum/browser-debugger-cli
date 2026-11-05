@@ -39,7 +39,7 @@ import type {
 import { cdpNotListeningError } from '@/ui/messages/cdpEvents.js';
 import { delay } from '@/utils/async.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import { TEMP_FILE_FLAGS, tempPathFor } from '@/utils/safeFile.js';
+import { TEMP_FILE_FLAGS, resolveWriteTarget, tempPathFor } from '@/utils/safeFile.js';
 
 /** What events are subscribed on (the session's CDP connection) */
 export interface EventSource {
@@ -75,8 +75,10 @@ const OUT_FILE_MODE = 0o600;
  * its owner only ({@link OUT_FILE_MODE}), also when it replaces an existing
  * file of another mode: the temp file is created 0600 and the rename
  * replaces the inode, so the old mode does not carry over and nothing is
- * chmod-ed before the collection succeeded (#624). A symlink at the target
- * is replaced by the file (its destination is left as it was).
+ * chmod-ed before the collection succeeded (#624). A symlink to a regular
+ * file is written through (the temp file goes next to the file it points to
+ * and replaces it; the link stays); a FIFO, device, socket or dangling
+ * symlink is refused, never replaced (#895).
  */
 class NdjsonFile {
   count = 0;
@@ -87,6 +89,7 @@ class NdjsonFile {
 
   private constructor(
     readonly file: string,
+    private readonly target: string,
     private readonly temp: string,
     private readonly stream: fs.WriteStream,
     private readonly maxPendingBytes: number
@@ -105,11 +108,10 @@ class NdjsonFile {
    * @throws CommandError naming the path when it cannot be written
    */
   static async open(file: string, maxPendingBytes = MAX_PENDING_WRITE_BYTES): Promise<NdjsonFile> {
-    const temp = tempPathFor(file);
     try {
-      const target = await fs.promises.stat(file).catch(() => undefined);
-      if (target?.isDirectory()) throw Object.assign(new Error('directory'), { code: 'EISDIR' });
       await fs.promises.mkdir(path.dirname(file), { recursive: true });
+      const target = await resolveWriteTarget(file);
+      const temp = tempPathFor(target);
       const handle = await fs.promises.open(temp, TEMP_FILE_FLAGS, OUT_FILE_MODE);
       try {
         await handle.chmod(OUT_FILE_MODE);
@@ -118,7 +120,7 @@ class NdjsonFile {
         await fs.promises.rm(temp, { force: true });
         throw error;
       }
-      return new NdjsonFile(file, temp, handle.createWriteStream(), maxPendingBytes);
+      return new NdjsonFile(file, target, temp, handle.createWriteStream(), maxPendingBytes);
     } catch (error) {
       throw outputPathError(file, error, '.ndjson');
     }
@@ -171,7 +173,7 @@ class NdjsonFile {
     try {
       await this.end();
       if (this.error) throw this.error;
-      await fs.promises.rename(this.temp, this.file);
+      await fs.promises.rename(this.temp, this.target);
     } catch (error) {
       await fs.promises.rm(this.temp, { force: true });
       throw outputPathError(this.file, error, '.ndjson');

@@ -4,6 +4,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -66,6 +67,54 @@ void describe('writeOutputFile', () => {
       /a part of the path is a file/
     );
   });
+
+  void it(
+    'writes through a symlink to a regular file, keeping the link (#895)',
+    { skip: process.platform === 'win32' },
+    async () => {
+      const sub = fs.mkdtempSync(path.join(dir, 'link-'));
+      const real = path.join(sub, 'real.png');
+      fs.writeFileSync(real, 'ORIGINAL');
+      const link = path.join(sub, 'link.png');
+      fs.symlinkSync(real, link);
+      assert.equal(await writeOutputFile(link, Buffer.from('new')), link);
+      assert.ok(fs.lstatSync(link).isSymbolicLink());
+      assert.equal(fs.readFileSync(real, 'utf8'), 'new');
+      assert.deepEqual(fs.readdirSync(sub).sort(), ['link.png', 'real.png']);
+    }
+  );
+
+  for (const [kind, reason, make] of [
+    ['a FIFO', /not a regular file/, (file: string) => execFileSync('mkfifo', [file])],
+    [
+      'a symlink to a device',
+      /not a regular file/,
+      (file: string) => fs.symlinkSync('/dev/null', file),
+    ],
+    [
+      'a dangling symlink',
+      /symlink to a missing file/,
+      (file: string) => fs.symlinkSync(`${file}.missing`, file),
+    ],
+  ] as const) {
+    void it(
+      `refuses ${kind} and leaves it in place (81, #895)`,
+      { skip: process.platform === 'win32' },
+      async () => {
+        const sub = fs.mkdtempSync(path.join(dir, 'special-'));
+        const file = path.join(sub, 'out.png');
+        make(file);
+        const before = fs.lstatSync(file);
+        await assertCommandError(
+          () => writeOutputFile(file, Buffer.from('x')),
+          EXIT_CODES.INVALID_ARGUMENTS,
+          reason
+        );
+        assert.equal(fs.lstatSync(file).ino, before.ino);
+        assert.deepEqual(fs.readdirSync(sub), ['out.png'], 'no temp file left');
+      }
+    );
+  }
 });
 
 void describe('assertFilePath', () => {
