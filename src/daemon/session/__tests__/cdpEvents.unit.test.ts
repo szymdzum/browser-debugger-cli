@@ -7,6 +7,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -381,17 +382,17 @@ void describe('collectEvents', () => {
   });
 
   void it(
-    'replaces a symlink at --out by a 0600 file, leaving its destination (#624)',
+    'writes through a symlink at --out to a regular file, keeping the link (#895)',
     { skip: process.platform === 'win32' },
     async () => {
       const dir = fs.mkdtempSync(path.join(tmpDir, 'link-'));
-      const victim = path.join(dir, 'victim.txt');
-      fs.writeFileSync(victim, 'untouched');
-      fs.chmodSync(victim, 0o644);
+      const real = path.join(dir, 'real.ndjson');
+      fs.writeFileSync(real, 'old');
+      fs.chmodSync(real, 0o644);
       const file = path.join(dir, 'link.ndjson');
-      fs.symlinkSync(victim, file);
+      fs.symlinkSync(real, file);
       const source = new FakeSource();
-      await collectEvents(
+      const outcome = await collectEvents(
         source,
         () => {
           source.emit('A.b', { n: 1 });
@@ -399,12 +400,48 @@ void describe('collectEvents', () => {
         },
         { events: ['A.b'], timeoutMs: 10, out: file }
       );
-      assert.equal(fs.readFileSync(victim, 'utf8'), 'untouched');
-      assert.equal(fs.statSync(victim).mode & 0o777, 0o644);
-      assert.ok(fs.lstatSync(file).isFile());
-      assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+      assert.equal(outcome.collected.file, file);
+      assert.ok(fs.lstatSync(file).isSymbolicLink());
+      assert.match(fs.readFileSync(real, 'utf8'), /"method":"A\.b"/);
+      assert.equal(fs.statSync(real).mode & 0o777, 0o600);
+      assert.deepEqual(fs.readdirSync(dir).sort(), ['link.ndjson', 'real.ndjson']);
     }
   );
+
+  for (const [kind, reason, make] of [
+    ['a FIFO', /not a regular file/, (file: string) => execFileSync('mkfifo', [file])],
+    [
+      'a dangling symlink',
+      /symlink to a missing file/,
+      (file: string) => fs.symlinkSync(`${file}.missing`, file),
+    ],
+  ] as const) {
+    void it(
+      `refuses ${kind} at --out and leaves it in place (81, #895)`,
+      { skip: process.platform === 'win32' },
+      async () => {
+        const dir = fs.mkdtempSync(path.join(tmpDir, 'special-'));
+        const file = path.join(dir, 'out.ndjson');
+        make(file);
+        const before = fs.lstatSync(file);
+        await assert.rejects(
+          collectEvents(new FakeSource(), () => Promise.resolve({}), {
+            events: ['A.b'],
+            timeoutMs: 10,
+            out: file,
+          }),
+          (error: unknown) => {
+            assert.ok(error instanceof CommandError);
+            assert.equal(error.exitCode, EXIT_CODES.INVALID_ARGUMENTS);
+            assert.match(error.message, reason);
+            return true;
+          }
+        );
+        assert.equal(fs.lstatSync(file).ino, before.ino);
+        assert.deepEqual(fs.readdirSync(dir), ['out.ndjson'], 'no temp file left');
+      }
+    );
+  }
 
   void it('writes to a target whose name leaves no room for the temp suffix', async () => {
     const dir = fs.mkdtempSync(path.join(tmpDir, 'long-'));
