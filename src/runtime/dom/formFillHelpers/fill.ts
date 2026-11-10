@@ -307,7 +307,7 @@ type FieldRead = { valueMismatch?: FillValueMismatch & { replaced?: true }; page
  * judged as the late read judges (#901): `valueMismatch` when the page did
  * not keep the value given (the CLI fails the fill with exit 90 for it), or
  * `pageValue` when the page shows it formatted. The fill stands without them
- * when the read-back fails or finds nothing ({@link readField}).
+ * when the read-back fails or finds nothing ({@link readAnswer}).
  *
  * @param cdp - CDP connection
  * @param result - Fill result
@@ -315,14 +315,14 @@ type FieldRead = { valueMismatch?: FillValueMismatch & { replaced?: true }; page
  */
 async function withReadBack(cdp: CDPConnection, result: FillResult): Promise<FillResult> {
   if (!result.success) return result;
-  const read = await readField(
+  const answer = await readAnswer(
     sendTyped(cdp, 'Runtime.evaluate', {
       expression: FILL_READ_BACK_SCRIPT,
       returnByValue: true,
       awaitPromise: true,
     })
   );
-  return withFieldRead(result, read, false);
+  return withFieldRead(result, fieldRead(answer), false);
 }
 
 /**
@@ -436,16 +436,6 @@ function withFieldRead(result: FillResult, read: FieldRead, late: boolean): Fill
     return { ...filled, valueMismatch, ...(lateRevert && { lateRevert }) };
   }
   return read.pageValue === undefined ? result : { ...result, pageValue: read.pageValue };
-}
-
-/**
- * What a read-back evaluates to ({@link readAnswer}, {@link fieldRead}).
- *
- * @param read - The read-back call
- * @returns The mismatch or what the field shows, or nothing
- */
-async function readField(read: Promise<{ result?: { value?: unknown } }>): Promise<FieldRead> {
-  return fieldRead(await readAnswer(read));
 }
 
 /**
