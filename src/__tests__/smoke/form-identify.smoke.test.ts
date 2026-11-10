@@ -118,3 +118,53 @@ void describe('dom form tells forms apart', () => {
     assert.equal((JSON.parse(found) as { data: { result: unknown } }).data.result, 1);
   });
 });
+
+/**
+ * Start a session on a fixture page.
+ *
+ * @param path - Fixture path
+ * @returns The fixture server, to close afterwards
+ */
+async function openFixture(path: string): Promise<FixtureServer> {
+  await cleanupAllSessions();
+  const fixture = await startFixtureServer();
+  await bdg([`${fixture.url}${path}`, '--port', String(await getFreePort()), '--headless']);
+  return fixture;
+}
+
+void describe('dom form selector of forms in shadow roots', () => {
+  let fixture: FixtureServer;
+  before(async () => {
+    fixture = await openFixture('form-identify-shadow');
+  });
+  after(async () => {
+    await cleanupAllSessions();
+    await fixture.close();
+  });
+
+  void it('prints a selector only when it finds exactly that form', async () => {
+    const data = await json('--all');
+    assert.deepEqual(
+      data.forms.map((f) => f.selector),
+      ['#light', undefined, undefined]
+    );
+  });
+});
+
+void describe('dom form on a form with inputs named like its properties', () => {
+  let fixture: FixtureServer;
+  before(async () => {
+    fixture = await openFixture('form-identify-clobber');
+  });
+  after(async () => {
+    await cleanupAllSessions();
+    await fixture.close();
+  });
+
+  void it('keeps the id selector, method and action (id, name, action, method inputs)', async () => {
+    const form = (await json('--all')).forms[0];
+    assert.equal(form?.selector, '#clob');
+    assert.equal(form.method, 'POST');
+    assert.match(form.action ?? '', /\/go$/);
+  });
+});
