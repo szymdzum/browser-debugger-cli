@@ -722,6 +722,8 @@ export interface FormIssue {
 export interface RawForm {
   index: number;
   name: string | null;
+  /** Selector of the form element */
+  selector?: string;
   action: string | null;
   method: string;
   step: FormStep | null;

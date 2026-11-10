@@ -919,6 +919,8 @@ export interface FormStep {
 export interface DiscoveredForm {
   index: number;
   name: string | null;
+  /** Selector of the form element: `#id` when it has a unique one, else a stable path */
+  selector?: string | undefined;
   action: string | null;
   method: string;
   step?: FormStep | undefined;
@@ -945,6 +947,9 @@ export interface FormDiscoveryResult {
   otherForms?: Array<{
     index: number;
     name: string | null;
+    selector?: string | undefined;
+    action?: string | null | undefined;
+    method?: string | undefined;
     fieldCount: number;
     hidden: boolean;
     inDialog: boolean;
