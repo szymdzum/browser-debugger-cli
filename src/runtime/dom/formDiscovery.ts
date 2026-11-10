@@ -489,6 +489,12 @@ export const FORM_DISCOVERY_SCRIPT = `
     return null;
   }
 
+  // The form's own action or method, which an input of that name shadows
+  function formProperty(formEl, property) {
+    const getter = Object.getOwnPropertyDescriptor(HTMLFormElement.prototype, property).get;
+    return getter.call(formEl);
+  }
+
   function findNearbyHeading(formEl) {
     let sibling = formEl.previousElementSibling;
     let distance = 0;
@@ -711,8 +717,8 @@ export const FORM_DISCOVERY_SCRIPT = `
         index: i,
         name: extractFormName(formEl),
         selector: generateSelector(formEl),
-        action: formEl.action || null,
-        method: (formEl.method || 'GET').toUpperCase(),
+        action: formProperty(formEl, 'action') || null,
+        method: (formProperty(formEl, 'method') || 'GET').toUpperCase(),
         step: detectFormStep(formEl),
         relevanceScore: calculateRelevance(formEl, fields, buttons),
         hidden: !shown,
