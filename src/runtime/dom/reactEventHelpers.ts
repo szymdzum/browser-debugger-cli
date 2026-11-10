@@ -429,7 +429,7 @@ const FILL_DONE_JS = `(el, state) => {
   }
   const secret = (${FILL_SECRET_JS})(el);
   if (state.blur !== false) el.blur();
-  window.__bdgFillCheck = { el: el, expected: state.expected, before: state.before, secret: secret };
+  window.__bdgFillCheck = { el: el, expected: state.expected, before: state.before, secret: secret, token: state.token };
   const shown = el.localName === 'select' && el.multiple
     ? listOf(el.selectedOptions).map((o) => o.value).join(', ')
     : el.value;
@@ -820,7 +820,7 @@ export const REACT_FILL_SCRIPT = `
       if (previous !== '') setValue('');
       const pending = {
         el: el, value: value, expected: expected, before: fieldsBefore, warnings: warnings,
-        blur: options.blur, multiple: multiple, sawBeforeinput: false, sawInput: false,
+        blur: options.blur, multiple: multiple, sawBeforeinput: false, sawInput: false, token: options.checkToken,
         documents: (${FIELD_DOCUMENTS_JS})(el), elsewhere: null
       };
       const sawBeforeinput = () => { pending.sawBeforeinput = true; };
@@ -865,7 +865,8 @@ export const REACT_FILL_SCRIPT = `
   }
 
   const done = (${FILL_DONE_JS})(el, {
-    expected: expected, before: fieldsBefore, warnings: warnings, blur: options.blur, multiple: multiple
+    expected: expected, before: fieldsBefore, warnings: warnings, blur: options.blur, multiple: multiple,
+    token: options.checkToken
   });
   return result({
     value: done.value,
@@ -960,10 +961,15 @@ export const MOVED_VALUE_JS = `(field, expected, before) => {
  * fill wrote none), else `read(check)` one macrotask from now, so frameworks
  * that render asynchronously have updated the field. The macrotask comes
  * from a `MessageChannel`, which fake timers and page code rarely replace.
+ * With `drop` the check is removed at once, before the read. With `token`,
+ * only the check of the fill that stored that token counts (a late read whose
+ * call reaches the page after the next fill began must not read or remove
+ * that fill's check).
  */
-const FILL_CHECK_READ_JS = `(read) => {
+const FILL_CHECK_READ_JS = `(read, drop, token) => {
   const check = window.__bdgFillCheck;
-  if (!check) return null;
+  if (!check || (token !== undefined && check.token !== token)) return null;
+  if (drop) delete window.__bdgFillCheck;
   return new Promise((resolve) => {
     const channel = new MessageChannel();
     channel.port1.onmessage = () => {
@@ -1017,34 +1023,47 @@ export const FILL_READ_BACK_SCRIPT = `(${FILL_CHECK_READ_JS})((check) => {
 
 /**
  * Page function of the late read of a fill (#892): the field the last fill
- * left ({@link FILL_CHECK_READ_JS}, removing the check), or, when that left
- * the page (a remount), the field the fill's selector and index find now;
- * evaluates to the revert ({@link FILL_REVERT_JS}) with `movedTo`, what
- * the field shows when the page formatted the value ({@link PAGE_VALUE_JS}),
- * or null (the value given, nothing left, no field). A value judged
- * replaced is judged again `rereadMs` later, as the field reads then
- * (#906: a suggestion still streaming in), found again the same way. Every parameter is a
+ * left ({@link FILL_CHECK_READ_JS}), or, when that left the page (a remount),
+ * the field the fill's selector and index find now; evaluates to the revert
+ * ({@link FILL_REVERT_JS}) with `movedTo`, what the field shows when the page
+ * formatted the value ({@link PAGE_VALUE_JS}), or null (the value given,
+ * nothing left, no field). The check is removed, except after a value judged
+ * replaced: bdg reads that once more 500 ms later (#906: a suggestion still
+ * streaming in), waiting in the daemon rather than on the page's timers
+ * (#940), with `reread` set. That call removes the check at once and
+ * evaluates to `{ kept: true }` instead of null when the field holds the
+ * value given, so null means no check or no field. `token` is the fill's
+ * ({@link FILL_CHECK_READ_JS}). Every parameter is a
  * `Runtime.callFunctionOn` argument.
  */
-export const FILL_LATE_READ_FUNCTION = `function (selector, parts, index, rereadMs) {
+export const FILL_LATE_READ_FUNCTION = `function (selector, parts, index, reread, token) {
   return (${FILL_CHECK_READ_JS})((check) => {
-    if (window.__bdgFillCheck === check) delete window.__bdgFillCheck;
     const locate = () => {
       if (check.el.isConnected) return check.el;
       const found = (${FIND_ELEMENTS_JS})(selector, parts)[index];
       return found && ((${LABEL_CONTROL_JS})(found) || (${SHADOW_FIELD_JS})(found) || found);
     };
-    const judge = () => {
-      const field = locate();
-      if (!field) return null;
+    const judge = (field) => {
       const mismatch = (${FILL_REVERT_JS})(field, check);
       return mismatch ? (${WITH_MOVED_TO_JS})(mismatch, check) : (${PAGE_VALUE_JS})(field, check);
     };
-    const first = judge();
-    if (!first || !first.replaced) return first;
-    return new Promise((resolve) => setTimeout(() => resolve(judge()), rereadMs));
-  });
+    const field = locate();
+    const verdict = field ? judge(field) : null;
+    if (reread) return field ? verdict || { kept: true } : null;
+    if (!(verdict && verdict.replaced) && window.__bdgFillCheck === check) delete window.__bdgFillCheck;
+    return verdict;
+  }, reread, token);
 }`;
+
+/**
+ * Page script removing the check a fill left ({@link FILL_DONE_JS}), sent when
+ * a late read ({@link FILL_LATE_READ_FUNCTION}) did not answer in time: the
+ * first keeps the check when it judges the value replaced, and a busy page
+ * runs either call only after later commands may have read the page. It
+ * needs no token: it is sent before the fill returns, so before the next
+ * fill's commands, which the page runs in order after it.
+ */
+export const FILL_CHECK_DROP_SCRIPT = 'delete window.__bdgFillCheck';
 
 /**
  * JavaScript function to locate an element for clicking.
@@ -1343,6 +1362,8 @@ export interface FillOptions {
   cwd?: string;
   /** Index the user gave for a listed element (named in suggestions instead of the bound-node placeholder) */
   listIndex?: number;
+  /** Token stored on the fill's check (`window.__bdgFillCheck`), which its late reads pass ({@link FILL_LATE_READ_FUNCTION}) */
+  checkToken?: string;
 }
 
 export type { FillResult, ClickResult } from '@/ipc/protocol/domTypes.js';

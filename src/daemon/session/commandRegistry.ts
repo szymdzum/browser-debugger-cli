@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import type { TelemetryStore } from './TelemetryStore.js';
 
 import { missingMethodCause } from '@/cdp/methodTarget.js';
@@ -952,6 +954,7 @@ export function createCommandRegistry(
         async () =>
           onScriptTarget(cdp, params, async (target) => {
             const wait = params.wait !== false;
+            const checkToken = randomUUID();
             const filling = fillElement(
               target.cdp,
               target.selector,
@@ -961,11 +964,12 @@ export function createCommandRegistry(
                 blur: params.blur,
                 cwd: params.cwd,
                 listIndex: params.listIndex,
+                checkToken,
               })
             );
             const [result, late] = await Promise.all([
               withActionStability(cdp, () => filling, wait),
-              wait ? readBackLate(target.cdp, target, filling) : undefined,
+              wait ? readBackLate(target.cdp, { ...target, checkToken }, filling) : undefined,
             ]);
             return withLateRead(result, late);
           }),
