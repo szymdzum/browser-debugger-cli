@@ -960,10 +960,12 @@ export const MOVED_VALUE_JS = `(field, expected, before) => {
  * fill wrote none), else `read(check)` one macrotask from now, so frameworks
  * that render asynchronously have updated the field. The macrotask comes
  * from a `MessageChannel`, which fake timers and page code rarely replace.
+ * With `drop` the check is removed at once, before the read.
  */
-const FILL_CHECK_READ_JS = `(read) => {
+const FILL_CHECK_READ_JS = `(read, drop) => {
   const check = window.__bdgFillCheck;
   if (!check) return null;
+  if (drop) delete window.__bdgFillCheck;
   return new Promise((resolve) => {
     const channel = new MessageChannel();
     channel.port1.onmessage = () => {
@@ -1017,34 +1019,44 @@ export const FILL_READ_BACK_SCRIPT = `(${FILL_CHECK_READ_JS})((check) => {
 
 /**
  * Page function of the late read of a fill (#892): the field the last fill
- * left ({@link FILL_CHECK_READ_JS}, removing the check), or, when that left
- * the page (a remount), the field the fill's selector and index find now;
- * evaluates to the revert ({@link FILL_REVERT_JS}) with `movedTo`, what
- * the field shows when the page formatted the value ({@link PAGE_VALUE_JS}),
- * or null (the value given, nothing left, no field). A value judged
- * replaced is judged again `rereadMs` later, as the field reads then
- * (#906: a suggestion still streaming in), found again the same way. Every parameter is a
+ * left ({@link FILL_CHECK_READ_JS}), or, when that left the page (a remount),
+ * the field the fill's selector and index find now; evaluates to the revert
+ * ({@link FILL_REVERT_JS}) with `movedTo`, what the field shows when the page
+ * formatted the value ({@link PAGE_VALUE_JS}), or null (the value given,
+ * nothing left, no field). The check is removed, except after a value judged
+ * replaced: bdg reads that once more 500 ms later (#906: a suggestion still
+ * streaming in), waiting in the daemon rather than on the page's timers
+ * (#940), with `reread` set. That call removes the check at once and
+ * evaluates to `{ kept: true }` instead of null when the field holds the
+ * value given, so null means no check or no field. Every parameter is a
  * `Runtime.callFunctionOn` argument.
  */
-export const FILL_LATE_READ_FUNCTION = `function (selector, parts, index, rereadMs) {
+export const FILL_LATE_READ_FUNCTION = `function (selector, parts, index, reread) {
   return (${FILL_CHECK_READ_JS})((check) => {
-    if (window.__bdgFillCheck === check) delete window.__bdgFillCheck;
     const locate = () => {
       if (check.el.isConnected) return check.el;
       const found = (${FIND_ELEMENTS_JS})(selector, parts)[index];
       return found && ((${LABEL_CONTROL_JS})(found) || (${SHADOW_FIELD_JS})(found) || found);
     };
-    const judge = () => {
-      const field = locate();
-      if (!field) return null;
+    const judge = (field) => {
       const mismatch = (${FILL_REVERT_JS})(field, check);
       return mismatch ? (${WITH_MOVED_TO_JS})(mismatch, check) : (${PAGE_VALUE_JS})(field, check);
     };
-    const first = judge();
-    if (!first || !first.replaced) return first;
-    return new Promise((resolve) => setTimeout(() => resolve(judge()), rereadMs));
-  });
+    const field = locate();
+    const verdict = field ? judge(field) : null;
+    if (reread) return field ? verdict || { kept: true } : null;
+    if (!(verdict && verdict.replaced) && window.__bdgFillCheck === check) delete window.__bdgFillCheck;
+    return verdict;
+  }, reread);
 }`;
+
+/**
+ * Page script removing the check a fill left ({@link FILL_DONE_JS}), sent when
+ * a late read ({@link FILL_LATE_READ_FUNCTION}) did not answer in time: the
+ * first keeps the check when it judges the value replaced, and a busy page
+ * runs either call only after later commands may have read the page.
+ */
+export const FILL_CHECK_DROP_SCRIPT = 'delete window.__bdgFillCheck';
 
 /**
  * JavaScript function to locate an element for clicking.
