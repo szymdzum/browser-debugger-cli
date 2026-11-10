@@ -197,6 +197,17 @@ const MATRIX: Row[] = [
   ['re-fill formatted differently', '10 Nov 2026', '2026-11-10', '10 November 2026', null, 'kept'],
   ['first fill of a written-out date', '10 November 2026', '2026-11-10', '', null, 'kept'],
   ['cleared', '', 'shoes', 'o', null, 'restored'],
+  ['same digits, another amount: 1,234 after 1.234', '1,234', '1.234', null, null, 'restored'],
+  [
+    'same digits, another amount: 1.234,5 after 1.2345',
+    '1.234,5',
+    '1.2345',
+    null,
+    null,
+    'restored',
+  ],
+  ['same digits, same amount: 12.345 after 12345', '12.345', '12345', null, null, 'kept'],
+  ['same digits, no amount: phone re-fill', '(555) 123-4567', '5551234567', null, null, 'kept'],
 ];
 
 void describe('FILL_REVERT_JS: a re-fill shown in the format of the earlier fill (#930)', () => {

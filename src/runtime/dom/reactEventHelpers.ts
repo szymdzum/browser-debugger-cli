@@ -382,7 +382,8 @@ const SHOWN_AGAIN_JS = `(field, old, typed) => {
  * case-folded, so a controlled input restoring its state `o` over a DOM
  * value `o ` counts) and that value differs from the one given in its
  * letters and digits (a re-fill of `5551234567` over `(555) 123-4567`
- * formatted again is no revert) and is no page format of it
+ * formatted again is no revert) or, read as an amount, in its number
+ * (`1,234` after `1.234`), and is no page format of it
  * ({@link SHOWN_AGAIN_JS}, #930: `8,00` for `8`), or is blank while the
  * value given was not.
  * Any other value is the page formatting the one given when it keeps the
@@ -402,9 +403,11 @@ export const FILL_REVERT_JS = `(field, check) => {
   const old = String(check.before.get(check.el));
   const loose = (text) => String(text).trim().replace(/\\s+/g, ' ').toLowerCase();
   const chars = (text) => String(text).normalize('NFKC').toLowerCase().replace(/[^\\p{L}\\p{N}]/gu, '');
-  const backToOld = loose(late) === loose(old) && chars(old) !== chars(check.expected);
+  const typed = String(check.expected);
+  const otherAmount = (${AMOUNT_SHOWN_JS})(old, typed) === false;
+  const backToOld = loose(late) === loose(old) && (chars(old) !== chars(typed) || otherAmount);
   if (blanked) return mismatch;
-  if (backToOld) return (${SHOWN_AGAIN_JS})(field, old, String(check.expected)) ? undefined : mismatch;
+  if (backToOld) return (${SHOWN_AGAIN_JS})(field, old, typed) ? undefined : mismatch;
   return (${KEEPS_INPUT_JS})(check.expected, late) ? undefined : { ...mismatch, replaced: true };
 }`;
 
