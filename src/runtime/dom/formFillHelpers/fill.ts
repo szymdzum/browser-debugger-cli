@@ -144,6 +144,7 @@ export async function fillElement(
   const scriptOptions = {
     blur: options.blur ?? true,
     index: options.index,
+    checkToken: options.checkToken,
   };
 
   try {
@@ -299,6 +300,9 @@ const LATE_READ_BACK_MS = 2000;
  */
 const LATE_REREAD_MS = 500;
 
+/** The field a late read reads: the fill's selector (or bound-node placeholder), index and check token ({@link FillOptions}) */
+type LateReadTarget = { selector: string; index?: number | undefined; checkToken: string };
+
 /** What a read-back found: the value not kept (`replaced` when the page wrote unrelated text, #906), or what the field shows formatted */
 type FieldRead = { valueMismatch?: FillValueMismatch & { replaced?: true }; pageValue?: string };
 
@@ -335,16 +339,16 @@ async function withReadBack(cdp: CDPConnection, result: FillResult): Promise<Fil
  * selector and index. A value judged replaced is read once more
  * {@link LATE_REREAD_MS} later (#906), in a call of its own (#940): what it
  * finds decides, and the replaced verdict stands when it fails, times out or
- * finds no field.
+ * finds no field. Both reads only see the check of this fill (`checkToken`).
  *
  * @param cdp - CDP connection of the field's page
- * @param target - Selector (or bound-node placeholder) and index the fill used
+ * @param target - Selector (or bound-node placeholder) and index the fill used, and the fill's `checkToken`
  * @param filling - The fill
  * @returns The revert or what the field shows, or nothing
  */
 export async function readBackLate(
   cdp: CDPConnection,
-  target: { selector: string; index?: number | undefined },
+  target: LateReadTarget,
   filling: Promise<FillResult>
 ): Promise<FieldRead> {
   const filled = await filling;
@@ -368,20 +372,23 @@ export async function readBackLate(
  * call may not have reached yet.
  *
  * @param cdp - CDP connection of the field's page
- * @param target - Selector (or bound-node placeholder) and index the fill used
+ * @param target - Selector (or bound-node placeholder), index and check token of the fill
  * @param reread - Whether it is the read after a value judged replaced
  * @returns The page's answer, or undefined
  */
 async function readLate(
   cdp: CDPConnection,
-  target: { selector: string; index?: number | undefined },
+  target: LateReadTarget,
   reread: boolean
 ): Promise<unknown> {
   const call = callFunctionInMainWorld(cdp, {
     functionDeclaration: FILL_LATE_READ_FUNCTION,
-    arguments: [...selectorArgs(target.selector), target.index ?? 0, reread].map((value) => ({
-      value,
-    })),
+    arguments: [
+      ...selectorArgs(target.selector),
+      target.index ?? 0,
+      reread,
+      target.checkToken,
+    ].map((value) => ({ value })),
     returnByValue: true,
     awaitPromise: true,
   });

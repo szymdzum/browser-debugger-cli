@@ -21,21 +21,25 @@ type PageWindow = { __bdgFillCheck?: unknown };
  *
  * @param value - What the field holds now
  * @param reread - Whether it is the read after a value judged replaced
- * @param window - The page's window; a fresh one with the check by default
+ * @param window - The page's window; a fresh one with the check (token `t1`) by default
+ * @param token - Check token the read passes
  * @returns What it evaluates to (copied out of the VM realm) and the window
  */
 async function lateRead(
   value: string,
   reread: boolean,
-  window?: PageWindow
+  window?: PageWindow,
+  token = 't1'
 ): Promise<{ read: Record<string, unknown> | null; window: PageWindow; droppedAtOnce: boolean }> {
   const el = { isConnected: true, localName: 'input', type: 'text', value };
   const page = window ?? {
-    __bdgFillCheck: { el, expected: 'Jane Smith', before: new Map([[el, '']]) },
+    __bdgFillCheck: { el, expected: 'Jane Smith', before: new Map([[el, '']]), token: 't1' },
   };
-  const pending = vm.runInNewContext(`(${FILL_LATE_READ_FUNCTION})('#f', null, 0, ${reread})`, {
+  const pending = vm.runInNewContext(`(${FILL_LATE_READ_FUNCTION})('#f', null, 0, reread, token)`, {
     window: page,
     MessageChannel,
+    reread,
+    token,
   }) as Promise<Record<string, unknown> | null> | null;
   const droppedAtOnce = !('__bdgFillCheck' in page);
   const read = await pending;
@@ -69,5 +73,13 @@ void describe('FILL_LATE_READ_FUNCTION and the read after a replaced value (#940
   void it('the read again says the field kept the value, and null without a check', async () => {
     assert.deepEqual((await lateRead('Jane Smith', true)).read, { kept: true });
     assert.equal((await lateRead('Jane Smith', true, {})).read, null);
+  });
+
+  void it("neither read reads nor removes another fill's check", async () => {
+    for (const reread of [false, true]) {
+      const { read, window } = await lateRead('draft-9f3ac2', reread, undefined, 't2');
+      assert.equal(read, null);
+      assert.ok('__bdgFillCheck' in window);
+    }
   });
 });
