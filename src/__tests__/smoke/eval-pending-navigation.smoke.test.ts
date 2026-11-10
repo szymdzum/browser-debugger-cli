@@ -103,6 +103,13 @@ void describe('eval while a navigation waits for the server', () => {
     assertNavigationBlamed(await bdg('eval', ['location.href']));
   });
 
+  void it('shows the pending URL masked like every other URL', async () => {
+    await bdg('page', ['navigate', `${hostile.url}hang?token=hunter2value`, '--no-wait']);
+    const result = await bdg('eval', ['location.href']);
+    assertNavigationBlamed(result);
+    assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, /hunter2value/);
+  });
+
   void it('still terminates a script that really keeps the page busy', async () => {
     await bdg('eval', ['setTimeout(() => { while (true); }, 0)']);
     const result = await bdg('eval', ['location.href']);
