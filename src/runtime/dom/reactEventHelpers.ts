@@ -247,16 +247,19 @@ export const KEEPS_INPUT_JS = `(expected, late) => {
  * exactly three digits after a leading group other than `0` is a thousands
  * separator only (`1,000` is 1000, never 1; `0,500` is 0.5). Each reading is
  * `{ number, decimals }`; a value with a `+` in front or other text reads as
- * none.
+ * none, and so does one over {@link JUDGED_LENGTH} characters. With
+ * `ambiguous`, a lone group of three digits is also read as decimals (`1,234`
+ * as 1234 and 1.234). The patterns match in linear time.
  */
-const AMOUNT_READINGS_JS = `(text) => {
-  const body = String(text).trim().replace(/^(\\p{Sc}|zł|[A-Z]{3})\\s*/u, '').replace(/\\s*(\\p{Sc}|zł|[A-Z]{3}|%)$/u, '');
+const AMOUNT_READINGS_JS = `(text, ambiguous) => {
+  if (String(text).length > ${JUDGED_LENGTH}) return [];
+  const body = String(text).trim().replace(/^(\\p{Sc}|zł|[A-Z]{3})\\s*/u, '').replace(/(\\p{Sc}|zł|[A-Z]{3}|%)$/u, '').trimEnd();
   const forms = [
     /^(-?)([1-9]\\d{0,2}(?:[, \\u00a0\\u202f'\\u2019]\\d{3})+|\\d+)(?:\\.(\\d+))?$/,
     /^(-?)([1-9]\\d{0,2}(?:[. \\u00a0\\u202f'\\u2019]\\d{3})+|\\d+)(?:,(\\d+))?$/
   ];
-  return forms.map((form) => form.exec(body)).filter((match) => match &&
-    !(match[3] !== undefined && match[3].length === 3 && /^\\d+$/.test(match[2]) && match[2] !== '0'))
+  return forms.map((form) => form.exec(body)).filter((match) => match && (ambiguous ||
+    !(match[3] !== undefined && match[3].length === 3 && /^\\d+$/.test(match[2]) && match[2] !== '0')))
     .map((match) => ({
       number: Number(match[1] + match[2].replace(/\\D/g, '') + (match[3] === undefined ? '' : '.' + match[3])),
       decimals: match[3] === undefined ? 0 : match[3].length
@@ -278,6 +281,20 @@ const AMOUNT_SHOWN_JS = `(old, typed) => {
   return readings.some((reading) => (reading.decimals === 0
     ? reading.number === number
     : Math.abs(reading.number - number) <= 0.5 * Math.pow(10, -reading.decimals) + 1e-9));
+}`;
+
+/**
+ * Page-side test of whether two values with the same letters and digits are
+ * different amounts (#930: `1,234` restored after `1.234`): both read as
+ * amounts ({@link AMOUNT_READINGS_JS}, a lone group of three digits read
+ * both ways) and their readings are not all one number, so an ambiguous pair
+ * counts as different.
+ */
+const OTHER_AMOUNT_JS = `(old, typed) => {
+  const shown = (${AMOUNT_READINGS_JS})(old, true);
+  const given = (${AMOUNT_READINGS_JS})(typed, true);
+  return shown.length > 0 && given.length > 0 &&
+    !shown.every((a) => given.every((b) => a.number === b.number));
 }`;
 
 /** One- and two-digit country calling codes (ITU-T E.164); every other code has three digits */
@@ -383,11 +400,11 @@ const SHOWN_AGAIN_JS = `(field, old, typed) => {
  * value `o ` counts) and that value differs from the one given in its
  * letters and digits (a re-fill of `5551234567` over `(555) 123-4567`
  * formatted again is no revert) or, read as an amount, in its number
- * (`1,234` after `1.234`), and is no page format of it
- * ({@link SHOWN_AGAIN_JS}, #930: `8,00` for `8`), or is blank while the
- * value given was not.
- * Any other value is the page formatting the one given when it keeps the
- * input ({@link KEEPS_INPUT_JS}: a phone mask, a date written out,
+ * (`1,234` after `1.234`, {@link OTHER_AMOUNT_JS}), and is no page format
+ * of it ({@link SHOWN_AGAIN_JS}, #930: `8,00` for `8`; never for a secret
+ * field), or is blank while the value given was not. Any other value is
+ * the page formatting the one given when it keeps the input
+ * ({@link KEEPS_INPUT_JS}: a phone mask, a date written out,
  * upper-casing, an autocomplete), else the page replaced it with unrelated
  * text (#906): a revert marked `replaced: true`.
  */
@@ -404,10 +421,11 @@ export const FILL_REVERT_JS = `(field, check) => {
   const loose = (text) => String(text).trim().replace(/\\s+/g, ' ').toLowerCase();
   const chars = (text) => String(text).normalize('NFKC').toLowerCase().replace(/[^\\p{L}\\p{N}]/gu, '');
   const typed = String(check.expected);
-  const otherAmount = (${AMOUNT_SHOWN_JS})(old, typed) === false;
-  const backToOld = loose(late) === loose(old) && (chars(old) !== chars(typed) || otherAmount);
+  const backToOld = loose(late) === loose(old) &&
+    (chars(old) !== chars(typed) || (${OTHER_AMOUNT_JS})(old, typed));
+  const secret = check.secret || type === 'password';
   if (blanked) return mismatch;
-  if (backToOld) return (${SHOWN_AGAIN_JS})(field, old, typed) ? undefined : mismatch;
+  if (backToOld) return !secret && (${SHOWN_AGAIN_JS})(field, old, typed) ? undefined : mismatch;
   return (${KEEPS_INPUT_JS})(check.expected, late) ? undefined : { ...mismatch, replaced: true };
 }`;
 
