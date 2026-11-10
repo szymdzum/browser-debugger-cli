@@ -383,12 +383,9 @@ async function readLate(
 ): Promise<unknown> {
   const call = callFunctionInMainWorld(cdp, {
     functionDeclaration: FILL_LATE_READ_FUNCTION,
-    arguments: [
-      ...selectorArgs(target.selector),
-      target.index ?? 0,
-      reread,
-      target.checkToken,
-    ].map((value) => ({ value })),
+    arguments: [...selectorArgs(target.selector), target.index ?? 0, reread, target.checkToken].map(
+      (value) => ({ value })
+    ),
     returnByValue: true,
     awaitPromise: true,
   });
