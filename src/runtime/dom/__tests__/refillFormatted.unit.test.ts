@@ -21,7 +21,7 @@ import { FILL_REVERT_JS } from '@/runtime/dom/reactEventHelpers.js';
 const page = { navigator: { languages: [] as string[] } };
 const pageRule = vm.runInNewContext(`(${FILL_REVERT_JS})`, page) as (
   field: Record<string, unknown>,
-  check: { el: unknown; expected: string; before: Map<unknown, string> }
+  check: { el: unknown; expected: string; before: Map<unknown, string>; secret?: boolean }
 ) => FillValueMismatch | undefined;
 
 /** How the rule judges the value: formatting (kept), or a revert (restored, replaced) */
@@ -208,6 +208,8 @@ const MATRIX: Row[] = [
   ],
   ['same digits, same amount: 12.345 after 12345', '12.345', '12345', null, null, 'kept'],
   ['same digits, no amount: phone re-fill', '(555) 123-4567', '5551234567', null, null, 'kept'],
+  ['same digits, another amount: 12.345 after 12,345', '12.345', '12,345', null, null, 'restored'],
+  ['same digits, ambiguous amount: 1.234 after 1,234', '1.234', '1,234', null, null, 'restored'],
 ];
 
 void describe('FILL_REVERT_JS: a re-fill shown in the format of the earlier fill (#930)', () => {
@@ -216,4 +218,37 @@ void describe('FILL_REVERT_JS: a re-fill shown in the format of the earlier fill
       assert.equal(verdict(late, expected, old ?? late, locales ?? DEFAULT_LOCALES), want);
     });
   }
+
+  void it('keeps the strict revert for a secret field back at its old value', () => {
+    page.navigator.languages = ['en'];
+    const field = { localName: 'input', type: 'password', value: '+33 6 12 34 56 78' };
+    const before = new Map([[field, '+33 6 12 34 56 78']]);
+    const check = { el: field, expected: '0612345678', before, secret: true };
+    assert.deepEqual(
+      { ...pageRule(field, check) },
+      { expected: '••••', actual: '••••', masked: true }
+    );
+  });
+
+  void it('reads an old value with a long run of spaces in linear time', () => {
+    const field = { localName: 'input', type: 'text', value: '' };
+    const timed = (spaces: number): number => {
+      const old = `a${' '.repeat(spaces)}b`;
+      field.value = old;
+      const check = { el: field, expected: '8', before: new Map([[field, old]]) };
+      let best = Infinity;
+      for (let round = 0; round < 15; round++) {
+        const started = process.hrtime.bigint();
+        pageRule(field, check);
+        best = Math.min(best, Number(process.hrtime.bigint() - started));
+      }
+      return best;
+    };
+    timed(2000);
+    const ratio = timed(8000) / timed(2000);
+    assert.ok(
+      ratio < 8,
+      `4x the spaces took ${ratio.toFixed(1)}x the time (linear: about 4x, quadratic: about 16x)`
+    );
+  });
 });
