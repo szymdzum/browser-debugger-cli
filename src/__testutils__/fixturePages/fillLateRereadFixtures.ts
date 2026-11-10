@@ -6,10 +6,15 @@
  * - `/fill-reread-control`: the page's timers run.
  * - `/fill-reread-frozen`: `setTimeout` replaced with a no-op, as fake timers do;
  *   the page writes the draft through the real one.
- * - `/fill-reread-navigates`: navigates to `/fill-reread-control` 2350 ms after the
- *   first `input`, between the late read (about 2 s) and the read 500 ms after it.
- * - `/fill-reread-busy`: runs a 2 s script 2350 ms after the first `input`, so the
- *   read 500 ms after the late read gets no answer within 1 s.
+ * - `/fill-reread-navigates`: navigates to `/fill-reread-control` 100 ms after the
+ *   late read (about 2 s), so between it and the read 500 ms after it.
+ * - `/fill-reread-busy`: runs a 2 s script 100 ms after the late read, so the read
+ *   500 ms after it gets no answer within 1 s.
+ *
+ * Those two see the late read as the first read of the field's `value` more
+ * than 1 s after the first `input` (an own `value` accessor over the native
+ * one; the fill and its immediate read-back read it within milliseconds), so
+ * they act between the two reads however fast the runner is.
  */
 
 import type { FixtureRoutes } from '@/__testutils__/fixtureRoutes.js';
@@ -19,7 +24,7 @@ import type { FixtureRoutes } from '@/__testutils__/fixtureRoutes.js';
  *
  * @param title - Page title
  * @param setup - Script run before the field is wired (gets `real`, the page's own setTimeout)
- * @param later - Script run 2350 ms after the first input, or none
+ * @param later - Script run 100 ms after the late read, or none
  * @returns HTML of the page
  */
 function rereadPage(title: string, setup = '', later = ''): string {
@@ -29,14 +34,36 @@ function rereadPage(title: string, setup = '', later = ''): string {
   const real = window.setTimeout.bind(window);
   ${setup}
   const f = document.getElementById('f');
-  let started = false;
+  let inputAt = 0;
   f.addEventListener('input', () => {
     real(() => { f.value = 'draft-9f3ac2'; }, 300);
-    if (started) return;
-    started = true;
-    ${later ? `real(() => { ${later} }, 2350);` : ''}
+    if (!inputAt) inputAt = performance.now();
   });
+  ${later ? lateReadHook(later) : ''}
 </script>`;
+}
+
+/**
+ * Page script running `later` 100 ms after the late read of `#f`: the first
+ * read of its `value` more than 1 s after the first input.
+ *
+ * @param later - Script to run
+ * @returns The script
+ */
+function lateReadHook(later: string): string {
+  return `const native = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+  let acted = false;
+  Object.defineProperty(f, 'value', {
+    configurable: true,
+    get() {
+      if (inputAt && !acted && performance.now() - inputAt > 1000) {
+        acted = true;
+        real(() => { ${later} }, 100);
+      }
+      return native.get.call(this);
+    },
+    set(value) { native.set.call(this, value); },
+  });`;
 }
 
 /** Second-read pages by path */
