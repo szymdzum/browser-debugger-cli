@@ -122,6 +122,7 @@ Opened: popup https://idp.test/authorize (bdg page switch 1)          # a tab or
 
 ```bash
 bdg dom form --brief                           # Fields: index, type, label, required
+bdg dom form --all                             # Each form shows selector, method, action (same heading names stay distinct)
 bdg dom fill "input[name='user']" "myuser"     # By selector (React-compatible)
 bdg dom fill 0 "value"                         # By index from the last query/form
 bdg dom fill "#password" "short"               # Typed like a user: minlength applies (warning, submitBlocked); secret fields echo ••••; exit 90 if the page moved the text to another field

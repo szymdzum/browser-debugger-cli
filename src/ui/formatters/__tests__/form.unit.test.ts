@@ -140,3 +140,81 @@ void describe('formatFormDiscovery shadow roots', () => {
     );
   });
 });
+
+void describe('formatFormDiscovery telling forms apart (#881)', () => {
+  void it('shows the selected form selector, method and action under its header', () => {
+    const output = formatFormDiscovery(
+      result([
+        form({
+          name: 'Partner portal',
+          selector: '#save',
+          method: 'POST',
+          action: 'https://x.test/loop',
+        }),
+      ])
+    );
+    assert.match(output, /Form: "Partner portal"\n.*#save.*POST https:\/\/x\.test\/loop/);
+  });
+
+  void it('shows selector, method and action of every other form on its own line', () => {
+    const output = formatFormDiscovery(
+      result([form({ name: 'Partner portal', selector: '#save' })], {
+        otherForms: [
+          {
+            index: 1,
+            name: 'Partner portal',
+            selector: '#export',
+            method: 'GET',
+            action: 'https://x.test/export',
+            fieldCount: 1,
+            hidden: false,
+            inDialog: false,
+          },
+          {
+            index: 2,
+            name: 'Partner portal',
+            selector: '#ok',
+            method: 'GET',
+            action: 'https://x.test/done',
+            fieldCount: 2,
+            hidden: false,
+            inDialog: false,
+          },
+        ],
+      })
+    );
+    assert.match(
+      output,
+      /Form 1: "Partner portal" - 1 field\(s\).*#export.*GET https:\/\/x\.test\/export/
+    );
+    assert.match(
+      output,
+      /Form 2: "Partner portal" - 2 field\(s\).*#ok.*GET https:\/\/x\.test\/done/
+    );
+  });
+
+  void it('leaves a form without a selector as it was', () => {
+    const output = formatFormDiscovery(result([form({ name: 'Login' })]));
+    assert.doesNotMatch(output, /GET|POST/);
+  });
+
+  void it('shows method and action of a form without a selector', () => {
+    const output = formatFormDiscovery(
+      result([form({ action: 'https://x.test/inner', method: 'GET' })], {
+        otherForms: [
+          {
+            index: 1,
+            name: 'Login',
+            method: 'POST',
+            action: 'https://x.test/other',
+            fieldCount: 1,
+            hidden: false,
+            inDialog: false,
+          },
+        ],
+      })
+    );
+    assert.match(output, /Form: "Login"\n {3}GET https:\/\/x\.test\/inner/);
+    assert.match(output, /Form 1: "Login" - 1 field\(s\) \(POST https:\/\/x\.test\/other\)/);
+  });
+});

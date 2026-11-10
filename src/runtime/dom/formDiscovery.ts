@@ -169,11 +169,13 @@ export const FORM_DISCOVERY_SCRIPT = `
   }
 
   function generateSelector(element) {
-    if (element.id && isUnique('#' + CSS.escape(element.id))) {
-      return '#' + CSS.escape(element.id);
+    const id = element.getAttribute('id');
+    if (id && isUnique('#' + CSS.escape(id))) {
+      return '#' + CSS.escape(id);
     }
-    if (element.name) {
-      const byName = element.tagName.toLowerCase() + '[name="' + CSS.escape(element.name) + '"]';
+    const nameAttribute = element.getAttribute('name');
+    if (nameAttribute) {
+      const byName = element.tagName.toLowerCase() + '[name="' + CSS.escape(nameAttribute) + '"]';
       if (isUnique(byName)) return byName;
       const byValue = byName + '[value="' + CSS.escape(element.getAttribute('value') || '') + '"]';
       if (element.hasAttribute('value') && isUnique(byValue)) return byValue;
@@ -189,6 +191,14 @@ export const FORM_DISCOVERY_SCRIPT = `
     const index = siblings.indexOf(element);
     const parentSelector = generateSelector(parent);
     return parentSelector + ' > ' + tag + ':nth-of-type(' + (index + 1) + ')';
+  }
+
+  // Selector of a form when the search (document, open shadow roots and
+  // same-origin iframes) finds it and no other element, else undefined
+  function formSelector(formEl) {
+    const selector = generateSelector(formEl);
+    const found = isUnique(selector) && formEl.getRootNode().querySelector(selector) === formEl;
+    return found ? selector : undefined;
   }
 
   function cleanLabelText(text) {
@@ -489,6 +499,12 @@ export const FORM_DISCOVERY_SCRIPT = `
     return null;
   }
 
+  // The form's own action or method, which an input of that name shadows
+  function formProperty(formEl, property) {
+    const getter = Object.getOwnPropertyDescriptor(HTMLFormElement.prototype, property).get;
+    return getter.call(formEl);
+  }
+
   function findNearbyHeading(formEl) {
     let sibling = formEl.previousElementSibling;
     let distance = 0;
@@ -710,8 +726,9 @@ export const FORM_DISCOVERY_SCRIPT = `
       result.forms.push({
         index: i,
         name: extractFormName(formEl),
-        action: formEl.action || null,
-        method: (formEl.method || 'GET').toUpperCase(),
+        selector: formSelector(formEl),
+        action: formProperty(formEl, 'action') || null,
+        method: (formProperty(formEl, 'method') || 'GET').toUpperCase(),
         step: detectFormStep(formEl),
         relevanceScore: calculateRelevance(formEl, fields, buttons),
         hidden: !shown,
