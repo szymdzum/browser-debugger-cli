@@ -710,6 +710,7 @@ export const FORM_DISCOVERY_SCRIPT = `
       result.forms.push({
         index: i,
         name: extractFormName(formEl),
+        selector: generateSelector(formEl),
         action: formEl.action || null,
         method: (formEl.method || 'GET').toUpperCase(),
         step: detectFormStep(formEl),

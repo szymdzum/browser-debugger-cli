@@ -180,7 +180,29 @@ function formatFormHeader(form: DiscoveredForm): string {
     header += ` (step ${form.step.current} of ${form.step.total})`;
   }
 
+  const identity = formIdentity(form);
+  if (identity) header += `\n   ${identity}`;
+
   return header;
+}
+
+/** The properties of a form (or its "Other forms" listing) that identify it */
+interface FormIdentity {
+  selector?: string | undefined;
+  method?: string | undefined;
+  action?: string | null | undefined;
+}
+
+/**
+ * What tells a form apart from the others: its selector, method and action.
+ *
+ * @param form - Form (or its listing in "Other forms")
+ * @returns `#save, POST https://…/loop`, or empty without a selector
+ */
+function formIdentity(form: FormIdentity): string {
+  if (!form.selector) return '';
+  const submit = [form.method, form.action].filter(Boolean).join(' ');
+  return [form.selector, submit].filter(Boolean).join(', ');
 }
 
 /**
@@ -250,6 +272,17 @@ function formatSummaryLine(summary: FormSummary, hiddenFields: number): string {
   parts.push(formReadinessMessage(summary));
 
   return `Summary: ${parts.join(' | ')}`;
+}
+
+/**
+ * The identity of a form in "Other forms", in parentheses.
+ *
+ * @param form - Listing of a form not shown
+ * @returns ` (#export, GET https://…/export)`, or empty
+ */
+function otherFormIdentity(form: FormIdentity): string {
+  const identity = formIdentity(form);
+  return identity ? ` (${identity})` : '';
 }
 
 /**
@@ -385,7 +418,7 @@ function formatOtherForms(
   fmt.text('Other forms on page:');
   for (const form of others) {
     fmt.text(
-      `  Form ${form.index}: "${form.name ?? 'Unnamed'}"${formVisibilityMarker(form)}${shadowRootMarker(form)} - ${form.fieldCount} field(s)`
+      `  Form ${form.index}: "${form.name ?? 'Unnamed'}"${formVisibilityMarker(form)}${shadowRootMarker(form)} - ${form.fieldCount} field(s)${otherFormIdentity(form)}`
     );
   }
   fmt.blank();

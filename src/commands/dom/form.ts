@@ -280,6 +280,7 @@ function transformForm(raw: RawForm): DiscoveredForm {
   return {
     index: raw.index,
     name: raw.name,
+    ...(raw.selector && { selector: raw.selector }),
     action: raw.action,
     method: raw.method,
     step: raw.step ?? undefined,
@@ -430,6 +431,9 @@ async function handleFormCommand(options: FormCommandOptions): Promise<void> {
           otherForms: allForms.slice(1).map((form) => ({
             index: form.index,
             name: form.name,
+            ...(form.selector && { selector: form.selector }),
+            action: form.action,
+            method: form.method,
             fieldCount: form.hidden
               ? form.fields.length
               : form.fields.filter((field) => !field.hidden).length,
