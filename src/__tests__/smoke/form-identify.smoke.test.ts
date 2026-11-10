@@ -149,6 +149,14 @@ void describe('dom form selector of forms in shadow roots', () => {
       ['#light', undefined, undefined]
     );
   });
+
+  void it('still shows method and action of a form without a selector in human output', async () => {
+    const output = await bdg(['dom', 'form']);
+    assert.match(output, /Form 1: .*\(GET .*\/inner\)/);
+    assert.match(output, /Form 2: .*\(GET .*\/inner\)/);
+    const all = await bdg(['dom', 'form', '--all']);
+    assert.equal(all.match(/^ {3}GET .*\/inner$/gm)?.length, 2, all);
+  });
 });
 
 void describe('dom form on a form with inputs named like its properties', () => {

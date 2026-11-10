@@ -197,4 +197,24 @@ void describe('formatFormDiscovery telling forms apart (#881)', () => {
     const output = formatFormDiscovery(result([form({ name: 'Login' })]));
     assert.doesNotMatch(output, /GET|POST/);
   });
+
+  void it('shows method and action of a form without a selector', () => {
+    const output = formatFormDiscovery(
+      result([form({ action: 'https://x.test/inner', method: 'GET' })], {
+        otherForms: [
+          {
+            index: 1,
+            name: 'Login',
+            method: 'POST',
+            action: 'https://x.test/other',
+            fieldCount: 1,
+            hidden: false,
+            inDialog: false,
+          },
+        ],
+      })
+    );
+    assert.match(output, /Form: "Login"\n   GET https:\/\/x\.test\/inner/);
+    assert.match(output, /Form 1: "Login" - 1 field\(s\) \(POST https:\/\/x\.test\/other\)/);
+  });
 });

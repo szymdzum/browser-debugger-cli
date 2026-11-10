@@ -200,7 +200,7 @@ interface FormIdentity {
  * @returns `#save, POST https://…/loop`, or empty without a selector
  */
 function formIdentity(form: FormIdentity): string {
-  if (!form.selector) return '';
+  if (!form.selector && !form.action) return '';
   const submit = [form.method, form.action].filter(Boolean).join(' ');
   return [form.selector, submit].filter(Boolean).join(', ');
 }
