@@ -214,7 +214,7 @@ void describe('formatFormDiscovery telling forms apart (#881)', () => {
         ],
       })
     );
-    assert.match(output, /Form: "Login"\n   GET https:\/\/x\.test\/inner/);
+    assert.match(output, /Form: "Login"\n {3}GET https:\/\/x\.test\/inner/);
     assert.match(output, /Form 1: "Login" - 1 field\(s\) \(POST https:\/\/x\.test\/other\)/);
   });
 });
