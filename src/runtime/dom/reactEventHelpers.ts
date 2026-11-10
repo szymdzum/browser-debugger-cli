@@ -240,6 +240,156 @@ export const KEEPS_INPUT_JS = `(expected, late) => {
 }`;
 
 /**
+ * Page-side readings of a value as an amount (#930): once a leading or
+ * trailing currency symbol, `zł`, 3-letter code or `%` is dropped, read with
+ * `,` (US) or `.` (EU) as thousands separator, or a space, NBSP, NNBSP, `'`
+ * or `’`, and the other mark as decimal point. A lone separator followed by
+ * exactly three digits after a leading group other than `0` is a thousands
+ * separator only (`1,000` is 1000, never 1; `0,500` is 0.5). Each reading is
+ * `{ number, decimals }`; a value with a `+` in front or other text reads as
+ * none, and so does one over {@link JUDGED_LENGTH} characters. With
+ * `ambiguous`, a lone group of three digits is also read as decimals (`1,234`
+ * as 1234 and 1.234). The patterns match in linear time.
+ */
+const AMOUNT_READINGS_JS = `(text, ambiguous) => {
+  if (String(text).length > ${JUDGED_LENGTH}) return [];
+  const body = String(text).trim().replace(/^(\\p{Sc}|zł|[A-Z]{3})\\s*/u, '').replace(/(\\p{Sc}|zł|[A-Z]{3}|%)$/u, '').trimEnd();
+  const forms = [
+    /^(-?)([1-9]\\d{0,2}(?:[, \\u00a0\\u202f'\\u2019]\\d{3})+|\\d+)(?:\\.(\\d+))?$/,
+    /^(-?)([1-9]\\d{0,2}(?:[. \\u00a0\\u202f'\\u2019]\\d{3})+|\\d+)(?:,(\\d+))?$/
+  ];
+  return forms.map((form) => form.exec(body)).filter((match) => match && (ambiguous ||
+    !(match[3] !== undefined && match[3].length === 3 && /^\\d+$/.test(match[2]) && match[2] !== '0')))
+    .map((match) => ({
+      number: Number(match[1] + match[2].replace(/\\D/g, '') + (match[3] === undefined ? '' : '.' + match[3])),
+      decimals: match[3] === undefined ? 0 : match[3].length
+    }));
+}`;
+
+/**
+ * Page-side test of an old value showing the amount given (#930): undefined
+ * unless the value given is a plain decimal (an integer with a leading zero,
+ * such as `0612345678`, is none) and the old value reads as an amount
+ * ({@link AMOUNT_READINGS_JS}); then whether a reading is that number,
+ * rounded to the decimals it shows (`3.14` for `3.14159`; `8` for `8.4` is
+ * not).
+ */
+const AMOUNT_SHOWN_JS = `(old, typed) => {
+  const readings = (${AMOUNT_READINGS_JS})(old);
+  if (!/^[+-]?((0|[1-9]\\d*)(\\.\\d*)?|\\.\\d+)$/.test(typed.trim()) || readings.length === 0) return undefined;
+  const number = Number(typed);
+  return readings.some((reading) => (reading.decimals === 0
+    ? reading.number === number
+    : Math.abs(reading.number - number) <= 0.5 * Math.pow(10, -reading.decimals) + 1e-9));
+}`;
+
+/**
+ * Page-side test of whether two values with the same letters and digits are
+ * different amounts (#930: `1,234` restored after `1.234`): both read as
+ * amounts ({@link AMOUNT_READINGS_JS}, a lone group of three digits read
+ * both ways) and their readings are not all one number, so an ambiguous pair
+ * counts as different.
+ */
+const OTHER_AMOUNT_JS = `(old, typed) => {
+  const shown = (${AMOUNT_READINGS_JS})(old, true);
+  const given = (${AMOUNT_READINGS_JS})(typed, true);
+  return shown.length > 0 && given.length > 0 &&
+    !shown.every((a) => given.every((b) => a.number === b.number));
+}`;
+
+/** One- and two-digit country calling codes (ITU-T E.164); every other code has three digits */
+const SHORT_COUNTRY_CODES =
+  '1 7 20 27 30 31 32 33 34 36 39 40 41 43 44 45 46 47 48 49 51 52 53 54 55 56 57 58 60 61 62 63 64 65 66 81 82 84 86 90 91 92 93 94 95 98';
+
+/**
+ * Page-side test of an old value showing the phone number given with a
+ * country code (#930): neither has letters, the old value starts with `+`
+ * and the value given does not, which has at least 7 digits; the old
+ * value's digits after its country code (read by {@link SHORT_COUNTRY_CODES})
+ * are the given digits, with a trunk `0` kept or dropped
+ * (`+33 6 12 34 56 78` for `0612345678`).
+ */
+const PHONE_SHOWN_JS = `(old, typed) => {
+  if (/\\p{L}/u.test(old + typed) || !/^\\s*\\+/.test(old) || /^\\s*\\+/.test(typed)) return false;
+  const digits = typed.replace(/\\D/g, '');
+  const shown = old.replace(/\\D/g, '');
+  if (digits.length < 7) return false;
+  const codes = '${SHORT_COUNTRY_CODES}'.split(' ');
+  const code = codes.find((c) => shown.startsWith(c)) || shown.slice(0, 3);
+  const rest = shown.slice(code.length);
+  return rest === digits || rest === digits.replace(/^0/, '');
+}`;
+
+/**
+ * Page-side names of a month in the page's locales (#930): the field's
+ * document `lang`, then `navigator.languages` (trimmed, `_` read as `-`,
+ * blank or invalid ones skipped), each long and short, alone and as
+ * `formatToParts` gives them beside a day (the genitive: `marca`, `марта`).
+ */
+const MONTH_NAMES_JS = `(field, month) => {
+  const doc = field.ownerDocument;
+  const lang = doc && doc.documentElement ? doc.documentElement.lang : '';
+  const languages = typeof navigator !== 'undefined' && navigator.languages ? Array.from(navigator.languages) : [];
+  const date = new Date(Date.UTC(2000, month - 1, 15));
+  const names = [];
+  for (const raw of [lang].concat(languages)) {
+    const locale = String(raw || '').trim().replace(/_/g, '-');
+    if (!locale) continue;
+    try {
+      for (const style of ['long', 'short']) {
+        names.push(new Intl.DateTimeFormat(locale, { month: style, timeZone: 'UTC' }).format(date));
+        const part = new Intl.DateTimeFormat(locale, { day: 'numeric', month: style, timeZone: 'UTC' })
+          .formatToParts(date).find((p) => p.type === 'month');
+        if (part) names.push(part.value);
+      }
+    } catch (invalidLocale) {
+      continue;
+    }
+  }
+  return names;
+}`;
+
+/**
+ * Page-side test of an old value showing the ISO date given written out
+ * (#930): exactly its year, its day and one word equal to a name of its
+ * month in the page's locales ({@link MONTH_NAMES_JS}; accents, case and
+ * dots ignored), in any order, with a Russian `г.` after the year allowed
+ * (`10 November 2026`, `Nov 10, 2026` and `10 марта 2026 г.` for
+ * `2026-03-10`'s month).
+ */
+const DATE_SHOWN_JS = `(field, old, typed) => {
+  const iso = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(typed.trim());
+  if (!iso || Number(iso[2]) < 1 || Number(iso[2]) > 12) return false;
+  const fold = (text) => String(text).normalize('NFKD').replace(/\\p{M}/gu, '').toLowerCase()
+    .replace(/ł/g, 'l').replace(/ß/g, 'ss').replace(/\\./g, '');
+  const runs = fold(old).match(/\\p{L}+|\\p{N}+/gu) || [];
+  if (runs.length === 4 && runs[3] === 'г' && runs[2] === iso[1]) runs.pop();
+  const words = runs.filter((run) => /^\\p{L}/u.test(run));
+  const year = runs.find((run) => run === iso[1]);
+  const day = runs.find((run) => /^\\d{1,2}$/.test(run) && Number(run) === Number(iso[3]));
+  return runs.length === 3 && words.length === 1 && year !== undefined && day !== undefined &&
+    (${MONTH_NAMES_JS})(field, Number(iso[2])).map(fold).includes(words[0]);
+}`;
+
+/**
+ * Page-side test of whether a text field back at its old value shows the
+ * value given in the page's format (#930: a re-fill of a value an earlier
+ * fill left formatted), so it is no revert. The whole old value has to be a
+ * format of the value given: the same amount ({@link AMOUNT_SHOWN_JS}, which
+ * decides alone when it applies), the same phone number with a country code
+ * ({@link PHONE_SHOWN_JS}) or the same ISO date written out
+ * ({@link DATE_SHOWN_JS}). An old value with anything more (a word, a digit
+ * group) or less stays a revert; so does either value over
+ * {@link JUDGED_LENGTH} characters.
+ */
+const SHOWN_AGAIN_JS = `(field, old, typed) => {
+  if (old.length > ${JUDGED_LENGTH} || typed.length > ${JUDGED_LENGTH}) return false;
+  const amount = (${AMOUNT_SHOWN_JS})(old, typed);
+  if (amount !== undefined) return amount;
+  return (${PHONE_SHOWN_JS})(old, typed) || (${DATE_SHOWN_JS})(field, old, typed);
+}`;
+
+/**
  * Page-side rule of both reads of a fill, right after it (#901) and 2 s
  * later (#892): whether the field's value is a revert (a mismatch, as
  * {@link FILL_VALUE_MISMATCH_JS} gives it) or the page formatting the value
@@ -249,9 +399,12 @@ export const KEEPS_INPUT_JS = `(expected, late) => {
  * case-folded, so a controlled input restoring its state `o` over a DOM
  * value `o ` counts) and that value differs from the one given in its
  * letters and digits (a re-fill of `5551234567` over `(555) 123-4567`
- * formatted again is no revert), or is blank while the value given was not.
- * Any other value is the page formatting the one given when it keeps the
- * input ({@link KEEPS_INPUT_JS}: a phone mask, a date written out,
+ * formatted again is no revert) or, read as an amount, in its number
+ * (`1,234` after `1.234`, {@link OTHER_AMOUNT_JS}), and is no page format
+ * of it ({@link SHOWN_AGAIN_JS}, #930: `8,00` for `8`; never for a secret
+ * field), or is blank while the value given was not. Any other value is
+ * the page formatting the one given when it keeps the input
+ * ({@link KEEPS_INPUT_JS}: a phone mask, a date written out,
  * upper-casing, an autocomplete), else the page replaced it with unrelated
  * text (#906): a revert marked `replaced: true`.
  */
@@ -264,11 +417,15 @@ export const FILL_REVERT_JS = `(field, check) => {
   if (!textLike) return mismatch;
   const late = (${FIELD_VALUE_JS})(field);
   const blanked = late.trim() === '' && String(check.expected).trim() !== '';
-  const old = check.before.get(check.el);
+  const old = String(check.before.get(check.el));
   const loose = (text) => String(text).trim().replace(/\\s+/g, ' ').toLowerCase();
   const chars = (text) => String(text).normalize('NFKC').toLowerCase().replace(/[^\\p{L}\\p{N}]/gu, '');
-  const backToOld = loose(late) === loose(old) && chars(old) !== chars(check.expected);
-  if (backToOld || blanked) return mismatch;
+  const typed = String(check.expected);
+  const backToOld = loose(late) === loose(old) &&
+    (chars(old) !== chars(typed) || (${OTHER_AMOUNT_JS})(old, typed));
+  const secret = check.secret || type === 'password';
+  if (blanked) return mismatch;
+  if (backToOld) return !secret && (${SHOWN_AGAIN_JS})(field, old, typed) ? undefined : mismatch;
   return (${KEEPS_INPUT_JS})(check.expected, late) ? undefined : { ...mismatch, replaced: true };
 }`;
 
