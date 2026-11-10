@@ -7,6 +7,7 @@ import { sendTyped } from '@/connection/typed-cdp.js';
 import { startSessionDownloads } from '@/daemon/session/downloads.js';
 import { startActionHistory } from '@/runtime/dom/actionHistory.js';
 import { trackFailedLoad } from '@/runtime/page/failedLoad.js';
+import { trackPendingDocument } from '@/runtime/page/pendingDocument.js';
 import { hideHeadlessUserAgent } from '@/runtime/page/userAgent.js';
 import { startConsoleCollection } from '@/telemetry/console.js';
 import { startDialogHandling } from '@/telemetry/dialogs.js';
@@ -232,6 +233,11 @@ export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
         trackFailedLoad(cdp, (failed) => {
           store.failedLoad = failed;
         }),
+    },
+    {
+      name: 'pending-document',
+      runAlways: true,
+      start: ({ cdp }) => trackPendingDocument(cdp),
     },
     {
       name: 'navigation',
