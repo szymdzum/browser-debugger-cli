@@ -133,6 +133,8 @@ const REMOVED: RemovedRow[] = [
   renamed(['dom', 'audit', '--level', 'AAA'], 'bdg dom audit --level', 'bdg dom audit --wcag'),
   renamed(['dom', 'audit', '--level', 'bogus'], 'bdg dom audit --level', 'bdg dom audit --wcag'),
   renamed(['dom', 'get', '--nth', '2', 'a'], 'bdg dom get --nth', 'bdg dom get --index'),
+  renamed(['dom', 'get', '--nth'], 'bdg dom get --nth', 'bdg dom get --index'),
+  renamed([URL_ARG, '-t'], 'bdg <url> --timeout', STOP_AFTER),
   renamed([URL_ARG, '-a'], 'bdg <url> --all', 'bdg <url> --capture-all'),
   renamed([URL_ARG, '--all'], 'bdg <url> --all', 'bdg <url> --capture-all'),
   renamed(['console', '-H'], 'bdg console --history', 'bdg console --page all'),
