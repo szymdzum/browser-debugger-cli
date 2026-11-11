@@ -21,7 +21,6 @@ import {
   LAUNCHED_CHROME_DESCRIPTION,
   cdpRequestRejectedError,
   commandTimeoutSuggestion,
-  navigationPendingError,
   sessionAlreadyRunningMessage,
   sessionEndedDuringCommandError,
   sessionUnavailableSuggestion,
@@ -47,6 +46,7 @@ import {
 } from '@/ipc/index.js';
 import type { TabClosedSwitch } from '@/ipc/protocol/tabTypes.js';
 import {
+  navigationPendingCommandError,
   pendingDocument,
   pendingDocumentUrl,
   type PendingDocument,
@@ -109,18 +109,6 @@ function commandTimeoutMs(name: CommandName, params: unknown): number {
 }
 
 /**
- * The error for a command the page cannot answer because a navigation waits
- * for the server.
- *
- * @param url - URL the navigation waits for
- * @returns Error with exit 102
- */
-function navigationPendingCommandError(url: string): CommandError {
-  const err = navigationPendingError(displayUrl(url));
-  return new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.CDP_TIMEOUT);
-}
-
-/**
  * Fail a command that came while a navigation waited for the server, when
  * that same navigation still waits {@link PENDING_NAVIGATION_GRACE_MS} later
  * (#946). A navigation that answers meanwhile, or one replaced by a newer one
@@ -134,10 +122,8 @@ function navigationPendingCommandError(url: string): CommandError {
 function failOnHeldNavigation<T>(work: Promise<T>, held: PendingDocument): Promise<T> {
   return raceTimeout(work, PENDING_NAVIGATION_GRACE_MS, {
     onTimeout: () => {
-      if (pendingDocument()?.requestId === held.requestId) {
-        work.catch((error: unknown) => log.debug(`Held command: ${getErrorMessage(error)}`));
+      if (pendingDocument()?.requestId === held.requestId)
         throw navigationPendingCommandError(held.url);
-      }
       return work;
     },
   });

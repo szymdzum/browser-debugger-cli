@@ -11,9 +11,13 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import { CommandError } from '@/errors/index.js';
+import { navigationPendingError } from '@/errors/messages.js';
 import { mainFrameId } from '@/runtime/page/navigation.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { displayUrl } from '@/utils/displayUrl.js';
 import { getErrorMessage } from '@/utils/errors.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 const log = createLogger('navigation');
 
@@ -56,6 +60,18 @@ export function pendingDocument(): PendingDocument | undefined {
  */
 export function pendingDocumentUrl(): string | undefined {
   return pendingDocument()?.url;
+}
+
+/**
+ * The error for a command the page cannot answer because a navigation waits
+ * for the server.
+ *
+ * @param url - URL the navigation waits for, as Chrome reports it
+ * @returns Error with exit 102 and the URL as other output shows it
+ */
+export function navigationPendingCommandError(url: string): CommandError {
+  const err = navigationPendingError(displayUrl(url));
+  return new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.CDP_TIMEOUT);
 }
 
 /**

@@ -7,7 +7,6 @@ import {
   evalResultNotSendableError,
   evalResultTooLargeError,
   evalResultUnsentFullError,
-  navigationPendingError,
   pageBusyError,
   pageClosedDuringEvalError,
   pageNavigatedDuringEvalError,
@@ -21,7 +20,10 @@ import { evalTimeoutMs, terminationGraceMs, unsentGraceMs } from '@/runtime/dom/
 import { describeEvalException, wrapEvalScript } from '@/runtime/dom/evalSource.js';
 import { hasTopLevelAwait } from '@/runtime/dom/topLevelAwait.js';
 import { pendingNavigationUrl } from '@/runtime/page/navigation.js';
-import { pendingDocumentUrl } from '@/runtime/page/pendingDocument.js';
+import {
+  navigationPendingCommandError,
+  pendingDocumentUrl,
+} from '@/runtime/page/pendingDocument.js';
 import { releaseObjectGroup } from '@/runtime/page/objectGroups.js';
 import { findReplacedBuiltins } from '@/runtime/page/replacedBuiltins.js';
 import { senderFor, type CDPSender } from '@/telemetry/objectExpander.js';
@@ -29,7 +31,6 @@ import { formatRemoteObject } from '@/telemetry/remoteObject.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { evalCopiedByBrowserWarning, evalPreviewWarning } from '@/ui/messages/commands.js';
 import { delay, raceTimeout } from '@/utils/async.js';
-import { displayUrl } from '@/utils/displayUrl.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -689,10 +690,7 @@ async function terminatePageScripts(
       log.debug(`Could not check for a pending navigation: ${getErrorMessage(error)}`);
       return undefined;
     })) ?? pendingDocumentUrl();
-  if (pendingUrl !== undefined) {
-    const err = navigationPendingError(displayUrl(pendingUrl));
-    return new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.CDP_TIMEOUT);
-  }
+  if (pendingUrl !== undefined) return navigationPendingCommandError(pendingUrl);
   const err = pageBusyError(evalTimeoutMs(), scope, mayStop() && (await terminateExecution(cdp)));
   return new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.CDP_TIMEOUT);
 }
