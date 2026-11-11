@@ -1994,8 +1994,8 @@ Old spellings are hidden from `--help`, `--help --json` and "Did you mean" sugge
 | `bdg details` | removed | `bdg network details <id>` for `bdg details network <id>`, `bdg console details <n>` for `bdg details console <n>`; the error names both |
 | `bdg console --history` | removed | `bdg console --page all`; also for `-H` |
 | `bdg network document` | removed | `bdg network headers` (no id: the main document) |
-| `bdg dom audit --level` | removed | `bdg dom audit --wcag` |
-| `bdg dom get --nth` | removed | `bdg dom get --index` |
+| `bdg dom audit --level` | removed | `bdg dom audit --wcag <level>` |
+| `bdg dom get --nth` | removed | `bdg dom get --index <n>` |
 | `bdg tail` | removed | `bdg peek --follow` |
 | `bdg cleanup --aggressive` | removed | `bdg cleanup --force` |
 | `bdg cleanup -f` | removed | `bdg cleanup --force` (`-f` means `--follow` everywhere else) |

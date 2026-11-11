@@ -123,6 +123,7 @@ export const RENAMES: readonly RenameEntry[] = [
     new: '--wcag',
     stage: 'removed',
     takesValue: true,
+    newValueName: '<level>',
   },
   {
     kind: 'option',
@@ -131,6 +132,7 @@ export const RENAMES: readonly RenameEntry[] = [
     new: '--index',
     stage: 'removed',
     takesValue: true,
+    newValueName: '<n>',
   },
   {
     kind: 'option',

@@ -130,10 +130,18 @@ const REMOVED: RemovedRow[] = [
     'bdg attach --timeout',
     'bdg attach --stop-after <seconds>'
   ),
-  renamed(['dom', 'audit', '--level', 'AAA'], 'bdg dom audit --level', 'bdg dom audit --wcag'),
-  renamed(['dom', 'audit', '--level', 'bogus'], 'bdg dom audit --level', 'bdg dom audit --wcag'),
-  renamed(['dom', 'get', '--nth', '2', 'a'], 'bdg dom get --nth', 'bdg dom get --index'),
-  renamed(['dom', 'get', '--nth'], 'bdg dom get --nth', 'bdg dom get --index'),
+  renamed(
+    ['dom', 'audit', '--level', 'AAA'],
+    'bdg dom audit --level',
+    'bdg dom audit --wcag <level>'
+  ),
+  renamed(
+    ['dom', 'audit', '--level', 'bogus'],
+    'bdg dom audit --level',
+    'bdg dom audit --wcag <level>'
+  ),
+  renamed(['dom', 'get', '--nth', '2', 'a'], 'bdg dom get --nth', 'bdg dom get --index <n>'),
+  renamed(['dom', 'get', '--nth'], 'bdg dom get --nth', 'bdg dom get --index <n>'),
   renamed([URL_ARG, '-t'], 'bdg <url> --timeout', STOP_AFTER),
   renamed([URL_ARG, '-a'], 'bdg <url> --all', 'bdg <url> --capture-all'),
   renamed([URL_ARG, '--all'], 'bdg <url> --all', 'bdg <url> --capture-all'),
@@ -143,9 +151,14 @@ const REMOVED: RemovedRow[] = [
   { argv: ['help', 'details'], error: '"bdg details" was removed', suggestion: DETAILS_HINT },
   renamed(['dom', 'eval', '--help'], 'bdg dom eval', 'bdg eval'),
   renamed(['help', 'dom', 'eval'], 'bdg dom eval', 'bdg eval'),
+  renamed(['network', 'help', 'document'], 'bdg network document', 'bdg network headers'),
   renamed(['tail', '-h'], 'bdg tail', 'bdg peek --follow'),
-  renamed(['dom', 'get', '--nth', '1', 'a', '--help'], 'bdg dom get --nth', 'bdg dom get --index'),
-  renamed(['dom', 'get', '--nth=1', '--help'], 'bdg dom get --nth', 'bdg dom get --index'),
+  renamed(
+    ['dom', 'get', '--nth', '1', 'a', '--help'],
+    'bdg dom get --nth',
+    'bdg dom get --index <n>'
+  ),
+  renamed(['dom', 'get', '--nth=1', '--help'], 'bdg dom get --nth', 'bdg dom get --index <n>'),
   renamed(['console', '-H', '--help'], 'bdg console --history', 'bdg console --page all'),
   renamed([URL_ARG, '-t', '5', '--help'], 'bdg <url> --timeout', STOP_AFTER),
   renamed(['cleanup', '-f', '-h'], 'bdg cleanup -f', 'bdg cleanup --force'),
@@ -240,6 +253,22 @@ void describe('old names as argument values', () => {
       assert.equal(run.status, EXIT_CODES.RESOURCE_NOT_FOUND, run.stdout + run.stderr);
       assert.ok(!('warnings' in envelope(run.stdout)), run.stdout);
       assert.ok(!run.stderr.includes('deprecated'), run.stderr);
+    });
+  }
+});
+
+void describe('--help --json of a line with an old flag of another command', () => {
+  for (const argv of [
+    ['eval', '--all', '--help', '--json'],
+    ['eval', '-t', '--help', '--json'],
+    ['dom', 'fill', '--help', '--json', '-t'],
+    ['eval', '--help', '--json', '--', '--all'],
+  ]) {
+    void it(`bdg ${argv.join(' ')}: the JSON help, exit 0`, async () => {
+      const run = await runCli(argv);
+      assert.equal(run.status, EXIT_CODES.SUCCESS, run.stdout + run.stderr);
+      const help = JSON.parse(run.stdout.trim()) as { path?: string };
+      assert.equal(help.path, `bdg ${argv[0] === 'dom' ? 'dom fill' : 'eval'}`, run.stdout);
     });
   }
 });

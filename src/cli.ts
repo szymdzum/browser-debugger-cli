@@ -182,11 +182,7 @@ async function main(): Promise<void> {
   assertKnownHelpTopic(program, helpTopic);
   assertNotMistypedCommand(program, process.argv);
 
-  if (
-    jsonMode &&
-    wantsHelp() &&
-    !usesRemovedName(resolveCommand(program, commandWords(program)), process.argv.slice(2))
-  ) {
+  if (jsonMode && wantsHelp() && !usesRemovedName(program, process.argv.slice(2))) {
     assertKnownHelpCommand(program);
     selectSession(sessionFromArgv(process.argv));
     console.log(JSON.stringify(helpJson(program)));
@@ -317,7 +313,8 @@ function reportDeprecations(warnings: string[], jsonMode: boolean): void {
  *
  * Prints the message with a suggestion (a did-you-mean for a mistyped option
  * or command, else the command's `--help`) to stderr, or as a response
- * envelope with `--json`. Usage errors (including a command group invoked
+ * envelope with `--json`. Help that reached the parse with `--json` (a line
+ * the removed-spelling check sent on) prints the JSON help. Usage errors (including a command group invoked
  * without a subcommand, whose help Commander already printed) exit with 81;
  * `--version --json` prints `{ data: { version } }`.
  *
@@ -334,6 +331,7 @@ function handleUsageError(error: CommanderError, program: Command, jsonMode: boo
     error.code === 'commander.helpDisplayed' ||
     (error.code === 'commander.help' && error.exitCode === 0)
   ) {
+    if (jsonMode) console.log(JSON.stringify(helpJson(program)));
     process.exit(EXIT_CODES.SUCCESS);
   }
   const exitCode = EXIT_CODES.INVALID_ARGUMENTS;
