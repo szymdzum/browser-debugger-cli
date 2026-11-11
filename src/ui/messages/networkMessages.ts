@@ -380,10 +380,6 @@ export function base64BodyHint(): string {
   return 'The body is binary, printed base64-encoded: pipe it through base64 -d';
 }
 
-/** `network document --help` note (the deprecated spelling): this command shows headers, not the body */
-export const NETWORK_DOCUMENT_BODY_NOTE =
-  'Note: Shows headers only. The HTML body is in: bdg network details <id> --body';
-
 /** What each dominant phase of a request means (`network details` Timing verdict) */
 const PHASE_MEANING: Record<TimingPhase, string> = {
   queued: 'the request waited for a connection or a free slot (connection limit or low priority)',

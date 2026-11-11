@@ -1,8 +1,8 @@
 /**
  * Canonical command names smoke test (#465, D4 and D13): on `/key-log`,
- * `network cookies` lists a cookie the page set (and `network getCookies`
- * lists the same, with the deprecation warning), `dom eval` still evaluates
- * (with the warning) and `dom pressKey` still presses the key.
+ * `network cookies` lists a cookie the page set, `bdg eval` evaluates and
+ * `dom press-key` presses the key, none with a warning (the old names were
+ * removed in 1.0).
  */
 
 import * as assert from 'node:assert/strict';
@@ -56,27 +56,23 @@ after(async () => {
 });
 
 void describe('canonical command names (#465)', () => {
-  void it('network cookies lists the page cookie; getCookies lists the same and warns', async () => {
+  void it('network cookies lists the page cookie, no warning', async () => {
     const current = await bdg(['network', 'cookies', '--json']);
     assert.ok(cookieNames(current.stdout).includes('canon'), current.stdout);
-    const old = await bdg(['network', 'getCookies', '--json']);
-    assert.deepEqual(cookieNames(old.stdout), cookieNames(current.stdout));
-    const { warnings } = JSON.parse(old.stdout) as { warnings: string[] };
-    assert.equal(warnings.length, 1);
-    assert.ok(warnings[0]?.includes('bdg network cookies'), warnings[0]);
+    assert.ok(!current.stdout.includes('"warnings"'), current.stdout);
   });
 
-  void it('dom eval still evaluates, with the warning', async () => {
-    const result = await bdg(['dom', 'eval', 'document.title', '--json']);
+  void it('eval evaluates, no warning', async () => {
+    const result = await bdg(['eval', 'document.title', '--json']);
     const { data } = JSON.parse(result.stdout) as { data: { result: unknown } };
     assert.ok(data.result !== undefined);
-    assert.match(result.stdout, /"warnings":\["\\"bdg dom eval\\" is deprecated/);
+    assert.ok(!result.stdout.includes('"warnings"'), result.stdout);
   });
 
-  void it('dom pressKey still presses the key, with the warning', async () => {
+  void it('dom press-key presses the key, no warning', async () => {
     await bdg(['eval', 'window.keyLog = []; 1']);
-    const result = await bdg(['dom', 'pressKey', '#field', 'a', '--json']);
-    assert.match(result.stdout, /"warnings":\["\\"bdg dom pressKey\\" is deprecated/);
+    const result = await bdg(['dom', 'press-key', '#field', 'a', '--json']);
+    assert.ok(!result.stdout.includes('"warnings"'), result.stdout);
     const log = await bdg(['eval', 'window.keyLog', '--json']);
     assert.match(log.stdout, /a\|KeyA\|false/);
   });

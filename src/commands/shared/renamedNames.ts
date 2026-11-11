@@ -57,7 +57,9 @@ function attributeName(flag: string): string {
 }
 
 /**
- * Register an old option, hidden (or hide it when its command registers it).
+ * Register an old option with its short form, hidden (or hide it when its
+ * command registers it). One that takes a value consumes it, so a removed
+ * one's error is about the rename, never about a stray argument.
  *
  * @param command - Command the option belongs to
  * @param entry - Option entry
@@ -70,7 +72,8 @@ function registerOldOption(command: Command, entry: RenameEntry & { kind: 'optio
     own.hideHelp();
     return;
   }
-  const flags = entry.takesValue ? `${entry.old} <value>` : entry.old;
+  const names = entry.short === undefined ? entry.old : `${entry.short}, ${entry.old}`;
+  const flags = entry.takesValue ? `${names} <value>` : names;
   command.addOption(new Option(flags, `Old spelling of ${spelling(entry, 'old')}`).hideHelp());
 }
 

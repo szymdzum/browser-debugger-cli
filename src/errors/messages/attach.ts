@@ -269,16 +269,6 @@ export function attachIndexOutOfRangeError(
 }
 
 /**
- * `bdg stop --kill-chrome` on a session `bdg attach` started: the browser is the user's.
- */
-export function killAttachedChromeError(): ErrorWithSuggestion {
-  return {
-    message: '--kill-chrome is refused for an attached session: the Chrome is not bdg’s',
-    suggestion: 'Run bdg stop: it detaches and leaves the tab and Chrome as they are',
-  };
-}
-
-/**
  * Moving an attached session (`bdg attach`) to another tab: it holds one
  * connection to its tab.
  */

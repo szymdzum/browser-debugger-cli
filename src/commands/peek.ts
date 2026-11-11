@@ -241,18 +241,6 @@ function previewDisplayOptions(options: PeekCommandOptions, lastN: number): Prev
   };
 }
 
-/**
- * Watch the session data (`peek --follow`, and the deprecated `tail`).
- *
- * @param options - Peek options (follow implied)
- */
-export async function followPreview(options: PeekCommandOptions): Promise<void> {
-  const following = { ...options, follow: true };
-  showBothSectionsWhenBothRequested(following);
-  const parsed = parsePeekOptions(following);
-  await runFollowMode(following, parsed, previewDisplayOptions(following, parsed.lastN));
-}
-
 export function registerPeekCommand(program: Command): void {
   program
     .command('peek')

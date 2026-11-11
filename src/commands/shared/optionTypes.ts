@@ -48,14 +48,6 @@ export interface IndexOptions {
 }
 
 /**
- * Options for Chrome process management.
- */
-export interface ChromeOptions {
-  /** Kill Chrome process on stop */
-  killChrome?: boolean;
-}
-
-/**
  * Options for cleanup operations.
  */
 export interface CleanupOptions {
@@ -79,8 +71,6 @@ export interface RawOptions {
 export interface SelectionOptions {
   /** Select all matching elements */
   all?: boolean;
-  /** Select nth element (0-based) */
-  nth?: number;
   /** Use specific nodeId directly */
   nodeId?: number;
 }
@@ -158,7 +148,7 @@ export interface CdpMethodOptions {
 }
 
 /** Options for stop command */
-export type StopCommandOptions = BaseOptions & ChromeOptions;
+export type StopCommandOptions = BaseOptions;
 
 /** Options for cleanup command */
 export type CleanupCommandOptions = BaseOptions & CleanupOptions;
@@ -456,7 +446,7 @@ export interface ConsoleCommandOptions extends BaseOptions {
   follow?: boolean;
   /** `--page`: which page loads to show (default: current only) */
   page?: PageScope;
-  /** Whether all page loads are shown: `--page all` (set from it before the command runs; `-H/--history` is its deprecated spelling) */
+  /** Whether all page loads are shown: `--page all` (set from it before the command runs) */
   history?: boolean;
   /** Filter by message level (error, warning, info, debug) */
   level?: ConsoleLevel;
@@ -499,15 +489,4 @@ export interface PeekCommandOptions
   interval?: string;
   /** Console message texts whole instead of cut */
   full?: boolean;
-}
-
-/**
- * Options for tail command.
- * Includes preview options plus last count and update interval.
- */
-export interface TailCommandOptions extends BaseOptions, Omit<PreviewDisplayOptions, 'follow'> {
-  /** Show the newest N items (string from CLI, default: 10) */
-  last?: string;
-  /** Update interval in milliseconds (string from CLI, default: 1000) */
-  interval?: string;
 }

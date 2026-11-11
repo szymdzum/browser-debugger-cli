@@ -22,10 +22,7 @@ import { maskHeaderFields } from '@/telemetry/networkMasking.js';
 import type { NetworkRequest } from '@/types.js';
 import type { Cookie, NetworkHeadersOutput } from '@/ui/formatters/index.js';
 import { formatCookies, formatNetworkHeaders } from '@/ui/formatters/index.js';
-import {
-  NETWORK_DOCUMENT_BODY_NOTE,
-  includeSensitiveWarning,
-} from '@/ui/messages/networkMessages.js';
+import { includeSensitiveWarning } from '@/ui/messages/networkMessages.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -96,16 +93,13 @@ function headersResult(
 }
 
 /**
- * Add the cookies command: `network cookies`, and the old spelling
- * `network getCookies` (a deprecated row of the rename table) with
- * the same options.
+ * Register the `network cookies` command.
  *
  * @param networkCmd - Network parent command
- * @param name - Command name
  */
-function addCookiesCommand(networkCmd: Command, name: string): void {
+export function registerCookiesCommand(networkCmd: Command): void {
   networkCmd
-    .command(name)
+    .command('cookies')
     .description('List cookies from the current page')
     .option('--url <url>', 'Filter cookies by URL')
     .addOption(jsonOption())
@@ -143,18 +137,8 @@ function addCookiesCommand(networkCmd: Command, name: string): void {
 }
 
 /**
- * Register the cookies command and its old spelling.
- *
- * @param networkCmd - Network parent command
- */
-export function registerCookiesCommands(networkCmd: Command): void {
-  addCookiesCommand(networkCmd, 'cookies');
-  addCookiesCommand(networkCmd, 'getCookies');
-}
-
-/**
  * Run `network headers`: headers of one request, or of the main document
- * without an id. `network document` (deprecated) runs the same function.
+ * without an id.
  *
  * @param id - Request id (the main document when omitted)
  * @param options - Command options
@@ -207,20 +191,4 @@ export function registerHeadersCommand(networkCmd: Command): void {
       '\nNote: Without [id], shows headers for the current main document.\n      If the page has navigated, this will be the latest navigation, not the original URL.'
     )
     .action(runHeaders);
-}
-
-/**
- * Register the `document` command, the old spelling of `headers` without an id.
- *
- * @param networkCmd - Network parent command
- */
-export function registerDocumentCommand(networkCmd: Command): void {
-  networkCmd
-    .command('document')
-    .description('Old spelling of "network headers" without an id')
-    .option('--header <name>', 'Filter to specific header name')
-    .addOption(jsonOption())
-    .addOption(includeSensitiveOption())
-    .addHelpText('after', `\n${NETWORK_DOCUMENT_BODY_NOTE}`)
-    .action((options: NetworkHeadersCommandOptions) => runHeaders(undefined, options));
 }

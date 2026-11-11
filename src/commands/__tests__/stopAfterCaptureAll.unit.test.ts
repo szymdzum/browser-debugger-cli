@@ -1,13 +1,11 @@
 /**
  * Parse-level cells of the #465 D7, D8 and D9 matrix, on the real command
- * tree: the options an action gets after `applyRenamedNames`, and the
- * warnings. Old `--timeout`/`-t` (root, `attach`) reach `stopAfter`, old
- * `-a`/`--all` reach `captureAll`, old `cleanup -f`/`--aggressive` reach
- * `force`; each old spelling warns once, a new one never, and an old and a
- * new spelling of the same option together exit 81 when their values differ,
- * and pass with the old spelling's warning when they agree. `dom` commands keep
- * their own `--all` without a warning. The human and `--json` reporting of
- * the warnings is in `stopAfterCaptureAll.contract.test.ts`.
+ * tree: the options an action gets after `applyRenamedNames`. `--stop-after`
+ * (root, `attach`), `--capture-all` and `cleanup --force` take effect with no
+ * warning, `dom` commands keep their own `--all`, and help and typo
+ * suggestions list no old spelling (removed in 1.0: their exit 81 is in
+ * `renames.contract.test.ts`). A deprecated short-only row is checked on a
+ * toy table.
  */
 
 import assert from 'node:assert/strict';
@@ -21,9 +19,7 @@ import {
   currentOptions,
   registerRenamedNames,
 } from '@/commands/shared/renamedNames.js';
-import { CommandError } from '@/errors/index.js';
 import { buildProgram } from '@/program.js';
-import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { spelling, type RenameEntry } from '@/utils/renames.js';
 
 interface Parsed {
@@ -39,7 +35,7 @@ class Stop extends Error {}
  *
  * @param argv - Arguments after `bdg`
  * @returns The command, its options after the rename step, and the warnings
- * @throws CommandError (81) for a removed or conflicting spelling
+ * @throws CommandError (81) for a removed spelling
  */
 async function parse(argv: string[]): Promise<Parsed> {
   const program = buildProgram();
@@ -60,15 +56,11 @@ async function parse(argv: string[]): Promise<Parsed> {
 
 const URL_ARG = 'http://localhost:3000';
 
-const STOP_AFTER_OLD = '"bdg <url> --timeout" is deprecated and will be removed in 1.0';
-const ATTACH_OLD = '"bdg attach --timeout" is deprecated and will be removed in 1.0';
-
 interface Cell {
   name: string;
   argv: string[];
   command: string;
   expected: Record<string, unknown>;
-  warning?: string;
 }
 
 const CELLS: Cell[] = [
@@ -79,31 +71,10 @@ const CELLS: Cell[] = [
     expected: { stopAfter: '5' },
   },
   {
-    name: 'root --timeout',
-    argv: [URL_ARG, '--timeout', '5'],
-    command: '',
-    expected: { stopAfter: '5' },
-    warning: `${STOP_AFTER_OLD}: use "bdg <url> --stop-after"`,
-  },
-  {
-    name: 'root -t',
-    argv: [URL_ARG, '-t', '5'],
-    command: '',
-    expected: { stopAfter: '5' },
-    warning: `${STOP_AFTER_OLD}: use "bdg <url> --stop-after"`,
-  },
-  {
     name: 'attach --stop-after',
     argv: ['attach', '0', '--stop-after', '5'],
     command: 'attach',
     expected: { stopAfter: '5' },
-  },
-  {
-    name: 'attach --timeout',
-    argv: ['attach', '0', '--timeout', '5'],
-    command: 'attach',
-    expected: { stopAfter: '5' },
-    warning: `${ATTACH_OLD}: use "bdg attach --stop-after"`,
   },
   {
     name: 'root --capture-all',
@@ -112,53 +83,22 @@ const CELLS: Cell[] = [
     expected: { captureAll: true },
   },
   {
-    name: 'root --all',
-    argv: [URL_ARG, '--all'],
-    command: '',
-    expected: { captureAll: true },
-    warning:
-      '"bdg <url> --all" is deprecated and will be removed in 1.0: use "bdg <url> --capture-all"',
-  },
-  {
-    name: 'root -a',
-    argv: [URL_ARG, '-a'],
-    command: '',
-    expected: { captureAll: true },
-    warning:
-      '"bdg <url> --all" is deprecated and will be removed in 1.0: use "bdg <url> --capture-all"',
-  },
-  {
     name: 'cleanup --force',
     argv: ['cleanup', '--force'],
     command: 'cleanup',
     expected: { force: true },
   },
-  {
-    name: 'cleanup -f',
-    argv: ['cleanup', '-f'],
-    command: 'cleanup',
-    expected: { force: true },
-    warning: '"bdg cleanup -f" is deprecated and will be removed in 1.0: use "bdg cleanup --force"',
-  },
-  {
-    name: 'cleanup --aggressive',
-    argv: ['cleanup', '--aggressive'],
-    command: 'cleanup',
-    expected: { force: true },
-    warning:
-      '"bdg cleanup --aggressive" is deprecated and will be removed in 1.0: use "bdg cleanup --force"',
-  },
 ];
 
-void describe('stop-after, capture-all and cleanup -f rows (#465 D7, D8, D9)', () => {
+void describe('stop-after, capture-all and cleanup --force (#465 D7, D8, D9)', () => {
   for (const cell of CELLS) {
-    void it(`${cell.name}: takes effect, ${cell.warning ? 'warns once' : 'no warning'}`, async () => {
+    void it(`${cell.name}: takes effect, no warning`, async () => {
       const parsed = await parse(cell.argv);
       assert.equal(parsed.command, cell.command);
       for (const [key, value] of Object.entries(cell.expected)) {
         assert.equal(parsed.opts[key], value, `${key} of ${JSON.stringify(parsed.opts)}`);
       }
-      assert.deepEqual(parsed.warnings, cell.warning ? [cell.warning] : []);
+      assert.deepEqual(parsed.warnings, []);
     });
   }
 
@@ -187,39 +127,6 @@ void describe('stop-after, capture-all and cleanup -f rows (#465 D7, D8, D9)', (
     assert.ok(!longs(attach).includes('--timeout'));
     assert.ok(longs(cleanup).includes('--force'));
     assert.ok(!longs(cleanup).includes('-f'));
-  });
-
-  void it('--stop-after with an old --timeout of another value exits 81', async () => {
-    for (const argv of [
-      [URL_ARG, '--stop-after', '7', '-t5'],
-      [URL_ARG, '-t5', '--stop-after', '7'],
-      ['attach', '0', '--timeout', '9', '--stop-after', '5'],
-    ]) {
-      await assert.rejects(parse(argv), (error: unknown) => {
-        assert.ok(error instanceof CommandError);
-        assert.equal(error.exitCode, EXIT_CODES.INVALID_ARGUMENTS);
-        assert.match(
-          error.message,
-          /"bdg (<url>|attach) --timeout" and "bdg (<url>|attach) --stop-after"/
-        );
-        return true;
-      });
-    }
-  });
-
-  void it('an old and a new spelling with the same value pass, with the old one warning', async () => {
-    const cells: [string[], Record<string, unknown>, number][] = [
-      [[URL_ARG, '-t', '5', '--stop-after', '5'], { stopAfter: '5' }, 1],
-      [[URL_ARG, '-a', '--capture-all'], { captureAll: true }, 1],
-      [['cleanup', '--aggressive', '--force'], { force: true }, 1],
-      [['cleanup', '--force', '-f'], { force: true }, 1],
-      [['cleanup', '--aggressive', '-f'], { force: true }, 2],
-    ];
-    for (const [argv, expected, warnings] of cells) {
-      const parsed = await parse(argv);
-      for (const [key, value] of Object.entries(expected)) assert.equal(parsed.opts[key], value);
-      assert.equal(parsed.warnings.length, warnings, argv.join(' '));
-    }
   });
 });
 

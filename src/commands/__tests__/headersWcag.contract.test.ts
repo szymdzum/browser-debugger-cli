@@ -1,10 +1,9 @@
 /**
  * Contract test (#465, D5 and D12): `bdg network headers` (no id: the main
  * document) replaces `network document`, and `bdg dom audit --wcag AA|AAA`
- * replaces `--level`. The old spellings are deprecated table rows: they
- * behave as the new ones plus one warning (a `Warning:` line on stderr,
- * `warnings` in the `--json` envelope), and help lists only the new names.
- * Run with no session.
+ * replaces `--level`. The old spellings were removed in 1.0 (their exit 81
+ * is in `renames.contract.test.ts`); help and typo suggestions list only the
+ * new names. Run with no session.
  */
 
 import assert from 'node:assert/strict';
@@ -63,35 +62,13 @@ function warningLines(stderr: string): string[] {
   return stderr.split('\n').filter((line) => line.startsWith('Warning: '));
 }
 
-const DOCUMENT_WARNING =
-  '"bdg network document" is deprecated and will be removed in 1.0: use "bdg network headers"';
-const LEVEL_WARNING =
-  '"bdg dom audit --level" is deprecated and will be removed in 1.0: use "bdg dom audit --wcag"';
-
-void describe('network document is a deprecated spelling of network headers', () => {
+void describe('network headers; network document removed', () => {
   void it('bdg network headers: no warning', async () => {
     const run = await runCli(['network', 'headers']);
     assert.equal(run.status, EXIT_CODES.RESOURCE_NOT_FOUND, run.stderr);
     assert.equal(warningLines(run.stderr).length, 0, run.stderr);
-  });
-
-  void it('bdg network document: same exit and output as headers, one warning line', async () => {
-    const [current, old] = await Promise.all([
-      runCli(['network', 'headers']),
-      runCli(['network', 'document']),
-    ]);
-    assert.equal(old.status, current.status, old.stderr);
-    assert.equal(old.stdout, current.stdout);
-    assert.deepEqual(warningLines(old.stderr), [`Warning: ${DOCUMENT_WARNING}`]);
-  });
-
-  void it('bdg network document --json: warnings in the envelope, nothing on stderr', async () => {
-    const run = await runCli(['network', 'document', '--json']);
-    assert.equal(run.status, EXIT_CODES.RESOURCE_NOT_FOUND, run.stderr);
-    assert.deepEqual(envelope(run.stdout)['warnings'], [DOCUMENT_WARNING]);
-    assert.equal(run.stderr, '');
-    const current = await runCli(['network', 'headers', '--json']);
-    assert.ok(!('warnings' in envelope(current.stdout)), current.stdout);
+    const json = await runCli(['network', 'headers', '--json']);
+    assert.ok(!('warnings' in envelope(json.stdout)), json.stdout);
   });
 
   void it('network --help and --help --json list headers, not document', async () => {
@@ -106,14 +83,14 @@ void describe('network document is a deprecated spelling of network headers', ()
     }
   });
 
-  void it('a typo of document suggests nothing that is deprecated', async () => {
+  void it('a typo of document never suggests the removed name', async () => {
     const run = await runCli(['network', 'documnt']);
     assert.equal(run.status, EXIT_CODES.INVALID_ARGUMENTS, run.stderr);
     assert.ok(!/network document/.test(run.stderr), run.stderr);
   });
 });
 
-void describe('dom audit --wcag, --level deprecated', () => {
+void describe('dom audit --wcag; --level removed', () => {
   void it('--wcag aaa and AA parse; no warning', async () => {
     for (const value of ['aaa', 'AA']) {
       const run = await runCli(['dom', 'audit', '--wcag', value]);
@@ -127,36 +104,6 @@ void describe('dom audit --wcag, --level deprecated', () => {
     const run = await runCli(['dom', 'audit', '--wcag', 'bogus']);
     assert.equal(run.status, EXIT_CODES.INVALID_ARGUMENTS, run.stderr);
     assert.ok(run.stderr.includes('Use AA or AAA'), run.stderr);
-  });
-
-  void it('--level AAA: same exit as --wcag AAA, one warning line', async () => {
-    const [current, old] = await Promise.all([
-      runCli(['dom', 'audit', '--wcag', 'AAA']),
-      runCli(['dom', 'audit', '--level', 'AAA']),
-    ]);
-    assert.equal(old.status, EXIT_CODES.RESOURCE_NOT_FOUND, old.stderr);
-    assert.equal(old.status, current.status);
-    assert.equal(old.stdout, current.stdout);
-    assert.deepEqual(warningLines(old.stderr), [`Warning: ${LEVEL_WARNING}`]);
-  });
-
-  void it('--level AAA --json: warnings in the envelope', async () => {
-    const run = await runCli(['dom', 'audit', '--level', 'AAA', '--json']);
-    assert.equal(run.status, EXIT_CODES.RESOURCE_NOT_FOUND, run.stderr);
-    assert.deepEqual(envelope(run.stdout)['warnings'], [LEVEL_WARNING]);
-    assert.equal(run.stderr, '');
-  });
-
-  void it('--level AA --wcag AAA: conflicting values exit 81', async () => {
-    const run = await runCli(['dom', 'audit', '--level', 'AA', '--wcag', 'AAA']);
-    assert.equal(run.status, EXIT_CODES.INVALID_ARGUMENTS, run.stderr);
-    assert.ok(!run.stderr.includes('unknown option'), run.stderr);
-    assert.ok(run.stderr.includes('--wcag'), run.stderr);
-  });
-
-  void it('--level AAA --wcag aaa: the same value passes', async () => {
-    const run = await runCli(['dom', 'audit', '--level', 'AAA', '--wcag', 'aaa']);
-    assert.equal(run.status, EXIT_CODES.RESOURCE_NOT_FOUND, run.stderr);
   });
 
   void it('help lists --wcag and the example uses it, not --level', async () => {

@@ -423,10 +423,8 @@ void describe('bdg attach', () => {
     }
   });
 
-  void it('--stop-after ends the attached session by itself; --timeout does too, with the warning', async () => {
-    const oldWarning =
-      '"bdg attach --timeout" is deprecated and will be removed in 1.0: use "bdg attach --stop-after"';
-    for (const flag of ['--stop-after', '--timeout']) {
+  void it('--stop-after ends the attached session by itself', async () => {
+    for (const flag of ['--stop-after']) {
       const start = await runJson<StartData>('attach', [
         'attach-b',
         '--chrome-ws-url',
@@ -435,7 +433,7 @@ void describe('bdg attach', () => {
         '2',
       ]);
       assert.equal(start.exitCode, 0, JSON.stringify(start.envelope));
-      assert.deepEqual(start.envelope.warnings, flag === '--timeout' ? [oldWarning] : undefined);
+      assert.equal(start.envelope.warnings, undefined);
       await until(() => !fs.existsSync(path.join(sessionDir, 'daemon.sock')));
       assert.equal((await chromePages(chrome.port)).length >= 2, true, 'both tabs are left open');
     }
@@ -523,12 +521,6 @@ void describe('bdg attach', () => {
 
     const status = await runJson<{ attached?: boolean }>('status', []);
     assert.equal(status.envelope.data?.attached, true);
-
-    const kill = await runJson('stop', ['--kill-chrome']);
-    assert.equal(kill.exitCode, 81);
-    assert.deepEqual(kill.envelope.warnings, [
-      '"bdg stop --kill-chrome" is deprecated and will be removed in 1.0: bdg stop already closes the Chrome bdg launched; drop the flag',
-    ]);
 
     const stop = await run('stop', []);
     assert.equal(stop.exitCode, 0, stop.output);

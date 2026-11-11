@@ -1969,14 +1969,14 @@ Bare `bdg --json` (or `-j`, with no command and no URL) is an error envelope: `s
 
 ### Warnings
 
-`warnings` (an array of strings) says what to know about the run: the command line used an old spelling that still works until 1.0 (one text per spelling, listed first), and how the command ran despite something unusual, for example `--include-sensitive` output that holds credentials or a CDP method the bundled protocol lacks (one text per line of such a warning):
+`warnings` (an array of strings) says what to know about the run: the command line used an old spelling that still works while it is deprecated (one text per spelling, listed first; no old spelling is deprecated at the moment), and how the command ran despite something unusual, for example `--include-sensitive` output that holds credentials or a CDP method the bundled protocol lacks (one text per line of such a warning):
 
 ```json
 {
   "version": "x.y.z",
   "success": true,
   "data": { },
-  "warnings": ["\"bdg cleanup --aggressive\" is deprecated and will be removed in 1.0: use \"bdg cleanup --force\""]
+  "warnings": ["Storage.getRelatedWebsiteSets is not in the bundled protocol (devtools-protocol 0.0.1710668); sending it to Chrome as is"]
 }
 ```
 
@@ -1984,25 +1984,25 @@ The `warning` string field that also held the second kind in 0.x was removed in 
 
 ### Renamed and deprecated names
 
-Old spellings are hidden from `--help`, `--help --json` and "Did you mean" suggestions. A **deprecated** one works as before, with the warning above; a **removed** one exits 81 (`"bdg <url> --compact" was removed`, or `"<old>" was renamed to "<new>"`) with a suggestion. Deprecated names are removed in 1.0. An argument value that happens to equal an old name (`bdg eval tail`, anything after `--`) is never touched.
+Old spellings are hidden from `--help`, `--help --json` and "Did you mean" suggestions. A **deprecated** one works as before, with the warning above; a **removed** one exits 81 (`"bdg <url> --compact" was removed`, or `"<old>" was renamed to "<new>"`) with a suggestion, in its long and short form, before anything runs (`bdg <url> -t 5` starts no session). Every name below was removed in 1.0. An argument value that happens to equal an old name (`bdg eval tail`, anything after `--`) is never touched.
 
 | Old spelling | Stage | Use instead |
 |---|---|---|
-| `bdg dom eval` | deprecated | `bdg eval` (same options) |
-| `bdg dom pressKey` | deprecated | `bdg dom press-key` (same options) |
-| `bdg network getCookies` | deprecated | `bdg network cookies` (same options) |
-| `bdg details` | deprecated | `bdg network details <id>` for `bdg details network <id>`, `bdg console details <n>` for `bdg details console <n>` (same options, output and exit codes); the warning names both |
-| `bdg console --history` | deprecated | `bdg console --page all`; `-H` is the short form (with `--page current` it exits 81) |
-| `bdg network document` | deprecated | `bdg network headers` (no id: the main document; same options and output) |
-| `bdg dom audit --level` | deprecated | `bdg dom audit --wcag` (same values; given together with `--wcag` and another value it exits 81) |
-| `bdg dom get --nth` | deprecated | `bdg dom get --index` (same value; given together with `--index` and another value it exits 81) |
-| `bdg tail` | deprecated | `bdg peek --follow` (same options) |
-| `bdg cleanup --aggressive` | deprecated | `bdg cleanup --force` |
-| `bdg cleanup -f` | deprecated | `bdg cleanup --force` (`-f` means `--follow` everywhere else) |
-| `bdg <url> --timeout` | deprecated | `bdg <url> --stop-after <seconds>`; also for `-t` (same unit, seconds; given together with `--stop-after` and another value it exits 81) |
-| `bdg attach --timeout` | deprecated | `bdg attach --stop-after <seconds>` (same unit, seconds) |
-| `bdg <url> --all` | deprecated | `bdg <url> --capture-all`; also for `-a` (`--all` of the `dom` commands is unchanged) |
-| `bdg stop --kill-chrome` | deprecated | `bdg stop` (it already closes the Chrome bdg launched; `--kill-chrome` still exits 81 on an attached session) |
+| `bdg dom eval` | removed | `bdg eval` |
+| `bdg dom pressKey` | removed | `bdg dom press-key` |
+| `bdg network getCookies` | removed | `bdg network cookies` |
+| `bdg details` | removed | `bdg network details <id>` for `bdg details network <id>`, `bdg console details <n>` for `bdg details console <n>`; the error names both |
+| `bdg console --history` | removed | `bdg console --page all`; also for `-H` |
+| `bdg network document` | removed | `bdg network headers` (no id: the main document) |
+| `bdg dom audit --level` | removed | `bdg dom audit --wcag` |
+| `bdg dom get --nth` | removed | `bdg dom get --index` |
+| `bdg tail` | removed | `bdg peek --follow` |
+| `bdg cleanup --aggressive` | removed | `bdg cleanup --force` |
+| `bdg cleanup -f` | removed | `bdg cleanup --force` (`-f` means `--follow` everywhere else) |
+| `bdg <url> --timeout` | removed | `bdg <url> --stop-after <seconds>`; also for `-t` (same unit, seconds) |
+| `bdg attach --timeout` | removed | `bdg attach --stop-after <seconds>` (same unit, seconds) |
+| `bdg <url> --all` | removed | `bdg <url> --capture-all`; also for `-a` (`--all` of the `dom` commands is unchanged) |
+| `bdg stop --kill-chrome` | removed | `bdg stop` (it already closes the Chrome bdg launched, and only detaches from an attached one) |
 | `bdg <url> --compact` | removed | Drop it (it had no effect) |
 | `bdg cleanup --remove-output` | removed | Drop it (bdg no longer writes `session.json`) |
 

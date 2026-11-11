@@ -7,7 +7,6 @@
  * - har: Export to HAR 1.2 format
  * - cookies: List cookies
  * - headers: Show HTTP headers
- * - document: Old spelling of headers without an id (deprecated)
  */
 
 import type { Command } from 'commander';
@@ -15,11 +14,7 @@ import type { Command } from 'commander';
 import { registerDetailsSubcommand } from '@/commands/details.js';
 import { registerHarCommand } from './har.js';
 import { registerListCommand } from './list.js';
-import {
-  registerCookiesCommands,
-  registerHeadersCommand,
-  registerDocumentCommand,
-} from './shared.js';
+import { registerCookiesCommand, registerHeadersCommand } from './shared.js';
 
 /**
  * Register all network subcommands.
@@ -32,7 +27,6 @@ export function registerNetworkCommands(program: Command): void {
   registerListCommand(networkCmd);
   registerDetailsSubcommand(networkCmd, 'network');
   registerHarCommand(networkCmd);
-  registerCookiesCommands(networkCmd);
+  registerCookiesCommand(networkCmd);
   registerHeadersCommand(networkCmd);
-  registerDocumentCommand(networkCmd);
 }

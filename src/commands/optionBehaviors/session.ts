@@ -33,8 +33,7 @@ export const SESSION_BEHAVIORS: BehaviorTable = {
     default: 'The session runs until bdg stop, Chrome closes or the page closes',
     whenEnabled:
       'The session stops itself this many seconds (1-3600) after the page has loaded, as bdg stop does; the start output shows the time (autoStopAt with --json)',
-    automaticBehavior:
-      'Seconds, unlike the --timeout of waits (milliseconds); the old -t/--timeout still works with a deprecation warning, and exits 81 when given together with --stop-after and another value',
+    automaticBehavior: 'Seconds, unlike the --timeout of waits (milliseconds)',
   },
   'attach:--stop-after': {
     default: 'The attached session runs until bdg stop, or until the tab or the browser closes',
@@ -60,10 +59,6 @@ export const SESSION_BEHAVIORS: BehaviorTable = {
   'cleanup:--force': {
     default: 'Refuses to run while a session is active; removes files left by a crashed session',
     whenEnabled: 'Kills the running daemon and its Chrome first (use when a session is stuck)',
-  },
-  'cleanup:--aggressive': {
-    whenEnabled:
-      'Same as --force, with a deprecation warning (stderr; warnings in the --json envelope); hidden from help, exits 81 from 1.0',
   },
   'cleanup:--purge': {
     default:
@@ -125,12 +120,6 @@ export const SESSION_BEHAVIORS: BehaviorTable = {
       'Reads DevToolsActivePort from that profile dir instead (Chrome Canary, Edge, Brave, any Chromium started with --remote-debugging-port=0 --user-data-dir)',
     automaticBehavior:
       'Chrome writes the file when remote debugging is enabled at chrome://inspect/#remote-debugging; bdg builds ws://127.0.0.1:<port>/devtools/browser/<id> from it with no HTTP call (/json is 404 in that mode). Chrome asks the user to allow each connection: bdg opens exactly one per command and never retries; declined exits 82, unanswered within 30 s exits 102 (Ctrl-C exits 130, no session left). No file, an unreadable file or a stale one (nothing listening: remote debugging turned off or Chrome closed) exits 83 naming the file. Combined with --chrome-ws-url exits 81',
-  },
-  'stop:--kill-chrome': {
-    default:
-      'Chrome launched by bdg is always closed on stop; an attached Chrome (--chrome-ws-url) is left running',
-    whenEnabled:
-      "No additional effect, with a deprecation warning (stderr; warnings in the --json envelope); hidden from help, exits 81 from 1.0. Refused (exit 81) for a session started with bdg attach: that Chrome is the user's",
   },
   'status:--verbose': {
     default: 'Basic session status (daemon running, session active, URL)',
