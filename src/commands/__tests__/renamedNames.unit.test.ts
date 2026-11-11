@@ -251,12 +251,11 @@ void describe('a command row with a hint for two replacements', () => {
     );
   });
 
-  void it('the real table has the details and --history rows, deprecated', () => {
+  void it('every row of the real table is removed (1.0)', () => {
     const history = RENAMES.find((entry) => entry.kind === 'option' && entry.old === '--history');
     assert.equal(history?.new, '--page');
     assert.equal(history?.kind === 'option' && history.value, 'all');
-    assert.equal(history?.stage, 'deprecated');
-    assert.equal(RENAMES.find((entry) => entry.old === 'details')?.stage, 'deprecated');
+    for (const entry of RENAMES) assert.equal(entry.stage, 'removed', spelling(entry, 'old'));
   });
 });
 
