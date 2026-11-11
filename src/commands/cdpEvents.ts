@@ -24,7 +24,7 @@ import {
   cdpEventMalformedError,
   cdpEventTypoError,
   cdpMethodNotEventError,
-  cdpSecondsRangeError,
+  cdpMillisecondsRangeError,
   cdpUnlistedEventWarning,
   collectDroppedHint,
   collectIncompleteHint,
@@ -34,14 +34,20 @@ import {
 } from '@/ui/messages/cdpEvents.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
-/** Default `--timeout` of a collection, in seconds */
-export const COLLECT_DEFAULT_TIMEOUT_S = 10;
+/** Default `--timeout` of a collection, in milliseconds */
+export const COLLECT_DEFAULT_TIMEOUT_MS = 10_000;
 
 /**
- * Longest `--timeout` and `--wait`, in seconds: a request blocks the CLI
+ * Longest `--timeout` and `--wait`, in milliseconds: a request blocks the CLI
  * (the daemon extends its 30 s command timeout to this plus a margin)
  */
-export const EVENT_WAIT_MAX_S = 120;
+export const EVENT_WAIT_MAX_MS = 120_000;
+
+/**
+ * Shortest `--timeout` and `--wait` other than `--wait 0`, in milliseconds:
+ * a smaller value is most likely a 0.x number of seconds (`--timeout 5`)
+ */
+export const EVENT_WAIT_MIN_MS = 100;
 
 /** What the event flags ask for */
 export type EventCommandPlan =
@@ -123,22 +129,23 @@ export function parseEventNames(list: string): { events: string[]; warning?: str
 }
 
 /**
- * Parse a number of seconds.
+ * Parse a whole number of milliseconds from {@link EVENT_WAIT_MIN_MS} to
+ * {@link EVENT_WAIT_MAX_MS}.
  *
  * @param flag - Flag, for the error
  * @param value - Value as typed
- * @param min - Smallest value allowed (exclusive when `exclusiveMin`)
- * @param exclusiveMin - Whether `min` itself is refused
+ * @param allowZero - Whether `0` (no wait) is accepted too
  * @returns Milliseconds
- * @throws CommandError (81) when not a number in range
+ * @throws CommandError (81) when not a whole number in range
  */
-function parseSeconds(flag: string, value: string, min: number, exclusiveMin: boolean): number {
-  const seconds = Number(value.trim());
-  const belowMin = exclusiveMin ? seconds <= min : seconds < min;
-  if (value.trim() === '' || !Number.isFinite(seconds) || belowMin || seconds > EVENT_WAIT_MAX_S) {
-    throw invalid(cdpSecondsRangeError(flag, value, EVENT_WAIT_MAX_S));
-  }
-  return Math.round(seconds * 1000);
+function parseMilliseconds(flag: string, value: string, allowZero: boolean): number {
+  const text = value.trim();
+  const ms = Number(text);
+  const inRange = ms >= EVENT_WAIT_MIN_MS && ms <= EVENT_WAIT_MAX_MS;
+  if (/^\d+$/.test(text) && (inRange || (allowZero && ms === 0))) return ms;
+  throw invalid(
+    cdpMillisecondsRangeError(flag, value, EVENT_WAIT_MIN_MS, EVENT_WAIT_MAX_MS, allowZero)
+  );
 }
 
 /**
@@ -190,8 +197,8 @@ function planCollect(options: CdpCommandOptions): EventCommandPlan {
   const warning = [collected?.warning, until?.warning].filter(Boolean).join('\n');
   const timeoutMs =
     options.timeout === undefined
-      ? COLLECT_DEFAULT_TIMEOUT_S * 1000
-      : parseSeconds('--timeout', options.timeout, 0, true);
+      ? COLLECT_DEFAULT_TIMEOUT_MS
+      : parseMilliseconds('--timeout', options.timeout, false);
   return {
     mode: 'collect',
     collect: {
@@ -225,7 +232,9 @@ function planRead(options: CdpCommandOptions): EventCommandPlan {
     request: {
       action: 'read',
       ...(filter && { events: filter.events }),
-      ...(options.wait !== undefined && { waitMs: parseSeconds('--wait', options.wait, 0, false) }),
+      ...(options.wait !== undefined && {
+        waitMs: parseMilliseconds('--wait', options.wait, true),
+      }),
       ...(options.clear && { clear: true }),
       ...(options.out !== undefined && { out: outPath(options.out) }),
     },
@@ -259,7 +268,7 @@ export function planEventCommand(
   rejectFlags(
     { '--wait': options.wait, '--clear': options.clear },
     '--events',
-    'bdg cdp --events Fetch.requestPaused --wait 5'
+    'bdg cdp --events Fetch.requestPaused --wait 5000'
   );
   if (options.collect !== undefined || options.until !== undefined) {
     if (method === undefined) {
@@ -276,7 +285,7 @@ export function planEventCommand(
   rejectFlags(
     { '--timeout': options.timeout },
     '--collect or --until',
-    'bdg cdp Page.reload --until Page.loadEventFired --timeout 5'
+    'bdg cdp Page.reload --until Page.loadEventFired --timeout 5000'
   );
   rejectFlags(
     { '--out': options.out },
@@ -313,7 +322,7 @@ export function planEventCommand(
 export function collectHints(data: CdpCollectData, collect: CdpCollectParams): string[] {
   return [
     ...(!data.complete && collect.until
-      ? [collectIncompleteHint(collect.until, collect.timeoutMs / 1000)]
+      ? [collectIncompleteHint(collect.until, collect.timeoutMs, EVENT_WAIT_MAX_MS)]
       : []),
     ...(data.omitted ? [eventsOmittedHint(data.omitted, false)] : []),
     ...(data.dropped ? [collectDroppedHint(data.dropped)] : []),
@@ -338,7 +347,7 @@ export async function runEventsRequest(
     ...(request.action === 'listen' ? [listeningHint()] : []),
     ...(data.remaining ? [eventsOmittedHint(data.remaining, true)] : []),
     ...(data.waitedOut && request.action === 'read'
-      ? [eventsWaitedOutHint((request.waitMs ?? 0) / 1000, request.events ?? [])]
+      ? [eventsWaitedOutHint(request.waitMs ?? 0, request.events ?? [])]
       : []),
   ];
   return {

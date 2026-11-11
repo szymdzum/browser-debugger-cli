@@ -131,7 +131,7 @@ export interface CdpMethodOptions {
   collect?: string;
   /** Event that ends the collection */
   until?: string;
-  /** Seconds to collect at most */
+  /** Milliseconds to collect at most */
   timeout?: string;
   /** NDJSON file for collected or buffered events */
   out?: string;
@@ -139,7 +139,7 @@ export interface CdpMethodOptions {
   listen?: string;
   /** Read buffered events: true for all, or the events to read (comma-separated) */
   events?: string | boolean;
-  /** Seconds `--events` waits for an event */
+  /** Milliseconds `--events` waits for an event */
   wait?: string;
   /** `--events`: discard instead of returning */
   clear?: boolean;

@@ -234,7 +234,7 @@ void describe('milliseconds in help and hints', () => {
   });
 
   void it('gives waited times in milliseconds', () => {
-    const incomplete = collectIncompleteHint('Page.loadEventFired', 500);
+    const incomplete = collectIncompleteHint('Page.loadEventFired', 500, 120_000);
     assert.match(incomplete, /did not arrive within 500 ms/);
     assert.match(incomplete, /max 120000/);
     assert.equal(eventsWaitedOutHint(5000, []), 'No listened event within 5000 ms');

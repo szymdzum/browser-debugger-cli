@@ -38,7 +38,7 @@ export const CDP_BEHAVIORS: BehaviorTable = {
   },
   'cdp:--timeout': {
     default:
-      'A collection lasts at most 10 s (at least until the method answered); seconds, decimals allowed, max 120',
+      'A collection lasts at most 10000 ms (at least until the method answered); whole milliseconds from 100 to 120000 (seconds before 1.0: a value below 100, such as --timeout 5, exits 81 suggesting --timeout 5000)',
     whenEnabled:
       'The daemon extends its 30 s command timeout to this plus 5 s, so the command blocks up to that long. Without --until it is how long events are collected',
   },
@@ -66,7 +66,7 @@ export const CDP_BEHAVIORS: BehaviorTable = {
   'cdp:--wait': {
     default: '--events returns at once, also with no events',
     whenEnabled:
-      'Waits up to this many seconds (max 120) for a matching event when none is buffered; when none comes it returns no events with waitedOut: true, exit 0',
+      'Waits up to this many milliseconds (100 to 120000, or 0 for no wait; seconds before 1.0: 1 to 99 exits 81 suggesting the value times 1000) for a matching event when none is buffered; when none comes it returns no events with waitedOut: true, exit 0',
   },
   'cdp:--clear': {
     default: '--events returns the events it removes',
