@@ -13,7 +13,7 @@ void describe('formatAudit', () => {
       checks: ['contrast'],
       walked: 10,
       contrast: {
-        level: 'AA',
+        wcag: 'AA',
         checked: 3,
         failing: 1,
         uncertain: 2,

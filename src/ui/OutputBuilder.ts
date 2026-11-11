@@ -22,12 +22,23 @@ export function addEnvelopeWarning(warning: string): void {
 }
 
 /**
+ * The warnings added for every envelope so far, for an output with no
+ * envelope (a record stream) to report them another way.
+ *
+ * @returns Warning texts, old spellings first
+ */
+export function currentEnvelopeWarnings(): readonly string[] {
+  return envelopeWarnings;
+}
+
+/**
  * The `warnings` field of an envelope: present only when there are any.
  *
- * Old-spelling warnings come first, then the command's own `warning` (#465),
+ * Old-spelling warnings come first, then the command's own warning (#465),
  * one entry per line, since a warning joins several texts with newlines.
+ * 1.0 has no `warning` string field (#844): this is the only place it goes.
  *
- * @param commandWarning - The envelope's `warning`, if any
+ * @param commandWarning - The command's warning, if any
  * @returns `{ warnings }` or an empty object
  */
 function warningsField(commandWarning?: unknown): { warnings?: string[] } {
@@ -41,15 +52,14 @@ function warningsField(commandWarning?: unknown): { warnings?: string[] } {
  *
  * @param data - Response payload
  * @param warning - Warning about how the command ran, if any
- * @returns `{ version, success: true, data }`, plus `warning` when given and
- *   `warnings` (the same text, and any old-spelling warnings) when there are any
+ * @returns `{ version, success: true, data }`, plus `warnings` (any
+ *   old-spelling warnings, then the command's) when there are any
  */
 export function buildSuccessResponse<T>(data: T, warning?: string): BdgResponse<T> {
   return {
     version: VERSION,
     success: true,
     data,
-    ...(warning && { warning }),
     ...warningsField(warning),
   };
 }
@@ -72,12 +82,13 @@ export class OutputBuilder {
   /**
    * Build an error response envelope.
    *
-   * Envelope fields in `options` cannot override `version`, `success` or `error`.
+   * Envelope fields in `options` cannot override `version`, `success` or `error`;
+   * a `warning` in them goes into `warnings`, never to a top-level `warning`.
    *
    * @param error - Error or message
    * @param options - Exit code, suggestion and extra context fields
-   * @returns `{ version, success: false, error, ...options }`, plus `warnings`
-   *   (any old-spelling warnings, then the same text as `warning`)
+   * @returns `{ version, success: false, error, ...options }` without `warning`,
+   *   plus `warnings` (any old-spelling warnings, then the command's)
    */
   static buildJsonError(
     error: string | Error,
@@ -92,6 +103,7 @@ export class OutputBuilder {
       version: _version,
       success: _success,
       error: _error,
+      warning,
       ...rest
     } = (options ?? {}) as Record<string, unknown>;
     return {
@@ -99,7 +111,7 @@ export class OutputBuilder {
       success: false,
       error: error instanceof Error ? error.message : error,
       ...rest,
-      ...warningsField(rest['warning']),
+      ...warningsField(warning),
     };
   }
 }

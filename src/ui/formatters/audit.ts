@@ -45,7 +45,7 @@ export function formatAudit(data: AuditResult): string {
  * @returns Lines
  */
 function contrastSection(contrast: NonNullable<AuditResult['contrast']>): string[] {
-  const head = `Contrast (${contrast.level}): ${contrast.failing} of ${contrast.checked} text elements below`;
+  const head = `Contrast (${contrast.wcag}): ${contrast.failing} of ${contrast.checked} text elements below`;
   const rows = contrast.items.map(
     (item) =>
       `  ${item.ratio.toFixed(2).padStart(5)}  ${item.color} on ${item.background}  ${escapeOneLine(item.element)} "${truncateByLength(item.text, TEXT_WIDTH)}" ${item.size}px${item.weight >= 700 ? ' bold' : ''}${item.opacity !== undefined ? ` (faded: opacity ${item.opacity})` : ''}${item.inView ? '' : ' (out of view)'}`

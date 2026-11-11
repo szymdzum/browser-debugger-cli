@@ -23,7 +23,11 @@ import { MAX_CONSOLE_JSON_TEXT_LENGTH, MAX_CONSOLE_TEXT_LENGTH } from '@/constan
 import { CommandError } from '@/errors/index.js';
 import type { TabSwitchInfo } from '@/ipc/protocol/tabTypes.js';
 import type { ConsoleMessage, FailedLoad, PageIssue, PageNavigation } from '@/types.js';
-import { buildSuccessResponse } from '@/ui/OutputBuilder.js';
+import {
+  addEnvelopeWarning,
+  buildSuccessResponse,
+  currentEnvelopeWarnings,
+} from '@/ui/OutputBuilder.js';
 import {
   buildConsoleJsonOutput,
   formatConsole,
@@ -39,6 +43,9 @@ import {
 import { pageCrashedNote } from '@/ui/messages/commands.js';
 import {
   followingConsoleMessage,
+  jsonBatchesConflictsWithNdjson,
+  jsonBatchesDeprecatedWarning,
+  jsonBatchesNeedsFollow,
   ndjsonConflictsWithJson,
   ndjsonNeedsFollow,
   stoppedFollowingConsoleMessage,
@@ -230,13 +237,36 @@ function buildFormatOptions(
 
 /**
  * Whether errors before the output starts are `--json` envelopes: with
- * `--json`, and with `--ndjson` (one JSON object per line).
+ * `--json`, `--ndjson` (one JSON object per line) and `--json-batches`.
  *
  * @param options - Command options
  * @returns True for envelopes
  */
-function wantsJsonErrors(options: Pick<ConsoleCommandOptions, 'json' | 'ndjson'>): boolean {
-  return options.json === true || options.ndjson === true;
+function wantsJsonErrors(
+  options: Pick<ConsoleCommandOptions, 'json' | 'ndjson' | 'jsonBatches'>
+): boolean {
+  return options.json === true || options.ndjson === true || options.jsonBatches === true;
+}
+
+/**
+ * Check `--json-batches` (the pre-1.0 `--follow --json` envelopes, #844): it
+ * needs `--follow` and excludes `--ndjson`; when it runs, every envelope
+ * carries the warning that it goes in 1.1.
+ *
+ * @param options - Command options
+ * @throws CommandError with exit code 81
+ */
+function checkJsonBatches(options: ConsoleCommandOptions): void {
+  if (!options.jsonBatches) return;
+  const usage = !options.follow ? jsonBatchesNeedsFollow() : jsonBatchesConflictsWithNdjson();
+  if (!options.follow || options.ndjson) {
+    throw new CommandError(
+      usage.message,
+      { suggestion: usage.suggestion },
+      EXIT_CODES.INVALID_ARGUMENTS
+    );
+  }
+  addEnvelopeWarning(jsonBatchesDeprecatedWarning());
 }
 
 /**
@@ -259,9 +289,19 @@ function checkNdjson(options: ConsoleCommandOptions): void {
 }
 
 /**
+ * Report the envelope warnings (an old spelling with `--json`) of a record
+ * stream, which has no envelope to carry them: a `Warning:` line on stderr
+ * each, so stdout stays one record per line.
+ */
+export function warnRecordStream(): void {
+  for (const warning of currentEnvelopeWarnings()) printWarning(warning);
+}
+
+/**
  * Stream console messages: the last `lastN` at start, then each new message
  * once (like `tail -f`), with a separator when the page navigates and a
- * warning (JSON `pageCrashedAt`) once when the page crashes.
+ * warning (JSON `pageCrashedAt`) once when the page crashes. `--json` prints
+ * the `--ndjson` records (1.0, #844); `--json-batches` the old envelopes.
  *
  * @param options - Command options
  * @param lastN - Messages to show at start (0 = all)
@@ -269,7 +309,9 @@ function checkNdjson(options: ConsoleCommandOptions): void {
 async function runFollowMode(options: ConsoleCommandOptions, lastN: number): Promise<void> {
   const cursor = createFollowCursor(options, lastN);
   const newCrash = newPageCrashes();
-  const ndjson = options.ndjson ? createConsoleNdjson(options) : undefined;
+  const records = options.ndjson === true || (options.json === true && !options.jsonBatches);
+  const ndjson = records ? createConsoleNdjson(options) : undefined;
+  if (ndjson) warnRecordStream();
   if (options.includeSensitive) printWarning(includeSensitiveWarning());
   const navigations: PageNavigation[] = [];
   let streamNavigationId: number | undefined;
@@ -291,7 +333,7 @@ async function runFollowMode(options: ConsoleCommandOptions, lastN: number): Pro
     if (ndjson) {
       for (const line of ndjson.next(backlog, navigations, currentNavigationId)) console.log(line);
       if (crashedAt !== undefined) console.error(pageCrashedNote(crashedAt));
-    } else if (options.json) {
+    } else if (options.jsonBatches) {
       if (!started || backlog.length > 0 || crashedAt !== undefined) {
         const data = buildConsoleJsonOutput(backlog, {
           list: true,
@@ -475,7 +517,13 @@ export function registerConsoleCommand(program: Command): void {
     .addOption(
       new Option(
         '--ndjson',
-        'With --follow: one JSON object per line, a {"type":"message",…} record per console message and a {"type":"page","navigationId":N,"url":"…"} record per page, before its first message (instead of --json\'s batch envelopes; excludes --json)'
+        'With --follow: one JSON object per line, a {"type":"message",…} record per console message and a {"type":"page","navigationId":N,"url":"…"} record per page, before its first message (what --follow --json prints; excludes --json)'
+      ).default(false)
+    )
+    .addOption(
+      new Option(
+        '--json-batches',
+        'With --follow: one JSON envelope per batch of new messages, as --follow --json printed before 1.0 (deprecated, removed in 1.1)'
       ).default(false)
     )
     .addOption(includeSensitiveOption())
@@ -485,6 +533,7 @@ export function registerConsoleCommand(program: Command): void {
       let lastN: number;
 
       try {
+        checkJsonBatches(options);
         checkNdjson(options);
         lastN = positiveIntRule({
           name: '--last',

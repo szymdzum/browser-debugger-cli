@@ -43,6 +43,11 @@ void describe('dom audit', () => {
       },
       { checks: ['contrast'], level: 'AA', limit: 1 }
     );
+    assert.deepEqual(
+      Object.entries(result.contrast ?? {}).filter(([key]) => key === 'wcag' || key === 'level'),
+      [['wcag', 'AA']],
+      'the WCAG level is in contrast.wcag (#844), not contrast.level'
+    );
     assert.equal(result.contrast?.checked, 4);
     assert.equal(result.contrast?.failing, 2);
     assert.deepEqual(

@@ -84,7 +84,7 @@ void describe('node attached check', () => {
     const reads = await Promise.allSettled([1, 2].map((nodeId) => getDOMElements({ nodeId })));
     assert.deepEqual(
       reads.map((read) =>
-        read.status === 'rejected' ? String(read.reason) : read.value.nodes[0]?.nodeId
+        read.status === 'rejected' ? String(read.reason) : read.value.nodes[0]?.backendNodeId
       ),
       [1, 2],
       'a node id was reported as not in the page'

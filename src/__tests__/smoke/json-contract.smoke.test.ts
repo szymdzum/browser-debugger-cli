@@ -37,7 +37,7 @@ interface Envelope {
   error?: string;
   exitCode?: number;
   suggestion?: string;
-  warning?: string;
+  warnings?: string[];
 }
 
 /**
@@ -395,13 +395,29 @@ void describe('JSON contract', () => {
     );
     rmSync(shotPath, { force: true });
     assert.equal(element.data?.['captureMode'], 'element');
-    assert.match(String(madeUp.warning), /^Nonexistent\.method is not in the bundled protocol/);
+    for (const args of [
+      ['dom', 'query', 'button', '--json'],
+      ['dom', 'get', 'button', '--raw', '--json'],
+    ]) {
+      const listed = await expectEnvelope(args, 0);
+      const node = (listed.data?.['nodes'] as Array<Record<string, unknown>> | undefined)?.[0];
+      assert.equal(typeof node?.['backendNodeId'], 'number', `bdg ${args.join(' ')}`);
+      assert.ok(node && !('nodeId' in node), `bdg ${args.join(' ')}: nodeId left 1.0`);
+    }
+    assert.ok(!('warning' in madeUp), 'the envelope warning field left 1.0');
+    assert.match(
+      String(madeUp.warnings?.[0]),
+      /^Nonexistent\.method is not in the bundled protocol/
+    );
     const forced = await expectEnvelope(
       ['cdp', 'Network.getCookes', '--send-anyway', '--json'],
       83
     );
     assert.match(String(forced.error), /^This Chrome doesn't implement Network\.getCookes/);
-    assert.match(String(forced.warning), /^Network\.getCookes is not in the bundled protocol/);
+    assert.match(
+      String(forced.warnings?.[0]),
+      /^Network\.getCookes is not in the bundled protocol/
+    );
     const unlisted = await runCommand('cdp', ['Storage.getRelatedWebsiteSets']);
     assert.notEqual(unlisted.exitCode, 81, 'a method missing from the schema reaches Chrome');
     assert.match(

@@ -1,6 +1,7 @@
 /**
- * Contract test (#465 Q1): `bdg sessions --include-sensitive --json` writes a
- * command warning with no session needed; it is in `warning` and in `warnings`.
+ * Contract test (#465 Q1, #844): `bdg sessions --include-sensitive --json`
+ * writes a command warning with no session needed; it is only in `warnings`
+ * (1.0 dropped the envelope's `warning` string field).
  * With an old spelling too, `warnings` has the old spelling first.
  */
 
@@ -29,11 +30,12 @@ function runJson(argv: string[]): Promise<BdgResponse> {
   });
 }
 
-void describe('warning and warnings in the envelope', () => {
-  void it('sessions --include-sensitive: warning is also the only entry of warnings', async () => {
+void describe('warnings in the envelope', () => {
+  void it('sessions --include-sensitive: the warning is the only entry of warnings', async () => {
     const envelope = await runJson(['sessions', '--include-sensitive', '--json']);
-    assert.ok(envelope.warning);
-    assert.deepEqual(envelope.warnings, [envelope.warning]);
+    assert.equal(envelope.warnings?.length, 1);
+    assert.match(envelope.warnings?.[0] ?? '', /credentials/i);
+    assert.ok(!('warning' in envelope));
   });
 
   void it('sessions without the flag: neither field', async () => {

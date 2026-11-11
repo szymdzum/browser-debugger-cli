@@ -13,7 +13,7 @@ import { runCommand } from '@/commands/shared/CommandRunner.js';
 import type { DomQueryCommandOptions } from '@/commands/shared/optionTypes.js';
 import { QUERY_JSON_LIST_LIMIT } from '@/constants.js';
 import { QueryCacheManager } from '@/session/QueryCacheManager.js';
-import type { DomQueryResult } from '@/types.js';
+import type { DomQueryResult, ListedDomQueryResult } from '@/types.js';
 import { formatDomQuery } from '@/ui/formatters/dom.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -69,13 +69,14 @@ export async function handleDomQuery(
  * index. Nothing is added when the limit cut nothing (a match that could not
  * be described is just missing, as before). When more than
  * {@link VIEWPORT_HINT_LIMIT} are listed, `viewportChecked` says that only
- * the first ones have a viewport position.
+ * the first ones have a viewport position. The cache's `nodeId` is left out
+ * (1.0, #844): `backendNodeId` has the same value.
  *
  * @param result - Query result with every described match
  * @param limit - Matches to list (0 = all)
  * @returns Result to output
  */
-export function listedMatches(result: DomQueryResult, limit: number): DomQueryResult {
+export function listedMatches(result: DomQueryResult, limit: number): ListedDomQueryResult {
   const listed =
     limit === 0 || result.count <= limit
       ? result
@@ -85,7 +86,8 @@ export function listedMatches(result: DomQueryResult, limit: number): DomQueryRe
           omitted: result.count - Math.min(limit, result.nodes.length),
           ...(result.nodes.length < result.count && { indexed: result.nodes.length }),
         };
+  const nodes = listed.nodes.map(({ nodeId: _nodeId, ...node }) => node);
   return listed.nodes.length > VIEWPORT_HINT_LIMIT
-    ? { ...listed, viewportChecked: VIEWPORT_HINT_LIMIT }
-    : listed;
+    ? { ...listed, nodes, viewportChecked: VIEWPORT_HINT_LIMIT }
+    : { ...listed, nodes };
 }

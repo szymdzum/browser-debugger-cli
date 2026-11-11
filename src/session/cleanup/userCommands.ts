@@ -37,8 +37,6 @@ export interface SessionCleanupResult {
     session: boolean;
     chrome: boolean;
     daemons: boolean;
-    /** Always false: `--remove-output` was removed (#465) */
-    output: boolean;
   };
   warnings: string[];
 }
@@ -74,7 +72,6 @@ export async function performSessionCleanup(
       session: session || daemonKilled || filesRemoved || endedRecordRemoved,
       chrome,
       daemons: daemonKilled,
-      output: false,
     },
     warnings,
   };

@@ -44,14 +44,21 @@ export const CONSOLE_BEHAVIORS: BehaviorTable = {
   'console:--follow': {
     default: 'Prints the messages logged so far and exits',
     whenEnabled:
-      "Streams new messages as they come (the last --last at start); a page logged on before it was left is printed in full, then the navigation separator, then the new page's messages (--level applies to all)",
+      "Streams new messages as they come (the last --last at start); a page logged on before it was left is printed in full, then the navigation separator, then the new page's messages (--level applies to all). With --json: one JSON record per line, the --ndjson shape (since 1.0; the per-batch envelopes are behind --json-batches until 1.1)",
     automaticBehavior: FOLLOW_BEHAVIOR,
+  },
+  'console:--json-batches': {
+    default: 'Off: --follow --json prints one record per line (the --ndjson shape)',
+    whenEnabled:
+      'With --follow: one {version,success,data} envelope per batch of new messages (data as console --json, plus pageCrashedAt), as --follow --json printed before 1.0. Deprecated, removed in 1.1',
+    automaticBehavior:
+      'Every envelope has a warnings entry saying it goes in 1.1. Without --follow, or together with --ndjson: exit 81 with the --json error envelope',
   },
   'console:--ndjson': {
     default:
-      'Off: --follow prints text lines, --follow --json one envelope per batch of new messages',
+      'Off: --follow prints text lines; --follow --json prints these records too (since 1.0)',
     whenEnabled:
-      'With --follow: one JSON object per line, no envelope. {"type":"message","level",…} per console message (the fields of console --json messages[]; the level is "level"), {"type":"page","navigationId","url"} (url absent for a page the session has no record of) before the first message of each page, for the current page at start, for a page that logged nothing and for every page passed between two polls. New contract in 0.x; in 1.0 this becomes the --follow --json shape',
+      'With --follow: one JSON object per line, no envelope. {"type":"message","level",…} per console message (the fields of console --json messages[]; the level is "level"), {"type":"page","navigationId","url"} (url absent for a page the session has no record of) before the first message of each page, for the current page at start, for a page that logged nothing and for every page passed between two polls. Since 1.0 also the --follow --json shape',
     automaticBehavior:
       'Without --follow, or together with --json: exit 81 with the --json error envelope. Errors before the stream starts are that envelope too; Ctrl-C and SIGTERM exit 130 and 143 with no trailing record; a page crash is noted on stderr. Page URLs are masked like every output (--include-sensitive shows the tokens)',
   },

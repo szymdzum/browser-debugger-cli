@@ -64,7 +64,7 @@ async function followDuring(
       if (done(stdout)) stop.abort();
     },
   });
-  await hasStarted;
+  await Promise.race([hasStarted, stream]);
   await act();
   return stream;
 }
@@ -105,29 +105,45 @@ void describe('console --follow across a navigation', () => {
     assert.match(result.stdout, /fourth error[\s\S]*Next page[\s\S]*arrived error/);
   });
 
-  void it('prints them in --json lines, and applies --level to them', async () => {
+  void it('prints --json as one record per line, and applies --level to them', async () => {
     await bdg('page', ['navigate', `${fixture.url}follow-left`]);
     const result = await followDuring(['--json', '--level', 'error'], leave, (stdout) =>
       arrived(stdout)
     );
-    const messages = result.stdout
+    const records = result.stdout
       .split('\n')
       .filter((line) => line.trim() !== '')
-      .flatMap((line) => {
-        const data = (
+      .map(
+        (line) =>
           JSON.parse(line) as {
-            data: { messages?: Array<{ text: string; navigationId?: number }> };
+            type: string;
+            level?: string;
+            text?: string;
+            navigationId?: number;
+            url?: string;
           }
-        ).data;
-        return data.messages ?? [];
-      });
+      );
+    assert.ok(
+      records.every((record) => record.type === 'page' || record.type === 'message'),
+      result.stdout
+    );
+    const messages = records.filter((record) => record.type === 'message');
+    assert.ok(
+      messages.every((message) => message.level === 'error'),
+      result.stdout
+    );
     const texts = messages.map((message) => message.text);
     const pageOf = (text: string): number | undefined =>
       messages.find((message) => message.text === text)?.navigationId;
     assert.notEqual(pageOf('fourth error'), undefined, texts.join('|'));
     assert.notEqual(pageOf('arrived error'), undefined, texts.join('|'));
     assert.notEqual(pageOf('fourth error'), pageOf('arrived error'), texts.join('|'));
-    const many = texts.filter((text) => text.endsWith(' error') && !text.startsWith('arrived'));
+    const pages = records.filter((record) => record.type === 'page');
+    assert.ok(
+      pages.some((page) => page.navigationId === pageOf('arrived error')),
+      result.stdout
+    );
+    const many = texts.filter((text) => text?.endsWith(' error') && !text.startsWith('arrived'));
     assert.deepEqual(many.slice(-4), [
       'first error',
       'second error',
@@ -137,5 +153,28 @@ void describe('console --follow across a navigation', () => {
     assert.ok(texts.includes('arrived error'), texts.join('|'));
     assert.ok(!texts.includes('left warning'), texts.join('|'));
     assert.ok(!texts.includes('arrived warning'), texts.join('|'));
+  });
+
+  void it('keeps the per-batch envelopes behind --json-batches, with a 1.1 warning', async () => {
+    await bdg('page', ['navigate', `${fixture.url}follow-left`]);
+    const result = await followDuring(['--json-batches', '--level', 'error'], leave, arrived);
+    const envelopes = result.stdout
+      .split('\n')
+      .filter((line) => line.trim() !== '')
+      .map(
+        (line) =>
+          JSON.parse(line) as {
+            success: boolean;
+            warnings?: string[];
+            data: { messages?: Array<{ text: string }> };
+          }
+      );
+    assert.ok(envelopes.length > 0, result.stdout);
+    for (const envelope of envelopes) {
+      assert.equal(envelope.success, true, result.stdout);
+      assert.match(envelope.warnings?.join('\n') ?? '', /--json-batches.*1\.1/, result.stdout);
+    }
+    const texts = envelopes.flatMap((envelope) => envelope.data.messages ?? []).map((m) => m.text);
+    assert.ok(texts.includes('arrived error'), texts.join('|'));
   });
 });

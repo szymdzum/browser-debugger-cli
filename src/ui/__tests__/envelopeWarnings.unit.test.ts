@@ -1,7 +1,8 @@
 /**
- * `warning` and `warnings` in the `--json` envelope (#465 Q1): every text
- * written to `warning` is also in `warnings`, which is absent when empty.
- * The envelope-wide list is module state, so the test that fills it runs last.
+ * `warnings` in the `--json` envelope (#465 Q1, #844): a command's warning is
+ * only in `warnings` (1.0 dropped the `warning` string field), which is absent
+ * when empty. The envelope-wide list is module state, so the test that fills
+ * it runs last.
  */
 
 import assert from 'node:assert/strict';
@@ -15,24 +16,24 @@ void describe('envelope warnings', () => {
     assert.ok(!('warnings' in OutputBuilder.buildJsonError('bad', { exitCode: 83 })));
   });
 
-  void it('success: a command warning is in warning and warnings', () => {
+  void it('success: a command warning is in warnings only', () => {
     const envelope = buildSuccessResponse({ a: 1 }, 'w1');
-    assert.equal(envelope.warning, 'w1');
+    assert.ok(!('warning' in envelope));
     assert.deepEqual(envelope.warnings, ['w1']);
   });
 
-  void it('error: a warning in the metadata is in warning and warnings', () => {
+  void it('error: a warning in the metadata is in warnings only', () => {
     const envelope = OutputBuilder.buildJsonError('bad', {
       exitCode: 83,
       warning: 'w2',
     });
-    assert.equal(envelope['warning'], 'w2');
+    assert.ok(!('warning' in envelope));
     assert.deepEqual(envelope['warnings'], ['w2']);
   });
 
   void it('a warning of several texts joined by newlines is one entry per text', () => {
     const envelope = buildSuccessResponse({}, 'a\nb');
-    assert.equal(envelope.warning, 'a\nb');
+    assert.ok(!('warning' in envelope));
     assert.deepEqual(envelope.warnings, ['a', 'b']);
   });
 
@@ -40,8 +41,9 @@ void describe('envelope warnings', () => {
     addEnvelopeWarning('old spelling');
     const success = buildSuccessResponse({}, 'w3');
     assert.deepEqual(success.warnings, ['old spelling', 'w3']);
-    assert.equal(success.warning, 'w3');
+    assert.ok(!('warning' in success));
     const error = OutputBuilder.buildJsonError('bad', { warning: 'w4' });
     assert.deepEqual(error['warnings'], ['old spelling', 'w4']);
+    assert.ok(!('warning' in error));
   });
 });

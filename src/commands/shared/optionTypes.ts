@@ -464,6 +464,8 @@ export interface ConsoleCommandOptions extends BaseOptions {
   full?: boolean;
   /** With --follow: one JSON record per line */
   ndjson?: boolean;
+  /** With --follow: the per-batch envelopes `--json` printed before 1.0 (removed in 1.1) */
+  jsonBatches?: boolean;
   /** Page URLs with their query and fragment tokens */
   includeSensitive?: boolean;
 }

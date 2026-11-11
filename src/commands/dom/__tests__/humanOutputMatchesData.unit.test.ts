@@ -189,7 +189,7 @@ void describe('dom query names an icon-only button (#645)', () => {
     formatDomQuery({
       selector: 'button',
       count: 1,
-      nodes: [{ index: 2, nodeId: 1, tag: 'button', classes: ['icon'], ...node }],
+      nodes: [{ index: 2, backendNodeId: 1, tag: 'button', classes: ['icon'], ...node }],
     })
       .split('\n')[1]!
       .trim();
@@ -235,7 +235,12 @@ void describe('dom inspect rows and header text (#734 review)', () => {
         selector: 'a',
         count: 1,
         nodes: [
-          { index: 0, nodeId: 1, tag: 'a', attributes: { href: 'http://127.0.0.1:8765?x=1' } },
+          {
+            index: 0,
+            backendNodeId: 1,
+            tag: 'a',
+            attributes: { href: 'http://127.0.0.1:8765?x=1' },
+          },
         ],
       },
       { origin: 'http://127.0.0.1:8765' }

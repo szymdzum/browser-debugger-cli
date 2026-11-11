@@ -92,7 +92,7 @@ function contrastFindings(
   const failing = below.filter((item) => !item.approximate);
   const uncertain = below.length - failing.length;
   return {
-    level: options.level,
+    wcag: options.level,
     checked: checked.length,
     failing: failing.length,
     items: failing.slice(0, options.limit),

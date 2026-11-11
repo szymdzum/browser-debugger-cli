@@ -114,8 +114,8 @@ export interface CommandResult<T = unknown> {
    */
   raw?: boolean;
   /**
-   * Warning about how the command ran (success or failure): top-level
-   * `warning` in the JSON envelope, `Warning: …` on stderr otherwise
+   * Warning about how the command ran (success or failure): in the JSON
+   * envelope's `warnings`, `Warning: …` on stderr otherwise
    */
   warning?: string;
 }
@@ -182,7 +182,7 @@ function printTabMove(shown = ''): void {
 }
 
 /**
- * Print a command's warning on stderr (text output; `--json` has it in the envelope).
+ * Print a command's warning on stderr (text output; `--json` has it in the envelope's `warnings`).
  *
  * @param warning - Warning, if any
  */
