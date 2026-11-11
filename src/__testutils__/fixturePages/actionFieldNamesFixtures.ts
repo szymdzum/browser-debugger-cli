@@ -11,10 +11,9 @@
 import type { FixtureRoutes } from '@/__testutils__/fixtureRoutes.js';
 
 /** Six empty required fields */
-const REQUIRED_FIELDS = Array.from(
-  { length: 6 },
-  (_, n) => `<input name="f${n}" required>`
-).join('\n    ');
+const REQUIRED_FIELDS = Array.from({ length: 6 }, (_, n) => `<input name="f${n}" required>`).join(
+  '\n    '
+);
 
 /** A request burst, a form blocked by six fields and a navigating form */
 const FIELD_NAMES_HTML = `<!doctype html><title>field names</title>
