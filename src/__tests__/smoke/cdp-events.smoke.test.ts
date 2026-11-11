@@ -143,7 +143,7 @@ void describe('bdg cdp events', () => {
       '--events',
       'Fetch.requestPaused',
       '--wait',
-      '20',
+      '20000',
     ]);
     assert.equal(read.exitCode, 0, read.stderr);
     assert.equal(read.body.data.count, 1);
@@ -220,7 +220,7 @@ void describe('bdg cdp events', () => {
       '--until',
       'Page.loadEventFired',
       '--timeout',
-      '0.5',
+      '500',
     ]);
     assert.equal(collected.exitCode, 0, collected.stderr);
     assert.equal(collected.body.success, true);
@@ -229,7 +229,7 @@ void describe('bdg cdp events', () => {
     assert.deepEqual(collected.body.data.result, {
       result: { type: 'number', value: 1, description: '1' },
     });
-    assert.match(collected.stderr, /Page\.loadEventFired did not arrive within 0\.5s/);
+    assert.match(collected.stderr, /Page\.loadEventFired did not arrive within 500 ms/);
   });
 
   void it('suggests the bundled event for a typo, before sending anything', async () => {

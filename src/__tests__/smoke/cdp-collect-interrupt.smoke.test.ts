@@ -105,7 +105,7 @@ void describe('Interrupted bdg cdp with event flags', () => {
         '--until',
         NEVER,
         '--timeout',
-        '30',
+        '30000',
         '--out',
         relative ? path.relative(process.cwd(), file) : file,
         ...(json ? ['--json'] : []),
