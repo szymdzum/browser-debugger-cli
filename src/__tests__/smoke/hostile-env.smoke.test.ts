@@ -37,7 +37,6 @@ interface Envelope {
     effect?: string;
     shown?: { text: string }[];
     navigation?: { url: string; sameDocument: boolean };
-    navigationOccurred?: boolean;
     triggeredRequests?: { url: string; status: number }[];
   };
   valueMismatch?: { expected: string; actual: string };
@@ -161,7 +160,7 @@ const CELLS: readonly Cell[] = [
     argv: ['dom', 'submit', '#s'],
     exitCode: 0,
     verdict: (envelope) => {
-      assert.equal(envelope.data?.navigationOccurred, true);
+      assert.equal(envelope.data !== undefined && 'navigationOccurred' in envelope.data, false);
       assert.ok(
         envelope.data?.navigation?.url.endsWith('/hostile-done?q=x'),
         JSON.stringify(envelope.data)

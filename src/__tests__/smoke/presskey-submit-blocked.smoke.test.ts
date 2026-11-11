@@ -49,7 +49,7 @@ interface BlockedField {
 /** What the tests read of `dom press-key --json` */
 interface PressKeyJson {
   submitBlocked?: BlockedField[];
-  submitBlockedOmitted?: number;
+  moreSubmitBlocked?: number;
   times?: number;
 }
 
