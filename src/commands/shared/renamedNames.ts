@@ -60,12 +60,18 @@ function attributeName(flag: string): string {
  * Register an old option with its short form, hidden (or hide it when its
  * command registers it). One that takes a value consumes it, so a removed
  * one's error is about the rename, never about a stray argument; a removed
- * one's value is optional, so its error names the rename without one too.
+ * one's value is optional, so its error names the rename without one too,
+ * and it throws as soon as Commander parses it, before `--help` is answered.
  *
  * @param command - Command the option belongs to
  * @param entry - Option entry
  */
 function registerOldOption(command: Command, entry: RenameEntry & { kind: 'option' }): void {
+  if (entry.stage === 'removed') {
+    command.on(`option:${new Option(entry.old).name()}`, () => {
+      throw removedError(entry);
+    });
+  }
   const own = command.options.find(
     (option) => option.long === entry.old || option.short === entry.old
   );
@@ -96,7 +102,8 @@ function hideCommand(command: Command): void {
 /**
  * Check an old command: a deprecated one must still be registered by its
  * module, so it keeps working, and is hidden here; a removed one gets a hidden stub
- * taking any arguments and options, whose preAction check exits 81.
+ * taking any arguments and options (`--help` included: it has no help of its
+ * own), whose preAction check exits 81.
  *
  * @param parent - Command the old command belongs to
  * @param entry - Command entry
@@ -113,8 +120,43 @@ function registerOldCommand(parent: Command, entry: RenameEntry & { kind: 'comma
   parent
     .command(entry.old, { hidden: true })
     .argument('[args...]')
+    .helpOption(false)
     .allowUnknownOption()
     .action(() => undefined);
+}
+
+/**
+ * Whether a command line names a removed spelling, so `--help --json` (which
+ * runs before Commander parses) leaves it to the parse, where it exits 81:
+ * the command or one above it is a removed command's stub, or an argument is
+ * a removed option of one of them.
+ *
+ * @param command - Command the command line resolves to
+ * @param args - Command line arguments after `bdg`
+ * @param table - Rename table
+ * @returns True when a removed spelling is used
+ */
+export function usesRemovedName(
+  command: Command,
+  args: readonly string[],
+  table: readonly RenameEntry[] = RENAMES
+): boolean {
+  for (let level: Command | null = command; level; level = level.parent) {
+    const words = commandWords(level);
+    const parentWords = level.parent ? commandWords(level.parent) : undefined;
+    const used = table.some((entry) => {
+      if (entry.stage !== 'removed') return false;
+      if (entry.kind === 'command')
+        return entry.command === parentWords && entry.old === level?.name();
+      const flags = [entry.old, entry.short].filter((flag) => flag !== undefined);
+      return (
+        entry.command === words &&
+        args.some((arg) => flags.some((flag) => arg === flag || arg.startsWith(`${flag}=`)))
+      );
+    });
+    if (used) return true;
+  }
+  return false;
 }
 
 /**

@@ -16,7 +16,7 @@ import {
 } from '@/commands/helpJson.js';
 import { assertKnownHelpTopic, helpTopicPath, usageErrorDetails } from '@/commands/helpTopic.js';
 import { printWarning } from '@/commands/shared/CommandRunner.js';
-import { applyRenamedNames } from '@/commands/shared/renamedNames.js';
+import { applyRenamedNames, usesRemovedName } from '@/commands/shared/renamedNames.js';
 import { assertNotMistypedCommand, isBareWord } from '@/commands/start.js';
 import { CommandError } from '@/errors/index.js';
 import { genericError, jsonTakenAsValueError, noCommandOrUrlError } from '@/errors/messages.js';
@@ -182,7 +182,11 @@ async function main(): Promise<void> {
   assertKnownHelpTopic(program, helpTopic);
   assertNotMistypedCommand(program, process.argv);
 
-  if (jsonMode && wantsHelp()) {
+  if (
+    jsonMode &&
+    wantsHelp() &&
+    !usesRemovedName(resolveCommand(program, commandWords(program)), process.argv.slice(2))
+  ) {
     assertKnownHelpCommand(program);
     selectSession(sessionFromArgv(process.argv));
     console.log(JSON.stringify(helpJson(program)));
