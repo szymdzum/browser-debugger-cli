@@ -490,6 +490,24 @@ function supersedingPush(sha) {
   return { sha: latest.headSha, commits };
 }
 
+/** The short-SHA length git prints, and the part of a reported SHA trusted on its own */
+const SHA_PREFIX = 7;
+
+/**
+ * How a PR head matches the SHA an implementer reported: `exact` when the
+ * head starts with it, `mistyped` when only the first 7 characters agree (S30
+ * #944: a report gave the right short SHA with a wrong rest, and the waiter
+ * waited 3 minutes for a head that never came), otherwise null.
+ *
+ * @param {string} head full head SHA
+ * @param {string} want reported SHA, full or short
+ * @returns {'exact' | 'mistyped' | null}
+ */
+export function headMatch(head, want) {
+  if (head.startsWith(want)) return 'exact';
+  return want.length > SHA_PREFIX && head.startsWith(want.slice(0, SHA_PREFIX)) ? 'mistyped' : null;
+}
+
 /**
  * Waits up to 3 minutes for GitHub to show a pushed commit as the PR head:
  * a waiter started right after a push otherwise sees the old head, then the
@@ -502,7 +520,10 @@ function supersedingPush(sha) {
 async function waitForHead(prNumber, want) {
   for (let i = 0; i < 36; i++) {
     const head = prInfo(prNumber).headRefOid;
-    if (head.startsWith(want)) return head;
+    const match = headMatch(head, want);
+    if (match === 'mistyped')
+      console.log(`PR #${prNumber} head ${head.slice(0, 10)} shares the first ${SHA_PREFIX} characters of ${want} but not the rest: the reported SHA looks mistyped (S30 #944); waiting for ${head.slice(0, 10)}`);
+    if (match) return head;
     if (i === 0) console.log(`waiting for PR #${prNumber} to show head ${want.slice(0, 10)} (now ${head.slice(0, 10)})`);
     await sleep(5000);
   }
@@ -2576,14 +2597,26 @@ export function unfilledPlaceholders(text, placeholders) {
  * @param {Set<string>} placeholders from templatePlaceholders
  * @returns {string[]} problems, none when the brief can be sent
  */
-export function briefProblems(text, placeholders) {
+export function briefProblems(text, placeholders, exists = existsSync) {
   if (text.trim().length < 200) return [`the brief is empty or too short (${text.trim().length} characters)`];
   const open = unfilledPlaceholders(text, placeholders);
   const problems = open.length ? [`placeholders still open: ${open.join(' ')}`] : [];
   const handled = osHandlerUrls(text);
   if (handled.length)
     problems.push(`URLs the operating system opens in another app (S28: mailto: kept opening the owner's mail): ${handled.join(' ')}; use myapp:// or javascript: for a non-http scheme`);
+  const taken = briefWorktrees(text).filter((path) => exists(path));
+  if (taken.length)
+    problems.push(`worktree paths already exist: ${taken.join(' ')} (an earlier agent's; S30 #947: a second reviewer's worktree collided with the first one's); remove it or render with another NAME=`);
   return problems;
+}
+
+/**
+ * The worktree paths a brief tells its agent to create (`git … worktree add <path>`).
+ *
+ * @param {string} text
+ */
+export function briefWorktrees(text) {
+  return [...new Set([...text.matchAll(/\bworktree add (?:-\S+ )*(\/\S+)/g)].map((m) => m[1]))].filter((path) => !/[<>]/.test(path));
 }
 
 /** Schemes macOS hands to another app, even from headless Chrome */

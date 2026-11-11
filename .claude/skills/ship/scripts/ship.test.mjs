@@ -17,6 +17,8 @@ import { renderPrompt, section, triggerBody } from '../cloud/render.mjs';
 import {
   appendSnapshotEntries,
   briefProblems,
+  briefWorktrees,
+  headMatch,
   briefVariant,
   fillOutsideQuotes,
   formatDesign,
@@ -1394,3 +1396,20 @@ test('noPullRequestRun gives up only when no poll has seen a CI run since the pu
   assert.equal(noPullRequestRun({ pr: null, sawCI: false, now: 200, deadline: 100 }), false);
 });
 
+
+test('headMatch accepts a short SHA, flags a mistyped full one by its prefix, and refuses another commit', () => {
+  const head = '898c6b1132aa00ff00ff00ff00ff00ff00ff00ff';
+  assert.equal(headMatch(head, '898c6b1'), 'exact');
+  assert.equal(headMatch(head, head), 'exact');
+  assert.equal(headMatch(head, '898c6b11d1ee00ff00ff00ff00ff00ff00ff00ff'), 'mistyped');
+  assert.equal(headMatch(head, '898c6b0'), null);
+  assert.equal(headMatch(head, 'abcdef1234'), null);
+});
+
+test('briefProblems refuses a worktree path that already exists, not one still to create', () => {
+  const text = `${'x'.repeat(300)}\ngit -C /main worktree add /tmp/review-930b abc123\ngit -C /main worktree add /tmp/red-930b def456\n`;
+  assert.deepEqual(briefWorktrees(text), ['/tmp/review-930b', '/tmp/red-930b']);
+  assert.deepEqual(briefWorktrees('git -C <MAIN> worktree add /tmp/review-<N> <HEAD>'), []);
+  assert.match(briefProblems(text, new Set(), (p) => p === '/tmp/review-930b')[0], /worktree paths already exist: \/tmp\/review-930b \(/);
+  assert.deepEqual(briefProblems(text, new Set(), () => false), []);
+});
