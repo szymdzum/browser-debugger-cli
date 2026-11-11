@@ -115,15 +115,7 @@ With `--json` the same hint is a `suggestion` field. Each mistake exits with cod
 
 ## Benchmark: CLI vs MCP
 
-One run of five debugging tasks, from a single JS error up to a memory leak, each done by an AI agent with bdg 0.6.x and with the official [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) server as it was in November 2025.
-
-| | bdg | Chrome DevTools MCP |
-|---|---|---|
-| **Score** | **77 / 100** | 60 / 100 |
-| Tokens used | ~38.1K | ~39.4K |
-| Time | 441 s | 323 s |
-
-Token use was about the same and MCP was faster; bdg scored higher on all five tasks, most on the multi-error one (+6). Both tools have changed since: Chrome DevTools MCP has added heap snapshots, Lighthouse audits and CSS styles (it already had performance traces with insights), so the memory task would play out differently today. It still has no HAR export. A refreshed benchmark is tracked in [#428](https://github.com/szymdzum/browser-debugger-cli/issues/428). [Read the full analysis →](docs/benchmarks/ARTICLE_MCP_VS_CLI_FOR_AGENTS.md)
+The one measurement bdg has is from bdg 0.6.x (November 2025): five debugging tasks done by an AI agent with bdg and with the official [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) server, written up in [the full analysis](docs/benchmarks/ARTICLE_MCP_VS_CLI_FOR_AGENTS.md). Both tools have changed since, and [#428](https://github.com/szymdzum/browser-debugger-cli/issues/428) tracks the re-run.
 
 ## Use it with your agent
 
@@ -200,7 +192,7 @@ bdg is for when an agent or a developer needs to poke at a live page, step by st
 
 ## Contributing
 
-[Issues](https://github.com/szymdzum/browser-debugger-cli/issues) for bugs, [Discussions](https://github.com/szymdzum/browser-debugger-cli/discussions) for ideas. PRs welcome. See the [Architecture](https://github.com/szymdzum/browser-debugger-cli/wiki/Architecture) page and `docs/` for contributor guides.
+[Issues](https://github.com/szymdzum/browser-debugger-cli/issues) for bugs, [Discussions](https://github.com/szymdzum/browser-debugger-cli/discussions) for ideas. PRs welcome. What counts as a breaking change, and which names, exit codes, `--json` fields and environment variables stay stable, is in the [stability policy](docs/CLI_REFERENCE.md#stability-policy); coming from 0.x, see [Migrating from 0.x to 1.0](docs/CLI_REFERENCE.md#migrating-from-0x-to-10). See the [Architecture](https://github.com/szymdzum/browser-debugger-cli/wiki/Architecture) page and `docs/` for contributor guides.
 
 ## License
 

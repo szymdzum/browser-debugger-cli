@@ -38,7 +38,7 @@ Branch protection on `main` requires one status check, exactly `CI OK` (job `ci-
 
 ## Release Types
 
-Follow [Semantic Versioning](https://semver.org/). While the version is `0.x`, a breaking change bumps the minor version (`0.8.0` → `0.9.0`); fixes bump the patch version.
+Follow [Semantic Versioning](https://semver.org/). From 1.0.0 a breaking change bumps the major version, a new command, flag or field the minor version, and a fix the patch version. What counts as breaking, and what a minor may change, is the [stability policy](CLI_REFERENCE.md#stability-policy): decide a PR's release type by it. The 1.0.0 notes list every change of the 0.x line as `old → new` ([Migrating from 0.x to 1.0](CLI_REFERENCE.md#migrating-from-0x-to-10)). Before 1.0, a breaking change bumped the minor version (`0.8.0` → `0.9.0`).
 
 ## Step-by-Step Process
 
