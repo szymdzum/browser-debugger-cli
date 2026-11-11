@@ -1209,12 +1209,12 @@ Scroll output reports the viewport without scrollbars (`Viewport: 1905×993`) an
 
 Fields of the `--json` `data` of the DOM actions that the sections above do not name. A field marked `?` is absent when it does not apply; a field of the form `x?: true` (`settled: false`, `effect: "none"`, `fetchInterception`) is never present with another value, so absent means not set.
 
-- `fill`: `elementType` (tag name of the field), `inputType` (its `type` attribute, `null` for a field without one), `checked` (checkbox and radio state after the fill), `fileInput: true` (a file input, filled through CDP), `matchCount` (elements the selector matched)
+- `fill`: `elementType` (tag name of the field; ` (via label)` is added when a `<label>` was filled through its control, and ` in the shadow root of <host>` when the field sits in a shadow root), `inputType` (its `type` attribute, `null` for a field without one), `checked` (checkbox and radio state after the fill), `fileInput: true` (a file input, filled through CDP), `matchCount` (elements the selector matched)
 - `click` and `hover`: `elementType`, `matchCount`, `action` (`click`, `double`, `right` or `hover`), `method` (`mouse` for real mouse events, `dom` for the `click()` fallback), `scrolledBy` (absent when the page did not move)
 - `hover --off`: `{ "pointer": "off" }` (the mouse left the page); there is no element, so no other field
-- `press-key`: `elementType` (the tag name; ` (via label)` is added when the key went to the control a label points to), `matchCount`
+- `press-key`: `elementType` (the tag name; ` (via label)` is added when the key went to the control a label points to, and ` in the shadow root of <host>` when the element sits in a shadow root), `matchCount`
 - `scroll`: `scrollType` (`element`, `position` or `offset`), `scrolledTo` (`{ x, y }`, the final position), `scrolledBy` (`{ x, y }`; only in `position` and `offset` mode), `viewportSize` and `pageSize` (`{ width, height }`, the numbers `dom layout` gives), `matchCount` (element mode)
-- every action: `effect: "none"` when nothing was seen to change within about half a second (no navigation, message, request or DOM change); the no-effect verdict, absent otherwise
+- `click` and `submit`: `effect: "none"` when nothing was seen to change within about half a second (no navigation, message, request or DOM change); the no-effect verdict, absent otherwise and never reported for `hover`, `--right` clicks, `--no-wait`, `fill`, `press-key` or `scroll`
 
 ### Screen Capture
 
@@ -2101,7 +2101,7 @@ Every breaking change of 1.0.0 as `old → new`. The stability policy above appl
 
 ### Removed spellings
 
-Each exits 81 (`INVALID_ARGUMENTS`) in human and `--json` mode before anything runs, naming the replacement; an old option that took a value consumes it, so the error is about the rename. In 0.x each worked with a warning.
+Each exits 81 (`INVALID_ARGUMENTS`) in human and `--json` mode before anything runs, naming the replacement; an old option that took a value consumes it, so the error is about the rename. In 0.x each worked with a warning, except the last two (`--compact`, `--remove-output`), which were already refused.
 
 - `bdg tail` → `bdg peek --follow`
 - `bdg details network <id>` / `bdg details console <n>` → `bdg network details <id>` / `bdg console details <n>` (the error names both)
