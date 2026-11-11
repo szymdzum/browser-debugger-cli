@@ -140,14 +140,12 @@ export function applyCollectorOptions(command: Command): Command {
       '--stop-after <seconds>',
       'Stop the session this many seconds after the page has loaded (unlimited if not specified)'
     )
-    .option('-t, --timeout <seconds>', 'Old spelling of --stop-after')
     .option('-u, --user-data-dir <path>', 'Chrome user data directory (defaults to session dir)')
     .option(
       '--capture-all',
       'Include all data: no tracking/analytics filtering, and capture every response body (incl. binary)',
       false
     )
-    .option('-a, --all', 'Old spelling of --capture-all')
     .option('-m, --max-body-size <megabytes>', 'Maximum response body size in MB', '5')
     .option(
       '--headless',

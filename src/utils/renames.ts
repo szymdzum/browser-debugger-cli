@@ -42,12 +42,16 @@ interface OptionRename extends RenameEntryBase {
   kind: 'option';
   /** Old long option (`--aggressive`), or a short-only one (`-f`) */
   old: string;
+  /** Old short form of a long `old` (`-t` for `--timeout`), recognized the same way */
+  short?: string;
   /** New long option of the same command (`--force`) */
   new?: string;
   /** Value the new option gets in place of the old option's own (`all` for `--history` → `--page all`) */
   value?: string;
   /** Whether the option takes a value (`--old <value>`, `--old=value`) */
   takesValue?: boolean;
+  /** Value placeholder the new spelling shows (`<seconds>`: `--stop-after <seconds>`) */
+  newValueName?: string;
 }
 
 /** What replaces an old spelling: a new name, or (a pure removal) what to do instead */
@@ -56,14 +60,17 @@ type Replacement = { new: string; hint?: undefined } | { new?: undefined; hint: 
 /** One old spelling */
 export type RenameEntry = (CommandRename | OptionRename) & Replacement;
 
-/** Every old spelling bdg still recognizes */
+/**
+ * Every old spelling bdg still recognizes. Since 1.0 all of them are
+ * removed; a later rename goes through a `deprecated` row in a minor first.
+ */
 export const RENAMES: readonly RenameEntry[] = [
-  { kind: 'command', command: '', old: 'tail', new: 'peek --follow', stage: 'deprecated' },
+  { kind: 'command', command: '', old: 'tail', new: 'peek --follow', stage: 'removed' },
   {
     kind: 'command',
     command: '',
     old: 'details',
-    stage: 'deprecated',
+    stage: 'removed',
     hint: 'use "bdg network details <id>" or "bdg console details <n>"',
   },
   {
@@ -71,71 +78,84 @@ export const RENAMES: readonly RenameEntry[] = [
     command: 'network',
     old: 'document',
     new: 'network headers',
-    stage: 'deprecated',
+    stage: 'removed',
   },
-  { kind: 'command', command: 'dom', old: 'eval', new: 'eval', stage: 'deprecated' },
-  { kind: 'command', command: 'dom', old: 'pressKey', new: 'dom press-key', stage: 'deprecated' },
+  { kind: 'command', command: 'dom', old: 'eval', new: 'eval', stage: 'removed' },
+  { kind: 'command', command: 'dom', old: 'pressKey', new: 'dom press-key', stage: 'removed' },
   {
     kind: 'command',
     command: 'network',
     old: 'getCookies',
     new: 'network cookies',
-    stage: 'deprecated',
+    stage: 'removed',
   },
   {
     kind: 'option',
     command: 'cleanup',
     old: '--aggressive',
     new: '--force',
-    stage: 'deprecated',
+    stage: 'removed',
   },
-  { kind: 'option', command: 'cleanup', old: '-f', new: '--force', stage: 'deprecated' },
+  { kind: 'option', command: 'cleanup', old: '-f', new: '--force', stage: 'removed' },
   {
     kind: 'option',
     command: '',
     old: '--timeout',
+    short: '-t',
     new: '--stop-after',
-    stage: 'deprecated',
+    stage: 'removed',
     takesValue: true,
+    newValueName: '<seconds>',
   },
   {
     kind: 'option',
     command: 'attach',
     old: '--timeout',
     new: '--stop-after',
-    stage: 'deprecated',
+    stage: 'removed',
     takesValue: true,
+    newValueName: '<seconds>',
   },
   {
     kind: 'option',
     command: 'dom audit',
     old: '--level',
     new: '--wcag',
-    stage: 'deprecated',
+    stage: 'removed',
     takesValue: true,
+    newValueName: '<level>',
   },
   {
     kind: 'option',
     command: 'dom get',
     old: '--nth',
     new: '--index',
-    stage: 'deprecated',
+    stage: 'removed',
     takesValue: true,
+    newValueName: '<n>',
   },
-  { kind: 'option', command: '', old: '--all', new: '--capture-all', stage: 'deprecated' },
+  {
+    kind: 'option',
+    command: '',
+    old: '--all',
+    short: '-a',
+    new: '--capture-all',
+    stage: 'removed',
+  },
   {
     kind: 'option',
     command: 'console',
     old: '--history',
+    short: '-H',
     new: '--page',
     value: 'all',
-    stage: 'deprecated',
+    stage: 'removed',
   },
   {
     kind: 'option',
     command: 'stop',
     old: '--kill-chrome',
-    stage: 'deprecated',
+    stage: 'removed',
     hint: 'bdg stop already closes the Chrome bdg launched; drop the flag',
   },
   {
@@ -166,11 +186,10 @@ export const RENAMES: readonly RenameEntry[] = [
 export function spelling(entry: RenameEntry, which: 'old' | 'new'): string {
   const name = entry[which] ?? '';
   if (entry.kind === 'command' && which === 'new') return `bdg ${name}`;
-  if (entry.kind === 'option' && which === 'new' && entry.value !== undefined) {
-    return `bdg ${entry.command} ${name} ${entry.value}`;
-  }
   const command = entry.kind === 'option' && entry.command === '' ? '<url>' : entry.command;
-  return ['bdg', command, name].filter(Boolean).join(' ');
+  const value =
+    entry.kind === 'option' && which === 'new' ? (entry.value ?? entry.newValueName) : '';
+  return ['bdg', command, name, value].filter(Boolean).join(' ');
 }
 
 /**

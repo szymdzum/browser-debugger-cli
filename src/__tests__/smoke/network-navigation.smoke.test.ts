@@ -199,10 +199,7 @@ void describe('Full headers and cookies', () => {
       timeout: 60000,
     });
     assert.equal(result.exitCode, 0, `Start failed: ${result.stderr}`);
-    await runJson('dom', [
-      'eval',
-      'fetch("/cookie").then(() => fetch("/?after-cookie")).then(() => 1)',
-    ]);
+    await runJson('eval', ['fetch("/cookie").then(() => fetch("/?after-cookie")).then(() => 1)']);
     const list = await runJson<{ requests: ListedRequest[] }>('network', ['list', '--last', '0']);
     cookieRequestId = list.requests.find((r) => r.url.endsWith('/cookie'))?.requestId ?? '';
     assert.ok(cookieRequestId, 'cookie request captured');
@@ -296,7 +293,7 @@ async function pixelBodyFetched(): Promise<boolean> {
   return false;
 }
 
-void describe('HAR export with --all', () => {
+void describe('HAR export with --capture-all', () => {
   let fixture: FixtureServer;
 
   before(async () => {
@@ -311,8 +308,7 @@ void describe('HAR export with --all', () => {
       }
     );
     assert.equal(result.exitCode, 0, `Start failed: ${result.stderr}`);
-    await runJson('dom', [
-      'eval',
+    await runJson('eval', [
       'new Promise((resolve) => { const img = new Image(); img.onload = () => resolve(1); img.src = "/pixel.png"; document.body.append(img); })',
     ]);
     assert.ok(await pixelBodyFetched(), 'the pixel body was never fetched');
@@ -364,8 +360,7 @@ void describe('WebSocket connections', () => {
       timeout: 60000,
     });
     assert.equal(result.exitCode, 0, `Start failed: ${result.stderr}`);
-    await runJson('dom', [
-      'eval',
+    await runJson('eval', [
       'new Promise((resolve) => { const ws = new WebSocket(location.origin.replace("http", "ws") + "/ws"); window.socket = ws; ws.onopen = () => ws.send("hello"); ws.onmessage = (e) => resolve(e.data); })',
     ]);
   });
@@ -476,10 +471,7 @@ void describe('Network list by page and size, details body options (#451)', () =
       timeout: 30000,
     });
     assert.equal(navigated.exitCode, 0, navigated.stderr);
-    await runJson('dom', [
-      'eval',
-      'fetch("/large-body").then((r) => r.text()).then((t) => t.length)',
-    ]);
+    await runJson('eval', ['fetch("/large-body").then((r) => r.text()).then((t) => t.length)']);
     const list = await runJson<ScopedList>('network', ['list', '--last', '0']);
     largeId = list.requests.find((r) => r.url.endsWith('/large-body'))?.requestId ?? '';
     assert.ok(largeId, `Requests: ${JSON.stringify(list.requests)}`);

@@ -64,9 +64,9 @@ export interface BdgResponse<T = unknown> {
   suggestion?: string;
 
   /**
-   * The command line used an old spelling that still works until 1.0 (#465),
-   * one text per spelling (`bdg tail` gives: "bdg tail" is deprecated and will
-   * be removed in 1.0: use "bdg peek --follow"). Switch to the new spelling. Present only
+   * The command line used an old spelling that still works while its rename
+   * row is deprecated (#465), one text per spelling ("bdg <old>" is deprecated
+   * and will be removed in <version>: use "bdg <new>"). Switch to the new spelling. Present only
    * when non-empty, on success and error envelopes (and on every line of a
    * follow mode); human output prints each as a `Warning:` line on stderr. Then the
    * command's own warning about how it ran (e.g. a CDP method bdg's protocol lacks),

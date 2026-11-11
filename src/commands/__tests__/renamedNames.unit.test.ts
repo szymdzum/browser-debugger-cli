@@ -44,6 +44,25 @@ const TABLE: readonly RenameEntry[] = [
   {
     kind: 'option',
     command: 'run',
+    old: '--old-mode',
+    short: '-o',
+    new: '--mode',
+    stage: 'deprecated',
+    takesValue: true,
+  },
+  {
+    kind: 'option',
+    command: 'run',
+    old: '--gone-size',
+    short: '-g',
+    new: '--size',
+    stage: 'removed',
+    takesValue: true,
+    newValueName: '<n>',
+  },
+  {
+    kind: 'option',
+    command: 'run',
     old: '--legacy',
     new: '--mode',
     value: 'all',
@@ -167,6 +186,25 @@ void describe('rename mechanism (injected table)', () => {
     }
   });
 
+  void it('a short form acts as its long option: deprecated passes the value, removed consumes it', async () => {
+    const parsed = await parse(['run', '-o', 'x']);
+    assert.equal(parsed.opts?.['mode'], 'x');
+    assert.deepEqual(parsed.warnings, [
+      '"bdg run --old-mode" is deprecated and will be removed in 1.0: use "bdg run --mode"',
+    ]);
+    for (const argv of [
+      ['run', '-g', '3'],
+      ['run', '-g3', 'arg'],
+      ['run', '--gone-size', '3', 'arg'],
+    ]) {
+      await assertRenameError(
+        argv,
+        '"bdg run --gone-size" was renamed to "bdg run --size <n>"',
+        'Use "bdg run --size <n>"'
+      );
+    }
+  });
+
   void it('an old name as an argument value is neither rewritten nor warned about', async () => {
     const afterDashes = await parse(['run', '--', '--old-name', 'gone']);
     assert.deepEqual(afterDashes.args, ['--old-name', 'gone']);
@@ -251,12 +289,11 @@ void describe('a command row with a hint for two replacements', () => {
     );
   });
 
-  void it('the real table has the details and --history rows, deprecated', () => {
+  void it('every row of the real table is removed (1.0)', () => {
     const history = RENAMES.find((entry) => entry.kind === 'option' && entry.old === '--history');
     assert.equal(history?.new, '--page');
     assert.equal(history?.kind === 'option' && history.value, 'all');
-    assert.equal(history?.stage, 'deprecated');
-    assert.equal(RENAMES.find((entry) => entry.old === 'details')?.stage, 'deprecated');
+    for (const entry of RENAMES) assert.equal(entry.stage, 'removed', spelling(entry, 'old'));
   });
 });
 

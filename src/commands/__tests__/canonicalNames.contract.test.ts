@@ -1,10 +1,9 @@
 /**
  * Contract test (#465, D4 and D13): `bdg eval`, `bdg dom press-key` and
  * `bdg network cookies` are the commands; `dom eval`, `dom pressKey` and
- * `network getCookies` are deprecated spellings that behave exactly as the
- * new ones plus one warning (a `Warning:` line on stderr, `warnings` in the
- * `--json` envelope). Run with no session. Help lists only the new names and
- * a typo of any name suggests the new one.
+ * `network getCookies` were removed in 1.0 (their exit 81 is in
+ * `renames.contract.test.ts`). Run with no session. Help lists only the new
+ * names and a typo of any name suggests the new one.
  */
 
 import assert from 'node:assert/strict';
@@ -53,124 +52,23 @@ function envelope(stdout: string): BdgResponse & Record<string, unknown> {
   return JSON.parse(stdout.trim()) as BdgResponse & Record<string, unknown>;
 }
 
-/**
- * Stderr without its `Warning:` lines.
- *
- * @param stderr - Standard error
- * @returns Remaining text
- */
-function withoutWarnings(stderr: string): string {
-  return stderr
-    .split('\n')
-    .filter((line) => !line.startsWith('Warning: '))
-    .join('\n');
-}
-
-interface Rename {
-  current: string[];
-  old: string[];
-  warning: string;
-}
-
-const RENAMED: Rename[] = [
-  {
-    current: ['eval', 'document.title'],
-    old: ['dom', 'eval', 'document.title'],
-    warning: '"bdg dom eval" is deprecated and will be removed in 1.0: use "bdg eval"',
-  },
-  {
-    current: ['dom', 'press-key', '#field', 'Enter'],
-    old: ['dom', 'pressKey', '#field', 'Enter'],
-    warning: '"bdg dom pressKey" is deprecated and will be removed in 1.0: use "bdg dom press-key"',
-  },
-  {
-    current: ['network', 'cookies'],
-    old: ['network', 'getCookies'],
-    warning:
-      '"bdg network getCookies" is deprecated and will be removed in 1.0: use "bdg network cookies"',
-  },
+const CURRENT: string[][] = [
+  ['eval', 'document.title'],
+  ['dom', 'press-key', '#field', 'Enter'],
+  ['network', 'cookies'],
 ];
 
-void describe('renamed commands: new name, old name, human and --json', () => {
-  for (const row of RENAMED) {
-    const label = `bdg ${row.old.join(' ')}`;
-
-    void it(`bdg ${row.current.join(' ')}: usage and exit as the old name, no warning`, async () => {
-      const run = await runCli(row.current);
+void describe('the new names', () => {
+  for (const argv of CURRENT) {
+    void it(`bdg ${argv.join(' ')}: no session (exit 83), no warning`, async () => {
+      const run = await runCli(argv);
       assert.equal(run.status, EXIT_CODES.RESOURCE_NOT_FOUND, run.stderr);
       assert.ok(!run.stderr.includes('Warning:'), run.stderr);
       assert.ok(!run.stderr.includes('unknown command'), run.stderr);
-    });
-
-    void it(`${label}: same exit, output and stderr, one warning line`, async () => {
-      const [current, old] = await Promise.all([runCli(row.current), runCli(row.old)]);
-      assert.equal(old.status, current.status, old.stderr);
-      assert.equal(old.stdout, current.stdout);
-      assert.equal(withoutWarnings(old.stderr), current.stderr);
-      assert.deepEqual(
-        old.stderr.split('\n').filter((line) => line.startsWith('Warning: ')),
-        [`Warning: ${row.warning}`]
-      );
-    });
-
-    void it(`${label} --json: same envelope plus warnings, nothing on stderr`, async () => {
-      const [current, old] = await Promise.all([
-        runCli([...row.current, '--json']),
-        runCli([...row.old, '--json']),
-      ]);
-      assert.equal(old.status, current.status, old.stderr);
-      const newEnvelope = envelope(current.stdout);
-      const { warnings, ...oldRest } = envelope(old.stdout);
-      assert.ok(!('warnings' in newEnvelope), current.stdout);
-      assert.deepEqual(warnings, [row.warning]);
-      assert.deepEqual(oldRest, newEnvelope);
-      assert.equal(old.stderr, '');
-      assert.equal(current.stderr, '');
+      const json = await runCli([...argv, '--json']);
+      assert.ok(!('warnings' in envelope(json.stdout)), json.stdout);
     });
   }
-});
-
-void describe('usage errors of an old spelling', () => {
-  const USAGE: Array<{ old: string[]; help: string; warning: string }> = [
-    { old: ['dom', 'eval'], help: 'bdg eval', warning: RENAMED[0]?.warning ?? '' },
-    { old: ['dom', 'pressKey'], help: 'bdg dom press-key', warning: RENAMED[1]?.warning ?? '' },
-    {
-      old: ['network', 'getCookies', '--bogus'],
-      help: 'bdg network cookies',
-      warning: RENAMED[2]?.warning ?? '',
-    },
-  ];
-  for (const row of USAGE) {
-    const label = `bdg ${row.old.join(' ')}`;
-
-    void it(`${label}: exit 81, the warning, help of the new name`, async () => {
-      const run = await runCli(row.old);
-      assert.equal(run.status, EXIT_CODES.INVALID_ARGUMENTS, run.stderr);
-      assert.deepEqual(
-        run.stderr.split('\n').filter((line) => line.startsWith('Warning: ')),
-        [`Warning: ${row.warning}`]
-      );
-      assert.ok(run.stderr.includes(`Run "${row.help} --help" for usage`), run.stderr);
-    });
-
-    void it(`${label} --json: warnings in the error envelope, help of the new name`, async () => {
-      const run = await runCli([...row.old, '--json']);
-      assert.equal(run.status, EXIT_CODES.INVALID_ARGUMENTS, run.stderr);
-      const response = envelope(run.stdout);
-      assert.deepEqual(response['warnings'], [row.warning]);
-      assert.equal(response.suggestion, `Run "${row.help} --help" for usage`);
-      assert.equal(run.stderr, '');
-    });
-  }
-});
-
-void describe('quote hint of an old spelling', () => {
-  void it("bdg dom eval x y: names bdg eval '<script>'", async () => {
-    const run = await runCli(['dom', 'eval', 'x', 'y']);
-    assert.equal(run.status, EXIT_CODES.INVALID_ARGUMENTS, run.stderr);
-    assert.ok(run.stderr.includes("one argument: bdg eval '<script>'"), run.stderr);
-    assert.ok(!withoutWarnings(run.stderr).includes('bdg dom eval'), run.stderr);
-  });
 });
 
 void describe('help lists only the new names', () => {

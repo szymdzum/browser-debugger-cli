@@ -57,12 +57,21 @@ function attributeName(flag: string): string {
 }
 
 /**
- * Register an old option, hidden (or hide it when its command registers it).
+ * Register an old option with its short form, hidden (or hide it when its
+ * command registers it). One that takes a value consumes it, so a removed
+ * one's error is about the rename, never about a stray argument; a removed
+ * one's value is optional, so its error names the rename without one too,
+ * and it throws as soon as Commander parses it, before `--help` is answered.
  *
  * @param command - Command the option belongs to
  * @param entry - Option entry
  */
 function registerOldOption(command: Command, entry: RenameEntry & { kind: 'option' }): void {
+  if (entry.stage === 'removed') {
+    command.on(`option:${new Option(entry.old).name()}`, () => {
+      throw removedError(entry);
+    });
+  }
   const own = command.options.find(
     (option) => option.long === entry.old || option.short === entry.old
   );
@@ -70,7 +79,9 @@ function registerOldOption(command: Command, entry: RenameEntry & { kind: 'optio
     own.hideHelp();
     return;
   }
-  const flags = entry.takesValue ? `${entry.old} <value>` : entry.old;
+  const names = entry.short === undefined ? entry.old : `${entry.short}, ${entry.old}`;
+  const value = entry.stage === 'removed' ? '[value]' : '<value>';
+  const flags = entry.takesValue ? `${names} ${value}` : names;
   command.addOption(new Option(flags, `Old spelling of ${spelling(entry, 'old')}`).hideHelp());
 }
 
@@ -91,7 +102,9 @@ function hideCommand(command: Command): void {
 /**
  * Check an old command: a deprecated one must still be registered by its
  * module, so it keeps working, and is hidden here; a removed one gets a hidden stub
- * taking any arguments and options, whose preAction check exits 81.
+ * taking any arguments and options (`--help` included: it has no help of its
+ * own), whose preAction check exits 81; asked for its help by a parent's help
+ * command (`bdg network help document`), it throws the same error.
  *
  * @param parent - Command the old command belongs to
  * @param entry - Command entry
@@ -105,11 +118,69 @@ function registerOldCommand(parent: Command, entry: RenameEntry & { kind: 'comma
     return;
   }
   if (registered) return;
-  parent
+  const stub = parent
     .command(entry.old, { hidden: true })
     .argument('[args...]')
+    .helpOption(false)
     .allowUnknownOption()
     .action(() => undefined);
+  stub.help = (): never => {
+    throw removedError(entry);
+  };
+}
+
+/**
+ * Whether a command line names a removed spelling, so `--help --json` (which
+ * runs before Commander parses) leaves it to the parse, where it exits 81:
+ * a word reaches a removed command's stub, or a flag is a removed option of
+ * the command it is given to (a root option only before any subcommand).
+ * Nothing after `--` counts.
+ *
+ * @param program - Root command with all commands registered
+ * @param args - Command line arguments after `bdg`
+ * @param table - Rename table
+ * @returns True when a removed spelling is used
+ */
+export function usesRemovedName(
+  program: Command,
+  args: readonly string[],
+  table: readonly RenameEntry[] = RENAMES
+): boolean {
+  let level = program;
+  for (const arg of args) {
+    if (arg === '--') return false;
+    const words = commandWords(level);
+    const sub = arg.startsWith('-')
+      ? undefined
+      : level.commands.find((command) => command.name() === arg);
+    if (sub) {
+      if (table.some((e) => isRemovedRow(e, 'command', words, arg))) return true;
+      level = sub;
+    } else if (arg.startsWith('-')) {
+      const flag = arg.split('=')[0] ?? arg;
+      if (table.some((e) => isRemovedRow(e, 'option', words, flag))) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Whether a table row is a removed command or option of a command.
+ *
+ * @param entry - Rename entry
+ * @param kind - Command or option
+ * @param words - Command words the name was given to
+ * @param name - Subcommand name, or a flag without its `=value`
+ * @returns True for a removed row naming it
+ */
+function isRemovedRow(
+  entry: RenameEntry,
+  kind: RenameEntry['kind'],
+  words: string,
+  name: string
+): boolean {
+  if (entry.stage !== 'removed' || entry.kind !== kind || entry.command !== words) return false;
+  return entry.old === name || (entry.kind === 'option' && entry.short === name);
 }
 
 /**

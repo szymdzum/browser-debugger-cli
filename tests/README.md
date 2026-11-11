@@ -34,7 +34,7 @@ tests/
 ├── integration/                       # Command integration tests
 │   ├── status.test.sh                 # bdg status (all flags)
 │   ├── peek.test.sh                   # bdg peek (filters, limits)
-│   ├── details.test.sh                # bdg details (network/console)
+│   ├── details.test.sh                # bdg network details, bdg console details
 │   └── cleanup.test.sh                # bdg cleanup (force, aggressive)
 ├── error-scenarios/                   # Error path and edge case tests
 │   ├── 01-port-conflict.sh           # Port already in use
@@ -117,8 +117,8 @@ Every test runs in a session directory of its own, never your `~/.bdg`, so tests
 **What they test:**
 - `bdg status` (basic, --verbose, --json)
 - `bdg peek` (filters, --last N, --follow, --json)
-- `bdg details` (network/console, ID/index lookup)
-- `bdg cleanup` (basic, --force, --aggressive)
+- `bdg network details`, `bdg console details` (ID/index lookup)
+- `bdg cleanup` (basic, --force)
 
 **Example:**
 ```bash

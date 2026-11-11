@@ -1,10 +1,9 @@
 /**
  * `network details`, `console details` and `console --page` (#465, D6 and
  * D11): on `/follow-left`, which logs on load and again when the page is left
- * for `/follow-arrived`, the new commands return the same `--json` `data` as
- * `details network|console` and `console -H`, which still work and warn.
+ * for `/follow-arrived`, the commands return the page's data.
  *
- * Timing: nothing waits a fixed time; the test polls `console -H`
+ * Timing: nothing waits a fixed time; the test polls `console --page all`
  * until the arrived page's message is captured.
  */
 
@@ -58,14 +57,14 @@ async function json(command: string, args: string[]): Promise<Envelope> {
 }
 
 /**
- * Poll `console -H` (the same before and after #465) until a message with the text is captured.
+ * Poll `console --page all` until a message with the text is captured.
  *
  * @param text - Message text
  */
 async function waitForMessage(text: string): Promise<void> {
   const deadline = Date.now() + POLL_DEADLINE_MS;
   for (;;) {
-    const { data } = await json('console', ['-H', '--list']);
+    const { data } = await json('console', ['--page', 'all', '--list']);
     if (data.messages?.some((message) => message.text.includes(text))) return;
     assert.ok(Date.now() < deadline, `no console message "${text}" captured`);
   }
@@ -117,45 +116,27 @@ void describe('network details, console details, console --page', () => {
     assert.deepEqual(texts(upper), all);
   });
 
-  void it('-H is --page all, with the warning', async () => {
-    const page = await json('console', ['--page', 'all', '--list']);
-    const old = await json('console', ['-H', '--list']);
-    assert.deepEqual(old.data, page.data);
-    assert.equal(old.warnings?.length, 1);
-    assert.ok(old.warnings?.[0]?.includes('bdg console --page all'), old.warnings?.[0]);
-    assert.equal(page.warnings, undefined);
-    const human = await bdg('console', ['-H', '--list']);
-    assert.equal(human.stderr.split('\n').filter((line) => line.startsWith('Warning: ')).length, 1);
-  });
-
-  void it('console details <n> returns the data details console <n> did', async () => {
+  void it('console details <n> returns the message', async () => {
     const all = await json('console', ['--page', 'all', '--list']);
     const index = all.data.messages?.find((message) => message.text.includes('first error'))?.index;
     assert.ok(index !== undefined, 'message has an index');
     const current = await json('console', ['details', String(index)]);
-    const old = await json('details', ['console', String(index)]);
-    assert.deepEqual(old.data, current.data);
+    assert.ok(JSON.stringify(current.data).includes('first error'), JSON.stringify(current.data));
     assert.equal(current.warnings, undefined);
-    assert.equal(old.warnings?.length, 1);
-    assert.ok(old.warnings?.[0]?.includes('bdg console details <n>'), old.warnings?.[0]);
     const human = await bdg('console', ['details', String(index)]);
-    const oldHuman = await bdg('details', ['console', String(index)]);
-    assert.equal(oldHuman.stdout, human.stdout);
+    assert.ok(human.stdout.includes('first error'), human.stdout);
   });
 
-  void it('network details <id> returns the data details network <id> did, body options included', async () => {
+  void it('network details <id> returns the request, body options included', async () => {
     const list = await json('network', ['list']);
     const requests = list.data['requests'] as Array<{ requestId: string }>;
     const id = requests[0]?.requestId;
     assert.ok(id, 'a request was captured');
     for (const extra of [[], ['--no-body'], ['--body-max', '10']]) {
       const current = await json('network', ['details', id, ...extra]);
-      const old = await json('details', ['network', id, ...extra]);
-      assert.deepEqual(old.data, current.data, extra.join(' '));
+      assert.ok(JSON.stringify(current.data).includes(id), extra.join(' '));
       assert.equal(current.warnings, undefined);
-      assert.equal(old.warnings?.length, 1);
     }
-    const raw = await bdg('network', ['details', id, '--body']);
-    assert.equal((await bdg('details', ['network', id, '--body'])).stdout, raw.stdout);
+    await bdg('network', ['details', id, '--body']);
   });
 });

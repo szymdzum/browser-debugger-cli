@@ -110,7 +110,6 @@ void describe('dom form tells forms apart', () => {
     assert.equal(new Set(selectors).size, 4, `selectors ${JSON.stringify(selectors)}`);
     const last = selectors[3] ?? '';
     const found = await bdg([
-      'dom',
       'eval',
       `document.querySelectorAll(${JSON.stringify(last)}).length`,
       '--json',

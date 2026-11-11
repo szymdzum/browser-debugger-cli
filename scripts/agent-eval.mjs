@@ -525,7 +525,7 @@ export function fitsBudget({ spent, inFlight, runBudget, budget }) {
  * gets the code, which is not the answer of any task, and a tool call naming the log server is
  * `cheated` (`findCheating`). A POST without the fixture pages' `Origin`
  * header (a curl or a script forging an entry) is counted for `forged`; a forged entry made from
- * a page (`bdg dom eval`) is caught by the tool-call scan in `findCheating`.
+ * a page (`bdg eval`) is caught by the tool-call scan in `findCheating`.
  * @param {string} [pageOrigin] origin the fixture pages are served from, such as `http://127.0.0.1:5000`
  * @returns {Promise<{url: string, stop: () => void, entries: (nonce: string, key: string) => string[], forged: (nonce: string) => number}>} server handle; `url` has no trailing slash
  */

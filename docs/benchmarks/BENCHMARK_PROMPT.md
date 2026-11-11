@@ -274,7 +274,7 @@ This benchmark should be re-run:
 bdg https://news.ycombinator.com --stop-after 300
 bdg dom query ".athing"
 bdg dom query ".votelinks a"
-bdg dom eval "document.querySelector('.score')?.textContent"
+bdg eval "document.querySelector('.score')?.textContent"
 bdg dom click ".athing:first-child ~ tr .subtext a:last-child"
 bdg peek --last 10
 bdg dom query ".comment"

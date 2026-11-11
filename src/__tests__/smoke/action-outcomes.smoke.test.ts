@@ -334,7 +334,7 @@ void describe('Action outcomes', () => {
     });
 
     void it('lists tracker errors in a session with --capture-all', async () => {
-      await open(`${fixture.url}tracker-errors`, ['--all']);
+      await open(`${fixture.url}tracker-errors`, ['--capture-all']);
       const data = await act(['click', '#track']);
       assert.ok(
         (data.errors ?? []).some((error) => error.text === 'tracker failed'),

@@ -16,7 +16,7 @@
  * Accessibility commands register via `a11y.ts`.
  */
 
-import { Option, type Command } from 'commander';
+import type { Command } from 'commander';
 
 import { registerA11yCommands } from '@/commands/dom/a11y.js';
 import { registerAuditCommand } from '@/commands/dom/audit.js';
@@ -53,13 +53,12 @@ import { MAX_VALUE_LENGTH, QUERY_JSON_LIST_LIMIT } from '@/constants.js';
 const EVAL_FULL_HELP = `Print the whole value (default: the first ${MAX_VALUE_LENGTH} characters; a string result in JSON too)`;
 
 /**
- * Add the `eval` command: `bdg eval`, and the old spelling `bdg dom eval` (a
- * deprecated row of the rename table) with the same options.
+ * Add the `bdg eval` command.
  *
- * @param parent - Root program, or the `dom` command for the old spelling
+ * @param program - Root program
  */
-function addEvalCommand(parent: Command): void {
-  parent
+function addEvalCommand(program: Command): void {
+  program
     .command('eval')
     .description('Evaluate JavaScript expression in the page context')
     .argument('<script>', 'JavaScript to execute (e.g., "document.title", "window.location.href")')
@@ -113,7 +112,6 @@ export function registerDomCommands(program: Command): void {
     });
 
   addEvalCommand(program);
-  addEvalCommand(dom);
 
   dom
     .command('frames')
@@ -142,9 +140,6 @@ export function registerDomCommands(program: Command): void {
     )
     .option('--all', 'Get all matches (only with --raw)')
     .option('--index <n>', 'Element index if selector matches multiple (0-based)', integerOption(0))
-    .addOption(
-      new Option('--nth <n>', 'Old spelling of --index').argParser(integerOption(0)).hideHelp()
-    )
     .option(
       '--node-id <id>',
       'Get the element with this backend node id (backendNodeId in --json of dom query and dom get --raw, backendDOMNodeId in --json of dom a11y describe/query; implies --raw)',

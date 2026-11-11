@@ -1,15 +1,18 @@
 /**
- * Contract test (#465): old spellings from the rename table, run through the
- * CLI with no session. A deprecated one works as before with exactly one
- * warning (a `Warning:` line on stderr, or `warnings` in the `--json`
- * envelope and nothing on stderr); a removed one exits 81 naming what to do
- * instead; a name that is not in the table keeps today's path and never gets
- * an old spelling suggested; an old name as an argument value is left alone.
- * Help (text and `--help --json`) lists no old spelling.
+ * Contract test (#465, #844): old spellings from the rename table, run
+ * through the CLI with no session. Since 1.0 every row is removed: its long
+ * and short forms exit 81 naming what to do instead, an old option's value
+ * is consumed (the error is about the rename), and no session is started; a
+ * name that is not in the table keeps today's path and never gets an old
+ * spelling suggested; an old name as an argument value is left alone. Help
+ * (text and `--help --json`) lists no old spelling. The deprecated stage is
+ * covered on an injected table (`renamedNames.unit.test.ts`).
  */
 
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { describe, it } from 'node:test';
 
 import { ensureTestSessionDir } from '@/__testutils__/testHome.js';
@@ -64,33 +67,35 @@ function envelope(stdout: string): BdgResponse & Record<string, unknown> {
   return JSON.parse(stdout.trim()) as BdgResponse & Record<string, unknown>;
 }
 
-const TAIL = '"bdg tail" is deprecated and will be removed in 1.0: use "bdg peek --follow"';
-const AGGRESSIVE =
-  '"bdg cleanup --aggressive" is deprecated and will be removed in 1.0: use "bdg cleanup --force"';
-const KILL_CHROME =
-  '"bdg stop --kill-chrome" is deprecated and will be removed in 1.0: bdg stop already closes the Chrome bdg launched; drop the flag';
-
-interface DeprecatedRow {
-  argv: string[];
-  exit: number;
-  warning: string;
-}
-
-const DEPRECATED: DeprecatedRow[] = [
-  { argv: ['tail'], exit: EXIT_CODES.RESOURCE_NOT_FOUND, warning: TAIL },
-  { argv: ['cleanup', '--aggressive'], exit: EXIT_CODES.SUCCESS, warning: AGGRESSIVE },
-  { argv: ['stop', '--kill-chrome'], exit: EXIT_CODES.RESOURCE_NOT_FOUND, warning: KILL_CHROME },
-];
-
 interface RemovedRow {
   argv: string[];
   error: string;
   suggestion: string;
 }
 
+/**
+ * A removed rename row: exit 81 with "renamed to" and "Use" naming the new spelling.
+ *
+ * @param argv - Command line with the old spelling
+ * @param oldSpelling - Old spelling as the error names it
+ * @param newSpelling - New spelling
+ * @returns Row
+ */
+function renamed(argv: string[], oldSpelling: string, newSpelling: string): RemovedRow {
+  return {
+    argv,
+    error: `"${oldSpelling}" was renamed to "${newSpelling}"`,
+    suggestion: `Use "${newSpelling}"`,
+  };
+}
+
+const URL_ARG = 'http://localhost:1';
+const STOP_AFTER = 'bdg <url> --stop-after <seconds>';
+const DETAILS_HINT = 'use "bdg network details <id>" or "bdg console details <n>"';
+
 const REMOVED: RemovedRow[] = [
   {
-    argv: ['http://localhost:1', '--compact'],
+    argv: [URL_ARG, '--compact'],
     error: '"bdg <url> --compact" was removed',
     suggestion: 'It had no effect; drop the flag',
   },
@@ -99,27 +104,81 @@ const REMOVED: RemovedRow[] = [
     error: '"bdg cleanup --remove-output" was removed',
     suggestion: 'bdg no longer writes session.json; drop the flag',
   },
+  renamed(['tail'], 'bdg tail', 'bdg peek --follow'),
+  renamed(['tail', '--last', '5'], 'bdg tail', 'bdg peek --follow'),
+  {
+    argv: ['details', 'network', '3'],
+    error: '"bdg details" was removed',
+    suggestion: DETAILS_HINT,
+  },
+  {
+    argv: ['details', 'console', '0'],
+    error: '"bdg details" was removed',
+    suggestion: DETAILS_HINT,
+  },
+  renamed(['network', 'document'], 'bdg network document', 'bdg network headers'),
+  renamed(['dom', 'eval', 'document.title'], 'bdg dom eval', 'bdg eval'),
+  renamed(['dom', 'pressKey', 'input', 'Enter'], 'bdg dom pressKey', 'bdg dom press-key'),
+  renamed(['network', 'getCookies'], 'bdg network getCookies', 'bdg network cookies'),
+  renamed(['cleanup', '--aggressive'], 'bdg cleanup --aggressive', 'bdg cleanup --force'),
+  renamed(['cleanup', '-f'], 'bdg cleanup -f', 'bdg cleanup --force'),
+  renamed([URL_ARG, '-t', '5'], 'bdg <url> --timeout', STOP_AFTER),
+  renamed([URL_ARG, '--timeout', '5'], 'bdg <url> --timeout', STOP_AFTER),
+  renamed([URL_ARG, '--timeout=5'], 'bdg <url> --timeout', STOP_AFTER),
+  renamed(
+    ['attach', '--timeout', '5'],
+    'bdg attach --timeout',
+    'bdg attach --stop-after <seconds>'
+  ),
+  renamed(
+    ['dom', 'audit', '--level', 'AAA'],
+    'bdg dom audit --level',
+    'bdg dom audit --wcag <level>'
+  ),
+  renamed(
+    ['dom', 'audit', '--level', 'bogus'],
+    'bdg dom audit --level',
+    'bdg dom audit --wcag <level>'
+  ),
+  renamed(['dom', 'get', '--nth', '2', 'a'], 'bdg dom get --nth', 'bdg dom get --index <n>'),
+  renamed(['dom', 'get', '--nth'], 'bdg dom get --nth', 'bdg dom get --index <n>'),
+  renamed([URL_ARG, '-t'], 'bdg <url> --timeout', STOP_AFTER),
+  renamed([URL_ARG, '-a'], 'bdg <url> --all', 'bdg <url> --capture-all'),
+  renamed([URL_ARG, '--all'], 'bdg <url> --all', 'bdg <url> --capture-all'),
+  renamed(['console', '-H'], 'bdg console --history', 'bdg console --page all'),
+  renamed(['console', '--history'], 'bdg console --history', 'bdg console --page all'),
+  { argv: ['details', '--help'], error: '"bdg details" was removed', suggestion: DETAILS_HINT },
+  { argv: ['help', 'details'], error: '"bdg details" was removed', suggestion: DETAILS_HINT },
+  renamed(['dom', 'eval', '--help'], 'bdg dom eval', 'bdg eval'),
+  renamed(['help', 'dom', 'eval'], 'bdg dom eval', 'bdg eval'),
+  renamed(['network', 'help', 'document'], 'bdg network document', 'bdg network headers'),
+  renamed(['tail', '-h'], 'bdg tail', 'bdg peek --follow'),
+  renamed(
+    ['dom', 'get', '--nth', '1', 'a', '--help'],
+    'bdg dom get --nth',
+    'bdg dom get --index <n>'
+  ),
+  renamed(['dom', 'get', '--nth=1', '--help'], 'bdg dom get --nth', 'bdg dom get --index <n>'),
+  renamed(['console', '-H', '--help'], 'bdg console --history', 'bdg console --page all'),
+  renamed([URL_ARG, '-t', '5', '--help'], 'bdg <url> --timeout', STOP_AFTER),
+  renamed(['cleanup', '-f', '-h'], 'bdg cleanup -f', 'bdg cleanup --force'),
+  {
+    argv: ['stop', '--kill-chrome'],
+    error: '"bdg stop --kill-chrome" was removed',
+    suggestion: 'bdg stop already closes the Chrome bdg launched; drop the flag',
+  },
 ];
 
-void describe('deprecated spellings', () => {
-  for (const row of DEPRECATED) {
-    const label = `bdg ${row.argv.join(' ')}`;
-
-    void it(`${label}: works, one warning line on stderr`, async () => {
-      const run = await runCli(row.argv);
-      assert.equal(run.status, row.exit, run.stderr);
-      assert.deepEqual(warningLines(run.stderr), [`Warning: ${row.warning}`]);
-      assert.ok(!run.stderr.includes('Note: "bdg tail"'), 'no second notice');
-    });
-
-    void it(`${label} --json: warnings in the envelope, nothing on stderr`, async () => {
-      const run = await runCli([...row.argv, '--json']);
-      assert.equal(run.status, row.exit, run.stderr);
-      assert.deepEqual(envelope(run.stdout)['warnings'], [row.warning]);
-      assert.ok(!run.stderr.includes('deprecated'), run.stderr);
-    });
-  }
-});
+/**
+ * Whether the session dir shows a daemon was started.
+ *
+ * @returns True when a daemon socket, PID file or log exists
+ */
+function daemonStarted(): boolean {
+  return ['daemon.sock', 'daemon.pid', 'daemon.log', 'session.meta.json'].some((file) =>
+    fs.existsSync(path.join(sessionDir, file))
+  );
+}
 
 void describe('removed spellings', () => {
   for (const row of REMOVED) {
@@ -131,6 +190,7 @@ void describe('removed spellings', () => {
       assert.ok(run.stderr.includes(row.error), run.stderr);
       assert.ok(run.stderr.includes(row.suggestion), run.stderr);
       assert.deepEqual(warningLines(run.stderr), []);
+      assert.ok(!daemonStarted(), 'no session started');
     });
 
     void it(`${label} --json: error envelope, no warnings field`, async () => {
@@ -197,15 +257,49 @@ void describe('old names as argument values', () => {
   }
 });
 
+void describe('--help --json of a line with an old flag of another command', () => {
+  for (const argv of [
+    ['eval', '--all', '--help', '--json'],
+    ['eval', '-t', '--help', '--json'],
+    ['dom', 'fill', '--help', '--json', '-t'],
+    ['eval', '--help', '--json', '--', '--all'],
+  ]) {
+    void it(`bdg ${argv.join(' ')}: the JSON help, exit 0`, async () => {
+      const run = await runCli(argv);
+      assert.equal(run.status, EXIT_CODES.SUCCESS, run.stdout + run.stderr);
+      const help = JSON.parse(run.stdout.trim()) as { path?: string };
+      assert.equal(help.path, `bdg ${argv[0] === 'dom' ? 'dom fill' : 'eval'}`, run.stdout);
+    });
+  }
+});
+
 void describe('help lists no old spelling', () => {
-  const OLD_OPTIONS = ['--aggressive', '--kill-chrome', '--compact', '--remove-output'];
+  const OLD_OPTIONS = [
+    '--aggressive',
+    '--kill-chrome',
+    '--compact',
+    '--remove-output',
+    '--nth',
+    '--history',
+  ];
+  const OLD_IN_HELP_TEXT = [...OLD_OPTIONS, '--timeout', '-a, --all', '-H,', '-f,', '--level'];
 
   void it('bdg --help, bdg cleanup --help, bdg stop --help', async () => {
-    for (const argv of [['--help'], ['cleanup', '--help'], ['stop', '--help']]) {
+    for (const argv of [
+      ['--help'],
+      ['cleanup', '--help'],
+      ['stop', '--help'],
+      ['console', '--help'],
+      ['dom', 'get', '--help'],
+      ['dom', 'audit', '--help'],
+      ['attach', '--help'],
+    ]) {
       const run = await runCli(argv);
       assert.equal(run.status, EXIT_CODES.SUCCESS);
       assert.ok(!/^\s+tail\b/m.test(run.stdout), `${argv.join(' ')} lists tail`);
-      for (const flag of OLD_OPTIONS) assert.ok(!run.stdout.includes(flag), flag);
+      assert.ok(!/^\s+details <type>/m.test(run.stdout), `${argv.join(' ')} lists details`);
+      const old = argv[0] === 'console' ? OLD_OPTIONS : OLD_IN_HELP_TEXT;
+      for (const flag of old) assert.ok(!run.stdout.includes(flag), `${argv.join(' ')}: ${flag}`);
     }
   });
 

@@ -212,18 +212,13 @@ function detailsResult(
 
 /**
  * Show one captured request or console message: the handler behind
- * `network details <id>`, `console details <n>` and the deprecated
- * `details <type> <id>`.
+ * `network details <id>` and `console details <n>`.
  *
  * @param options - Command options with the item's type and id
  */
 async function runDetails(options: DetailsCommandOptions): Promise<void> {
   await runCommand<DetailsCommandOptions, DetailsOutput>(
     async (opts) => {
-      if (opts.type !== 'network' && opts.type !== 'console') {
-        return usageFailure(`Unknown type: ${String(opts.type)}. Valid types: network, console`);
-      }
-
       if (!opts.id.trim()) {
         return usageFailure(
           `The ${opts.type === 'network' ? 'request id' : 'message index'} is empty`
@@ -345,24 +340,4 @@ function addBodyOptions(command: Command): void {
         'Characters of the response body to show (default 20000; 0 = all)'
       ).argParser(integerOption(0))
     );
-}
-
-/**
- * Register the deprecated `details <type> <id>` command (see the rename
- * table, `@/utils/renames.ts`); it runs the handler of `network details`
- * and `console details`.
- *
- * @param program - Commander.js Command instance to register commands on
- */
-export function registerDetailsCommand(program: Command): void {
-  const command = program
-    .command('details')
-    .description('Get detailed information for a specific request or console message')
-    .argument('<type>', 'Type of item: "network" or "console"')
-    .argument('<id>', 'Request ID (for network) or index (for console)');
-  addDetailsOptions(command, true).action(
-    async (type: string, id: string, options: DetailsCommandOptions) => {
-      await runDetails({ ...options, type: type as 'network' | 'console', id });
-    }
-  );
 }

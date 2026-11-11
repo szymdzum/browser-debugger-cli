@@ -2,8 +2,8 @@
 # Integration Test: bdg details command
 #
 # Tests details command for both network and console:
-# - details network <requestId>
-# - details console <index>
+# - network details <requestId>
+# - console details <index>
 # - Invalid ID/index handling
 # - JSON output
 
@@ -20,7 +20,7 @@ cleanup() {
   sleep 1
   
   # Aggressive cleanup to kill all Chrome processes
-  bdg cleanup --aggressive 2>/dev/null || true
+  bdg cleanup --force 2>/dev/null || true
   sleep 1
   
   
@@ -48,7 +48,7 @@ cleanup_sessions
 
 # Test 1: Details with no active session
 log_step "Test 1: Details with no active session"
-bdg details network "123" 2>&1 && die "Details should fail with no session" || true
+bdg network details "123" 2>&1 && die "Details should fail with no session" || true
 
 log_success "Test 1 passed: Details fails gracefully with no session"
 
@@ -82,7 +82,7 @@ fi
 # Test 3: Get network request details
 if [ "$SKIP_NETWORK" = false ]; then
   log_step "Test 3: Getting network request details"
-  DETAILS_OUTPUT=$(bdg details network "$FIRST_REQUEST_ID" 2>&1) || die "Failed to get network details"
+  DETAILS_OUTPUT=$(bdg network details "$FIRST_REQUEST_ID" 2>&1) || die "Failed to get network details"
 
   # Should show detailed information
   [ -n "$DETAILS_OUTPUT" ] || die "Network details output is empty"
@@ -91,7 +91,7 @@ if [ "$SKIP_NETWORK" = false ]; then
 
   # Test 4: Network details with --json
   log_step "Test 4: Network details with --json"
-  DETAILS_JSON=$(bdg details network "$FIRST_REQUEST_ID" --json 2>&1) || die "Failed to get network details JSON"
+  DETAILS_JSON=$(bdg network details "$FIRST_REQUEST_ID" --json 2>&1) || die "Failed to get network details JSON"
 
   # Validate JSON
   echo "$DETAILS_JSON" | jq . > /dev/null 2>&1 || die "Network details --json output is not valid JSON"
@@ -103,7 +103,7 @@ fi
 
 # Test 5: Invalid network request ID
 log_step "Test 5: Network details with invalid ID"
-bdg details network "nonexistent-id-123456" 2>&1 && die "Details should fail with invalid ID" || true
+bdg network details "nonexistent-id-123456" 2>&1 && die "Details should fail with invalid ID" || true
 
 log_success "Test 5 passed: Network details fails with invalid ID"
 
@@ -125,7 +125,7 @@ fi
 # Test 7: Get console message details by index
 if [ "$SKIP_CONSOLE" = false ]; then
   log_step "Test 7: Getting console message details (index 0)"
-  CONSOLE_DETAILS=$(bdg details console 0 2>&1) || die "Failed to get console details"
+  CONSOLE_DETAILS=$(bdg console details 0 2>&1) || die "Failed to get console details"
 
   # Should show detailed information
   [ -n "$CONSOLE_DETAILS" ] || die "Console details output is empty"
@@ -134,7 +134,7 @@ if [ "$SKIP_CONSOLE" = false ]; then
 
   # Test 8: Console details with --json
   log_step "Test 8: Console details with --json"
-  CONSOLE_JSON=$(bdg details console 0 --json 2>&1) || die "Failed to get console details JSON"
+  CONSOLE_JSON=$(bdg console details 0 --json 2>&1) || die "Failed to get console details JSON"
 
   # Validate JSON
   echo "$CONSOLE_JSON" | jq . > /dev/null 2>&1 || die "Console details --json output is not valid JSON"
@@ -146,13 +146,13 @@ fi
 
 # Test 9: Invalid console index
 log_step "Test 9: Console details with invalid index"
-bdg details console 999999 2>&1 && die "Details should fail with invalid index" || true
+bdg console details 999999 2>&1 && die "Details should fail with invalid index" || true
 
 log_success "Test 9 passed: Console details fails with invalid index"
 
 # Test 10: Console details with negative index
 log_step "Test 10: Console details with negative index"
-bdg details console -1 2>&1 && die "Details should fail with negative index" || true
+bdg console details -1 2>&1 && die "Details should fail with negative index" || true
 
 log_success "Test 10 passed: Console details fails with negative index"
 

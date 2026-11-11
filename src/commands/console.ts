@@ -500,7 +500,6 @@ export function registerConsoleCommand(program: Command): void {
         'Which page loads to show: current or all (default: current)'
       ).argParser(pageScopeOption)
     )
-    .addOption(new Option('-H, --history', 'Old spelling of --page all').default(false))
     .addOption(
       new Option(
         '--level <level>',

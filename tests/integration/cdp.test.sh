@@ -22,7 +22,7 @@ cleanup() {
   sleep 1
   
   # Aggressive cleanup to kill all Chrome processes
-  bdg cleanup --aggressive 2>/dev/null || true
+  bdg cleanup --force 2>/dev/null || true
   sleep 1
   
   

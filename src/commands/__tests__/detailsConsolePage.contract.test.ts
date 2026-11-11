@@ -1,12 +1,10 @@
 /**
  * Contract test (#465, D6 and D11): `bdg network details <id>` and
- * `bdg console details <n>` are the commands and `bdg details …` the
- * deprecated spelling; `bdg console --page current|all` is the page scope and
- * `-H/--history` the deprecated spelling of `--page all`. Run with no
- * session. Old spellings behave as the new ones plus one warning (a
- * `Warning:` line on stderr, `warnings` in the `--json` envelope, never for
- * the new spelling); help, `--help --json` and typo suggestions list no
- * `details` command and no `-H`.
+ * `bdg console details <n>` are the commands and `bdg console --page
+ * current|all` the page scope; `bdg details …` and `-H/--history` were
+ * removed in 1.0 (their exit 81 is in `renames.contract.test.ts`). Run with
+ * no session. Help, `--help --json` and typo suggestions list no `details`
+ * command and no `-H`.
  */
 
 import assert from 'node:assert/strict';
@@ -55,81 +53,18 @@ function envelope(stdout: string): BdgResponse & Record<string, unknown> {
   return JSON.parse(stdout.trim()) as BdgResponse & Record<string, unknown>;
 }
 
-/**
- * The `Warning:` lines of stderr.
- *
- * @param stderr - Standard error
- * @returns Warning lines
- */
-function warningLines(stderr: string): string[] {
-  return stderr.split('\n').filter((line) => line.startsWith('Warning: '));
-}
-
-/**
- * Stderr without its `Warning:` lines.
- *
- * @param stderr - Standard error
- * @returns Remaining text
- */
-function withoutWarnings(stderr: string): string {
-  return stderr
-    .split('\n')
-    .filter((line) => !line.startsWith('Warning: '))
-    .join('\n');
-}
-
-const DETAILS =
-  '"bdg details" is deprecated and will be removed in 1.0: use "bdg network details <id>" or "bdg console details <n>"';
-const HISTORY =
-  '"bdg console --history" is deprecated and will be removed in 1.0: use "bdg console --page all"';
-
-interface Rename {
-  current: string[];
-  old: string[];
-  warning: string;
-}
-
-const RENAMED: Rename[] = [
-  {
-    current: ['network', 'details', 'abc'],
-    old: ['details', 'network', 'abc'],
-    warning: DETAILS,
-  },
-  { current: ['console', 'details', '0'], old: ['details', 'console', '0'], warning: DETAILS },
-  { current: ['console', '--page', 'all'], old: ['console', '-H'], warning: HISTORY },
-  { current: ['console', '--page', 'all'], old: ['console', '--history'], warning: HISTORY },
+const CURRENT: string[][] = [
+  ['network', 'details', 'abc'],
+  ['console', 'details', '0'],
+  ['console', '--page', 'all'],
 ];
 
-void describe('renamed spellings: new, old, human and --json', () => {
-  for (const row of RENAMED) {
-    const label = `bdg ${row.old.join(' ')}`;
-
-    void it(`bdg ${row.current.join(' ')}: no unknown command or option, no warning`, async () => {
-      const run = await runCli(row.current);
+void describe('the new spellings', () => {
+  for (const argv of CURRENT) {
+    void it(`bdg ${argv.join(' ')}: no unknown command or option, no warning`, async () => {
+      const run = await runCli(argv);
       assert.ok(!run.stderr.includes('unknown'), run.stderr);
       assert.ok(!run.stderr.includes('Warning:'), run.stderr);
-    });
-
-    void it(`${label}: same exit, output and stderr as the new one, one warning line`, async () => {
-      const [current, old] = await Promise.all([runCli(row.current), runCli(row.old)]);
-      assert.equal(old.status, current.status, old.stderr);
-      assert.equal(old.stdout, current.stdout);
-      assert.equal(withoutWarnings(old.stderr), current.stderr);
-      assert.deepEqual(warningLines(old.stderr), [`Warning: ${row.warning}`]);
-    });
-
-    void it(`${label} --json: same envelope plus warnings, nothing on stderr`, async () => {
-      const [current, old] = await Promise.all([
-        runCli([...row.current, '--json']),
-        runCli([...row.old, '--json']),
-      ]);
-      assert.equal(old.status, current.status, old.stderr);
-      const newEnvelope = envelope(current.stdout);
-      const { warnings, ...oldRest } = envelope(old.stdout);
-      assert.ok(!('warnings' in newEnvelope), current.stdout);
-      assert.deepEqual(warnings, [row.warning]);
-      assert.deepEqual(oldRest, newEnvelope);
-      assert.equal(old.stderr, '');
     });
   }
 });
@@ -144,9 +79,7 @@ void describe('options given to console before details', () => {
 });
 
 void describe('--include-sensitive on console details', () => {
-  void it('is refused like on details console, also when given before details', async () => {
-    const old = await runCli(['details', 'console', '0', '--include-sensitive']);
-    assert.equal(old.status, EXIT_CODES.INVALID_ARGUMENTS, old.stderr);
+  void it('is refused, also when given before details', async () => {
     for (const argv of [
       ['console', 'details', '0', '--include-sensitive'],
       ['console', '--include-sensitive', 'details', '0'],
@@ -187,17 +120,6 @@ void describe('console --page', () => {
     const run = await runCli(['console', '--page', 'bogus', '--json']);
     assert.equal(run.status, EXIT_CODES.INVALID_ARGUMENTS, run.stderr);
     assert.equal(envelope(run.stdout).success, false);
-  });
-
-  void it('-H with --page current is a conflict (exit 81); -H with --page all is not', async () => {
-    const conflict = await runCli(['console', '-H', '--page', 'current']);
-    assert.equal(conflict.status, EXIT_CODES.INVALID_ARGUMENTS, conflict.stderr);
-    assert.match(
-      conflict.stderr,
-      /"bdg console --history" and "bdg console --page current" are the same option/
-    );
-    const same = await runCli(['console', '-H', '--page', 'all']);
-    assert.notEqual(same.status, EXIT_CODES.INVALID_ARGUMENTS, same.stderr);
   });
 
   void it('console --help lists --page and no -H or --history', async () => {
@@ -258,15 +180,5 @@ void describe('help and suggestions list the new names only', () => {
     const run = await runCli(['console', '--pag', 'all']);
     assert.equal(run.status, EXIT_CODES.INVALID_ARGUMENTS, run.stderr);
     assert.ok(!run.stderr.includes('--history'), run.stderr);
-  });
-});
-
-void describe('usage errors of an old spelling', () => {
-  void it('bdg details bogus x: exit 81, the warning, usage names the new commands', async () => {
-    const run = await runCli(['details', 'bogus', 'x']);
-    assert.equal(run.status, EXIT_CODES.INVALID_ARGUMENTS, run.stderr);
-    assert.deepEqual(warningLines(run.stderr), [`Warning: ${DETAILS}`]);
-    assert.match(run.stderr, /bdg network details <requestId>/);
-    assert.ok(!withoutWarnings(run.stderr).includes('bdg details'), run.stderr);
   });
 });
