@@ -43,7 +43,7 @@ const TREE = {
         { name: 'wait', arguments: '[selector]', options: [{ flags: '--timeout <ms>', takesValue: true, description: 'Maximum time (default 5000)' }, { flags: '-j, --json', takesValue: false, description: 'json' }] },
       ],
     },
-    { name: 'cdp', arguments: '[method]', options: [{ flags: '--timeout <seconds>', takesValue: true, description: 'for at most this long (default 10, max 120)' }, { flags: '--events [events]', takesValue: true, description: 'events' }, { flags: '-j, --json', takesValue: false, description: 'json' }] },
+    { name: 'cdp', arguments: '[method]', options: [{ flags: '--timeout <ms>', takesValue: true, description: 'Collect for at most this long, in milliseconds (default 10000, max 120000, min 100)' }, { flags: '--events [events]', takesValue: true, description: 'events' }, { flags: '-j, --json', takesValue: false, description: 'json' }] },
   ],
 };
 const CTX = { cwd: '/tmp/fuzz-863-x/cwd', fixture: 'http://127.0.0.1:5000', closedPort: 6000, freePort: 7000 };
@@ -186,7 +186,7 @@ test('limitFor: follow commands are interrupted, declared timeouts add a margin,
   assert.equal(limitFor(['dom', 'screenshot', 'a.png', '--follow'], byKey('dom screenshot')).interruptAfterMs, 1500);
   assert.equal(limitFor(['dom', 'wait', '--timeout', '2000'], byKey('dom wait')).limitMs, 17000);
   assert.equal(limitFor(['dom', 'wait'], byKey('dom wait')).limitMs, 20000);
-  assert.equal(limitFor(['cdp', '--timeout', '3'], byKey('cdp')).limitMs, 18000);
+  assert.equal(limitFor(['cdp', '--timeout', '3000'], byKey('cdp')).limitMs, 18000);
   assert.equal(limitFor(['cdp'], byKey('cdp')).limitMs, 25000);
   const capped = limitFor(['dom', 'wait', '--timeout', '99999999'], byKey('dom wait'));
   assert.deepEqual([capped.limitMs, capped.longDeclared], [60000, true]);

@@ -12,6 +12,13 @@ import { describe, it } from 'node:test';
 import { cdpCallResult } from '@/commands/cdp.js';
 import { parseEventNames, planEventCommand } from '@/commands/cdpEvents.js';
 import { CommandError } from '@/errors/index.js';
+import { buildProgram } from '@/program.js';
+import {
+  CDP_EVENTS_HELP,
+  collectIncompleteHint,
+  eventsWaitedOutHint,
+  listeningHint,
+} from '@/ui/messages/cdpEvents.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -88,22 +95,72 @@ void describe('planEventCommand', () => {
   });
 
   void it('takes --until alone as the event to collect and wait for', () => {
-    const plan = planEventCommand('Page.reload', { until: 'Page.loadEventFired', timeout: '2.5' });
+    const plan = planEventCommand('Page.reload', { until: 'Page.loadEventFired', timeout: '2500' });
     assert.ok(plan?.mode === 'collect');
     assert.deepEqual(plan.collect.events, []);
     assert.equal(plan.collect.timeoutMs, 2500);
   });
 
-  void it('limits --timeout to 120 s and --wait to 120 s', () => {
+  void it('takes --timeout and --wait in milliseconds, from 100 to 120000', () => {
+    const collect = (timeout: string): unknown =>
+      planEventCommand('Tracing.end', { collect: 'Tracing.dataCollected', timeout });
+    const longest = collect('120000');
+    assert.ok(longest && (longest as { mode: string }).mode === 'collect');
+    assert.equal((longest as { collect: { timeoutMs: number } }).collect.timeoutMs, 120_000);
     assertInvalid(
-      () => planEventCommand('Tracing.end', { collect: 'Tracing.dataCollected', timeout: '121' }),
-      /--timeout must be a number of seconds from 0 to 120/
+      () => collect('120001'),
+      /--timeout must be a whole number of milliseconds from 100 to 120000 \(got '120001'\)/,
+      /Example: --timeout 10000/
     );
-    assertInvalid(
-      () => planEventCommand('Tracing.end', { collect: 'Tracing.dataCollected', timeout: '0' }),
-      /--timeout must be/
-    );
+    assertInvalid(() => collect('0'), /--timeout must be a whole number of milliseconds/);
+    assertInvalid(() => collect('1500.5'), /--timeout must be a whole number of milliseconds/);
     assertInvalid(() => planEventCommand(undefined, { events: true, wait: 'soon' }), /--wait/);
+    assertInvalid(
+      () => planEventCommand(undefined, { events: true, wait: '120001' }),
+      /--wait must be a whole number of milliseconds from 100 to 120000, or 0/
+    );
+    const read = (wait: string): unknown => planEventCommand(undefined, { events: true, wait });
+    assert.deepEqual(read('0'), { mode: 'events', request: { action: 'read', waitMs: 0 } });
+    assert.deepEqual(read('100'), { mode: 'events', request: { action: 'read', waitMs: 100 } });
+  });
+
+  void it('takes only whole milliseconds as typed, surrounding spaces ignored', () => {
+    const collect = (timeout: string): unknown =>
+      planEventCommand('Tracing.end', { collect: 'Tracing.dataCollected', timeout });
+    for (const value of ['-1', '1e3', '500.0', '500ms']) {
+      assertInvalid(
+        () => collect(value),
+        /--timeout must be a whole number of milliseconds/,
+        /Example: --timeout 10000/
+      );
+    }
+    const spaced = collect(' 500') as { collect: { timeoutMs: number } };
+    assert.equal(spaced.collect.timeoutMs, 500);
+  });
+
+  void it('refuses values that look like 0.x seconds, naming the milliseconds', () => {
+    const collect = (timeout: string): unknown =>
+      planEventCommand('Tracing.end', { collect: 'Tracing.dataCollected', timeout });
+    assertInvalid(
+      () => collect('5'),
+      /--timeout must be a whole number of milliseconds from 100 to 120000 \(got '5'\)/,
+      /--timeout 5000 \(milliseconds since 1\.0\)/
+    );
+    assertInvalid(
+      () => collect('2.5'),
+      /milliseconds/,
+      /--timeout 2500 \(milliseconds since 1\.0\)/
+    );
+    assertInvalid(
+      () => collect('99'),
+      /milliseconds/,
+      /--timeout 99000 \(milliseconds since 1\.0\)/
+    );
+    assertInvalid(
+      () => planEventCommand(undefined, { events: true, wait: '20' }),
+      /--wait must be a whole number of milliseconds/,
+      /--wait 20000 \(milliseconds since 1\.0\)/
+    );
   });
 
   void it('plans listen, events and unlisten', () => {
@@ -112,7 +169,7 @@ void describe('planEventCommand', () => {
       events: ['Fetch.requestPaused'],
     });
     assert.deepEqual(
-      planEventCommand(undefined, { events: 'Fetch.requestPaused', wait: '5', clear: true }),
+      planEventCommand(undefined, { events: 'Fetch.requestPaused', wait: '5000', clear: true }),
       {
         mode: 'events',
         request: {
@@ -141,11 +198,16 @@ void describe('planEventCommand', () => {
       /--collect needs a method/
     );
     assertInvalid(
-      () => planEventCommand('Tracing.end', { timeout: '5' }),
-      /--timeout needs --collect or --until/
+      () => planEventCommand('Tracing.end', { timeout: '5000' }),
+      /--timeout needs --collect or --until/,
+      /--timeout 5000\b/
     );
     assertInvalid(() => planEventCommand('Tracing.end', { out: 'x.ndjson' }), /--out needs/);
-    assertInvalid(() => planEventCommand(undefined, { wait: '5' }), /--wait needs --events/);
+    assertInvalid(
+      () => planEventCommand(undefined, { wait: '5000' }),
+      /--wait needs --events/,
+      /--wait 5000\b/
+    );
     assertInvalid(() => planEventCommand(undefined, { clear: true }), /--clear needs --events/);
     assertInvalid(
       () => planEventCommand('Fetch.enable', { events: true }),
@@ -169,5 +231,26 @@ void describe('notes on event-based methods', () => {
   void it('Tracing.start and an empty Tracing.end point to --collect', () => {
     assert.match(cdpCallResult('Tracing.start', {}).hint ?? '', /--collect Tracing\.dataCollected/);
     assert.match(cdpCallResult('Tracing.end', {}).hint ?? '', /--collect Tracing\.dataCollected/);
+  });
+});
+
+void describe('milliseconds in help and hints', () => {
+  void it('names --timeout <ms> and --wait <ms> in the options and the events help', () => {
+    const cdp = buildProgram().commands.find((command) => command.name() === 'cdp');
+    const flags = cdp?.options.map((option) => option.flags) ?? [];
+    assert.ok(flags.includes('--timeout <ms>'), flags.join(', '));
+    assert.ok(flags.includes('--wait <ms>'), flags.join(', '));
+    const timeout = cdp?.options.find((option) => option.long === '--timeout');
+    assert.match(timeout?.description ?? '', /default 10000, max 120000/);
+    assert.match(CDP_EVENTS_HELP, /--timeout <ms>/);
+    assert.match(CDP_EVENTS_HELP, /--wait <ms>/);
+    assert.doesNotMatch(CDP_EVENTS_HELP + listeningHint(), /<s>/);
+  });
+
+  void it('gives waited times in milliseconds', () => {
+    const incomplete = collectIncompleteHint('Page.loadEventFired', 500, 120_000);
+    assert.match(incomplete, /did not arrive within 500 ms/);
+    assert.match(incomplete, /max 120000/);
+    assert.equal(eventsWaitedOutHint(5000, []), 'No listened event within 5000 ms');
   });
 });

@@ -13,9 +13,10 @@ import {
   type ParameterSchema,
 } from '@/cdp/schema.js';
 import {
-  COLLECT_DEFAULT_TIMEOUT_S,
+  COLLECT_DEFAULT_TIMEOUT_MS,
   collectHints,
-  EVENT_WAIT_MAX_S,
+  EVENT_WAIT_MAX_MS,
+  EVENT_WAIT_MIN_MS,
   planEventCommand,
   resolveOutPath,
   runEventsRequest,
@@ -214,8 +215,8 @@ export function registerCdpCommand(program: Command): void {
     )
     .addOption(
       eventOption(
-        '--timeout <seconds>',
-        `Collect for at most this long (default ${COLLECT_DEFAULT_TIMEOUT_S}, max ${EVENT_WAIT_MAX_S})`
+        '--timeout <ms>',
+        `Collect for at most this long, in milliseconds (default ${COLLECT_DEFAULT_TIMEOUT_MS}, max ${EVENT_WAIT_MAX_MS}, min ${EVENT_WAIT_MIN_MS})`
       )
     )
     .addOption(
@@ -236,7 +237,10 @@ export function registerCdpCommand(program: Command): void {
       )
     )
     .addOption(
-      eventOption('--wait <seconds>', `With --events: wait for an event (max ${EVENT_WAIT_MAX_S})`)
+      eventOption(
+        '--wait <ms>',
+        `With --events: wait for an event, in milliseconds (${EVENT_WAIT_MIN_MS} to ${EVENT_WAIT_MAX_MS}, or 0)`
+      )
     )
     .addOption(
       eventOption('--clear', 'With --events: discard the events instead of returning them')

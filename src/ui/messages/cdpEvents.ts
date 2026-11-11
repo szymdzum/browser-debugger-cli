@@ -12,13 +12,13 @@ export const CDP_OUT_FILE_NOTE = 'unredacted, readable by its owner only (0600)'
 /** `bdg cdp --help` section on events */
 export const CDP_EVENTS_HELP = [
   'Events (IPC is request/response, so the daemon buffers them):',
-  '  bdg cdp <Method> --collect <Event>[,...] [--until <Event>] [--timeout <s>] [--out <file>]',
-  '      subscribe, call, collect until --until arrives or --timeout (default 10 s, max 120;',
+  '  bdg cdp <Method> --collect <Event>[,...] [--until <Event>] [--timeout <ms>] [--out <file>]',
+  '      subscribe, call, collect until --until arrives or --timeout (default 10000, max 120000;',
   '      complete: false when --until did not come); --out writes NDJSON (unredacted,',
   '      file 0600), else output is kept to about 20000 characters',
   '  bdg cdp [<Method>] --listen <Event>[,...]   buffer events between commands (1000 events,',
   '      10 MB; oldest dropped and counted); with a method, listen before calling it',
-  '  bdg cdp --events [<Event>[,...]] [--wait <s>] [--clear] [--out <file>]   read and remove them',
+  '  bdg cdp --events [<Event>[,...]] [--wait <ms>] [--clear] [--out <file>]  read and remove them',
   '  bdg cdp --unlisten                          stop and discard the buffer',
   '  Cookies and auth headers arrive only in Network.requestWillBeSentExtraInfo.',
   '  Only events of the session page are kept (not of attached iframe/worker sessions).',
@@ -32,13 +32,13 @@ export const TRACING_COLLECT_COMMAND =
 
 /** How to collect a heap snapshot */
 export const HEAP_SNAPSHOT_COLLECT_COMMAND =
-  'bdg cdp HeapProfiler.takeHeapSnapshot --collect HeapProfiler.addHeapSnapshotChunk --timeout 1 --out heap.ndjson';
+  'bdg cdp HeapProfiler.takeHeapSnapshot --collect HeapProfiler.addHeapSnapshotChunk --timeout 1000 --out heap.ndjson';
 
 /** Note on Fetch.enable: what pauses, and how to read and release it */
 export const FETCH_ENABLE_NOTE =
   'Requests matching the patterns (all requests without patterns) now pause until continued. ' +
   'Listen before they start: bdg cdp Fetch.enable --params ... --listen Fetch.requestPaused, ' +
-  'then read requestId with bdg cdp --events Fetch.requestPaused --wait 5 and answer each with ' +
+  'then read requestId with bdg cdp --events Fetch.requestPaused --wait 5000 and answer each with ' +
   'Fetch.continueRequest, Fetch.fulfillRequest or Fetch.failRequest. bdg cdp Fetch.disable releases them all.';
 
 /**
@@ -187,21 +187,32 @@ export function cdpEventFlagsConflictError(flags: string[], reason: string): Err
 }
 
 /**
- * A seconds value out of range.
+ * A milliseconds value out of range. A value that reads as 0.x seconds
+ * (below the minimum, and in range once multiplied by 1000) gets the
+ * milliseconds it most likely meant as its suggestion.
  *
  * @param flag - Flag
  * @param value - Value as typed
+ * @param min - Smallest value (other than 0)
  * @param max - Largest value
+ * @param allowZero - Whether 0 is accepted too
  * @returns Message and suggestion
  */
-export function cdpSecondsRangeError(
+export function cdpMillisecondsRangeError(
   flag: string,
   value: string,
-  max: number
+  min: number,
+  max: number,
+  allowZero: boolean
 ): ErrorWithSuggestion {
+  const seconds = Number(value.trim());
+  const meant = Math.round(seconds * 1000);
+  const looksLikeSeconds = seconds > 0 && seconds < min && meant >= min && meant <= max;
   return {
-    message: `${flag} must be a number of seconds from 0 to ${max} (got '${value}')`,
-    suggestion: `Example: ${flag} 10`,
+    message: `${flag} must be a whole number of milliseconds from ${min} to ${max}${allowZero ? ', or 0' : ''} (got '${value}')`,
+    suggestion: looksLikeSeconds
+      ? `Use ${flag} ${meant} (milliseconds since 1.0)`
+      : `Example: ${flag} 10000`,
   };
 }
 
@@ -209,11 +220,12 @@ export function cdpSecondsRangeError(
  * Hint for a collection whose `--until` event did not arrive.
  *
  * @param until - Event waited for
- * @param timeoutS - Timeout in seconds
+ * @param timeoutMs - Timeout in milliseconds
+ * @param maxMs - Longest `--timeout`
  * @returns Hint text
  */
-export function collectIncompleteHint(until: string, timeoutS: number): string {
-  return `${until} did not arrive within ${timeoutS}s: the events are partial (complete: false). Raise --timeout (max 120) or check that the method starts what sends it`;
+export function collectIncompleteHint(until: string, timeoutMs: number, maxMs: number): string {
+  return `${until} did not arrive within ${timeoutMs} ms: the events are partial (complete: false). Raise --timeout (max ${maxMs}) or check that the method starts what sends it`;
 }
 
 /**
@@ -243,13 +255,13 @@ export function eventsOmittedHint(omitted: number, buffered: boolean): string {
 /**
  * Hint for a `--wait` that ran out without an event.
  *
- * @param waitS - Seconds waited
+ * @param waitMs - Milliseconds waited
  * @param events - Events waited for (all listened events when empty)
  * @returns Hint text
  */
-export function eventsWaitedOutHint(waitS: number, events: string[]): string {
+export function eventsWaitedOutHint(waitMs: number, events: string[]): string {
   const what = events.length > 0 ? events.join(', ') : 'listened';
-  return `No ${what} event within ${waitS}s`;
+  return `No ${what} event within ${waitMs} ms`;
 }
 
 /**
@@ -258,5 +270,5 @@ export function eventsWaitedOutHint(waitS: number, events: string[]): string {
  * @returns Hint text
  */
 export function listeningHint(): string {
-  return `Read them with: ${sessionCommand('bdg cdp --events [<Event>] [--wait <s>]')}; stop with: ${sessionCommand('bdg cdp --unlisten')}`;
+  return `Read them with: ${sessionCommand('bdg cdp --events [<Event>] [--wait <ms>]')}; stop with: ${sessionCommand('bdg cdp --unlisten')}`;
 }

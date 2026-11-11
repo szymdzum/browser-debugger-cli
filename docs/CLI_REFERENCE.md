@@ -1716,7 +1716,7 @@ bdg cdp Tracing --describe
 | Domain | Behavior | How to get the data |
 |--------|----------|---------------------|
 | Tracing | Data via `Tracing.dataCollected` after `Tracing.end` | `Tracing.end --collect Tracing.dataCollected --until Tracing.tracingComplete --out trace.ndjson` |
-| HeapProfiler | Snapshot via `HeapProfiler.addHeapSnapshotChunk` | `HeapProfiler.takeHeapSnapshot --collect HeapProfiler.addHeapSnapshotChunk --timeout 1 --out heap.ndjson` |
+| HeapProfiler | Snapshot via `HeapProfiler.addHeapSnapshotChunk` | `HeapProfiler.takeHeapSnapshot --collect HeapProfiler.addHeapSnapshotChunk --timeout 1000 --out heap.ndjson` |
 | Fetch | Matching requests pause (`Fetch.requestPaused`) until answered | `--listen Fetch.requestPaused`, then `--events` (recipe below) |
 | Audits | Issues via `Audits.issueAdded` events | `--listen Audits.issueAdded`, or `bdg dom audit` |
 | Profiler | Data in the `Profiler.stop` response | Call start, perform actions, then stop |
@@ -1728,19 +1728,19 @@ IPC between the CLI and the daemon is request/response, so the daemon holds even
 
 ```bash
 # One shot: subscribe, call the method, collect until --until arrives or --timeout passes
-bdg cdp <Method> [--params <json>] --collect <Event>[,<Event>] [--until <Event>] [--timeout <s>] [--out <file>]
+bdg cdp <Method> [--params <json>] --collect <Event>[,<Event>] [--until <Event>] [--timeout <ms>] [--out <file>]
 
 # Buffered between commands
 bdg cdp [<Method>] --listen <Event>[,<Event>]        # with a method: listening starts before it is sent
-bdg cdp --events [<Event>[,<Event>]] [--wait <s>]   # read and remove buffered events
+bdg cdp --events [<Event>[,<Event>]] [--wait <ms>]  # read and remove buffered events
 bdg cdp --events --clear                            # discard them
 bdg cdp --unlisten                                  # stop listening, discard the buffer
 ```
 
-- **`--collect`** subscribes to the events before the method is sent and collects them until the `--until` event arrives (it is collected too, as the last event) or `--timeout` passes (default 10 s, max 120; decimals allowed), at least until the method answered. Without `--until` it collects for the whole timeout. `--until` alone waits for that one event (`bdg cdp Page.reload --until Page.loadEventFired`). JSON: `data: { method, result, events: [{ method, params, ts }], count, complete }`, `ts` being when bdg received the event (epoch ms). A timeout before the `--until` event is not an error: exit 0, the events so far, `complete: false`, and a hint on stderr. A method that fails exits as without `--collect` and collects nothing. The daemon's 30 s command timeout is extended to `--timeout` plus 5 s.
+- **`--collect`** subscribes to the events before the method is sent and collects them until the `--until` event arrives (it is collected too, as the last event) or `--timeout` passes (in milliseconds: default 10000, 100 to 120000, whole numbers; seconds before 1.0, so a value below 100 such as `--timeout 5` exits 81 with the suggestion `Use --timeout 5000 (milliseconds since 1.0)`; values 100 to 120, the top of the old seconds range, are taken as milliseconds: multiply old values by 1000), at least until the method answered. Without `--until` it collects for the whole timeout. `--until` alone waits for that one event (`bdg cdp Page.reload --until Page.loadEventFired`). JSON: `data: { method, result, events: [{ method, params, ts }], count, complete }`, `ts` being when bdg received the event (epoch ms). A timeout before the `--until` event is not an error: exit 0, the events so far, `complete: false`, and a hint on stderr. A method that fails exits as without `--collect` and collects nothing. The daemon's 30 s command timeout is extended to `--timeout` plus 5 s.
 - **Output is bounded**: without `--out`, events are kept to about 20000 characters of JSON (as `eval --json`). Later events are counted in `omitted` (with a hint), and a first event that alone is over it has its `params` replaced by the start of their JSON text (a string) with `truncatedFrom` (the full length). **`--out <file>`** makes the daemon write every event as one NDJSON line (`{"method","params","ts"}`) as it arrives, creating the directory, and returns `{ file, count, bytes }` instead of the events; use it for traces and heap snapshots (megabytes). The events go to a new temp file next to the target (`.<name>.<pid>.<n>.tmp`, created exclusively, never through a symlink), which replaces the file only once the command succeeded: a method that fails, or a write that fails, leaves a file already there as it was. **The events are written unredacted**: `Authorization`, `Cookie` and `Set-Cookie` headers, URLs with tokens and bodies as Chrome sent them (the masking of `network har` and `network details` does not apply), so the file is written `0600`, also over an existing file of another mode (the temp file is created `0600` and replaces the old inode; nothing is chmod-ed before the command succeeded). A symlink at the `--out` path is replaced by a regular file; the file it pointed to is left untouched. Should the disk fall over 64 MB behind, further events are dropped and counted (`dropped`, `complete: false`) rather than held in the daemon's memory. `--events --out` removes events from the buffer only once the file is in place.
 - **Cookies and auth headers** of a request arrive only in `Network.requestWillBeSentExtraInfo`, not in `Network.requestWillBeSent`.
-- **`--listen`** keeps events in a buffer of at most 1000 events and 10 MB of event JSON (UTF-8); beyond either the oldest are dropped and counted (`dropped`). Another `--listen` adds events. **`--events`** returns the buffered events (all, or the ones named) in arrival order and removes them, within the same 20000-character budget: events that do not fit stay buffered (`remaining`, with a hint) for the next call, and `--out` writes them all. `--wait <s>` (max 120) waits for a matching event when none is buffered; when none comes it returns no events with `waitedOut: true`, exit 0. `--events` and `--unlisten` exit 83 when nothing is listened to. The buffer ends with the session.
+- **`--listen`** keeps events in a buffer of at most 1000 events and 10 MB of event JSON (UTF-8); beyond either the oldest are dropped and counted (`dropped`). Another `--listen` adds events. **`--events`** returns the buffered events (all, or the ones named) in arrival order and removes them, within the same 20000-character budget: events that do not fit stay buffered (`remaining`, with a hint) for the next call, and `--out` writes them all. `--wait <ms>` (100 to 120000 milliseconds, or 0 for no wait; seconds before 1.0, so 1 to 99 exits 81 suggesting the value times 1000; 100 to 120, the top of the old seconds range, are taken as milliseconds: multiply old values by 1000) waits for a matching event when none is buffered; when none comes it returns no events with `waitedOut: true`, exit 0. `--events` and `--unlisten` exit 83 when nothing is listened to. The buffer ends with the session.
 - **Event names** are checked against the bundled protocol, case-insensitively: a typo exits 81 with `Did you mean:` and the domain's events (`Unknown CDP event 'Tracing.dataColected'`), a method name exits 81 (`Tracing.end is a method, not an event`), and a well-formed name the protocol lacks is listened to as typed, with a warning (Chrome can have newer events).
 - **Only events of the session page's own target are kept.** Events Chrome sends for attached child sessions (out-of-process iframes, or workers after `Target.setAutoAttach` with `flatten`) carry a `sessionId`, and `bdg cdp` cannot send commands to those sessions (so a paused request of a worker could not be answered anyway); they are left out. Same-process iframes are part of the page target and included.
 
@@ -1756,7 +1756,7 @@ jq -s '{traceEvents: [.[] | select(.method == "Tracing.dataCollected") | .params
 **Heap snapshot** (the chunks arrive before `takeHeapSnapshot` answers, so a short `--timeout` ends the collection right after it):
 
 ```bash
-bdg cdp HeapProfiler.takeHeapSnapshot --collect HeapProfiler.addHeapSnapshotChunk --timeout 1 --out heap.ndjson
+bdg cdp HeapProfiler.takeHeapSnapshot --collect HeapProfiler.addHeapSnapshotChunk --timeout 1000 --out heap.ndjson
 jq -j '.params.chunk' heap.ndjson > page.heapsnapshot     # load in DevTools Memory panel
 ```
 
@@ -1803,7 +1803,7 @@ bdg cdp Tracing.end --collect Tracing.dataCollected --until Tracing.tracingCompl
 # Mock: answer a request with a 500 (or any status and body)
 bdg cdp Fetch.enable --params '{"patterns":[{"urlPattern":"*api/orders*"}]}' --listen Fetch.requestPaused
 bdg dom click "#load-orders"               # the request pauses ("1 request pending")
-ID=$(bdg cdp --events Fetch.requestPaused --wait 5 --json | jq -r '.data.events[0].params.requestId')
+ID=$(bdg cdp --events Fetch.requestPaused --wait 5000 --json | jq -r '.data.events[0].params.requestId')
 bdg cdp Fetch.fulfillRequest --params "{\"requestId\":\"$ID\",\"responseCode\":500,\"responseHeaders\":[{\"name\":\"Content-Type\",\"value\":\"application/json\"}],\"body\":\"$(printf '{"error":"boom"}' | base64)\"}"
 # or let it through: bdg cdp Fetch.continueRequest --params "{\"requestId\":\"$ID\"}"
 # or fail it:        bdg cdp Fetch.failRequest --params "{\"requestId\":\"$ID\",\"errorReason\":\"Failed\"}"
