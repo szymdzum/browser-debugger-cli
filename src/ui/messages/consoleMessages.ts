@@ -41,6 +41,39 @@ export function ndjsonNeedsFollow(): { message: string; suggestion: string } {
 }
 
 /**
+ * Error for `console --json-batches` without `--follow`.
+ *
+ * @returns Message and suggestion
+ */
+export function jsonBatchesNeedsFollow(): { message: string; suggestion: string } {
+  return {
+    message: '--json-batches streams console messages and needs --follow',
+    suggestion: 'Add --follow: bdg console --follow --json',
+  };
+}
+
+/**
+ * Error for `console --json-batches` together with `--ndjson`.
+ *
+ * @returns Message and suggestion
+ */
+export function jsonBatchesConflictsWithNdjson(): { message: string; suggestion: string } {
+  return {
+    message: '--json-batches and --ndjson are two output formats: use one',
+    suggestion: 'One record per line: bdg console --follow --json',
+  };
+}
+
+/**
+ * Warning in every envelope of `console --follow --json-batches` (#844).
+ *
+ * @returns Warning text
+ */
+export function jsonBatchesDeprecatedWarning(): string {
+  return '--json-batches is deprecated and will be removed in 1.1: use --json (one record per line)';
+}
+
+/**
  * Error for `console --ndjson` together with `--json`.
  *
  * @returns Message and suggestion
