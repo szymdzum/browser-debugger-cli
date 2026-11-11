@@ -22,6 +22,16 @@ export function addEnvelopeWarning(warning: string): void {
 }
 
 /**
+ * The warnings added for every envelope so far, for an output with no
+ * envelope (a record stream) to report them another way.
+ *
+ * @returns Warning texts, old spellings first
+ */
+export function currentEnvelopeWarnings(): readonly string[] {
+  return envelopeWarnings;
+}
+
+/**
  * The `warnings` field of an envelope: present only when there are any.
  *
  * Old-spelling warnings come first, then the command's own warning (#465),

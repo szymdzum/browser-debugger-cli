@@ -161,6 +161,26 @@ void describe('Follow modes and interrupts', () => {
     assert.match(result.stderr, /Captured 1 frame$/m);
   });
 
+  for (const [signal, exitCode] of [
+    ['SIGINT', 130],
+    ['SIGTERM', 143],
+  ] as const) {
+    void it(`console --follow --json (records) stops on ${signal} with exit ${exitCode}, every line a record`, async () => {
+      const result = await followThenSignal('console', ['--follow', '--json'], signal, (output) =>
+        output.includes('"type":"page"')
+      );
+      assert.equal(result.exitCode, exitCode, `${result.stdout}\n${result.stderr}`);
+      assert.match(result.stderr, /Stopped streaming console messages/);
+      const lines = result.stdout.split('\n').filter((line) => line !== '');
+      assert.ok(lines.length >= 1, result.stdout);
+      for (const line of lines) {
+        const record = JSON.parse(line) as Record<string, unknown>;
+        assert.ok(record['type'] === 'page' || record['type'] === 'message', line);
+        assert.ok(!('success' in record), line);
+      }
+    });
+  }
+
   for (const [command, args, stopLine] of [
     ['console', ['--follow'], /Stopped streaming console messages/],
     ['peek', ['--follow'], /Stopped following preview/],

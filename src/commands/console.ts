@@ -23,7 +23,11 @@ import { MAX_CONSOLE_JSON_TEXT_LENGTH, MAX_CONSOLE_TEXT_LENGTH } from '@/constan
 import { CommandError } from '@/errors/index.js';
 import type { TabSwitchInfo } from '@/ipc/protocol/tabTypes.js';
 import type { ConsoleMessage, FailedLoad, PageIssue, PageNavigation } from '@/types.js';
-import { addEnvelopeWarning, buildSuccessResponse } from '@/ui/OutputBuilder.js';
+import {
+  addEnvelopeWarning,
+  buildSuccessResponse,
+  currentEnvelopeWarnings,
+} from '@/ui/OutputBuilder.js';
 import {
   buildConsoleJsonOutput,
   formatConsole,
@@ -285,6 +289,15 @@ function checkNdjson(options: ConsoleCommandOptions): void {
 }
 
 /**
+ * Report the envelope warnings (an old spelling with `--json`) of a record
+ * stream, which has no envelope to carry them: a `Warning:` line on stderr
+ * each, so stdout stays one record per line.
+ */
+export function warnRecordStream(): void {
+  for (const warning of currentEnvelopeWarnings()) printWarning(warning);
+}
+
+/**
  * Stream console messages: the last `lastN` at start, then each new message
  * once (like `tail -f`), with a separator when the page navigates and a
  * warning (JSON `pageCrashedAt`) once when the page crashes. `--json` prints
@@ -298,6 +311,7 @@ async function runFollowMode(options: ConsoleCommandOptions, lastN: number): Pro
   const newCrash = newPageCrashes();
   const records = options.ndjson === true || (options.json === true && !options.jsonBatches);
   const ndjson = records ? createConsoleNdjson(options) : undefined;
+  if (ndjson) warnRecordStream();
   if (options.includeSensitive) printWarning(includeSensitiveWarning());
   const navigations: PageNavigation[] = [];
   let streamNavigationId: number | undefined;
