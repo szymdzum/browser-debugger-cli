@@ -803,7 +803,7 @@ function unknownMethodError(
  *
  * @param error - Error of the call
  * @param warning - Warning, when the method was not in the bundled protocol
- * @returns The error, with the warning (top-level JSON `warning`) when there is one
+ * @returns The error, with the warning (JSON `warnings`) when there is one
  */
 function withWarning(error: unknown, warning: string | undefined): unknown {
   if (!warning || !(error instanceof CommandError)) return error;
