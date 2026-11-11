@@ -18,7 +18,7 @@ const LOCAL_URL_PATTERN = /^(data|blob):/i;
 /** Requests started since the watch began: the first ones, and how many more there were */
 export interface CollectedRequests {
   triggeredRequests: TriggeredRequest[];
-  triggeredRequestsOmitted?: number;
+  moreTriggeredRequests?: number;
 }
 
 /** A request seen starting, and whether it was still in flight */
@@ -67,7 +67,7 @@ export function watchTriggeredRequests(store: TelemetryStore): TriggeredRequests
     const omitted = triggered.length - kept.length;
     return {
       triggeredRequests: kept,
-      ...(omitted > 0 && { triggeredRequestsOmitted: omitted }),
+      ...(omitted > 0 && { moreTriggeredRequests: omitted }),
     };
   };
 }
@@ -114,11 +114,11 @@ export function withTriggeredRequestCount<
   T extends {
     networkRequests?: number | undefined;
     triggeredRequests?: TriggeredRequest[] | undefined;
-    triggeredRequestsOmitted?: number | undefined;
+    moreTriggeredRequests?: number | undefined;
   },
 >(result: T): T {
   if (result.networkRequests === undefined || result.triggeredRequests === undefined) return result;
-  const total = result.triggeredRequests.length + (result.triggeredRequestsOmitted ?? 0);
+  const total = result.triggeredRequests.length + (result.moreTriggeredRequests ?? 0);
   return { ...result, networkRequests: total };
 }
 

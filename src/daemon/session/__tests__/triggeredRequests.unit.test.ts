@@ -219,7 +219,7 @@ void describe('watchTriggeredRequests over the limit', () => {
     assert.equal(ids.length, MAX_TRIGGERED_REQUESTS);
     assert.equal(ids[0], 'page');
     assert.deepEqual(ids.slice(-2), ['missing', 'api']);
-    assert.equal(collected?.triggeredRequestsOmitted, 8);
+    assert.equal(collected?.moreTriggeredRequests, 8);
   });
 });
 
@@ -230,7 +230,7 @@ void describe('withTriggeredRequestCount', () => {
       withTriggeredRequestCount({
         networkRequests: 14,
         triggeredRequests,
-        triggeredRequestsOmitted: 3,
+        moreTriggeredRequests: 3,
       }).networkRequests,
       4
     );
@@ -319,7 +319,7 @@ void describe('watchTriggeredRequests limit', () => {
     const collected = collect();
 
     assert.equal(collected?.triggeredRequests.length, 50);
-    assert.equal(collected?.triggeredRequestsOmitted, 5);
+    assert.equal(collected?.moreTriggeredRequests, 5);
   });
 });
 

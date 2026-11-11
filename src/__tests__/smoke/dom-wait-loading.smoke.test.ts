@@ -4,8 +4,8 @@
  * never answered (the sockets stay open until the test ends), so the document
  * stays `loading` with those requests pending no matter how slow the machine
  * is. The timeout names them in the words of the start warning, with
- * credentials masked, and `--json` carries them as top-level `pending` and
- * `pendingCount` of the error envelope (human output does not print them).
+ * credentials masked, and `--json` carries them as top-level `pendingRequests`
+ * and `pendingCount` of the error envelope (human output does not print them).
  */
 
 import * as assert from 'node:assert/strict';
@@ -27,7 +27,7 @@ const TOKEN = 'tok3nSECRETvalue';
 /** The timeout error of `dom wait` as `--json` prints it */
 interface WaitTimeoutEnvelope {
   exitCode: number;
-  pending?: Array<{ method: string; url: string; pendingMs: number }>;
+  pendingRequests?: Array<{ method: string; url: string; pendingMs: number }>;
   pendingCount?: number;
 }
 
@@ -101,15 +101,16 @@ void describe('dom wait timeout on a loading page (#775)', () => {
       /The page is still loading; waiting on: GET [^\n]*\/hang\d\.js[^\n]* \(pending [^\n]*and \d+ more \(all of them with bdg peek\)/
     );
     assert.ok(!result.stderr.includes(TOKEN), result.stderr);
-    assert.doesNotMatch(result.stderr, /pendingMs|"pending"/);
+    assert.doesNotMatch(result.stderr, /pendingMs|"pending"|pendingRequests/);
   });
 
-  void it('--json carries pending and pendingCount, urls masked', async () => {
+  void it('--json carries pendingRequests and pendingCount, urls masked', async () => {
     const result = await domWait(['--load', '--json']);
     assert.equal(result.exitCode, 102, result.stdout + result.stderr);
     const envelope = JSON.parse(result.stdout) as WaitTimeoutEnvelope;
-    assert.equal(envelope.pending?.length, 3, result.stdout);
-    assert.equal(envelope.pending?.[0]?.method, 'GET');
+    assert.equal('pending' in envelope, false, result.stdout);
+    assert.equal(envelope.pendingRequests?.length, 3, result.stdout);
+    assert.equal(envelope.pendingRequests?.[0]?.method, 'GET');
     assert.ok((envelope.pendingCount ?? 0) > 3, result.stdout);
     assert.ok(!result.stdout.includes(TOKEN), result.stdout);
   });
@@ -118,7 +119,7 @@ void describe('dom wait timeout on a loading page (#775)', () => {
     const result = await domWait(['#never', '--json']);
     assert.equal(result.exitCode, 102, result.stdout + result.stderr);
     const envelope = JSON.parse(result.stdout) as WaitTimeoutEnvelope;
-    assert.ok((envelope.pending?.length ?? 0) > 0, result.stdout);
+    assert.ok((envelope.pendingRequests?.length ?? 0) > 0, result.stdout);
   });
 
   void it('names only the requests of the current document after a navigation', async () => {
@@ -138,9 +139,9 @@ void describe('dom wait timeout on a loading page (#775)', () => {
     const result = await domWait(['--load', '--json']);
     assert.equal(result.exitCode, 102, result.stdout + result.stderr);
     const envelope = JSON.parse(result.stdout) as WaitTimeoutEnvelope;
-    assert.ok((envelope.pending?.length ?? 0) > 0, result.stdout);
+    assert.ok((envelope.pendingRequests?.length ?? 0) > 0, result.stdout);
     assert.ok(
-      envelope.pending?.every((request) => request.url.includes('/second')),
+      envelope.pendingRequests?.every((request) => request.url.includes('/second')),
       result.stdout
     );
   });

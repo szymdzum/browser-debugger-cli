@@ -153,7 +153,10 @@ export async function waitForCondition(
     {
       suggestion: err.suggestion,
       ...(namedLoading && {
-        errorContext: { pending: namedLoading.pending, pendingCount: namedLoading.pendingCount },
+        errorContext: {
+          pendingRequests: namedLoading.pending,
+          pendingCount: namedLoading.pendingCount,
+        },
       }),
     },
     EXIT_CODES.CDP_TIMEOUT

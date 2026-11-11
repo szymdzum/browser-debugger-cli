@@ -131,7 +131,7 @@ bdg dom click "button.submit" --index 1        # Second match
 bdg dom submit "form" --wait-navigation        # Traditional form post
 bdg dom press-key "input" Enter                # Also Tab, Escape, ArrowDown --times 3, Shift, NumpadEnter, characters (a, ., _, /); unknown names list the keys
 bdg dom scroll "footer"                        # Or --down 500, --bottom
-bdg dom wait '.toast' --text 'Saved'           # Also --visible, --gone, --load; a timeout on a loading page names the pending requests (JSON: pending)
+bdg dom wait '.toast' --text 'Saved'           # Also --visible, --gone, --load; a timeout on a loading page names the pending requests (JSON: pendingRequests)
 ```
 
 Actions wait for the requests they start; `--no-wait` returns at once.
