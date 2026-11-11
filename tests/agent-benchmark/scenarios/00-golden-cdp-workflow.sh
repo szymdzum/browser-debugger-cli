@@ -70,7 +70,7 @@ log_success "Environment clean"
 # ============================================================================
 log_step "Starting bdg session with $TARGET_URL"
 
-if ! bdg "$TARGET_URL" --headless --timeout 60 >/dev/null 2>&1; then
+if ! bdg "$TARGET_URL" --headless --stop-after 60 >/dev/null 2>&1; then
   die "Failed to start session"
 fi
 
