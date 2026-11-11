@@ -962,7 +962,6 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
     const { outerHTML, attributes, masked } = await maskedNode(ref);
     const classes = elementClasses(attributes);
     return {
-      nodeId: desc.backendNodeId,
       backendNodeId: desc.backendNodeId,
       tag: desc.nodeName.toLowerCase(),
       ...(Object.keys(attributes).length > 0 && { attributes }),

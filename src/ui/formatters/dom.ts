@@ -1,7 +1,7 @@
 import { MAX_VALUE_LENGTH } from '@/constants.js';
 import type { DomFrame } from '@/ipc/protocol/commands.js';
 import { labelClasses } from '@/runtime/dom/elementInfo.js';
-import type { DomQueryResult, DomGetResult, ScreenshotResult } from '@/types.js';
+import type { DomGetResult, ListedDomQueryResult, ScreenshotResult } from '@/types.js';
 import { keyAttributeItems, shortId, withWrittenType } from '@/ui/formatters/keyAttributes.js';
 import { capForDisplay } from '@/ui/formatters/longValues.js';
 import { OutputFormatter } from '@/ui/formatting.js';
@@ -39,8 +39,8 @@ import {
  *   selector: '.error',
  *   count: 2,
  *   nodes: [
- *     { index: 0, nodeId: 123, tag: 'div', classes: ['error'], preview: 'Invalid input' },
- *     { index: 1, nodeId: 456, tag: 'span', classes: ['error'], preview: 'Required field' }
+ *     { index: 0, backendNodeId: 123, tag: 'div', classes: ['error'], preview: 'Invalid input' },
+ *     { index: 1, backendNodeId: 456, tag: 'span', classes: ['error'], preview: 'Required field' }
  *   ]
  * });
  * // Output:
@@ -50,7 +50,7 @@ import {
  * ```
  */
 export function formatDomQuery(
-  data: DomQueryResult,
+  data: ListedDomQueryResult,
   options: { origin?: string | undefined } = {}
 ): string {
   const { count, nodes, selector } = data;
@@ -92,7 +92,7 @@ export function formatDomQuery(
  * @returns `name="value"` items
  */
 function queryTagAttributes(
-  node: DomQueryResult['nodes'][number],
+  node: ListedDomQueryResult['nodes'][number],
   origin: string | undefined
 ): string[] {
   const identifying = {
@@ -143,15 +143,15 @@ function classAttribute(classes: readonly string[]): string | undefined {
  * ```typescript
  * // Single element
  * formatDomGet({
- *   nodes: [{ nodeId: 123, outerHTML: '<div class="error">Invalid input</div>' }]
+ *   nodes: [{ backendNodeId: 123, outerHTML: '<div class="error">Invalid input</div>' }]
  * });
  * // Output: <div class="error">Invalid input</div>
  *
  * // Multiple elements
  * formatDomGet({
  *   nodes: [
- *     { nodeId: 123, outerHTML: '<div class="error">Error 1</div>' },
- *     { nodeId: 456, outerHTML: '<span class="error">Error 2</span>' }
+ *     { backendNodeId: 123, outerHTML: '<div class="error">Error 1</div>' },
+ *     { backendNodeId: 456, outerHTML: '<span class="error">Error 2</span>' }
  *   ]
  * });
  * // Output:

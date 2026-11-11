@@ -64,19 +64,13 @@ export interface BdgResponse<T = unknown> {
   suggestion?: string;
 
   /**
-   * How the command ran despite something unusual (e.g. a CDP method bdg's protocol lacks).
-   * Deprecated in favour of {@link warnings}: in 0.x both are written (the same text, one
-   * entry per line), in 1.0 only `warnings`.
-   */
-  warning?: string;
-
-  /**
    * The command line used an old spelling that still works until 1.0 (#465),
    * one text per spelling (`bdg tail` gives: "bdg tail" is deprecated and will
    * be removed in 1.0: use "bdg peek --follow"). Switch to the new spelling. Present only
    * when non-empty, on success and error envelopes (and on every line of a
-   * follow mode); human output prints each as a `Warning:` line on stderr. Also holds the
-   * text of {@link warning}, after the old-spelling ones.
+   * follow mode); human output prints each as a `Warning:` line on stderr. Then the
+   * command's own warning about how it ran (e.g. a CDP method bdg's protocol lacks),
+   * one entry per line; 1.0 dropped the `warning` string field that also held it (#844).
    */
   warnings?: string[];
 
@@ -636,7 +630,10 @@ export interface DomQueryResult {
     index: number;
     /** Backend node id (stable while the element exists; 0 if unknown) */
     backendNodeId?: number;
-    /** Same value as `backendNodeId`; kept until 1.0 */
+    /**
+     * Same value as `backendNodeId`, kept by the index cache; `dom query --json`
+     * leaves it out since 1.0 (#844, {@link ListedDomQueryResult})
+     */
     nodeId: number;
     tag?: string;
     /** `id`, `name` and `type` attributes, when present */
@@ -675,6 +672,11 @@ export interface DomQueryResult {
   document?: string;
 }
 
+/** What `dom query` outputs: its result without the cache's `nodeId` (#844) */
+export type ListedDomQueryResult = Omit<DomQueryResult, 'nodes'> & {
+  nodes: Array<Omit<DomQueryResult['nodes'][number], 'nodeId'>>;
+};
+
 /**
  * Result of a DOM get operation.
  */
@@ -682,8 +684,6 @@ export interface DomGetResult {
   nodes: Array<{
     /** Backend node id */
     backendNodeId?: number;
-    /** Same as `backendNodeId`; kept until 1.0 */
-    nodeId: number;
     tag?: string;
     attributes?: Record<string, unknown>;
     /** Every class of the element, `[]` when it has none */

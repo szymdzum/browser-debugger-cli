@@ -35,8 +35,6 @@ export interface StopResult {
 export interface CleanupResult {
   cleaned: {
     session: boolean;
-    /** Always false: `--remove-output` was removed (#465) */
-    output: boolean;
     chrome: boolean;
     daemons: boolean;
   };

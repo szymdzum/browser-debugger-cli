@@ -15,7 +15,11 @@ import {
 
 void describe('formatDomQuery ids', () => {
   const idLine = (id: string): string =>
-    formatDomQuery({ selector: 'p', count: 1, nodes: [{ index: 0, nodeId: 1, tag: 'p', id }] });
+    formatDomQuery({
+      selector: 'p',
+      count: 1,
+      nodes: [{ index: 0, backendNodeId: 1, tag: 'p', id }],
+    });
 
   void it('keeps a plain id as written', () => {
     assert.match(idLine('x'), /\[0\] <p id="x">$/m);
@@ -45,8 +49,8 @@ void describe('formatDomQuery', () => {
       selector: 'img, p',
       count: 2,
       nodes: [
-        { index: 0, nodeId: 1, tag: 'img' },
-        { index: 1, nodeId: 2, tag: 'p', classes: ['note'], preview: 'Hello' },
+        { index: 0, backendNodeId: 1, tag: 'img' },
+        { index: 1, backendNodeId: 2, tag: 'p', classes: ['note'], preview: 'Hello' },
       ],
     });
 
@@ -62,13 +66,13 @@ void describe('formatDomQuery', () => {
       nodes: [
         {
           index: 0,
-          nodeId: 1,
+          backendNodeId: 1,
           tag: 'a',
           classes: ['px-2', 'py-4', 'text-sm', 'hover:underline', 'md:flex'],
           preview: 'Home',
         },
-        { index: 1, nodeId: 2, tag: 'a', classes: ['nav', 'active'] },
-        { index: 2, nodeId: 3, tag: 'a', classes: ['brush:', 'html'] },
+        { index: 1, backendNodeId: 2, tag: 'a', classes: ['nav', 'active'] },
+        { index: 2, backendNodeId: 3, tag: 'a', classes: ['brush:', 'html'] },
       ],
     });
 
@@ -83,8 +87,8 @@ void describe('formatDomQuery', () => {
       selector: 'code',
       count: 2,
       nodes: [
-        { index: 0, nodeId: 1, tag: 'code', classes: ['brush:', 'js;'] },
-        { index: 1, nodeId: 2, tag: 'code', classes: ['brush:', 'html', 'x'] },
+        { index: 0, backendNodeId: 1, tag: 'code', classes: ['brush:', 'js;'] },
+        { index: 1, backendNodeId: 2, tag: 'code', classes: ['brush:', 'html', 'x'] },
       ],
     });
 
@@ -118,11 +122,11 @@ void describe('formatDomQuery viewport hints', () => {
       selector: 'button',
       count: 5,
       nodes: [
-        { index: 0, nodeId: 1, tag: 'button', preview: 'Top', inViewport: 'visible' },
-        { index: 1, nodeId: 2, tag: 'button', preview: 'Edge', inViewport: 'partly' },
-        { index: 2, nodeId: 3, tag: 'button', preview: 'Save', inViewport: 'below' },
-        { index: 3, nodeId: 4, tag: 'button', inViewport: 'hidden' },
-        { index: 4, nodeId: 5, tag: 'li', inViewport: 'below', clippedBy: 'ul#list' },
+        { index: 0, backendNodeId: 1, tag: 'button', preview: 'Top', inViewport: 'visible' },
+        { index: 1, backendNodeId: 2, tag: 'button', preview: 'Edge', inViewport: 'partly' },
+        { index: 2, backendNodeId: 3, tag: 'button', preview: 'Save', inViewport: 'below' },
+        { index: 3, backendNodeId: 4, tag: 'button', inViewport: 'hidden' },
+        { index: 4, backendNodeId: 5, tag: 'li', inViewport: 'below', clippedBy: 'ul#list' },
       ],
     });
     assert.match(output, /\[4\] <li> \(out of view in ul#list\)$/m);
@@ -141,7 +145,7 @@ void describe('formatDomQuery identifying details', () => {
       nodes: [
         {
           index: 0,
-          nodeId: 7,
+          backendNodeId: 7,
           tag: 'input',
           id: 'email',
           name: 'email',
@@ -162,8 +166,8 @@ void describe('formatDomQuery next steps', () => {
       selector: "a[title='x']",
       count: 2,
       nodes: [
-        { index: 0, nodeId: 1, tag: 'a', context: 'shadow root of <x-card>' },
-        { index: 1, nodeId: 2, tag: 'a' },
+        { index: 0, backendNodeId: 1, tag: 'a', context: 'shadow root of <x-card>' },
+        { index: 1, backendNodeId: 2, tag: 'a' },
       ],
     });
     const next = output.split('\n').filter((line) => line.startsWith('Next: '));
@@ -181,7 +185,7 @@ void describe('formatDomQuery options', () => {
     const output = formatDomQuery({
       selector: 'option',
       count: 1,
-      nodes: [{ index: 0, nodeId: 1, tag: 'option', value: 'ca', preview: 'Canada' }],
+      nodes: [{ index: 0, backendNodeId: 1, tag: 'option', value: 'ca', preview: 'Canada' }],
     });
     assert.match(output, /\[0\] <option value="ca"> Canada/);
   });
@@ -191,8 +195,8 @@ void describe('formatDomGet', () => {
   void it('numbers several elements from 0', () => {
     const output = formatDomGet({
       nodes: [
-        { nodeId: 1, classes: [], outerHTML: '<p>a</p>' },
-        { nodeId: 2, classes: [], outerHTML: '<p>b</p>' },
+        { backendNodeId: 1, classes: [], outerHTML: '<p>a</p>' },
+        { backendNodeId: 2, classes: [], outerHTML: '<p>b</p>' },
       ],
     });
     assert.match(output, /\[0\] <p>a<\/p>/);
@@ -269,7 +273,7 @@ void describe('formatDomQuery key attributes', () => {
     assert.equal(
       line({
         index: 0,
-        nodeId: 1,
+        backendNodeId: 1,
         tag: 'img',
         classes: ['inventory_item_img'],
         attributes: { src: '/static/media/sl-404.168b1cce.jpg', alt: 'Sauce Labs Backpack' },
@@ -280,24 +284,34 @@ void describe('formatDomQuery key attributes', () => {
 
   void it('shows links and form targets with their scheme and iframes by host', () => {
     assert.match(
-      line({ index: 0, nodeId: 1, tag: 'a', attributes: { href: 'https://saucelabs.com/' } }),
+      line({
+        index: 0,
+        backendNodeId: 1,
+        tag: 'a',
+        attributes: { href: 'https://saucelabs.com/' },
+      }),
       /<a href="https:\/\/saucelabs\.com">/
     );
     assert.match(
-      line({ index: 0, nodeId: 1, tag: 'a', attributes: { href: '#' } }),
+      line({ index: 0, backendNodeId: 1, tag: 'a', attributes: { href: '#' } }),
       /<a href="#">/
     );
     assert.match(
       line({
         index: 0,
-        nodeId: 1,
+        backendNodeId: 1,
         tag: 'iframe',
         attributes: { src: 'https://js.stripe.com/v3/elements-inner.html?x=1' },
       }),
       /<iframe src="\/\/js\.stripe\.com\/…">/
     );
     assert.match(
-      line({ index: 0, nodeId: 1, tag: 'form', attributes: { action: '/post', method: 'post' } }),
+      line({
+        index: 0,
+        backendNodeId: 1,
+        tag: 'form',
+        attributes: { action: '/post', method: 'post' },
+      }),
       /<form action="\/post" method="post">/
     );
   });
@@ -305,7 +319,7 @@ void describe('formatDomQuery key attributes', () => {
   void it('cuts long values in the middle', () => {
     const output = line({
       index: 0,
-      nodeId: 1,
+      backendNodeId: 1,
       tag: 'input',
       type: 'text',
       attributes: { type: 'text', placeholder: `Start ${'x'.repeat(60)} end` },
@@ -319,7 +333,7 @@ void describe('formatDomQuery key attributes', () => {
     assert.equal(
       line({
         index: 0,
-        nodeId: 1,
+        backendNodeId: 1,
         tag: 'input',
         id: 'password',
         name: 'password',
@@ -331,7 +345,7 @@ void describe('formatDomQuery key attributes', () => {
     assert.equal(
       line({
         index: 1,
-        nodeId: 2,
+        backendNodeId: 2,
         tag: 'input',
         name: 'size',
         type: 'radio',
@@ -343,15 +357,26 @@ void describe('formatDomQuery key attributes', () => {
 
   void it("shows a select's selected option and a button's type only as written", () => {
     assert.match(
-      line({ index: 0, nodeId: 1, tag: 'select', attributes: { selected: 'Name (A to Z)' } }),
+      line({
+        index: 0,
+        backendNodeId: 1,
+        tag: 'select',
+        attributes: { selected: 'Name (A to Z)' },
+      }),
       /<select selected="Name \(A to Z\)">/
     );
     assert.match(
-      line({ index: 0, nodeId: 1, tag: 'button', attributes: { type: 'submit' } }),
+      line({ index: 0, backendNodeId: 1, tag: 'button', attributes: { type: 'submit' } }),
       /<button>/
     );
     assert.match(
-      line({ index: 0, nodeId: 1, tag: 'button', type: 'button', attributes: { type: 'button' } }),
+      line({
+        index: 0,
+        backendNodeId: 1,
+        tag: 'button',
+        type: 'button',
+        attributes: { type: 'button' },
+      }),
       /<button type="button">/
     );
   });

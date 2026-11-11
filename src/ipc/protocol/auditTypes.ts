@@ -88,7 +88,8 @@ export interface AuditResult {
   /** The document had not finished loading: the findings cover what was there */
   loading?: PageLoadingState;
   contrast?: {
-    level: 'AA' | 'AAA';
+    /** WCAG level checked (`--wcag`) */
+    wcag: 'AA' | 'AAA';
     /** Text holders checked */
     checked: number;
     /** How many are below the level (measured exactly) */
