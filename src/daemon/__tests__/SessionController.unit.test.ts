@@ -316,7 +316,11 @@ void describe('SessionController.command timeouts', () => {
   void it('names a navigation that started during the command when it times out (#946)', async () => {
     const emit = await trackFakeDocuments();
     const controller = await startController(() => new Promise(() => undefined));
-    const response = reload(controller);
+    const response = controller.command({
+      type: 'dom_click_request',
+      sessionId: 's',
+      selector: '#help',
+    } as never) as Promise<CommandResponse>;
     startPendingNavigation(emit);
     mock.timers.tick(30_000);
     const result = await response;
@@ -374,6 +378,7 @@ void describe('SessionController.command timeouts', () => {
     ['cdp_events', { type: 'cdp_events_request', waitMs: 0 }],
     ['page navigate', { type: 'page_navigate_request', action: 'navigate', url: 'http://x/' }],
     ['page reload', { type: 'page_navigate_request', action: 'reload' }],
+    ['dom wait', { type: 'dom_wait_request', selector: '#done' }],
   ];
   for (const [label, request] of exempt) {
     void it(`does not fail ${label} fast on a pending navigation (#946)`, async () => {
@@ -382,8 +387,39 @@ void describe('SessionController.command timeouts', () => {
       const controller = await startController(() => new Promise(() => undefined));
       const result = await waitsPastGrace(controller, request);
       assert.equal(result.exitCode, EXIT_CODES.CDP_TIMEOUT);
+      assert.equal(result.error, 'Command timeout (30s)', 'the hold is not blamed');
+      assert.ok(result.suggestion, 'a suggestion');
     });
   }
+
+  void it('lets dom wait finish when the pending navigation answers after 8 s (#946)', async () => {
+    const emit = await trackFakeDocuments();
+    startPendingNavigation(emit);
+    let answer = (): void => undefined;
+    const controller = await startController(
+      () => new Promise<unknown>((resolve) => (answer = () => resolve({ found: true })))
+    );
+    let result: CommandResponse | undefined;
+    const response = (
+      controller.command({
+        type: 'dom_wait_request',
+        sessionId: 's',
+        selector: '#done',
+        timeout: 20_000,
+      } as never) as Promise<CommandResponse>
+    ).then((r) => (result = r));
+    mock.timers.tick(8_000);
+    await flush();
+    assert.equal(
+      result,
+      undefined,
+      `failed before the navigation answered: ${JSON.stringify(result)}`
+    );
+    emit('Network.responseReceived', { requestId: 'orders' });
+    answer();
+    const final = await response;
+    assert.equal(final.status, 'ok', JSON.stringify(final));
+  });
 
   void it('does not fail fast while Fetch interception is on (#946)', async () => {
     const emit = await trackFakeDocuments();

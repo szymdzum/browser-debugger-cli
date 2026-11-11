@@ -151,6 +151,15 @@ void describe('actions and stop while a click-started navigation waits for the s
     await assertPendingNavPageUsable();
   });
 
+  void it('dom wait outlasts the grace while a navigation answers after 8 s', async () => {
+    const click = await bdg('dom', ['click', '#slow8']);
+    assert.equal(click.exitCode, 0, `${click.stdout}\n${click.stderr}`);
+    const wait = await bdg('dom', ['wait', '#test-button', '--timeout', '20000']);
+    assert.equal(wait.exitCode, 0, `${wait.stdout}\n${wait.stderr}`);
+    const back = await bdg('page', ['navigate', `${fixture.url}pending-nav`]);
+    assert.equal(back.exitCode, 0, back.stderr);
+  });
+
   void it('bdg stop cancels the pending navigation and returns within seconds', async () => {
     const click = await bdg('dom', ['click', '#orders']);
     assert.equal(click.exitCode, 0, `${click.stdout}\n${click.stderr}`);
