@@ -262,7 +262,7 @@ jq -s '{traceEvents: [.[] | select(.method == "Tracing.dataCollected") | .params
 # Mock a request with a 500 (listen BEFORE the request starts)
 bdg cdp Fetch.enable --params '{"patterns":[{"urlPattern":"*api/orders*"}]}' --listen Fetch.requestPaused
 bdg dom click "#load"
-ID=$(bdg cdp --events Fetch.requestPaused --wait 5 --json | jq -r '.data.events[0].params.requestId')
+ID=$(bdg cdp --events Fetch.requestPaused --wait 5000 --json | jq -r '.data.events[0].params.requestId')
 bdg cdp Fetch.fulfillRequest --params "{\"requestId\":\"$ID\",\"responseCode\":500,\"body\":\"$(printf '{"error":"boom"}' | base64)\"}"
 bdg cdp Fetch.disable && bdg cdp --unlisten          # Fetch.disable releases paused requests
 
@@ -271,7 +271,7 @@ bdg cdp Network.setBlockedURLs --params '{"urls":["*analytics*"]}'
 bdg cdp Network.emulateNetworkConditions --params '{"offline":false,"latency":400,"downloadThroughput":50000,"uploadThroughput":20000}'
 ```
 
-`--collect` ends at `--until` or `--timeout` (default 10 s, max 120); a timeout returns `complete: false` with the events so far (exit 0). While `Fetch.enable` is on, matching requests stay paused: a timed-out `page reload` or action says so.
+`--collect` ends at `--until` or `--timeout` (milliseconds since 1.0: default 10000, 100 to 120000; `--events --wait <ms>` too); a timeout returns `complete: false` with the events so far (exit 0). While `Fetch.enable` is on, matching requests stay paused: a timed-out `page reload` or action says so.
 
 ## Screenshots (Visual Proof Only)
 
