@@ -5,9 +5,11 @@
 import * as assert from 'node:assert/strict';
 import { afterEach, describe, it, mock } from 'node:test';
 
+import type { CDPConnection } from '@/connection/cdp.js';
 import { SessionController } from '@/daemon/SessionController.js';
 import { Session, StartCancelledError } from '@/daemon/session/Session.js';
 import { IPCErrorCode, type StartSessionRequest } from '@/ipc/index.js';
+import { trackPendingDocument } from '@/runtime/page/pendingDocument.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 const request: StartSessionRequest = {
@@ -188,27 +190,36 @@ void describe('SessionController while a start is in progress', () => {
 });
 
 void describe('SessionController.command timeouts', () => {
+  let stopTracking: (() => void) | undefined;
+
   afterEach(() => {
+    stopTracking?.();
+    stopTracking = undefined;
     mock.timers.reset();
     mock.restoreAll();
   });
 
+  /** A command's failure fields */
+  type CommandResponse = { status?: string; error?: string; exitCode?: number; suggestion?: string };
+
   /**
-   * Start a fake session whose commands never answer, then time one out.
+   * Start a controller on a fake session.
    *
+   * @param execute - The session's command handler
    * @param fetchInterception - Whether Fetch interception is on
-   * @returns The command's response
+   * @returns The controller, with `setTimeout` mocked from here on
    */
-  async function timedOutReload(
-    fetchInterception: boolean
-  ): Promise<{ error?: string; exitCode?: number; suggestion?: string }> {
+  async function startController(
+    execute: () => Promise<unknown>,
+    fetchInterception = false
+  ): Promise<SessionController> {
     const session = {
       launch: () => Promise.resolve(),
       stop: () => Promise.resolve(),
       stopRequested: () => false,
       info: () => ({ chromePid: 1234, port: 9222, targetUrl: request.url }),
       metadata: () => ({ startTime: Date.now(), bdgPid: process.pid, port: 9222 }),
-      execute: () => new Promise(() => undefined),
+      execute,
       fetchInterceptionEnabled: () => fetchInterception,
       takeTabMoveNotice: () => undefined,
     };
@@ -216,29 +227,129 @@ void describe('SessionController.command timeouts', () => {
     const controller = new SessionController(Date.now(), '/tmp/test.sock', () => undefined);
     await controller.startSession(request);
     mock.timers.enable({ apis: ['setTimeout'] });
-    const response = controller.command({
+    return controller;
+  }
+
+  /**
+   * Follow the main frame's document requests on a fake page connection.
+   *
+   * @returns Emits a CDP event on the fake connection
+   */
+  async function trackFakeDocuments(): Promise<(event: string, params: unknown) => void> {
+    const handlers = new Map<string, (params: unknown) => void>();
+    const cdp = {
+      on: (event: string, handler: (params: unknown) => void) => {
+        handlers.set(event, handler);
+        return () => handlers.delete(event);
+      },
+      send: (method: string) =>
+        Promise.resolve(
+          method === 'Target.getTargetInfo'
+            ? { targetInfo: { targetId: 'main', type: 'page', url: 'http://127.0.0.1/' } }
+            : {}
+        ),
+    };
+    stopTracking = await trackPendingDocument(cdp as unknown as CDPConnection);
+    return (event, params) => handlers.get(event)?.(params);
+  }
+
+  /**
+   * Start the main frame's navigation to `/orders`, which gets no answer.
+   *
+   * @param emit - Emits on the fake page connection
+   */
+  function startPendingNavigation(emit: (event: string, params: unknown) => void): void {
+    emit('Network.requestWillBeSent', {
+      requestId: 'orders',
+      type: 'Document',
+      frameId: 'main',
+      request: { url: 'http://127.0.0.1/orders' },
+    });
+  }
+
+  /**
+   * Send a reload request.
+   *
+   * @param controller - Controller
+   * @returns The response
+   */
+  function reload(controller: SessionController): Promise<CommandResponse> {
+    return controller.command({
       type: 'page_navigate_request',
       sessionId: 's',
       action: 'reload',
-    } as never);
-    mock.timers.tick(30_000);
-    return (await response) as { error?: string; exitCode?: number; suggestion?: string };
+    } as never) as Promise<CommandResponse>;
+  }
+
+  /**
+   * Let resolved promises run their callbacks.
+   */
+  async function flush(): Promise<void> {
+    for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve));
   }
 
   void it('names Fetch interception when a command times out while it is on', async () => {
-    const response = await timedOutReload(true);
-    assert.match(
-      response.error ?? '',
-      /^Command timeout \(30s\): Fetch interception may be enabled/
-    );
-    assert.equal(response.exitCode, EXIT_CODES.CDP_TIMEOUT);
-    assert.match(response.suggestion ?? '', /bdg cdp Fetch\.disable/);
+    const controller = await startController(() => new Promise(() => undefined), true);
+    const response = reload(controller);
+    mock.timers.tick(30_000);
+    const result = await response;
+    assert.match(result.error ?? '', /^Command timeout \(30s\): Fetch interception may be enabled/);
+    assert.equal(result.exitCode, EXIT_CODES.CDP_TIMEOUT);
+    assert.match(result.suggestion ?? '', /bdg cdp Fetch\.disable/);
   });
 
-  void it('leaves other timeouts as they were', async () => {
-    const response = await timedOutReload(false);
-    assert.equal(response.error, 'Command timeout (30s)');
-    assert.equal(response.suggestion, undefined);
+  void it('exits 102 with a suggestion when a command times out (#946)', async () => {
+    const controller = await startController(() => new Promise(() => undefined));
+    const response = reload(controller);
+    mock.timers.tick(30_000);
+    const result = await response;
+    assert.equal(result.error, 'Command timeout (30s)');
+    assert.equal(result.exitCode, EXIT_CODES.CDP_TIMEOUT);
+    assert.ok(result.suggestion, 'a suggestion');
+  });
+
+  void it('names a navigation that started during the command when it times out (#946)', async () => {
+    const emit = await trackFakeDocuments();
+    const controller = await startController(() => new Promise(() => undefined));
+    const response = reload(controller);
+    startPendingNavigation(emit);
+    mock.timers.tick(30_000);
+    const result = await response;
+    assert.match(result.error ?? '', /still waiting for the server to respond to .*\/orders/);
+    assert.equal(result.exitCode, EXIT_CODES.CDP_TIMEOUT);
+    assert.ok(result.suggestion, 'a suggestion');
+  });
+
+  void it('fails fast on a navigation already pending when the command starts (#946)', async () => {
+    const emit = await trackFakeDocuments();
+    startPendingNavigation(emit);
+    const controller = await startController(() => new Promise(() => undefined));
+    let result: CommandResponse | undefined;
+    const response = reload(controller).then((r) => (result = r));
+    mock.timers.tick(10_000);
+    await flush();
+    assert.ok(result, 'failed before the 30 s command timeout');
+    assert.match(result.error ?? '', /still waiting for the server to respond to .*\/orders/);
+    assert.equal(result.exitCode, EXIT_CODES.CDP_TIMEOUT);
+    mock.timers.tick(30_000);
+    await response;
+  });
+
+  void it('lets the command run when the pending navigation answers soon (#946)', async () => {
+    const emit = await trackFakeDocuments();
+    startPendingNavigation(emit);
+    let answer = (): void => undefined;
+    const controller = await startController(
+      () => new Promise<unknown>((resolve) => (answer = () => resolve({ reloaded: true })))
+    );
+    const response = reload(controller);
+    mock.timers.tick(2_000);
+    emit('Network.responseReceived', { requestId: 'orders' });
+    mock.timers.tick(10_000);
+    await flush();
+    answer();
+    const result = await response;
+    assert.equal(result.status, 'ok', JSON.stringify(result));
   });
 });
 
