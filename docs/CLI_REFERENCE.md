@@ -6,6 +6,50 @@ Complete command reference for **bdg** (Browser Debugger CLI).
 
 **`--json` right after an option that takes a value** (`bdg network list --last --json`) is a usage error, not the option's value: exit 81 with one error envelope under `--json` (`Option --last needs a value, but --json follows it`, suggestion: give the option a value, or write the long form `--last=--json` to use the text as the value; a short flag has no `=` form). It applies to every command and to `bdg <url>`, before anything starts. `--json` inside a value (`--params '{"--json":1}'`), attached with `=`, or after a literal `--` is a value.
 
+## Stability policy
+
+bdg follows [Semantic Versioning](https://semver.org) from 1.0.0. This section says what "breaking" means for a CLI whose main users are scripts and coding agents.
+
+### Stable: changing it needs a major version
+
+- **Command and flag names**, including short forms, and the arguments they take. A flag's unit (`--timeout <ms>`, `--stop-after <seconds>`) and its default value count as part of its name.
+- **Exit codes**: the codes listed under `exitCodes` in `bdg --help --json` (also in the bdg skill's [exit code table](../.claude/skills/bdg/SKILL.md)) and what each one means. Which code a given situation gets is stable where this reference names it (e.g. an element a selector does not match exits 83).
+- **The `--json` envelope**: `version`, `success`, `data`, `error`, `exitCode`, `suggestion`, `warnings` (present only when non-empty), and the `--ndjson` record shapes (`type`, and the fields documented for each type).
+- **The shape of `bdg --help --json`**: its top-level keys and the fields of commands, options and exit codes.
+- **Documented `data.*` fields**: a field this reference documents keeps its name, type and meaning. It may become absent only in the situations the reference already describes as "absent when …".
+- **Public environment variables** (table below).
+
+### May change in a minor version
+
+- **Human-readable output**: wording, layout, symbols, colours, line order. Parse `--json`, not the text.
+- **Suggestions and hints**: the text of `suggestion` and of hint lines.
+- **Verdict heuristics**: when bdg judges an action as failed or changed, e.g. when `dom fill` exits 90 for a value the page did not keep, what counts as a message under `New text:` / `Shown:`, when a page counts as still changing. The exit codes and fields that report a verdict are stable; the rules that reach it are improved in minor versions.
+- **New `data.*` fields**, new commands, new flags, new `--ndjson` record types, new exit codes for situations that had none. Read JSON leniently: ignore fields you do not know.
+- **Undocumented fields** (present in output, absent from this reference).
+- **The minimum Node.js version** (`engines` in `package.json`), raised only to a Node release that is in maintenance or active LTS.
+- **Internal and test environment variables** (table below), file names and formats inside the session directory (`~/.bdg`), and the daemon's IPC protocol.
+
+### Renaming and removing
+
+A command, flag or documented field is not renamed or removed in a minor. When a minor introduces a better name, the old spelling keeps working with a warning (a `Warning:` line on stderr, an entry in `warnings` in `--json`) until the next major, where it exits 81 naming its replacement. The rename table (`src/utils/renames.ts`, documented under [Renamed and deprecated names](#renamed-and-deprecated-names)) drives both. Coming from 0.x: [Migrating from 0.x to 1.0](#migrating-from-0x-to-10).
+
+### Environment variable classes
+
+| Variable | Kind | What it does |
+|---|---|---|
+| `BDG_SESSION` | public | Session name, same as `--session` |
+| `BDG_SESSION_DIR` | public | Session directory instead of `~/.bdg` |
+| `BDG_CHROME_FLAGS` | public | Extra Chrome flags for a launched Chrome |
+| `BDG_NO_SANDBOX` | public | `1`/`true`/`yes`: launch Chrome without its sandbox (restricted containers) |
+| `BDG_IPC_TIMEOUT_MS` | public | CLI ↔ daemon round-trip limit (default 45000) |
+| `BDG_DEBUG` | public | `1`: debug lines on stderr (their content is not stable) |
+| `CHROME_PATH` | public | Browser binary bdg launches |
+| `BDG_ATTACH_REQUIRE_WS_URL` | internal | Makes `bdg attach` refuse to read a running Chrome's `DevToolsActivePort` (test and agent harnesses) |
+| `BDG_PORT_REGISTRY_DIR` | internal | Directory of the port claims of parallel sessions |
+| `BDG_TEST_*` | test | Test-suite hooks (`BDG_TEST_SESSION_PARENT`, `BDG_TEST_HOME_DIR`, `BDG_TEST_STARTUP_GATE`, `BDG_TEST_EVAL_*`, `BDG_TEST_PAGE_READY_MS`, …); never set them outside bdg's tests |
+
+How each public variable behaves is under [Environment Variables](#environment-variables).
+
 ## Session Lifecycle
 
 ### Start a session
@@ -1161,6 +1205,17 @@ Scroll output reports the viewport without scrollbars (`Viewport: 1905×993`) an
 - A bare capital or shifted symbol (`A`, `?`, `_`) implies Shift; shortcuts take their modifiers from `--modifiers`: `bdg dom press-key '#t' / --modifiers ctrl`
 - An unknown name (exit 81) suggests only the closest names (`Entr` suggests `Enter`, `Spce` suggests `Space`); short or distant input lists the key groups, and an empty name says `Key name required`
 
+#### DOM action result fields
+
+Fields of the `--json` `data` of the DOM actions that the sections above do not name. A field marked `?` is absent when it does not apply; a field of the form `x?: true` (`settled: false`, `effect: "none"`, `fetchInterception`) is never present with another value, so absent means not set.
+
+- `fill`: `elementType` (tag name of the field; ` (via label)` is added when a `<label>` was filled through its control, and ` in the shadow root of <host>` when the field sits in a shadow root), `inputType` (its `type` attribute, `null` for a field without one), `checked` (checkbox and radio state after the fill), `fileInput: true` (a file input, filled through CDP), `matchCount` (elements the selector matched)
+- `click` and `hover`: `elementType`, `matchCount`, `action` (`click`, `double`, `right` or `hover`), `method` (`mouse` for real mouse events, `dom` for the `click()` fallback), `scrolledBy` (absent when the page did not move)
+- `hover --off`: `{ "pointer": "off" }` (the mouse left the page); there is no element, so no other field
+- `press-key`: `elementType` (the tag name; ` (via label)` is added when the key went to the control a label points to, and ` in the shadow root of <host>` when the element sits in a shadow root), `matchCount`
+- `scroll`: `scrollType` (`element`, `position` or `offset`), `scrolledTo` (`{ x, y }`, the final position), `scrolledBy` (`{ x, y }`; only in `position` and `offset` mode), `viewportSize` and `pageSize` (`{ width, height }`, the numbers `dom layout` gives), `matchCount` (element mode)
+- `click` and `submit`: `effect: "none"` when nothing was seen to change within about half a second (no navigation, message, request or DOM change); the no-effect verdict, absent otherwise and never reported for `hover`, `--right` clicks, `--no-wait`, `fill`, `press-key` or `scroll`
+
 ### Screen Capture
 
 Capture screenshots of the current page. By default, images are auto-resized to fit within Claude Vision's optimal token budget (~1,600 tokens, 1568px max edge).
@@ -1888,7 +1943,7 @@ bdg localhost:3000 --max-body-size 10           # Set max response body size (MB
 
 Things bdg does without being asked, and how to change them:
 
-- **Tracking and ad domains are not recorded**: requests to analytics, tag-manager, ad and social widget domains (Google Analytics/Tag Manager/Ads, DoubleClick, ad exchanges, Clarity, Bing, Facebook, TikTok, LinkedIn, Twitter, comScore, Nielsen, Chartbeat, Permutive, Optimizely, Adobe Analytics and similar) are dropped. Use `--all` to record them
+- **Tracking and ad domains are not recorded**: requests to analytics, tag-manager, ad and social widget domains (Google Analytics/Tag Manager/Ads, DoubleClick, ad exchanges, Clarity, Bing, Facebook, TikTok, LinkedIn, Twitter, comScore, Nielsen, Chartbeat, Permutive, Optimizely, Adobe Analytics and similar) are dropped. Use `--capture-all` to record them
 - **Large or binary response bodies are not fetched**: images, fonts, media and stylesheets get a placeholder body, as do bodies over `--max-body-size` (5 MB by default). `--capture-all` fetches them (within the size limit); HAR exports mark skipped bodies with a comment
 - **The newest 10000 requests and 100 MB of request and response bodies are kept**: past 10000 finished requests the oldest are dropped (requests still in flight never are), and past 100 MB of stored bodies (request post data and response bodies together) the oldest bodies are replaced by a placeholder while their requests stay (`bdg network details <id>` then has `bodyNotCaptured: "evicted: total body budget (…)"` for a response body, `requestBodyNotCaptured` for a request body; the HAR gives the reason as the `comment` of `content` or `postData`). `network list` (`--follow` once, when it first happens), `peek` and `status` say so (`⚠ 2000 older network requests were dropped: bdg keeps the newest 10000`); JSON has the counts: `dropped` and `bodiesEvicted` (`network list`), `totals.networkDropped` and `totals.networkBodiesEvicted` (`peek`), `activity.networkRequestsDropped` and `activity.networkBodiesEvicted` (`status`); the body counts include request and response bodies
 - **CDP messages up to about 256 MiB are read**: bdg accepts a message up to Node's longest string (about 512 MiB), but Chrome itself does not send one of 256 MiB or more (a `eval` result that large never arrives: the command exits 102 after about 15 s, or 81 with `--full`; the session keeps running). Large results are truncated in the output as usual
@@ -1900,12 +1955,19 @@ Things bdg does without being asked, and how to change them:
 
 ## Environment Variables
 
+Which variables are public, internal or test-only, and what that promises, is in the [stability policy](#environment-variable-classes). The public ones:
+
 - **`BDG_CHROME_FLAGS`**: extra Chrome flags for `bdg <url>`, space-separated (`BDG_CHROME_FLAGS="--ignore-certificate-errors --allow-insecure-localhost"`); `--chrome-flags` is added after them. There is no quoting, so a flag value cannot contain a space
 - **`BDG_NO_SANDBOX`**: `1`, `true` or `yes` (any case) starts Chrome with `--no-sandbox` where its sandbox cannot work (Docker and root on Linux get it without the variable)
 - **`BDG_IPC_TIMEOUT_MS`**: how long a command waits for the session, in milliseconds (default 45000; quick requests such as `status` wait at most 10000). A whole number from 1 to 2147483647; anything else (`abc`, `0`, `-5`, `1.5`, a larger number) fails the command with exit 81 before it contacts the session. An empty value counts as unset
-- **`BDG_ATTACH_REQUIRE_WS_URL`**: test-only, for automated agents (not in `--help`). Set to anything but empty, `0`, `false`, `no` or `off`, `bdg attach` and `bdg attach <tab>` without `--chrome-ws-url` and `--user-data-dir` exit 81 before reading any `DevToolsActivePort` file, so a test never touches your everyday Chrome; with `--chrome-ws-url` or `--user-data-dir` attach works as usual
+- **`BDG_DEBUG`**: `1` prints debug lines on stderr, as `--debug` does; the lines themselves are not a stable format
+- **`CHROME_PATH`**: the browser binary bdg launches (see `bdg <url>` above)
 - **`BDG_SESSION`**, **`BDG_SESSION_DIR`**: session name and base directory (see Sessions above)
 - **`NODE_COMPILE_CACHE`**, **`NODE_DISABLE_COMPILE_CACHE`**: bdg turns on Node's compile cache (compiled code in `node-compile-cache` under the OS temp dir, 8 to 10 ms faster per command). `NODE_COMPILE_CACHE=<dir>` moves it; `NODE_DISABLE_COMPILE_CACHE=1` turns it off. An unwritable cache directory is ignored and changes no output
+
+Internal, not part of the stable contract:
+
+- **`BDG_ATTACH_REQUIRE_WS_URL`**: test-only, for automated agents (not in `--help`). Set to anything but empty, `0`, `false`, `no` or `off`, `bdg attach` and `bdg attach <tab>` without `--chrome-ws-url` and `--user-data-dir` exit 81 before reading any `DevToolsActivePort` file, so a test never touches your everyday Chrome; with `--chrome-ws-url` or `--user-data-dir` attach works as usual
 
 A request the running session does not know (it was started by an older bdg than the command or the type is mistyped) fails with exit 90 and the advice to run `bdg stop`, then `bdg <url>` again.
 
@@ -2032,6 +2094,65 @@ subcommand (`bdg page --json`) is exit 81 with `page needs a subcommand: info, n
 `command` and `exitCodes`. Help JSON is printed without indentation.
 
 See [`src/types.ts`](../src/types.ts) for complete type definitions.
+
+## Migrating from 0.x to 1.0
+
+Every breaking change of 1.0.0 as `old → new`. The stability policy above applies from 1.0.0 on.
+
+### Removed spellings
+
+Each exits 81 (`INVALID_ARGUMENTS`) in human and `--json` mode before anything runs, naming the replacement; an old option that took a value consumes it, so the error is about the rename. In 0.x each worked with a warning, except the last two (`--compact`, `--remove-output`), which were already refused.
+
+- `bdg tail` → `bdg peek --follow`
+- `bdg details network <id>` / `bdg details console <n>` → `bdg network details <id>` / `bdg console details <n>` (the error names both)
+- `bdg network document` → `bdg network headers`
+- `bdg dom eval` → `bdg eval`
+- `bdg dom pressKey` → `bdg dom press-key`
+- `bdg network getCookies` → `bdg network cookies`
+- `bdg cleanup --aggressive` → `bdg cleanup --force`
+- `bdg cleanup -f` → `bdg cleanup --force` (`--force` stays; `-f` means `--follow` everywhere else)
+- `bdg <url> -t` / `--timeout <s>` → `bdg <url> --stop-after <seconds>` (same unit)
+- `bdg attach --timeout <s>` → `bdg attach --stop-after <seconds>` (same unit)
+- `bdg dom audit --level` → `bdg dom audit --wcag <level>`
+- `bdg dom get --nth` → `bdg dom get --index <n>`
+- `bdg <url> -a` / `--all` → `bdg <url> --capture-all` (`--all` of the `dom` commands is unchanged)
+- `bdg console -H` / `--history` → `bdg console --page all`
+- `bdg stop --kill-chrome` → `bdg stop` (drop the flag: stop already closes the Chrome bdg launched and only detaches from an attached one)
+- `bdg <url> --compact` → dropped (it had no effect; already refused in 0.x)
+- `bdg cleanup --remove-output` → dropped (bdg no longer writes `session.json`; already refused in 0.x)
+
+### Units
+
+- `bdg cdp <Method> --collect/--until … --timeout <seconds>` → `--timeout <ms>` (whole milliseconds, 100 to 120000, default 10000; decimals such as `2.5` are no longer accepted)
+- `bdg cdp --events … --wait <seconds>` → `--wait <ms>` (whole milliseconds, 100 to 120000, or 0 for no wait)
+- Old seconds values 100 to 120 are now read as milliseconds (the top of the old range: multiply old values by 1000); values below 100 exit 81, and the suggestion names the converted value (`--timeout 5` → `Use --timeout 5000`)
+- `--stop-after <seconds>` stays in seconds; every other `--timeout` and `--wait` of bdg is in milliseconds (`dom wait`, `dom submit`, as before)
+
+### JSON shapes
+
+- `--json` envelope `warning` (string) → removed; the text is in `warnings` only (old-spelling warnings first, then the command's own). `warning` fields inside `data` stay
+- `dom query --json` `data.nodes[].nodeId` → removed; use `backendNodeId` (same value)
+- `dom get --raw --json` `data.nodes[].nodeId` → removed; use `backendNodeId` (same value)
+- `cleanup --json` `data.cleaned.output` → removed (it was always `false`)
+- `console --follow --json` one envelope per batch → one record per line, the `--ndjson` shape (`{"type":"page","navigationId":N,"url":"…"}`, `{"type":"message","level":…,…}`); `--json-batches` keeps the old envelopes until 1.1, with a `warnings` entry in each
+- `dom audit --json` `data.contrast.level` → `data.contrast.wcag` (`AA` / `AAA`, as `--wcag`)
+
+### Exit codes
+
+- the daemon's command timeout (`Command timeout (30s)`): exit 81 → 102 (`CDP_TIMEOUT`), now with a suggestion
+- a command held by a navigation the server never answers (`dom click`, `hover`, `fill`, `press-key`, … after a click, submit or script started it): `Command timeout (30s)`, exit 81, after 30 s → `The page is not answering: it is still waiting for the server to respond to <url>`, exit 102, after about 5 s; `bdg cdp`, `dom wait`, `page navigate` and `page reload` are not failed this way
+- `bdg stop` during such a navigation: about 31 s → under 1 s (the load is cancelled first), exit 0 as before
+- `bdg page navigate` / `bdg page reload` after a held command: cancel the pending navigation and run (before: 30 s, exit 110)
+
+### Action field names
+
+`--json` of the DOM actions (`fill`, `click`, `hover`, `press-key`, `submit`, `scroll`, and `dom wait` for the last row); human output is unchanged except for the `dom submit` rows below.
+
+- `triggeredRequestsOmitted` → `moreTriggeredRequests` (every action)
+- `submitBlockedOmitted` → `moreSubmitBlocked` (`click`, `press-key`)
+- `dom submit` `data.waitTimeMs` → `data.elapsedMs` (the name `dom wait` uses)
+- `dom submit` `data.navigationOccurred` → removed; `data.navigation` carries the navigation (absent when the page did not navigate). Human output: a same-document submit no longer prints `Navigation: no`, and `Navigation: no` now appears on every submit without `navigation`
+- `dom wait` timeout error envelope `pending` (array of requests) → `pendingRequests` (next to `pendingCount`); `data.loading.pending` of start, `page navigate`, `status` and `peek` is unchanged
 
 ## Related Documentation
 
