@@ -485,22 +485,17 @@ export class SessionController {
    */
   private describeFailure(error: unknown): ReturnType<typeof describeCommandError> {
     if (!(error instanceof TimeoutError)) return describeCommandError(error);
-    if (this.session?.fetchInterceptionEnabled()) {
-      const cause = fetchInterceptionTimeoutCause();
-      return {
-        error: `${error.message}: ${cause.message}`,
-        exitCode: EXIT_CODES.CDP_TIMEOUT,
-        suggestion: cause.suggestion,
-      };
-    }
+    const cause = this.session?.fetchInterceptionEnabled()
+      ? fetchInterceptionTimeoutCause()
+      : undefined;
     const pendingUrl = pendingDocumentUrl();
-    if (pendingUrl !== undefined) {
+    if (!cause && pendingUrl !== undefined) {
       return describeCommandError(navigationPendingCommandError(pendingUrl));
     }
     return {
-      error: error.message,
+      error: cause ? `${error.message}: ${cause.message}` : error.message,
       exitCode: EXIT_CODES.CDP_TIMEOUT,
-      suggestion: commandTimeoutSuggestion(),
+      suggestion: cause?.suggestion ?? commandTimeoutSuggestion(),
     };
   }
 
