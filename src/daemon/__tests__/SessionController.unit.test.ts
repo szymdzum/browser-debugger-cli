@@ -200,7 +200,12 @@ void describe('SessionController.command timeouts', () => {
   });
 
   /** A command's failure fields */
-  type CommandResponse = { status?: string; error?: string; exitCode?: number; suggestion?: string };
+  type CommandResponse = {
+    status?: string;
+    error?: string;
+    exitCode?: number;
+    suggestion?: string;
+  };
 
   /**
    * Start a controller on a fake session.
