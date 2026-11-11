@@ -98,3 +98,27 @@ export function withLoadingHint(
   if (readyState === undefined || readyState === 'complete') return suggestion;
   return joinLines(pageStillLoadingHint(readyState, selector), suggestion || undefined);
 }
+
+/**
+ * The page did not answer because a navigation is still waiting for the
+ * server (Chrome holds commands for the page until the new document arrives).
+ * Used by `eval` and by every command the daemon gives up on (#946).
+ *
+ * @param url - URL being loaded
+ */
+export function navigationPendingError(url: string): ErrorWithSuggestion {
+  return {
+    message: `The page is not answering: it is still waiting for the server to respond to ${url}`,
+    suggestion: 'Wait for the page to load, or load another one: bdg page navigate <url>',
+  };
+}
+
+/**
+ * What to do after a session command got no answer within the daemon's
+ * per-command timeout (`Command timeout (30s)`).
+ *
+ * @returns Suggestion
+ */
+export function commandTimeoutSuggestion(): string {
+  return 'Chrome did not answer in time: check the page with bdg status, then retry, or reload it: bdg page reload';
+}

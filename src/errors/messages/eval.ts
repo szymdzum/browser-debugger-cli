@@ -48,19 +48,6 @@ export function pageBusyError(
 }
 
 /**
- * The page did not answer because a navigation is still waiting for the
- * server (Chrome holds commands for the page until the new document arrives).
- *
- * @param url - URL being loaded
- */
-export function navigationPendingError(url: string): ErrorWithSuggestion {
-  return {
-    message: `The page is not answering: it is still waiting for the server to respond to ${url}`,
-    suggestion: 'Wait for the page to load, or load another one: bdg page navigate <url>',
-  };
-}
-
-/**
  * `eval` given an empty script (often a shell variable that was not set).
  */
 export function emptyScriptError(): ErrorWithSuggestion {

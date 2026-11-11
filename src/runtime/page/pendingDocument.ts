@@ -28,14 +28,60 @@ interface DocumentRequest {
 /** URL of each main-frame document request still waiting for a response, by request id */
 let pending = new Map<string, string>();
 
+/** How long to wait for Chrome to answer `Page.stopLoading` (what follows runs anyway) */
+const STOP_LOADING_REPLY_MS = 500;
+
+/** A main-frame document request still waiting for a response */
+export interface PendingDocument {
+  requestId: string;
+  /** The URL as Chrome reports it */
+  url: string;
+}
+
 /**
- * The URL the main frame's navigation still waits for, if any: the latest
- * hop when the request was redirected.
+ * The document request the main frame's navigation still waits for, if
+ * any: the latest one, and its latest hop when it was redirected.
+ *
+ * @returns The request, or undefined when no document request waits
+ */
+export function pendingDocument(): PendingDocument | undefined {
+  const latest = [...pending.entries()].at(-1);
+  return latest && { requestId: latest[0], url: latest[1] };
+}
+
+/**
+ * The URL the main frame's navigation still waits for, if any.
  *
  * @returns The URL as Chrome reports it, or undefined when no document request waits
  */
 export function pendingDocumentUrl(): string | undefined {
-  return [...pending.values()].at(-1);
+  return pendingDocument()?.url;
+}
+
+/**
+ * Cancel the page's navigation with `Page.stopLoading`, waiting at most
+ * {@link STOP_LOADING_REPLY_MS} for Chrome's answer. Never throws.
+ *
+ * @param cdp - CDP connection of the page
+ */
+export async function stopLoading(cdp: CDPConnection): Promise<void> {
+  await cdp
+    .send('Page.stopLoading', {}, undefined, AbortSignal.timeout(STOP_LOADING_REPLY_MS))
+    .catch((error: unknown) => log.debug(`Page.stopLoading failed: ${getErrorMessage(error)}`));
+}
+
+/**
+ * Cancel the navigation the main frame waits for, whoever started it (a
+ * link click, a form, a script, `bdg page navigate`): while it is pending,
+ * Chrome holds the page's commands, so a teardown's would wait for the
+ * server too (#946). Does nothing when no document request waits.
+ *
+ * @param cdp - CDP connection of the page
+ */
+export async function cancelPendingDocument(cdp: CDPConnection): Promise<void> {
+  if (pendingDocument() === undefined) return;
+  log.debug('Cancelling the pending navigation');
+  await stopLoading(cdp);
 }
 
 /**

@@ -21,6 +21,8 @@ export * from './messages/debug.js';
 export {
   NO_MATCH_PREFIX,
   NO_MATCH_SUFFIX,
+  commandTimeoutSuggestion,
+  navigationPendingError,
   pageStillLoadingHint,
   withLoadingHint,
 } from './messages/shared.js';
