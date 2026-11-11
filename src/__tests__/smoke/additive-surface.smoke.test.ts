@@ -81,7 +81,7 @@ function flatten(node: HelpNode, parent = ''): Array<HelpNode & { path: string }
 }
 
 /**
- * Assert every node has a `backendNodeId` equal to its `nodeId`.
+ * Assert every node has a numeric `backendNodeId` and no `nodeId` (removed in 1.0, #844).
  *
  * @param nodes - Node objects of a `--json` result
  * @param label - What was run
@@ -89,12 +89,12 @@ function flatten(node: HelpNode, parent = ''): Array<HelpNode & { path: string }
 function assertBackendIds(nodes: Idd[], label: string): void {
   assert.ok(nodes.length > 0, `${label}: no nodes`);
   for (const node of nodes) {
-    assert.equal(typeof node['nodeId'], 'number', `${label}: nodeId`);
-    assert.equal(node['backendNodeId'], node['nodeId'], `${label}: backendNodeId`);
+    assert.equal(typeof node['backendNodeId'], 'number', `${label}: backendNodeId`);
+    assert.equal('nodeId' in node, false, `${label}: no nodeId`);
   }
 }
 
-void describe('backendNodeId in dom query and dom get (#465 D14)', () => {
+void describe('backendNodeId, without nodeId, in dom query and dom get (#465 D14, #844)', () => {
   let fixture: FixtureServer;
 
   before(async () => {
@@ -109,13 +109,13 @@ void describe('backendNodeId in dom query and dom get (#465 D14)', () => {
     await fixture.close();
   });
 
-  void it('is next to nodeId on every dom query match, frame and shadow root included', async () => {
+  void it('is on every dom query match, frame and shadow root included', async () => {
     const data = await dataOf<{ nodes: Idd[] }>(['dom', 'query', '.t']);
     assert.equal(data.nodes.length, 4);
     assertBackendIds(data.nodes, 'dom query .t');
   });
 
-  void it('is next to nodeId on dom get --raw, single, --all and by index', async () => {
+  void it('is on dom get --raw, single, --all and by index', async () => {
     for (const [args, count] of [
       [['dom', 'get', '.t', '--raw'], 1],
       [['dom', 'get', '.t', '--raw', '--all'], 4],
@@ -132,7 +132,7 @@ void describe('backendNodeId in dom query and dom get (#465 D14)', () => {
     const [match] = (await dataOf<{ nodes: Idd[] }>(['dom', 'query', '.t'])).nodes;
     for (const target of ['.t', '0']) {
       const { node } = await dataOf<{ node: Idd }>(['dom', 'get', target]);
-      assert.equal(node['backendDOMNodeId'], match?.['nodeId'], `dom get ${target}`);
+      assert.equal(node['backendDOMNodeId'], match?.['backendNodeId'], `dom get ${target}`);
       assert.equal('backendNodeId' in node, false, `dom get ${target}: no backendNodeId`);
     }
   });
