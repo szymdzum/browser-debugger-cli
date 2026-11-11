@@ -11,9 +11,14 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import { CommandError } from '@/errors/index.js';
+import { navigationPendingError } from '@/errors/messages.js';
+import type { PageAction } from '@/ipc/protocol/commands.js';
 import { mainFrameId } from '@/runtime/page/navigation.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { displayUrl } from '@/utils/displayUrl.js';
 import { getErrorMessage } from '@/utils/errors.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 const log = createLogger('navigation');
 
@@ -28,14 +33,72 @@ interface DocumentRequest {
 /** URL of each main-frame document request still waiting for a response, by request id */
 let pending = new Map<string, string>();
 
+/** How long to wait for Chrome to answer `Page.stopLoading` (what follows runs anyway) */
+const STOP_LOADING_REPLY_MS = 500;
+
+/** A main-frame document request still waiting for a response */
+export interface PendingDocument {
+  requestId: string;
+  /** The URL as Chrome reports it */
+  url: string;
+}
+
 /**
- * The URL the main frame's navigation still waits for, if any: the latest
- * hop when the request was redirected.
+ * The document request the main frame's navigation still waits for, if
+ * any: the latest one, and its latest hop when it was redirected.
+ *
+ * @returns The request, or undefined when no document request waits
+ */
+export function pendingDocument(): PendingDocument | undefined {
+  const latest = [...pending.entries()].at(-1);
+  return latest && { requestId: latest[0], url: latest[1] };
+}
+
+/**
+ * The URL the main frame's navigation still waits for, if any.
  *
  * @returns The URL as Chrome reports it, or undefined when no document request waits
  */
 export function pendingDocumentUrl(): string | undefined {
-  return [...pending.values()].at(-1);
+  return pendingDocument()?.url;
+}
+
+/**
+ * The error for a command the page cannot answer because a navigation waits
+ * for the server.
+ *
+ * @param url - URL the navigation waits for, as Chrome reports it
+ * @returns Error with exit 102 and the URL as other output shows it
+ */
+export function navigationPendingCommandError(url: string): CommandError {
+  const err = navigationPendingError(displayUrl(url));
+  return new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.CDP_TIMEOUT);
+}
+
+/**
+ * Cancel the page's navigation with `Page.stopLoading`, waiting at most
+ * {@link STOP_LOADING_REPLY_MS} for Chrome's answer. Never throws.
+ *
+ * @param cdp - CDP connection of the page
+ */
+export async function stopLoading(cdp: CDPConnection): Promise<void> {
+  await cdp
+    .send('Page.stopLoading', {}, undefined, AbortSignal.timeout(STOP_LOADING_REPLY_MS))
+    .catch((error: unknown) => log.debug(`Page.stopLoading failed: ${getErrorMessage(error)}`));
+}
+
+/**
+ * Cancel the navigation the main frame waits for, whoever started it (a
+ * link click, a form, a script, `bdg page navigate`): while it is pending,
+ * Chrome holds the page's commands, so a teardown's would wait for the
+ * server too (#946). Does nothing when no document request waits.
+ *
+ * @param cdp - CDP connection of the page
+ */
+export async function cancelPendingDocument(cdp: CDPConnection): Promise<void> {
+  if (pendingDocument() === undefined) return;
+  log.debug('Cancelling the pending navigation');
+  await stopLoading(cdp);
 }
 
 /**
@@ -67,4 +130,16 @@ export async function trackPendingDocument(cdp: CDPConnection): Promise<() => vo
     own.clear();
     if (pending === own) pending = new Map();
   };
+}
+
+/**
+ * Whether a `page` action replaces a pending navigation, so it cancels it
+ * first ({@link cancelPendingDocument}) instead of waiting behind it:
+ * `navigate` and `reload` (which then reloads the last page that loaded).
+ *
+ * @param action - Page action
+ * @returns True for `navigate` and `reload`
+ */
+export function cancelsPendingNavigation(action: PageAction): boolean {
+  return action === 'navigate' || action === 'reload';
 }

@@ -12,6 +12,7 @@ import { DEFAULT_PAGE_READINESS_TIMEOUT_MS } from '@/constants.js';
 import type { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
 import type { SessionConfig } from '@/daemon/session/types.js';
 import { assertNavigated, failedLoadError, readFailedLoad } from '@/runtime/page/failedLoad.js';
+import { stopLoading } from '@/runtime/page/pendingDocument.js';
 import { refusedAfterAbort, watchRefusedRedirects } from '@/runtime/page/refusedRedirect.js';
 import type { FailedLoad, LaunchedChrome } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
@@ -19,9 +20,6 @@ import { displayUrl } from '@/utils/displayUrl.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { fetchCDPTargets } from '@/utils/http.js';
 import { normalizeUrl } from '@/utils/url.js';
-
-/** How long to wait for Chrome to answer `Page.stopLoading` (the teardown follows anyway) */
-const STOP_LOADING_REPLY_MS = 500;
 
 /** Connection attempts for a Chrome bdg launched (it may still be starting) */
 const LAUNCHED_CONNECT_ATTEMPTS = 10;
@@ -116,7 +114,7 @@ export async function navigateToTarget(
   const addedScheme = normalizedUrl === `http://${config.url}`;
   const ownFailure = (): FailedLoad | undefined =>
     telemetryStore.failedLoad !== failedBefore ? telemetryStore.failedLoad : undefined;
-  const navigation = await navigateOrFail(cdp, normalizedUrl, log, signal, {
+  const navigation = await navigateOrFail(cdp, normalizedUrl, signal, {
     addedScheme,
     redirectedTo: () => ownFailure()?.redirectedTo,
     mainFrameId: telemetryStore.targetInfo?.id,
@@ -158,7 +156,6 @@ export async function navigateToTarget(
  *
  * @param cdp - Open CDP connection
  * @param url - Normalized URL
- * @param log - Logger
  * @param signal - The session's stop signal
  * @param failure - Whether bdg added `http://`, where a failed redirect led, and
  *   the page's main frame (its target id; without one, refused redirects are not followed)
@@ -168,7 +165,6 @@ export async function navigateToTarget(
 async function navigateOrFail(
   cdp: CDPConnection,
   url: string,
-  log: Logger,
   signal: AbortSignal | undefined,
   failure: {
     addedScheme: boolean;
@@ -180,7 +176,7 @@ async function navigateOrFail(
     ? watchRefusedRedirects(cdp, failure.mainFrameId)
     : undefined;
   try {
-    const navigation = await sendNavigate(cdp, url, log, signal);
+    const navigation = await sendNavigate(cdp, url, signal);
     assertNavigated(navigation, url, failure.addedScheme, failure.redirectedTo());
     const refused = redirects && (await refusedAfterAbort(redirects, navigation));
     if (refused) throw failedLoadError(refused, failure.addedScheme);
@@ -199,7 +195,6 @@ async function navigateOrFail(
  *
  * @param cdp - Open CDP connection
  * @param url - URL to navigate to
- * @param log - Logger
  * @param signal - The session's stop signal
  * @returns Chrome's answer
  * @throws The signal's reason when it aborts first
@@ -207,16 +202,9 @@ async function navigateOrFail(
 async function sendNavigate(
   cdp: CDPConnection,
   url: string,
-  log: Logger,
   signal: AbortSignal | undefined
 ): Promise<Protocol.Page.NavigateResponse> {
-  const cancelNavigation = (): void => {
-    cdp
-      .send('Page.stopLoading', {}, undefined, AbortSignal.timeout(STOP_LOADING_REPLY_MS))
-      .catch((error: unknown) => {
-        log.debug(`Page.stopLoading failed: ${getErrorMessage(error)}`);
-      });
-  };
+  const cancelNavigation = (): void => void stopLoading(cdp);
   signal?.addEventListener('abort', cancelNavigation, { once: true });
   try {
     return await sendTyped(cdp, 'Page.navigate', { url }, { signal });

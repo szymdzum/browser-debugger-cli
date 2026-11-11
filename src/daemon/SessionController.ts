@@ -20,6 +20,7 @@ import { CommandError } from '@/errors/index.js';
 import {
   LAUNCHED_CHROME_DESCRIPTION,
   cdpRequestRejectedError,
+  commandTimeoutSuggestion,
   sessionAlreadyRunningMessage,
   sessionEndedDuringCommandError,
   sessionUnavailableSuggestion,
@@ -43,13 +44,21 @@ import {
   type StopSessionResponse,
   IPCErrorCode,
 } from '@/ipc/index.js';
+import type { PageAction } from '@/ipc/protocol/commands.js';
 import type { TabClosedSwitch } from '@/ipc/protocol/tabTypes.js';
+import {
+  cancelsPendingNavigation,
+  navigationPendingCommandError,
+  pendingDocument,
+  pendingDocumentUrl,
+  type PendingDocument,
+} from '@/runtime/page/pendingDocument.js';
 import { clearLastSessionEnd, writeLastSessionEnd } from '@/session/lastSession.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { fetchInterceptionTimeoutCause } from '@/ui/messages/cdpEvents.js';
 import { formatChromeIssue } from '@/ui/messages/chrome.js';
 import { noActiveSessionMessage } from '@/ui/messages/sessionCommand.js';
-import { TimeoutError, withTimeout } from '@/utils/async.js';
+import { TimeoutError, raceTimeout, withTimeout } from '@/utils/async.js';
 import { displayTypedUrl, displayUrl } from '@/utils/displayUrl.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -63,6 +72,41 @@ const COMMAND_TIMEOUT_MS = 30000;
 const QUERY_TIMEOUT_MS = 5000;
 /** Time a command that waits (`dom wait`, `cdp --collect`, `cdp --events --wait`) gets beyond its own wait */
 const WAIT_COMMAND_MARGIN_MS = 5000;
+/**
+ * How long a command may wait on a navigation that was already waiting for
+ * the server when the command came, before it fails naming it (#946): Chrome
+ * holds the page's commands until the document arrives, so a slow server's
+ * answer within this time still lets the command run.
+ */
+const PENDING_NAVIGATION_GRACE_MS = 5000;
+/**
+ * Commands a pending navigation does not fail fast: raw CDP (it may reach
+ * the browser, which a pending navigation does not hold) and `dom wait`
+ * (every form; bounded by its own --timeout, and the way to wait for a
+ * navigation an action left loading).
+ */
+const IGNORE_HELD_NAVIGATION: ReadonlySet<CommandName> = new Set([
+  'cdp_call',
+  'cdp_events',
+  'dom_wait',
+]);
+
+/**
+ * Whether a command is exempt from failing fast on a pending navigation, and
+ * from having a timeout blamed on it: {@link IGNORE_HELD_NAVIGATION}, and
+ * `page navigate` / `page reload`, which cancel the pending navigation first
+ * (the way out the navigation-pending error suggests).
+ *
+ * @param name - Command name
+ * @param params - Command parameters
+ * @returns True when the command waits for the per-command timeout instead
+ */
+function ignoresHeldNavigation(name: CommandName, params: unknown): boolean {
+  if (IGNORE_HELD_NAVIGATION.has(name)) return true;
+  return (
+    name === 'page_navigate' && cancelsPendingNavigation((params as { action: PageAction }).action)
+  );
+}
 
 /**
  * How long a command waits by its own options: `dom wait` its --timeout,
@@ -90,6 +134,27 @@ function ownWaitMs(name: CommandName, params: unknown): number {
  */
 function commandTimeoutMs(name: CommandName, params: unknown): number {
   return Math.max(COMMAND_TIMEOUT_MS, ownWaitMs(name, params) + WAIT_COMMAND_MARGIN_MS);
+}
+
+/**
+ * Fail a command that came while a navigation waited for the server, when
+ * that same navigation still waits {@link PENDING_NAVIGATION_GRACE_MS} later
+ * (#946). A navigation that answers meanwhile, or one replaced by a newer one
+ * (`bdg page navigate`, a reload), lets the command run on.
+ *
+ * @param work - The running command
+ * @param held - The document request pending when the command came
+ * @returns The command's result
+ * @throws The navigation-pending error when the same request still waits
+ */
+function failOnHeldNavigation<T>(work: Promise<T>, held: PendingDocument): Promise<T> {
+  return raceTimeout(work, PENDING_NAVIGATION_GRACE_MS, {
+    onTimeout: () => {
+      if (pendingDocument()?.requestId === held.requestId)
+        throw navigationPendingCommandError(held.url);
+      return work;
+    },
+  });
 }
 
 /**
@@ -388,34 +453,70 @@ export class SessionController {
         a?: AbortSignal
       ) => Promise<unknown>;
       const data = await withTimeout(
-        execute(name, params, abandoned),
+        this.failFastWhenHeld(name, params, execute(name, params, abandoned)),
         commandTimeoutMs(name, params),
         'Command'
       );
       return { ...base, status: 'ok', data, ...this.tabMoved(true) };
     } catch (error) {
-      return { ...base, status: 'error', ...this.describeFailure(error), ...this.tabMoved(true) };
+      return {
+        ...base,
+        status: 'error',
+        ...this.describeFailure(error, name, params),
+        ...this.tabMoved(true),
+      };
     }
   }
 
   /**
-   * Error fields of a failed session command; a timeout while Fetch
-   * interception is on names it, since paused requests stall loads and
-   * actions.
+   * A command that came while a navigation waited for the server, failing
+   * fast if it still waits ({@link failOnHeldNavigation}). Commands
+   * {@link ignoresHeldNavigation} names, and every command while Fetch
+   * interception is on (a paused request may be what the navigation waits
+   * for), wait for the per-command timeout.
+   *
+   * @param name - Command name
+   * @param params - Command parameters
+   * @param work - The running command
+   * @returns The command's result
+   */
+  private failFastWhenHeld<T>(name: CommandName, params: unknown, work: Promise<T>): Promise<T> {
+    const held = pendingDocument();
+    if (!held || ignoresHeldNavigation(name, params) || this.session?.fetchInterceptionEnabled()) {
+      return work;
+    }
+    return failOnHeldNavigation(work, held);
+  }
+
+  /**
+   * Error fields of a failed session command. A per-command timeout exits
+   * 102: while Fetch interception is on it names it, since paused requests
+   * stall loads and actions; while a navigation waits for the server it
+   * names that navigation (#946), unless the command is exempt from the hold
+   * ({@link ignoresHeldNavigation}).
    *
    * @param error - Error the command failed with
+   * @param name - Command name
+   * @param params - Command parameters
    * @returns Message, exit code and suggestion
    */
-  private describeFailure(error: unknown): ReturnType<typeof describeCommandError> {
-    const described = describeCommandError(error);
-    if (!(error instanceof TimeoutError) || !this.session?.fetchInterceptionEnabled()) {
-      return described;
+  private describeFailure(
+    error: unknown,
+    name: CommandName,
+    params: unknown
+  ): ReturnType<typeof describeCommandError> {
+    if (!(error instanceof TimeoutError)) return describeCommandError(error);
+    const cause = this.session?.fetchInterceptionEnabled()
+      ? fetchInterceptionTimeoutCause()
+      : undefined;
+    const pendingUrl = ignoresHeldNavigation(name, params) ? undefined : pendingDocumentUrl();
+    if (!cause && pendingUrl !== undefined) {
+      return describeCommandError(navigationPendingCommandError(pendingUrl));
     }
-    const cause = fetchInterceptionTimeoutCause();
     return {
-      error: `${described.error}: ${cause.message}`,
+      error: cause ? `${error.message}: ${cause.message}` : error.message,
       exitCode: EXIT_CODES.CDP_TIMEOUT,
-      suggestion: cause.suggestion,
+      suggestion: cause?.suggestion ?? commandTimeoutSuggestion(),
     };
   }
 

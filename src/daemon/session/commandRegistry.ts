@@ -71,6 +71,7 @@ import { sendForBdgScript } from '@/runtime/page/bdgWorld.js';
 import { emulatePage, pageAppearance, type SessionEmulation } from '@/runtime/page/emulation.js';
 import { readDocumentReadyState } from '@/runtime/page/loadingState.js';
 import { navigatePage } from '@/runtime/page/navigation.js';
+import { cancelPendingDocument, cancelsPendingNavigation } from '@/runtime/page/pendingDocument.js';
 import { takeScreenshot } from '@/runtime/page/screenshot.js';
 import { summarizeBlockedCookies } from '@/telemetry/blockedCookies.js';
 import { toDownloadInfo } from '@/telemetry/downloads.js';
@@ -1128,8 +1129,9 @@ export function createCommandRegistry(
     dom_wait: async (cdp, params) =>
       waitForCondition(cdp, params, () => store.pendingNetworkRequests.values()),
 
-    page_navigate: async (cdp, params) =>
-      interact(
+    page_navigate: async (cdp, params) => {
+      if (cancelsPendingNavigation(params.action)) await cancelPendingDocument(cdp);
+      return interact(
         cdp,
         () => {
           clientGroups.clear();
@@ -1139,7 +1141,8 @@ export function createCommandRegistry(
           });
         },
         { reportRequests: false, reportEffects: false }
-      ),
+      );
+    },
 
     page_tabs: async () => tabControl().list(),
 

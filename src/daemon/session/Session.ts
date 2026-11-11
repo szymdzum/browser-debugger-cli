@@ -49,6 +49,7 @@ import type { StatusResponseData } from '@/ipc/session/queries.js';
 import { restoreAuthStateBeforeLoad } from '@/runtime/page/authState.js';
 import { applySessionEmulation, type SessionEmulation } from '@/runtime/page/emulation.js';
 import { readPageLoadingState } from '@/runtime/page/loadingState.js';
+import { cancelPendingDocument } from '@/runtime/page/pendingDocument.js';
 import { findConflictingOwner } from '@/session/chromeOwners.js';
 import { reapOrphanedChrome, removeSessionFiles } from '@/session/cleanup/staleSession.js';
 import { writeSessionMetadata } from '@/session/metadata.js';
@@ -479,7 +480,9 @@ export class Session {
   }
 
   /**
-   * Stop the session: stop collectors, close CDP, terminate Chrome.
+   * Stop the session: cancel a pending navigation (Chrome holds the page's
+   * commands meanwhile, the teardown's too), stop collectors, close CDP,
+   * terminate Chrome.
    *
    * Idempotent: concurrent and repeated calls share one stop. Safe to call
    * while launching; the launch then aborts and releases what it acquired.
@@ -494,6 +497,7 @@ export class Session {
     this.stopping ??= (async () => {
       if (this.timeoutTimer) clearTimeout(this.timeoutTimer);
       log.info(`Stopping session (reason: ${reason}${cause ? `, cause: ${cause}` : ''})`);
+      if (this.pages.connection) await cancelPendingDocument(this.pages.connection);
       await this.releaseResources();
       if (!this.started) return;
       removeSessionFiles(process.pid);
