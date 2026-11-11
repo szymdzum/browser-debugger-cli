@@ -293,8 +293,8 @@ bdg cdp Network.getCookies --debug
 - Start one with `bdg <url>`
 - Verify with `bdg status`
 
-**"Command timeout (30s)"**
-- The handler is hung or slow
+**"Command timeout (30s)"** (exit 102)
+- The handler is hung or slow (a page held by a navigation that waits for the server is named instead: `still waiting for the server to respond to <url>`, exit 102)
 - Check `~/.bdg/daemon.log` for stuck operations
 - Verify CDP connection is healthy
 
