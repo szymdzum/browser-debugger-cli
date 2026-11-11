@@ -64,7 +64,7 @@ async function followDuring(
       if (done(stdout)) stop.abort();
     },
   });
-  await hasStarted;
+  await Promise.race([hasStarted, stream]);
   await act();
   return stream;
 }
