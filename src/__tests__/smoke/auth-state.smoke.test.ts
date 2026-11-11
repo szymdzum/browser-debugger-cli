@@ -182,8 +182,7 @@ async function bdgJson<T>(
  * @returns Value
  */
 async function evaluate(expression: string, session?: string, frame?: string): Promise<unknown> {
-  const result = await bdg('dom', [
-    'eval',
+  const result = await bdg('eval', [
     expression,
     '--json',
     ...(session ? ['--session', session] : []),

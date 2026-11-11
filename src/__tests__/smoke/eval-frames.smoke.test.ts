@@ -127,12 +127,7 @@ void describe('eval --frame', () => {
   });
 
   void it('prints the Frame: line on stderr so stdout pipes cleanly', async () => {
-    const result = await runCommand('dom', [
-      'eval',
-      '({ title: document.title })',
-      '--frame',
-      'same',
-    ]);
+    const result = await runCommand('eval', ['({ title: document.title })', '--frame', 'same']);
     assert.equal(result.exitCode, 0, result.stderr);
     assert.deepEqual(JSON.parse(result.stdout), { title: '' });
     assert.match(result.stderr, /^Frame: http:\/\/127\.0\.0\.1:\d+\/deep-frame$/m);

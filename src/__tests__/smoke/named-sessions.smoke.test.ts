@@ -145,13 +145,9 @@ void describe('named sessions', () => {
       ['deep', 'eval frames']
     );
 
-    const groupLevel = await runJson<{ result: string }>('dom', [
-      '--session',
-      'smoke-a',
-      'eval',
-      'document.title',
-    ]);
-    assert.equal(groupLevel.data.result, 'deep', '--session between the group and the command');
+    const groupLevel = await runJson('dom', ['--session', 'smoke-a', 'get', 'title', '--raw']);
+    const html = JSON.stringify(groupLevel.data);
+    assert.ok(html.includes('deep') && !html.includes('eval frames'), html);
 
     const status = await runJson<StatusData>('--session', ['smoke-b', 'status']);
     assert.equal(status.data.session, 'smoke-b');
@@ -220,8 +216,7 @@ void describe('named sessions', () => {
         `the refused start returns after its daemon removed ${file}`
       );
     }
-    const title = await runJson<{ result: string }>('dom', [
-      'eval',
+    const title = await runJson<{ result: string }>('eval', [
       'document.title',
       '--session',
       'smoke-a',
