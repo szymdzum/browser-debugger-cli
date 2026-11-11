@@ -424,19 +424,17 @@ void describe('bdg attach', () => {
   });
 
   void it('--stop-after ends the attached session by itself', async () => {
-    for (const flag of ['--stop-after']) {
-      const start = await runJson<StartData>('attach', [
-        'attach-b',
-        '--chrome-ws-url',
-        String(chrome.port),
-        flag,
-        '2',
-      ]);
-      assert.equal(start.exitCode, 0, JSON.stringify(start.envelope));
-      assert.equal(start.envelope.warnings, undefined);
-      await until(() => !fs.existsSync(path.join(sessionDir, 'daemon.sock')));
-      assert.equal((await chromePages(chrome.port)).length >= 2, true, 'both tabs are left open');
-    }
+    const start = await runJson<StartData>('attach', [
+      'attach-b',
+      '--chrome-ws-url',
+      String(chrome.port),
+      '--stop-after',
+      '2',
+    ]);
+    assert.equal(start.exitCode, 0, JSON.stringify(start.envelope));
+    assert.equal(start.envelope.warnings, undefined);
+    await until(() => !fs.existsSync(path.join(sessionDir, 'daemon.sock')));
+    assert.equal((await chromePages(chrome.port)).length >= 2, true, 'both tabs are left open');
   });
 
   void it('lists the page tabs over one connection and leaves no session', async () => {
