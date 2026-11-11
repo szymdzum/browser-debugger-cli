@@ -87,9 +87,9 @@ async function bdg(args: string[]): Promise<{ stdout: string; stderr: string }> 
  */
 async function bdgJson<T>(
   args: string[]
-): Promise<{ data: T; warning?: string; stdout: string; stderr: string }> {
+): Promise<{ data: T; warnings?: string[]; stdout: string; stderr: string }> {
   const { stdout, stderr } = await bdg([...args, '--json']);
-  const envelope = JSON.parse(stdout) as { data: T; warning?: string };
+  const envelope = JSON.parse(stdout) as { data: T; warnings?: string[] };
   return { ...envelope, stdout, stderr };
 }
 
@@ -302,7 +302,7 @@ void describe('Secrets in network output', () => {
     const json = await bdgJson<HeadersJson>(['network', 'headers', id, '--include-sensitive']);
     assert.equal(header(json.data.requestHeaders, 'x-api-key'), `KEY${NETWORK_SECRET_MARKER}`);
     assert.equal(json.data.masked, undefined);
-    assert.match(json.warning ?? '', /credentials/i);
+    assert.match(json.warnings?.join('\n') ?? '', /credentials/i);
   });
 
   void it('masks the code in Location and in the document URL, and cookies of network headers', async () => {

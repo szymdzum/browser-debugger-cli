@@ -148,8 +148,8 @@ void describe('HAR export sanitization', () => {
       timeout: 30000,
     });
     assert.equal(json.exitCode, 0, json.stderr);
-    const envelope = JSON.parse(json.stdout) as { warning?: string; data: { log: unknown } };
-    assert.match(envelope.warning ?? '', /--include-sensitive/);
+    const envelope = JSON.parse(json.stdout) as { warnings?: string[]; data: { log: unknown } };
+    assert.match(envelope.warnings?.join('\n') ?? '', /--include-sensitive/);
     assert.ok(envelope.data.log, 'the HAR is in data');
   });
 

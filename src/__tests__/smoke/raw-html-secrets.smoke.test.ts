@@ -30,12 +30,12 @@ const RAW_SECRETS = /TopSecret99|Shown88Secret|777111|4111111111111111|905512/;
 
 /** What the tests read of `dom get --raw --json` */
 interface GetJson {
-  nodes: Array<{ nodeId: number; attributes?: Record<string, string>; outerHTML?: string }>;
+  nodes: Array<{ backendNodeId: number; attributes?: Record<string, string>; outerHTML?: string }>;
 }
 
 /** What the tests read of `dom query --json` */
 interface QueryJson {
-  nodes: Array<{ nodeId: number; id?: string; attributes?: { value?: string } }>;
+  nodes: Array<{ backendNodeId: number; id?: string; attributes?: { value?: string } }>;
 }
 
 /**
@@ -71,7 +71,7 @@ async function bdgJson<T>(args: string[]): Promise<T> {
 async function nodeIdOf(selector: string): Promise<number> {
   const node = (await bdgJson<QueryJson>(['dom', 'query', selector])).nodes[0];
   assert.ok(node, `no match for ${selector}`);
-  return node.nodeId;
+  return node.backendNodeId;
 }
 
 /** Secret values on `/raw-more` */

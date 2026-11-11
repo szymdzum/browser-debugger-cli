@@ -89,9 +89,9 @@ async function bdg(args: string[]): Promise<{ stdout: string; stderr: string }> 
  */
 async function bdgJson<T>(
   args: string[]
-): Promise<{ data: T; warning?: string; stdout: string; stderr: string }> {
+): Promise<{ data: T; warnings?: string[]; stdout: string; stderr: string }> {
   const { stdout, stderr } = await bdg([...args, '--json']);
-  const envelope = JSON.parse(stdout) as { data: T; warning?: string };
+  const envelope = JSON.parse(stdout) as { data: T; warnings?: string[] };
   return { ...envelope, stdout, stderr };
 }
 
@@ -204,7 +204,7 @@ void describe('Page URLs with credentials', () => {
     const json = await bdgJson<{ pageState: { url: string } }>(['status', '--include-sensitive']);
     assert.doesNotMatch(json.data.pageState.url, USER_INFO);
     assert.ok(json.data.pageState.url.includes(`#id_token=QT-ID${URL_SECRET_MARKER}`));
-    assert.match(json.warning ?? '', /credentials/i);
+    assert.match(json.warnings?.join('\n') ?? '', /credentials/i);
   });
 
   void it('sessions masks the URL, human and --json; --include-sensitive shows the tokens', async () => {
@@ -220,7 +220,7 @@ void describe('Page URLs with credentials', () => {
     ]);
     assert.doesNotMatch(raw.data.sessions[0]?.url ?? '', USER_INFO);
     assert.ok(raw.data.sessions[0]?.url?.includes(`token=QT-SESSION${URL_SECRET_MARKER}`));
-    assert.match(raw.warning ?? '', /credentials/i);
+    assert.match(raw.warnings?.join('\n') ?? '', /credentials/i);
   });
 
   void it('page info masks the URL, human and --json; --include-sensitive shows the tokens', async () => {
@@ -233,7 +233,7 @@ void describe('Page URLs with credentials', () => {
     const raw = await bdgJson<{ url: string }>(['page', 'info', '--include-sensitive']);
     assert.doesNotMatch(raw.data.url, USER_INFO);
     assert.ok(raw.data.url.includes(`token=QT-SESSION${URL_SECRET_MARKER}`));
-    assert.match(raw.warning ?? '', /credentials/i);
+    assert.match(raw.warnings?.join('\n') ?? '', /credentials/i);
   });
 
   void it('dom form --json resolves the action without the user info', async () => {
@@ -270,7 +270,7 @@ void describe('Page URLs with credentials', () => {
       raw.data.tabs[1]?.url,
       `${origin}/url-creds-popup?token=QT-POPUP${URL_SECRET_MARKER}`
     );
-    assert.match(raw.warning ?? '', /credentials/i);
+    assert.match(raw.warnings?.join('\n') ?? '', /credentials/i);
     const closed = await bdgJson<PageCloseData>(['page', 'close', '1']);
     assert.doesNotMatch(closed.stdout, ANY_SECRET);
     assert.equal(closed.data.closed.url, `${origin}/url-creds-popup?token=${MASK}`);
@@ -343,7 +343,7 @@ void describe('Page URLs with credentials', () => {
     assert.ok(
       rawList.data.requests.some((r) => r.url.includes(`access_token=QT-FETCH${URL_SECRET_MARKER}`))
     );
-    assert.match(rawList.warning ?? '', /credentials/i);
+    assert.match(rawList.warnings?.join('\n') ?? '', /credentials/i);
     const rawPeek = await bdg(['peek', '--last', '0', '-v', '--include-sensitive']);
     assert.doesNotMatch(rawPeek.stdout, USER_INFO);
     assert.ok(rawPeek.stdout.includes(`token=QT-SESSION${URL_SECRET_MARKER}`), rawPeek.stdout);

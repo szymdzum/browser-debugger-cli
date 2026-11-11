@@ -112,9 +112,9 @@ void describe('secret field names', () => {
     assertNoFieldSecret(raw, 'dom get #account --raw');
     for (const value of ORDINARY) assert.ok(raw.includes(value), `--raw hides ${value}`);
     const query = JSON.parse(await bdg(['dom', 'query', '#account', '--json'])) as {
-      data: { nodes: Array<{ nodeId: number }> };
+      data: { nodes: Array<{ backendNodeId: number }> };
     };
-    const nodeId = String(query.data.nodes[0]?.nodeId);
+    const nodeId = String(query.data.nodes[0]?.backendNodeId);
     assertNoFieldSecret(await bothModes(['dom', 'get', '--node-id', nodeId]), 'dom get --node-id');
   });
 
