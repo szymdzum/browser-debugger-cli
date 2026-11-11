@@ -124,6 +124,20 @@ void describe('planEventCommand', () => {
     assert.deepEqual(read('100'), { mode: 'events', request: { action: 'read', waitMs: 100 } });
   });
 
+  void it('takes only whole milliseconds as typed, surrounding spaces ignored', () => {
+    const collect = (timeout: string): unknown =>
+      planEventCommand('Tracing.end', { collect: 'Tracing.dataCollected', timeout });
+    for (const value of ['-1', '1e3', '500.0', '500ms']) {
+      assertInvalid(
+        () => collect(value),
+        /--timeout must be a whole number of milliseconds/,
+        /Example: --timeout 10000/
+      );
+    }
+    const spaced = collect(' 500') as { collect: { timeoutMs: number } };
+    assert.equal(spaced.collect.timeoutMs, 500);
+  });
+
   void it('refuses values that look like 0.x seconds, naming the milliseconds', () => {
     const collect = (timeout: string): unknown =>
       planEventCommand('Tracing.end', { collect: 'Tracing.dataCollected', timeout });

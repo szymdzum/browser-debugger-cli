@@ -271,7 +271,7 @@ bdg cdp Network.setBlockedURLs --params '{"urls":["*analytics*"]}'
 bdg cdp Network.emulateNetworkConditions --params '{"offline":false,"latency":400,"downloadThroughput":50000,"uploadThroughput":20000}'
 ```
 
-`--collect` ends at `--until` or `--timeout` (milliseconds since 1.0: default 10000, 100 to 120000; `--events --wait <ms>` too); a timeout returns `complete: false` with the events so far (exit 0). While `Fetch.enable` is on, matching requests stay paused: a timed-out `page reload` or action says so.
+`--collect` ends at `--until` or `--timeout` (milliseconds since 1.0: default 10000, 100 to 120000; `--events --wait <ms>` too; below 100 exits 81, while 100 to 120, the top of the old seconds range, are taken as milliseconds: multiply old values by 1000); a timeout returns `complete: false` with the events so far (exit 0). While `Fetch.enable` is on, matching requests stay paused: a timed-out `page reload` or action says so.
 
 ## Screenshots (Visual Proof Only)
 
