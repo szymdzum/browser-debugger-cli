@@ -120,7 +120,40 @@ void describe('actions and stop while a click-started navigation waits for the s
     assert.doesNotMatch(output, /Command timeout/);
   });
 
+  /**
+   * Assert that the page is `/pending-nav` and answers an action.
+   */
+  async function assertPendingNavPageUsable(): Promise<void> {
+    const where = await bdg('eval', ['location.pathname', '--json']);
+    assert.equal(
+      (JSON.parse(where.stdout) as { data: { result: string } }).data.result,
+      '/pending-nav'
+    );
+    const click = await bdg('dom', ['click', '#save']);
+    assert.equal(click.exitCode, 0, `${click.stdout}\n${click.stderr}`);
+  }
+
+  void it('page navigate after a held action cancels the pending navigation and loads', async () => {
+    const { result, elapsedMs } = await timed('page', ['navigate', `${fixture.url}pending-nav`]);
+    assert.equal(result.exitCode, 0, `${result.stdout}\n${result.stderr}`);
+    assert.ok(elapsedMs < STOP_LIMIT_MS, `page navigate took ${elapsedMs} ms`);
+    await assertPendingNavPageUsable();
+  });
+
+  void it('page reload after a held action cancels the pending navigation and reloads', async () => {
+    const click = await bdg('dom', ['click', '#orders']);
+    assert.equal(click.exitCode, 0, `${click.stdout}\n${click.stderr}`);
+    const held = await bdg('dom', ['click', '#save']);
+    assert.equal(held.exitCode, 102, `${held.stdout}\n${held.stderr}`);
+    const { result, elapsedMs } = await timed('page', ['reload']);
+    assert.equal(result.exitCode, 0, `${result.stdout}\n${result.stderr}`);
+    assert.ok(elapsedMs < STOP_LIMIT_MS, `page reload took ${elapsedMs} ms`);
+    await assertPendingNavPageUsable();
+  });
+
   void it('bdg stop cancels the pending navigation and returns within seconds', async () => {
+    const click = await bdg('dom', ['click', '#orders']);
+    assert.equal(click.exitCode, 0, `${click.stdout}\n${click.stderr}`);
     const { result, elapsedMs } = await timed('stop', []);
     assert.equal(result.exitCode, 0, `${result.stdout}\n${result.stderr}`);
     assert.ok(elapsedMs < STOP_LIMIT_MS, `bdg stop took ${elapsedMs} ms`);

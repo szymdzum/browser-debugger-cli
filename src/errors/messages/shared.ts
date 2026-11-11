@@ -109,7 +109,8 @@ export function withLoadingHint(
 export function navigationPendingError(url: string): ErrorWithSuggestion {
   return {
     message: `The page is not answering: it is still waiting for the server to respond to ${url}`,
-    suggestion: 'Wait for the page to load, or load another one: bdg page navigate <url>',
+    suggestion:
+      'Wait for the page to load, or load another one: bdg page navigate <url> (or end the session: bdg stop)',
   };
 }
 

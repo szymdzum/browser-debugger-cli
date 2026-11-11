@@ -330,7 +330,13 @@ void describe('SessionController.command timeouts', () => {
     startPendingNavigation(emit);
     const controller = await startController(() => new Promise(() => undefined));
     let result: CommandResponse | undefined;
-    const response = reload(controller).then((r) => (result = r));
+    const response = (
+      controller.command({
+        type: 'dom_click_request',
+        sessionId: 's',
+        selector: '#help',
+      } as never) as Promise<CommandResponse>
+    ).then((r) => (result = r));
     mock.timers.tick(10_000);
     await flush();
     assert.ok(result, 'failed before the 30 s command timeout');
@@ -340,6 +346,82 @@ void describe('SessionController.command timeouts', () => {
     await response;
   });
 
+  /**
+   * Send a command and check it is still running 10 s later (past the
+   * fail-fast grace), then let the 30 s command timeout end it.
+   *
+   * @param controller - Controller
+   * @param request - Request fields besides `sessionId`
+   * @returns The response after the command timeout
+   */
+  async function waitsPastGrace(
+    controller: SessionController,
+    request: Record<string, unknown>
+  ): Promise<CommandResponse> {
+    let result: CommandResponse | undefined;
+    const response = (
+      controller.command({ sessionId: 's', ...request } as never) as Promise<CommandResponse>
+    ).then((r) => (result = r));
+    mock.timers.tick(10_000);
+    await flush();
+    assert.equal(result, undefined, `failed fast: ${JSON.stringify(result)}`);
+    mock.timers.tick(30_000);
+    return response;
+  }
+
+  const exempt: Array<[string, Record<string, unknown>]> = [
+    ['cdp_call', { type: 'cdp_call_request', method: 'Runtime.evaluate' }],
+    ['cdp_events', { type: 'cdp_events_request', waitMs: 0 }],
+    ['page navigate', { type: 'page_navigate_request', action: 'navigate', url: 'http://x/' }],
+    ['page reload', { type: 'page_navigate_request', action: 'reload' }],
+  ];
+  for (const [label, request] of exempt) {
+    void it(`does not fail ${label} fast on a pending navigation (#946)`, async () => {
+      const emit = await trackFakeDocuments();
+      startPendingNavigation(emit);
+      const controller = await startController(() => new Promise(() => undefined));
+      const result = await waitsPastGrace(controller, request);
+      assert.equal(result.exitCode, EXIT_CODES.CDP_TIMEOUT);
+    });
+  }
+
+  void it('does not fail fast while Fetch interception is on (#946)', async () => {
+    const emit = await trackFakeDocuments();
+    startPendingNavigation(emit);
+    const controller = await startController(() => new Promise(() => undefined), true);
+    const result = await waitsPastGrace(controller, {
+      type: 'dom_click_request',
+      selector: '#help',
+    });
+    assert.match(result.error ?? '', /Fetch interception may be enabled/);
+    assert.equal(result.exitCode, EXIT_CODES.CDP_TIMEOUT);
+  });
+
+  void it('lets the command run when a newer navigation replaced the held one (#946)', async () => {
+    const emit = await trackFakeDocuments();
+    startPendingNavigation(emit);
+    let answer = (): void => undefined;
+    const controller = await startController(
+      () => new Promise<unknown>((resolve) => (answer = () => resolve({ clicked: true })))
+    );
+    const response = controller.command({
+      type: 'dom_click_request',
+      sessionId: 's',
+      selector: '#help',
+    } as never) as Promise<CommandResponse>;
+    emit('Network.requestWillBeSent', {
+      requestId: 'help',
+      type: 'Document',
+      frameId: 'main',
+      request: { url: 'http://127.0.0.1/help' },
+    });
+    mock.timers.tick(10_000);
+    await flush();
+    answer();
+    const result = await response;
+    assert.equal(result.status, 'ok', JSON.stringify(result));
+  });
+
   void it('lets the command run when the pending navigation answers soon (#946)', async () => {
     const emit = await trackFakeDocuments();
     startPendingNavigation(emit);
@@ -347,7 +429,11 @@ void describe('SessionController.command timeouts', () => {
     const controller = await startController(
       () => new Promise<unknown>((resolve) => (answer = () => resolve({ reloaded: true })))
     );
-    const response = reload(controller);
+    const response = controller.command({
+      type: 'dom_click_request',
+      sessionId: 's',
+      selector: '#help',
+    } as never) as Promise<CommandResponse>;
     mock.timers.tick(2_000);
     emit('Network.responseReceived', { requestId: 'orders' });
     mock.timers.tick(10_000);

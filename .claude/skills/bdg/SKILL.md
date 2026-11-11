@@ -302,7 +302,7 @@ If a command is interrupted, Ctrl-C (exit 130, once Node has started: tens of mi
 | 91 | Page JavaScript threw: `eval` script, or bdg's action script failing on the page's own code (an element whose `dispatchEvent` throws, a replaced method) during `dom click`/`fill`/`press`. A handler that throws while the action works is not 91: the action exits 0 and lists it under `Errors:` | Fix the script; for an action, check the element's listeners (`bdg dom listeners`) and replaced methods (`bdg eval`) |
 | 100 | Chrome failed to launch | `bdg cleanup --force`, retry |
 | 101 | CDP connection failure | `bdg cleanup --force`, then restart |
-| 102 | Timeout (CDP, `dom wait`, the daemon's 30 s command timeout) or no response; also a page still waiting for the server after a click, submit or script navigation (`still waiting for the server to respond to <url>`, after about 5 s) | Check page load, raise `--timeout`; for a pending navigation wait, or `bdg page navigate <url>` |
+| 102 | Timeout (CDP, `dom wait`, the daemon's 30 s command timeout) or no response; also a page still waiting for the server after a click, submit or script navigation (`still waiting for the server to respond to <url>`, after about 5 s) | Check page load, raise `--timeout`; for a pending navigation wait, or `bdg page navigate <url>` / `bdg page reload` (they cancel it first) |
 | 107 | Page crashed | `bdg page reload` |
 | 130 / 143 | Interrupted (Ctrl-C) / SIGTERM | Read `suggestion`; after an action, `bdg peek` before repeating |
 

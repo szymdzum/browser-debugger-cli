@@ -13,6 +13,7 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CommandError } from '@/errors/index.js';
 import { navigationPendingError } from '@/errors/messages.js';
+import type { PageAction } from '@/ipc/protocol/commands.js';
 import { mainFrameId } from '@/runtime/page/navigation.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { displayUrl } from '@/utils/displayUrl.js';
@@ -129,4 +130,16 @@ export async function trackPendingDocument(cdp: CDPConnection): Promise<() => vo
     own.clear();
     if (pending === own) pending = new Map();
   };
+}
+
+/**
+ * Whether a `page` action replaces a pending navigation, so it cancels it
+ * first ({@link cancelPendingDocument}) instead of waiting behind it:
+ * `navigate` and `reload` (which then reloads the last page that loaded).
+ *
+ * @param action - Page action
+ * @returns True for `navigate` and `reload`
+ */
+export function cancelsPendingNavigation(action: PageAction): boolean {
+  return action === 'navigate' || action === 'reload';
 }

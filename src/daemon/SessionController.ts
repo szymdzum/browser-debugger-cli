@@ -44,8 +44,10 @@ import {
   type StopSessionResponse,
   IPCErrorCode,
 } from '@/ipc/index.js';
+import type { PageAction } from '@/ipc/protocol/commands.js';
 import type { TabClosedSwitch } from '@/ipc/protocol/tabTypes.js';
 import {
+  cancelsPendingNavigation,
   navigationPendingCommandError,
   pendingDocument,
   pendingDocumentUrl,
@@ -79,6 +81,23 @@ const WAIT_COMMAND_MARGIN_MS = 5000;
 const PENDING_NAVIGATION_GRACE_MS = 5000;
 /** Raw CDP commands: they may reach the browser, which a pending navigation does not hold */
 const RAW_CDP_COMMANDS: ReadonlySet<CommandName> = new Set(['cdp_call', 'cdp_events']);
+
+/**
+ * Whether a command is exempt from failing fast on a pending navigation:
+ * raw CDP ({@link RAW_CDP_COMMANDS}), and `page navigate` / `page reload`,
+ * which cancel the pending navigation first (the way out the
+ * navigation-pending error suggests).
+ *
+ * @param name - Command name
+ * @param params - Command parameters
+ * @returns True when the command waits for the per-command timeout instead
+ */
+function ignoresHeldNavigation(name: CommandName, params: unknown): boolean {
+  if (RAW_CDP_COMMANDS.has(name)) return true;
+  return (
+    name === 'page_navigate' && cancelsPendingNavigation((params as { action: PageAction }).action)
+  );
+}
 
 /**
  * How long a command waits by its own options: `dom wait` its --timeout,
@@ -425,7 +444,7 @@ export class SessionController {
         a?: AbortSignal
       ) => Promise<unknown>;
       const data = await withTimeout(
-        this.failFastWhenHeld(name, execute(name, params, abandoned)),
+        this.failFastWhenHeld(name, params, execute(name, params, abandoned)),
         commandTimeoutMs(name, params),
         'Command'
       );
@@ -437,17 +456,19 @@ export class SessionController {
 
   /**
    * A command that came while a navigation waited for the server, failing
-   * fast if it still waits ({@link failOnHeldNavigation}). Raw CDP commands,
-   * and every command while Fetch interception is on (a paused request may
-   * be what the navigation waits for), wait for the per-command timeout.
+   * fast if it still waits ({@link failOnHeldNavigation}). Commands
+   * {@link ignoresHeldNavigation} names, and every command while Fetch
+   * interception is on (a paused request may be what the navigation waits
+   * for), wait for the per-command timeout.
    *
    * @param name - Command name
+   * @param params - Command parameters
    * @param work - The running command
    * @returns The command's result
    */
-  private failFastWhenHeld<T>(name: CommandName, work: Promise<T>): Promise<T> {
+  private failFastWhenHeld<T>(name: CommandName, params: unknown, work: Promise<T>): Promise<T> {
     const held = pendingDocument();
-    if (!held || RAW_CDP_COMMANDS.has(name) || this.session?.fetchInterceptionEnabled()) {
+    if (!held || ignoresHeldNavigation(name, params) || this.session?.fetchInterceptionEnabled()) {
       return work;
     }
     return failOnHeldNavigation(work, held);
