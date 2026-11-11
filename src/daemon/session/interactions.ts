@@ -48,9 +48,9 @@ const MAX_REPORTED_LOGPOINTS = 3;
 interface InteractionReport extends ActionEffects {
   dialogs?: DialogInfo[];
   triggeredRequests?: TriggeredRequest[];
-  triggeredRequestsOmitted?: number;
+  moreTriggeredRequests?: number;
   submitBlocked?: InvalidField[];
-  submitBlockedOmitted?: number;
+  moreSubmitBlocked?: number;
 }
 
 /** How an interaction is reported */
@@ -202,18 +202,18 @@ async function blockedSubmit(
   read: InteractionOptions['readBlockedSubmit'],
   changes: CollectedEffects | undefined,
   requests: CollectedRequests | undefined
-): Promise<Pick<InteractionReport, 'submitBlocked' | 'submitBlockedOmitted'>> {
+): Promise<Pick<InteractionReport, 'submitBlocked' | 'moreSubmitBlocked'>> {
   if (!read || changes?.navigation || changes?.work?.navigating) return {};
   if (
     requests?.triggeredRequests.some(mayCarrySubmit) === true ||
-    (requests?.triggeredRequestsOmitted ?? 0) > 0
+    (requests?.moreTriggeredRequests ?? 0) > 0
   )
     return {};
   const blocked = await read();
   if (!blocked) return {};
   return {
     submitBlocked: blocked.fields,
-    ...(blocked.omitted > 0 && { submitBlockedOmitted: blocked.omitted }),
+    ...(blocked.omitted > 0 && { moreSubmitBlocked: blocked.omitted }),
   };
 }
 

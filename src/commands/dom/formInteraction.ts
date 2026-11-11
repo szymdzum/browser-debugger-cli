@@ -564,9 +564,9 @@ interface ActionNotices extends ActionEffects {
   releasedOn?: string | undefined;
   dialogs?: DialogInfo[] | undefined;
   triggeredRequests?: TriggeredRequest[] | undefined;
-  triggeredRequestsOmitted?: number | undefined;
+  moreTriggeredRequests?: number | undefined;
   submitBlocked?: InvalidField[] | undefined;
-  submitBlockedOmitted?: number | undefined;
+  moreSubmitBlocked?: number | undefined;
 }
 
 /**
@@ -613,7 +613,7 @@ function formatActionOutput(
     fmt.text(`⚠ ${navigationFailedError(url, errorText).message}`);
   }
   if (result.submitBlocked) {
-    fmt.text(`⚠ ${submitBlockedNote(result.submitBlocked, result.submitBlockedOmitted)}`);
+    fmt.text(`⚠ ${submitBlockedNote(result.submitBlocked, result.moreSubmitBlocked)}`);
   }
   if (result.warning) fmt.text(`⚠ Warning: ${result.warning}`);
   if (result.releasedOn) fmt.text(`⚠ ${releasedElsewhereWarning(result.releasedOn)}`);
@@ -677,7 +677,7 @@ function formatActionOutput(
   for (const hit of result.logpoints ?? []) fmt.text(logpointActionText(hit));
   if (result.moreLogpoints) fmt.text(moreLogpointsText(result.moreLogpoints));
 
-  const omitted = result.triggeredRequestsOmitted;
+  const omitted = result.moreTriggeredRequests;
   const requests = formatTriggeredRequestLines(result.triggeredRequests ?? [], omitted);
   if (requests.length > 0) {
     fmt
@@ -888,9 +888,8 @@ function formatSubmitOutput(result: ActionOutput<SubmitResult>): string {
 
   if (result.networkRequests !== undefined)
     details.push(['Network Requests', result.networkRequests.toString()]);
-  if (result.navigationOccurred === false) details.push(['Navigation', 'no']);
-  if (result.navigationOccurred && !result.navigation) details.push(['Navigation', 'yes']);
-  if (result.waitTimeMs !== undefined) details.push(['Wait Time', `${result.waitTimeMs}ms`]);
+  if (!result.navigation) details.push(['Navigation', 'no']);
+  if (result.elapsedMs !== undefined) details.push(['Wait Time', `${result.elapsedMs}ms`]);
 
   const fmt = formatActionOutput('Form Submitted', details, result, {
     keyWidth: 20,

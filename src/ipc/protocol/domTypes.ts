@@ -336,7 +336,7 @@ export interface FillResult extends ActionEffects {
   /** Requests the action triggered (absent when network telemetry is off) */
   triggeredRequests?: TriggeredRequest[];
   /** Requests left out of `triggeredRequests` (it lists the first 50) */
-  triggeredRequestsOmitted?: number;
+  moreTriggeredRequests?: number;
 }
 
 /**
@@ -374,14 +374,14 @@ export interface ClickResult extends ActionEffects {
   /** Requests the action triggered (absent when network telemetry is off) */
   triggeredRequests?: TriggeredRequest[];
   /** Requests left out of `triggeredRequests` (it lists the first 50) */
-  triggeredRequestsOmitted?: number;
+  moreTriggeredRequests?: number;
   /**
    * The fields whose constraint validation blocked the submit the click
    * started (absent when it submitted, or did not submit a form)
    */
   submitBlocked?: InvalidField[];
   /** Fields that blocked it, left out of `submitBlocked` (it lists the first 5) */
-  submitBlockedOmitted?: number;
+  moreSubmitBlocked?: number;
 }
 
 /** A form field that fails the browser's constraint validation */
@@ -417,14 +417,14 @@ export interface PressKeyResult extends ActionEffects {
   /** Requests the action triggered (absent when network telemetry is off) */
   triggeredRequests?: TriggeredRequest[];
   /** Requests left out of `triggeredRequests` (it lists the first 50) */
-  triggeredRequestsOmitted?: number;
+  moreTriggeredRequests?: number;
   /**
    * The fields whose constraint validation blocked the submit Enter started
    * (absent when it submitted, or did not submit a form)
    */
   submitBlocked?: InvalidField[];
   /** Fields that blocked it, left out of `submitBlocked` (it lists the first 5) */
-  submitBlockedOmitted?: number;
+  moreSubmitBlocked?: number;
 }
 
 /**
@@ -450,7 +450,7 @@ export interface ScrollResult extends ActionEffects {
   /** Requests the action triggered (absent when network telemetry is off) */
   triggeredRequests?: TriggeredRequest[];
   /** Requests left out of `triggeredRequests` (it lists the first 50) */
-  triggeredRequestsOmitted?: number;
+  moreTriggeredRequests?: number;
 }
 
 /**
@@ -466,8 +466,8 @@ export interface SubmitResult extends ActionEffects {
   /** Set when the target is neither a form nor a button: a list from another command was likely meant */
   unsuitableElement?: boolean;
   networkRequests?: number;
-  navigationOccurred?: boolean;
-  waitTimeMs?: number;
+  /** Milliseconds from the submit until the command stopped waiting, as `dom wait` reports it */
+  elapsedMs?: number;
   /** Set when the page loaded but its requests had not finished by the timeout */
   warning?: string;
   suggestion?: string;
@@ -477,7 +477,7 @@ export interface SubmitResult extends ActionEffects {
   /** Requests the action triggered (absent when network telemetry is off) */
   triggeredRequests?: TriggeredRequest[];
   /** Requests left out of `triggeredRequests` (it lists the first 50) */
-  triggeredRequestsOmitted?: number;
+  moreTriggeredRequests?: number;
 }
 
 /** Where an event listener is attached, seen from the inspected element. */

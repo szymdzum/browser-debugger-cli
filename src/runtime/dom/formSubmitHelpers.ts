@@ -210,11 +210,6 @@ class SubmissionWatcher {
     );
   }
 
-  /** Whether the main frame navigated since watching began. */
-  get navigationOccurred(): boolean {
-    return this.navigated;
-  }
-
   /** How far the first page request sent since watching began got, if one was sent */
   get firstDocumentRequest(): DocumentRequestState | undefined {
     const request = this.documentRequest;
@@ -431,8 +426,7 @@ export async function submitForm(
       ...(triggered.element !== undefined && { element: triggered.element }),
       clicked: triggered.clicked,
       networkRequests: watcher.networkRequests,
-      navigationOccurred: watcher.navigationOccurred,
-      waitTimeMs: Date.now() - startTime,
+      elapsedMs: Date.now() - startTime,
       ...(outcome === 'busy' && {
         warning: submitNetworkBusyWarning(timeout, watcher.pendingRequests),
       }),
@@ -449,8 +443,7 @@ export async function submitForm(
       error: err.message,
       selector,
       clicked: true,
-      navigationOccurred: watcher.navigationOccurred,
-      waitTimeMs: Date.now() - startTime,
+      elapsedMs: Date.now() - startTime,
       exitCode: EXIT_CODES.CDP_TIMEOUT,
       suggestion: err.suggestion,
     };
