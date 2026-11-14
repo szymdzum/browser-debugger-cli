@@ -77,8 +77,9 @@ const OUT_FILE_MODE = 0o600;
  * replaces the inode, so the old mode does not carry over and nothing is
  * chmod-ed before the collection succeeded (#624). A symlink to a regular
  * file is written through (the temp file goes next to the file it points to
- * and replaces it; the link stays); a FIFO, device, socket or dangling
- * symlink is refused, never replaced (#895).
+ * and replaces it; the link stays) when the link is the current user's and
+ * points straight at the file; a FIFO, device, socket, dangling symlink,
+ * symlink of another user or symlink to a symlink is refused (#895).
  */
 class NdjsonFile {
   count = 0;

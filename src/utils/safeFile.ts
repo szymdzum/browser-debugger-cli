@@ -6,9 +6,13 @@
  * replaces an existing file of another mode (the rename replaces the inode,
  * so the old mode does not carry over; #624). A symlink to a regular file is
  * written through: the temp file goes next to the file it points to and
- * replaces that file, so the link stays. A target that is neither missing
- * nor a regular file (a FIFO, device, socket or directory, or a symlink to
- * one of these or to a missing path) is refused, never replaced (#895).
+ * replaces that file, so the link stays. Only a symlink owned by the current
+ * user is written through (the rule of Linux `protected_symlinks`, so a link
+ * planted by another user cannot redirect the write), and only one hop: the
+ * path it points to must itself be a regular file, not another symlink. A
+ * target that is neither missing nor a regular file (a FIFO, device, socket
+ * or directory, a symlink to one of these, to a missing path or to another
+ * symlink, or a symlink of another user) is refused, never replaced (#895).
  */
 
 import { createHash } from 'crypto';
@@ -37,7 +41,8 @@ export const TEMP_FILE_FLAGS =
 /**
  * An error with a code, for a target that cannot be written.
  *
- * @param code - Error code (`EISDIR`, `ENOTREGULAR`, `EDANGLING`)
+ * @param code - Error code (`EISDIR`, `ENOTREGULAR`, `EDANGLING`,
+ *   `ESYMLINKOWNER`, `ESYMLINKCHAIN`)
  * @returns The error
  */
 function targetError(code: string): NodeJS.ErrnoException {
@@ -57,16 +62,24 @@ function assertRegularFile(stat: fs.Stats): void {
 
 /**
  * The path a write to a target renames its temp file over: the target when
- * it is missing or a regular file, the file a symlink points to when that is
- * a regular file (so the link stays and that file gets the data; #895).
+ * it is missing or a regular file, the file a symlink points to when the
+ * link is the current user's and points straight at a regular file (so the
+ * link stays and that file gets the data; #895).
  *
  * @param file - Absolute path of the target
+ * @param uid - User a symlink must belong to to be written through (default:
+ *   the current user); `null` skips the check, as where there are no uids
+ *   (Windows)
  * @returns Absolute path to replace
  * @throws EISDIR for a directory, ENOTREGULAR for a FIFO, device or socket
- *   (also behind a symlink), EDANGLING for a symlink to a missing path;
- *   other file-system errors (ELOOP, EACCES) as they are
+ *   (also behind a symlink), EDANGLING for a symlink to a missing path,
+ *   ESYMLINKOWNER for a symlink of another user, ESYMLINKCHAIN for a symlink
+ *   to another symlink; other file-system errors (ELOOP, EACCES) as they are
  */
-export async function resolveWriteTarget(file: string): Promise<string> {
+export async function resolveWriteTarget(
+  file: string,
+  uid: number | null = process.getuid?.() ?? null
+): Promise<string> {
   const entry = await fs.promises.lstat(file).catch((error: NodeJS.ErrnoException) => {
     if (error.code === 'ENOENT') return undefined;
     throw error;
@@ -76,11 +89,14 @@ export async function resolveWriteTarget(file: string): Promise<string> {
     assertRegularFile(entry);
     return file;
   }
-  const real = await fs.promises.realpath(file).catch((error: NodeJS.ErrnoException) => {
+  if (uid !== null && entry.uid !== uid) throw targetError('ESYMLINKOWNER');
+  const destination = path.resolve(path.dirname(file), await fs.promises.readlink(file));
+  const pointed = await fs.promises.lstat(destination).catch((error: NodeJS.ErrnoException) => {
     throw error.code === 'ENOENT' ? targetError('EDANGLING') : error;
   });
-  assertRegularFile(await fs.promises.stat(real));
-  return real;
+  if (pointed.isSymbolicLink()) throw targetError('ESYMLINKCHAIN');
+  assertRegularFile(pointed);
+  return destination;
 }
 
 /** Temp files created by this process, for unique names */

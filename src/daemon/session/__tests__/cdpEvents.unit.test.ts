@@ -415,6 +415,16 @@ void describe('collectEvents', () => {
       /symlink to a missing file/,
       (file: string) => fs.symlinkSync(`${file}.missing`, file),
     ],
+    [
+      'a symlink to another symlink',
+      /symlink to another symlink/,
+      (file: string) => {
+        const other = fs.mkdtempSync(path.join(tmpDir, 'chain-'));
+        fs.writeFileSync(path.join(other, 'real.ndjson'), 'ORIGINAL');
+        fs.symlinkSync(path.join(other, 'real.ndjson'), path.join(other, 'middle.ndjson'));
+        fs.symlinkSync(path.join(other, 'middle.ndjson'), file);
+      },
+    ],
   ] as const) {
     void it(
       `refuses ${kind} at --out and leaves it in place (81, #895)`,

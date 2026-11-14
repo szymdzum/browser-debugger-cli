@@ -27,6 +27,14 @@ const PATH_PROBLEMS: Record<string, { reason: string; exitCode: number }> = {
     reason: 'it is a symlink to a missing file',
     exitCode: EXIT_CODES.INVALID_ARGUMENTS,
   },
+  ESYMLINKOWNER: {
+    reason: 'it is a symlink owned by another user',
+    exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+  },
+  ESYMLINKCHAIN: {
+    reason: 'it is a symlink to another symlink',
+    exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+  },
   ELOOP: { reason: 'it is a symlink loop', exitCode: EXIT_CODES.INVALID_ARGUMENTS },
   ENOTDIR: { reason: 'a part of the path is a file', exitCode: EXIT_CODES.INVALID_ARGUMENTS },
   EEXIST: { reason: 'a part of the path is a file', exitCode: EXIT_CODES.INVALID_ARGUMENTS },
@@ -90,8 +98,10 @@ export function assertFilePath(filePath: string, extension?: string): void {
 
 /**
  * Write a file atomically, creating its directory if needed. A symlink to a
- * regular file is written through (the link stays); a FIFO, device, socket
- * or dangling symlink is refused, never replaced (#895).
+ * regular file is written through (the link stays) when it is the current
+ * user's and points straight at the file; a FIFO, device, socket, dangling
+ * symlink, symlink of another user or symlink to a symlink is refused,
+ * never replaced (#895).
  *
  * @param filePath - Path the user gave
  * @param data - File contents

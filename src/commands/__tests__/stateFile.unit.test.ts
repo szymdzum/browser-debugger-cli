@@ -1,8 +1,8 @@
 /**
  * State files on disk (#454, #624): the file is readable by its owner only,
  * also when it replaces an existing one of another mode; a symlink to a
- * regular file is written through (the link stays), a FIFO or dangling
- * symlink is refused with exit 81 (#895), and a missing or unreadable file
+ * regular file is written through (the link stays), a FIFO, dangling
+ * symlink or symlink to another symlink is refused with exit 81 (#895), and a missing or unreadable file
  * exits 81.
  */
 
@@ -94,6 +94,16 @@ void describe('state files', { skip: process.platform === 'win32' }, () => {
       'a dangling symlink',
       /symlink to a missing file/,
       (file: string) => fs.symlinkSync(`${file}.missing`, file),
+    ],
+    [
+      'a symlink to another symlink',
+      /symlink to another symlink/,
+      (file: string) => {
+        const other = makeTempDir('bdg-state-');
+        fs.writeFileSync(path.join(other, 'real.json'), 'ORIGINAL');
+        fs.symlinkSync(path.join(other, 'real.json'), path.join(other, 'middle.json'));
+        fs.symlinkSync(path.join(other, 'middle.json'), file);
+      },
     ],
   ] as const) {
     it(`refuses ${kind} as the file and leaves it in place (81, #895)`, async () => {

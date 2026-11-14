@@ -8,7 +8,7 @@ import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { after, describe, it } from 'node:test';
+import { after, describe, it, mock } from 'node:test';
 
 import { assertFilePath, outputPathError, writeOutputFile } from '@/commands/shared/outputFile.js';
 import { CommandError } from '@/errors/index.js';
@@ -81,6 +81,52 @@ void describe('writeOutputFile', () => {
       assert.ok(fs.lstatSync(link).isSymbolicLink());
       assert.equal(fs.readFileSync(real, 'utf8'), 'new');
       assert.deepEqual(fs.readdirSync(sub).sort(), ['link.png', 'real.png']);
+    }
+  );
+
+  void it(
+    'refuses a symlink owned by another user (81, #895)',
+    { skip: process.platform === 'win32' },
+    async () => {
+      const sub = fs.mkdtempSync(path.join(dir, 'owner-'));
+      const real = path.join(sub, 'real.png');
+      fs.writeFileSync(real, 'ORIGINAL');
+      const link = path.join(sub, 'link.png');
+      fs.symlinkSync(real, link);
+      const otherUid = fs.lstatSync(link).uid + 1;
+      const getuid = mock.method(process as { getuid(): number }, 'getuid', () => otherUid);
+      try {
+        await assertCommandError(
+          () => writeOutputFile(link, Buffer.from('x')),
+          EXIT_CODES.INVALID_ARGUMENTS,
+          /symlink owned by another user/
+        );
+      } finally {
+        getuid.mock.restore();
+      }
+      assert.equal(fs.readFileSync(real, 'utf8'), 'ORIGINAL');
+      assert.deepEqual(fs.readdirSync(sub).sort(), ['link.png', 'real.png']);
+    }
+  );
+
+  void it(
+    'refuses a symlink to another symlink (81, #895)',
+    { skip: process.platform === 'win32' },
+    async () => {
+      const sub = fs.mkdtempSync(path.join(dir, 'chain-'));
+      const real = path.join(sub, 'real.png');
+      fs.writeFileSync(real, 'ORIGINAL');
+      const middle = path.join(sub, 'middle.png');
+      fs.symlinkSync(real, middle);
+      const link = path.join(sub, 'link.png');
+      fs.symlinkSync(middle, link);
+      await assertCommandError(
+        () => writeOutputFile(link, Buffer.from('x')),
+        EXIT_CODES.INVALID_ARGUMENTS,
+        /symlink to another symlink/
+      );
+      assert.equal(fs.readFileSync(real, 'utf8'), 'ORIGINAL');
+      assert.deepEqual(fs.readdirSync(sub).sort(), ['link.png', 'middle.png', 'real.png']);
     }
   );
 
