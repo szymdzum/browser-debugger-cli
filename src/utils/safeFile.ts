@@ -64,7 +64,8 @@ function assertRegularFile(stat: fs.Stats): void {
  * The path a write to a target renames its temp file over: the target when
  * it is missing or a regular file, the file a symlink points to when the
  * link is the current user's and points straight at a regular file (so the
- * link stays and that file gets the data; #895).
+ * link stays and that file gets the data; #895). A relative link target is
+ * resolved against the real path of the link's directory, as the kernel does.
  *
  * @param file - Absolute path of the target
  * @param uid - User a symlink must belong to to be written through (default:
@@ -90,7 +91,11 @@ export async function resolveWriteTarget(
     return file;
   }
   if (uid !== null && entry.uid !== uid) throw targetError('ESYMLINKOWNER');
-  const destination = path.resolve(path.dirname(file), await fs.promises.readlink(file));
+  // A relative target is relative to where the link's directory really is,
+  // which differs from its path when that path runs through a symlinked
+  // directory and the target has `..` in it
+  const linkDir = await fs.promises.realpath(path.dirname(file));
+  const destination = path.resolve(linkDir, await fs.promises.readlink(file));
   const pointed = await fs.promises.lstat(destination).catch((error: NodeJS.ErrnoException) => {
     throw error.code === 'ENOENT' ? targetError('EDANGLING') : error;
   });

@@ -85,6 +85,26 @@ void describe('writeOutputFile', () => {
   );
 
   void it(
+    'writes a relative `..` symlink target reached through a symlinked directory to the file the link points to (#895)',
+    { skip: process.platform === 'win32' },
+    async () => {
+      const root = fs.mkdtempSync(path.join(dir, 'alias-'));
+      fs.mkdirSync(path.join(root, 'phys', 'sub'), { recursive: true });
+      fs.symlinkSync(path.join(root, 'phys', 'sub'), path.join(root, 'alias'));
+      const real = path.join(root, 'phys', 'real.json');
+      fs.writeFileSync(real, 'ORIGINAL');
+      const unrelated = path.join(root, 'real.json');
+      fs.writeFileSync(unrelated, 'UNRELATED');
+      fs.symlinkSync('../real.json', path.join(root, 'phys', 'sub', 'out.json'));
+      const link = path.join(root, 'alias', 'out.json');
+      await writeOutputFile(link, Buffer.from('NEW'));
+      assert.ok(fs.lstatSync(link).isSymbolicLink());
+      assert.equal(fs.readFileSync(real, 'utf8'), 'NEW');
+      assert.equal(fs.readFileSync(unrelated, 'utf8'), 'UNRELATED');
+    }
+  );
+
+  void it(
     'refuses a symlink owned by another user (81, #895)',
     { skip: process.platform === 'win32' },
     async () => {

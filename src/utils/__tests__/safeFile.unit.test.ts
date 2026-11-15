@@ -73,10 +73,29 @@ void describe('safe file targets (#895)', { skip: process.platform === 'win32' }
     fs.writeFileSync(real, 'ORIGINAL');
     const link = path.join(dir, 'sub', 'link.json');
     fs.symlinkSync('real.json', link);
-    assert.equal(await resolveWriteTarget(link), real);
+    assert.equal(await resolveWriteTarget(link), fs.realpathSync(real));
     await writeFileSafely(link, 'new', 0o600);
     assert.equal(fs.readlinkSync(link), 'real.json');
     assert.equal(fs.readFileSync(real, 'utf8'), 'new');
+  });
+
+  it('resolves a relative `..` target against the real directory, not a symlinked path', async () => {
+    const dir = makeTempDir('bdg-safe-');
+    fs.mkdirSync(path.join(dir, 'phys', 'sub'), { recursive: true });
+    fs.symlinkSync(path.join(dir, 'phys', 'sub'), path.join(dir, 'alias'));
+    const real = path.join(dir, 'phys', 'real.json');
+    fs.writeFileSync(real, 'ORIGINAL');
+    const unrelated = path.join(dir, 'real.json');
+    fs.writeFileSync(unrelated, 'UNRELATED');
+    fs.symlinkSync('../real.json', path.join(dir, 'phys', 'sub', 'out.json'));
+    const link = path.join(dir, 'alias', 'out.json');
+    assert.equal(await resolveWriteTarget(link), fs.realpathSync(real));
+    await writeFileSafely(link, 'new', 0o600);
+    assert.equal(fs.readlinkSync(link), '../real.json');
+    assert.equal(fs.readFileSync(real, 'utf8'), 'new');
+    assert.equal(fs.readFileSync(unrelated, 'utf8'), 'UNRELATED');
+    assert.deepEqual(fs.readdirSync(dir).sort(), ['alias', 'phys', 'real.json']);
+    assert.deepEqual(fs.readdirSync(path.join(dir, 'phys')).sort(), ['real.json', 'sub']);
   });
 
   it('refuses a symlink owned by another user and keeps both', async () => {
