@@ -4,10 +4,11 @@
  */
 
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { after, describe, it } from 'node:test';
+import { after, describe, it, mock } from 'node:test';
 
 import { assertFilePath, outputPathError, writeOutputFile } from '@/commands/shared/outputFile.js';
 import { CommandError } from '@/errors/index.js';
@@ -66,6 +67,120 @@ void describe('writeOutputFile', () => {
       /a part of the path is a file/
     );
   });
+
+  void it(
+    'writes through a symlink to a regular file, keeping the link (#895)',
+    { skip: process.platform === 'win32' },
+    async () => {
+      const sub = fs.mkdtempSync(path.join(dir, 'link-'));
+      const real = path.join(sub, 'real.png');
+      fs.writeFileSync(real, 'ORIGINAL');
+      const link = path.join(sub, 'link.png');
+      fs.symlinkSync(real, link);
+      assert.equal(await writeOutputFile(link, Buffer.from('new')), link);
+      assert.ok(fs.lstatSync(link).isSymbolicLink());
+      assert.equal(fs.readFileSync(real, 'utf8'), 'new');
+      assert.deepEqual(fs.readdirSync(sub).sort(), ['link.png', 'real.png']);
+    }
+  );
+
+  void it(
+    'writes a relative `..` symlink target reached through a symlinked directory to the file the link points to (#895)',
+    { skip: process.platform === 'win32' },
+    async () => {
+      const root = fs.mkdtempSync(path.join(dir, 'alias-'));
+      fs.mkdirSync(path.join(root, 'phys', 'sub'), { recursive: true });
+      fs.symlinkSync(path.join(root, 'phys', 'sub'), path.join(root, 'alias'));
+      const real = path.join(root, 'phys', 'real.json');
+      fs.writeFileSync(real, 'ORIGINAL');
+      const unrelated = path.join(root, 'real.json');
+      fs.writeFileSync(unrelated, 'UNRELATED');
+      fs.symlinkSync('../real.json', path.join(root, 'phys', 'sub', 'out.json'));
+      const link = path.join(root, 'alias', 'out.json');
+      await writeOutputFile(link, Buffer.from('NEW'));
+      assert.ok(fs.lstatSync(link).isSymbolicLink());
+      assert.equal(fs.readFileSync(real, 'utf8'), 'NEW');
+      assert.equal(fs.readFileSync(unrelated, 'utf8'), 'UNRELATED');
+    }
+  );
+
+  void it(
+    'refuses a symlink owned by another user (81, #895)',
+    { skip: process.platform === 'win32' },
+    async () => {
+      const sub = fs.mkdtempSync(path.join(dir, 'owner-'));
+      const real = path.join(sub, 'real.png');
+      fs.writeFileSync(real, 'ORIGINAL');
+      const link = path.join(sub, 'link.png');
+      fs.symlinkSync(real, link);
+      const otherUid = fs.lstatSync(link).uid + 1;
+      const getuid = mock.method(process as { getuid(): number }, 'getuid', () => otherUid);
+      try {
+        await assertCommandError(
+          () => writeOutputFile(link, Buffer.from('x')),
+          EXIT_CODES.INVALID_ARGUMENTS,
+          /symlink owned by another user/
+        );
+      } finally {
+        getuid.mock.restore();
+      }
+      assert.equal(fs.readFileSync(real, 'utf8'), 'ORIGINAL');
+      assert.deepEqual(fs.readdirSync(sub).sort(), ['link.png', 'real.png']);
+    }
+  );
+
+  void it(
+    'refuses a symlink to another symlink (81, #895)',
+    { skip: process.platform === 'win32' },
+    async () => {
+      const sub = fs.mkdtempSync(path.join(dir, 'chain-'));
+      const real = path.join(sub, 'real.png');
+      fs.writeFileSync(real, 'ORIGINAL');
+      const middle = path.join(sub, 'middle.png');
+      fs.symlinkSync(real, middle);
+      const link = path.join(sub, 'link.png');
+      fs.symlinkSync(middle, link);
+      await assertCommandError(
+        () => writeOutputFile(link, Buffer.from('x')),
+        EXIT_CODES.INVALID_ARGUMENTS,
+        /symlink to another symlink/
+      );
+      assert.equal(fs.readFileSync(real, 'utf8'), 'ORIGINAL');
+      assert.deepEqual(fs.readdirSync(sub).sort(), ['link.png', 'middle.png', 'real.png']);
+    }
+  );
+
+  for (const [kind, reason, make] of [
+    ['a FIFO', /not a regular file/, (file: string) => execFileSync('mkfifo', [file])],
+    [
+      'a symlink to a device',
+      /not a regular file/,
+      (file: string) => fs.symlinkSync('/dev/null', file),
+    ],
+    [
+      'a dangling symlink',
+      /symlink to a missing file/,
+      (file: string) => fs.symlinkSync(`${file}.missing`, file),
+    ],
+  ] as const) {
+    void it(
+      `refuses ${kind} and leaves it in place (81, #895)`,
+      { skip: process.platform === 'win32' },
+      async () => {
+        const sub = fs.mkdtempSync(path.join(dir, 'special-'));
+        const file = path.join(sub, 'out.png');
+        make(file);
+        const before = fs.lstatSync(file);
+        await assertCommandError(
+          () => writeOutputFile(file, Buffer.from('x')),
+          EXIT_CODES.INVALID_ARGUMENTS,
+          reason
+        );
+        assert.equal(fs.lstatSync(file).ino, before.ino);
+        assert.deepEqual(fs.readdirSync(sub), ['out.png'], 'no temp file left');
+      }
+    );
+  }
 });
 
 void describe('assertFilePath', () => {
